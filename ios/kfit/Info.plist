@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>kfit</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>NSMotionUsageDescription</key>
+	<string>kfit uses motion sensors to accurately count your exercise reps and measure form quality.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>kfit may use camera for form analysis in the future.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>kfit needs local network access for Firebase authentication.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_firebase._tcp</string>
+	</array>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>accelerometer</string>
+		<string>gyroscope</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
+</dict>
+</plist>

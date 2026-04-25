@@ -1,7 +1,6 @@
 {
   "projects": {
-    "default": "kfit-prod",
-    "development": "kfit-dev"
+    "default": "airgo-trip"
   },
   "targets": {},
   "etags": {}

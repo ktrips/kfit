@@ -1,0 +1,10 @@
+{
+  "name": "kfit",
+  "version": "1.0.0",
+  "description": "kfit - Fitness Habit App (iOS)",
+  "private": true,
+  "scripts": {
+    "build": "xcodebuild -scheme kfit -configuration Release",
+    "test": "xcodebuild -scheme kfit -configuration Debug test"
+  }
+}

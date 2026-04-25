@@ -1,0 +1,69 @@
+{
+  "exercises": [
+    {
+      "id": "pushup",
+      "name": "Push-up",
+      "description": "Classic upper body exercise targeting chest, shoulders, and triceps",
+      "difficulty": "intermediate",
+      "muscleGroups": ["chest", "shoulders", "triceps"],
+      "basePoints": 10,
+      "caloriesPerRep": 0.32,
+      "motionProfile": {
+        "type": "vertical",
+        "primaryAxis": "z",
+        "detectionMethod": "acceleration_peaks",
+        "threshold": 1.5
+      },
+      "formTips": [
+        "Keep body in straight line",
+        "Lower chest to near ground",
+        "Elbows at 45 degree angle",
+        "Explosive upward motion"
+      ]
+    },
+    {
+      "id": "squat",
+      "name": "Squat",
+      "description": "Lower body compound exercise targeting quads, glutes, and hamstrings",
+      "difficulty": "beginner",
+      "muscleGroups": ["quads", "glutes", "hamstrings"],
+      "basePoints": 15,
+      "caloriesPerRep": 0.48,
+      "motionProfile": {
+        "type": "vertical_with_stability",
+        "primaryAxis": "z",
+        "secondaryAxis": "y",
+        "detectionMethod": "acceleration_with_gyro",
+        "threshold": 1.2
+      },
+      "formTips": [
+        "Feet shoulder-width apart",
+        "Knees tracking over toes",
+        "Lower until thighs parallel to ground",
+        "Chest up, core engaged"
+      ]
+    },
+    {
+      "id": "situp",
+      "name": "Sit-up",
+      "description": "Core-focused exercise targeting abdominal muscles",
+      "difficulty": "beginner",
+      "muscleGroups": ["abs", "core", "hip_flexors"],
+      "basePoints": 10,
+      "caloriesPerRep": 0.24,
+      "motionProfile": {
+        "type": "forward_back",
+        "primaryAxis": "x",
+        "secondaryAxis": "y",
+        "detectionMethod": "acceleration_with_rotation",
+        "threshold": 1.3
+      },
+      "formTips": [
+        "Hands behind head (don't pull neck)",
+        "Full range of motion",
+        "Controlled descent",
+        "Keep feet anchored"
+      ]
+    }
+  ]
+}

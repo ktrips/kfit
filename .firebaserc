@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "kfit-prod",
+    "development": "kfit-dev"
+  },
+  "targets": {},
+  "etags": {}
+}

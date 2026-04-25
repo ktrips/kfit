@@ -44,6 +44,7 @@ export const signInWithGoogle = async () => {
   }
 };
 
+
 export const signOutUser = async () => {
   try {
     await signOut(auth);
@@ -57,10 +58,29 @@ export const onAuthChange = (callback: (user: User | null) => void) => {
   return onAuthStateChanged(auth, callback);
 };
 
+const DEFAULT_EXERCISES = [
+  { id: 'pushup', name: 'Push-up', basePoints: 2, difficulty: 'medium', muscleGroups: ['chest', 'triceps', 'shoulders'] },
+  { id: 'squat', name: 'Squat', basePoints: 2, difficulty: 'medium', muscleGroups: ['quadriceps', 'glutes', 'hamstrings'] },
+  { id: 'situp', name: 'Sit-up', basePoints: 1, difficulty: 'easy', muscleGroups: ['abs', 'core'] },
+  { id: 'lunge', name: 'Lunge', basePoints: 2, difficulty: 'medium', muscleGroups: ['quadriceps', 'glutes', 'hamstrings'] },
+  { id: 'burpee', name: 'Burpee', basePoints: 5, difficulty: 'hard', muscleGroups: ['full body'] },
+  { id: 'plank', name: 'Plank (sec)', basePoints: 1, difficulty: 'medium', muscleGroups: ['core', 'abs', 'shoulders'] },
+];
+
 // Exercise operations
 export const getExercises = async () => {
   const exercisesCollection = collection(db, 'exercises');
   const querySnapshot = await getDocs(exercisesCollection);
+
+  if (querySnapshot.empty) {
+    await Promise.all(
+      DEFAULT_EXERCISES.map((exercise) =>
+        setDoc(doc(exercisesCollection, exercise.id), exercise)
+      )
+    );
+    return DEFAULT_EXERCISES;
+  }
+
   return querySnapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()

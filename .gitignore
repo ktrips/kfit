@@ -1,0 +1,31 @@
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+web/.env
+web/.env.local
+
+# Dependencies
+node_modules/
+web/node_modules/
+firebase/functions/node_modules/
+
+# Build output
+web/dist/
+web/build/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.suo
+*.sw?

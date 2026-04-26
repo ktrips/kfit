@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getTodayExercises, getUserProfile } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-import { Flame, Zap, Trophy } from 'lucide-react';
 
 interface DashboardViewProps {
   onLogWorkout?: () => void;
@@ -13,6 +12,22 @@ interface CompletedExercise {
   reps: number;
   points: number;
   timestamp?: Date;
+}
+
+const EXERCISE_EMOJI: Record<string, string> = {
+  'push-up': '💪',
+  'pushup': '💪',
+  'squat': '🏋️',
+  'sit-up': '🔥',
+  'situp': '🔥',
+};
+
+function getExerciseEmoji(name: string): string {
+  const key = name?.toLowerCase().replace(/\s+/g, '-') ?? '';
+  for (const [k, v] of Object.entries(EXERCISE_EMOJI)) {
+    if (key.includes(k)) return v;
+  }
+  return '⚡';
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) => {
@@ -28,17 +43,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
-
       try {
         const [profile, exercises] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
         ]);
-
-        if (profile) {
-          setUserProfile(profile);
-        }
-
+        if (profile) setUserProfile(profile);
         setTodayExercises(exercises);
         setTotalReps(exercises.reduce((sum: number, ex: any) => sum + (ex.reps || 0), 0));
         setTotalPoints(exercises.reduce((sum: number, ex: any) => sum + (ex.points || 0), 0));
@@ -48,120 +58,137 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
         setIsLoading(false);
       }
     };
-
     loadData();
   }, [user, setUserProfile]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
-        <div className="text-2xl text-gray-600">Loading...</div>
+      <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <img src="/mascot.png" alt="loading" className="w-24 h-24 object-cover rounded-full animate-wiggle" />
+          <p className="text-duo-green font-extrabold text-xl">読み込み中...</p>
+        </div>
       </div>
     );
   }
 
+  const streakDays = userProfile?.streak || 0;
+  const goalProgress = Math.min((streakDays / 90) * 100, 100);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-4xl font-bold text-gray-900">Welcome, {userProfile?.username}!</h1>
-            <div className="text-right">
-              <p className="text-gray-600">Total Points</p>
-              <p className="text-4xl font-bold text-blue-600">{userProfile?.totalPoints || 0}</p>
-            </div>
+    <div className="min-h-screen bg-duo-gray-light pb-10">
+      <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
+
+        {/* Welcome banner */}
+        <div className="duo-card p-5 flex items-center gap-4">
+          <img src="/mascot.png" alt="mascot" className="w-16 h-16 object-cover rounded-full shrink-0" style={{ border: '3px solid #58CC02' }} />
+          <div>
+            <p className="text-duo-gray font-bold text-sm uppercase tracking-wider">おかえり！</p>
+            <h1 className="text-2xl font-black text-duo-dark">{userProfile?.username || 'トレーニー'} 🎉</h1>
+            <p className="text-duo-green font-extrabold text-sm">今日もやっていこう！</p>
           </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-4">
-            {/* Streak */}
-            <div className="bg-gradient-to-br from-orange-100 to-red-100 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Flame className="text-red-500" size={24} />
-                <span className="text-gray-700 font-semibold">Streak</span>
-              </div>
-              <p className="text-3xl font-bold text-red-600">{userProfile?.streak || 0}</p>
-            </div>
-
-            {/* Today's Reps */}
-            <div className="bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="text-green-500" size={24} />
-                <span className="text-gray-700 font-semibold">Today's Reps</span>
-              </div>
-              <p className="text-3xl font-bold text-green-600">{totalReps}</p>
-            </div>
-
-            {/* Today's Points */}
-            <div className="bg-gradient-to-br from-blue-100 to-cyan-100 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Trophy className="text-blue-500" size={24} />
-                <span className="text-gray-700 font-semibold">Today's Points</span>
-              </div>
-              <p className="text-3xl font-bold text-blue-600">{totalPoints}</p>
-            </div>
+          <div className="ml-auto text-right">
+            <p className="text-duo-gray font-bold text-xs">総ポイント</p>
+            <p className="text-3xl font-black text-duo-yellow" style={{ textShadow: '0 2px 0 #CE9700' }}>
+              {userProfile?.totalPoints || 0}
+            </p>
+            <p className="text-duo-gray font-bold text-xs">XP</p>
           </div>
         </div>
 
-        {/* Today's Workouts */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">Today's Workouts</h2>
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3">
+          {/* Streak */}
+          <div
+            className="duo-stat-card"
+            style={{ backgroundColor: '#FFF3E0', borderColor: '#FF9600', boxShadow: '0 3px 0 #CC7000' }}
+          >
+            <span className="text-3xl">🔥</span>
+            <p className="text-3xl font-black text-duo-orange">{streakDays}</p>
+            <p className="text-xs font-extrabold text-duo-orange-dark uppercase tracking-wide">日連続</p>
+          </div>
+
+          {/* Today reps */}
+          <div
+            className="duo-stat-card"
+            style={{ backgroundColor: '#E8F5E9', borderColor: '#58CC02', boxShadow: '0 3px 0 #46A302' }}
+          >
+            <span className="text-3xl">⚡</span>
+            <p className="text-3xl font-black text-duo-green">{totalReps}</p>
+            <p className="text-xs font-extrabold text-duo-green-dark uppercase tracking-wide">今日のRep</p>
+          </div>
+
+          {/* Today points */}
+          <div
+            className="duo-stat-card"
+            style={{ backgroundColor: '#FFF8E1', borderColor: '#FFD900', boxShadow: '0 3px 0 #CE9700' }}
+          >
+            <span className="text-3xl">⭐</span>
+            <p className="text-3xl font-black text-duo-yellow-dark">{totalPoints}</p>
+            <p className="text-xs font-extrabold text-duo-yellow-dark uppercase tracking-wide">今日のXP</p>
+          </div>
+        </div>
+
+        {/* Today's workouts */}
+        <div className="duo-card p-5">
+          <h2 className="text-lg font-black text-duo-dark mb-4">💪 今日のトレーニング</h2>
 
           {todayExercises.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-600 text-lg mb-4">No workouts logged yet today</p>
-              <button
-                onClick={onLogWorkout}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition"
-              >
-                Log Your First Workout
+            <div className="text-center py-8">
+              <p className="text-4xl mb-3">😴</p>
+              <p className="text-duo-gray font-extrabold mb-5">まだトレーニングしていません</p>
+              <button onClick={onLogWorkout} className="duo-btn-primary text-base">
+                最初のトレーニングを記録！
               </button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {todayExercises.map((exercise) => (
                 <div
                   key={exercise.id}
-                  className="flex justify-between items-center bg-gray-50 rounded-lg p-4 border border-gray-200"
+                  className="flex items-center justify-between rounded-2xl p-4"
+                  style={{ backgroundColor: '#F7F7F7', border: '2px solid #e5e5e5' }}
                 >
-                  <div>
-                    <p className="font-semibold text-gray-900">{exercise.exerciseName}</p>
-                    <p className="text-gray-600">{exercise.reps} reps</p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{getExerciseEmoji(exercise.exerciseName)}</span>
+                    <div>
+                      <p className="font-extrabold text-duo-dark">{exercise.exerciseName}</p>
+                      <p className="text-duo-gray font-bold text-sm">{exercise.reps} reps</p>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-blue-600">{exercise.points}</p>
-                    <p className="text-gray-600 text-sm">points</p>
+                    <p className="text-xl font-black text-duo-yellow-dark">+{exercise.points}</p>
+                    <p className="text-duo-gray font-bold text-xs">XP</p>
                   </div>
                 </div>
               ))}
 
               <button
                 onClick={onLogWorkout}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-3 rounded-lg transition mt-4"
+                className="duo-btn-secondary w-full text-base mt-2"
               >
-                + Log Another Workout
+                ＋ もっとトレーニングする
               </button>
             </div>
           )}
         </div>
 
-        {/* Daily Goal */}
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">3-Month Goal</h2>
-          <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-600">
-            <p className="text-gray-700 mb-2">Build a fitness habit and complete your 3-month challenge</p>
-            <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-2">Days Exercised: {userProfile?.streak || 0} / 90</p>
-              <div className="w-full bg-gray-200 rounded-full h-4">
-                <div
-                  className="bg-blue-600 h-4 rounded-full transition-all"
-                  style={{ width: `${Math.min(((userProfile?.streak || 0) / 90) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
+        {/* 90-day goal */}
+        <div className="duo-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-black text-duo-dark">🎯 90日チャレンジ</h2>
+            <span className="font-extrabold text-duo-green text-sm">{streakDays} / 90日</span>
           </div>
+          <div className="duo-progress-bar mb-2">
+            <div className="duo-progress-fill" style={{ width: `${goalProgress}%` }} />
+          </div>
+          <p className="text-duo-gray font-bold text-sm">
+            {goalProgress >= 100
+              ? '🎉 チャレンジ達成！おめでとう！'
+              : `あと ${90 - streakDays} 日で達成！続けよう！`}
+          </p>
         </div>
+
       </div>
     </div>
   );

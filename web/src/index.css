@@ -9,13 +9,91 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f7f7f7;
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+@layer components {
+  .duo-card {
+    @apply bg-white rounded-2xl;
+    border: 2px solid #e5e5e5;
+    box-shadow: 0 4px 0 #e5e5e5;
+  }
+
+  .duo-btn-primary {
+    @apply bg-duo-green text-white font-extrabold py-4 px-8 rounded-2xl transition-all duration-100 select-none;
+    border-bottom: 4px solid #46A302;
+  }
+  .duo-btn-primary:hover {
+    @apply bg-duo-green-dark;
+  }
+  .duo-btn-primary:active {
+    border-bottom-width: 2px;
+    transform: translateY(2px);
+  }
+  .duo-btn-primary:disabled {
+    @apply bg-duo-gray opacity-60 cursor-not-allowed;
+    border-bottom-color: #909090;
+  }
+
+  .duo-btn-secondary {
+    @apply bg-white font-extrabold py-4 px-8 rounded-2xl transition-all duration-100 select-none;
+    border: 2px solid #e5e5e5;
+    border-bottom: 4px solid #e5e5e5;
+    color: #3C3C3C;
+  }
+  .duo-btn-secondary:hover {
+    background-color: #f7f7f7;
+  }
+  .duo-btn-secondary:active {
+    border-bottom-width: 2px;
+    transform: translateY(2px);
+  }
+
+  .duo-stat-card {
+    @apply rounded-2xl p-4 flex flex-col gap-1;
+    border: 2px solid transparent;
+    box-shadow: 0 3px 0 transparent;
+  }
+
+  .duo-exercise-btn {
+    @apply rounded-2xl p-4 font-extrabold text-lg transition-all duration-100 select-none;
+    border: 2px solid #e5e5e5;
+    box-shadow: 0 4px 0 #e5e5e5;
+  }
+  .duo-exercise-btn:active {
+    box-shadow: none;
+    transform: translateY(4px);
+  }
+  .duo-exercise-btn.selected {
+    border-color: #46A302;
+    box-shadow: 0 4px 0 #46A302;
+    background-color: #D7FFB8;
+    color: #3C3C3C;
+  }
+
+  .duo-rep-btn {
+    @apply rounded-full flex items-center justify-center font-extrabold transition-all duration-100 select-none;
+    box-shadow: 0 4px 0;
+  }
+  .duo-rep-btn:active {
+    box-shadow: none;
+    transform: translateY(4px);
+  }
+
+  .duo-progress-bar {
+    @apply w-full rounded-full overflow-hidden;
+    background-color: #e5e5e5;
+    height: 16px;
+  }
+  .duo-progress-fill {
+    @apply h-full rounded-full transition-all duration-500;
+    background: linear-gradient(90deg, #58CC02, #91E62A);
+  }
 }

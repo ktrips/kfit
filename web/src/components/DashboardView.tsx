@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { getTodayExercises, getUserProfile } from '../services/firebase';
+import { getTodayExercises, getUserProfile, getWeeklyGoals, getWeeklyProgress, getWeekLabel } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
   onLogWorkout?: () => void;
+  onWeeklyGoal?: () => void;
 }
 
 interface CompletedExercise {
@@ -27,28 +28,38 @@ function getExerciseEmoji(name: string): string {
   return '⚡';
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWeeklyGoal }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
+  const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
+  const setStoreWeeklyProgress = useAppStore((s) => s.setWeeklyProgress);
 
   const [todayExercises, setTodayExercises] = useState<CompletedExercise[]>([]);
   const [totalReps, setTotalReps] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
+  const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number }[]>([]);
+  const [weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises] = await Promise.all([
+        const [profile, exercises, goals, progress] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
+          getWeeklyGoals(user.uid),
+          getWeeklyProgress(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTodayExercises(exercises);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
         setTotalPoints(exercises.reduce((s: number, e: any) => s + (e.points || 0), 0));
+        setWeeklyGoals(goals);
+        setWeeklyProgress(progress);
+        setStoreWeeklyGoals(goals);
+        setStoreWeeklyProgress(progress);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -56,7 +67,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
       }
     };
     loadData();
-  }, [user, setUserProfile]);
+  }, [user, setUserProfile, setStoreWeeklyGoals, setStoreWeeklyProgress]);
 
   if (isLoading) {
     return (
@@ -150,6 +161,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
               <button onClick={onLogWorkout} className="duo-btn-secondary w-full text-base mt-2">
                 ＋ もっとトレーニングする
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Weekly goal mini card */}
+        <div
+          className="duo-card p-5 cursor-pointer hover:opacity-90 transition-opacity"
+          onClick={onWeeklyGoal}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-black text-duo-dark">🎯 週間目標</h2>
+            <span className="text-duo-gray font-bold text-xs">📅 {getWeekLabel()}</span>
+          </div>
+          {weeklyGoals.length === 0 ? (
+            <div className="flex items-center justify-between">
+              <p className="text-duo-gray font-bold text-sm">目標がまだ設定されていません</p>
+              <span className="text-duo-green font-extrabold text-sm">設定する →</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {weeklyGoals.map(goal => {
+                const done = weeklyProgress[goal.exerciseId] ?? 0;
+                const pct = Math.min((done / goal.targetReps) * 100, 100);
+                return (
+                  <div key={goal.exerciseId}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-duo-dark font-extrabold text-sm">{goal.exerciseName}</span>
+                      <span className="font-bold text-sm" style={{ color: pct >= 100 ? '#46A302' : '#AFAFAF' }}>
+                        {done}/{goal.targetReps}
+                      </span>
+                    </div>
+                    <div className="duo-progress-bar" style={{ height: '10px' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: pct >= 100
+                            ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                            : 'linear-gradient(90deg, #1CB0F6, #58CC02)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

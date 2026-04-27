@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, Timestamp } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -189,6 +189,75 @@ export const getAchievements = async (userId: string) => {
     id: doc.id,
     ...doc.data()
   }));
+};
+
+// ── Weekly goals ─────────────────────────────────────────────────────────────
+
+export interface WeeklyGoal {
+  exerciseId: string;
+  exerciseName: string;
+  targetReps: number;
+}
+
+export interface WeeklyProgress {
+  [exerciseId: string]: number;
+}
+
+function getWeekBounds(): { start: Date; end: Date } {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const start = new Date(now);
+  start.setDate(now.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+export function getCurrentWeekId(): string {
+  const { start } = getWeekBounds();
+  return start.toISOString().split('T')[0]; // Monday's date, e.g. "2026-04-27"
+}
+
+export function getWeekLabel(): string {
+  const { start, end } = getWeekBounds();
+  const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+  return `${fmt(start)} 〜 ${fmt(end)}`;
+}
+
+export const getWeeklyGoals = async (userId: string): Promise<WeeklyGoal[]> => {
+  const weekId = getCurrentWeekId();
+  const snapshot = await getDoc(doc(db, 'users', userId, 'weekly-goals', weekId));
+  if (!snapshot.exists()) return [];
+  return (snapshot.data().goals as WeeklyGoal[]) ?? [];
+};
+
+export const setWeeklyGoals = async (userId: string, goals: WeeklyGoal[]): Promise<void> => {
+  const weekId = getCurrentWeekId();
+  await setDoc(doc(db, 'users', userId, 'weekly-goals', weekId), {
+    weekId,
+    goals,
+    updatedAt: Timestamp.now(),
+  });
+};
+
+export const getWeeklyProgress = async (userId: string): Promise<WeeklyProgress> => {
+  const { start, end } = getWeekBounds();
+  const q = query(
+    collection(db, 'users', userId, 'completed-exercises'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end)
+  );
+  const snapshot = await getDocs(q);
+  const progress: WeeklyProgress = {};
+  snapshot.docs.forEach(d => {
+    const data = d.data();
+    const id = data.exerciseId as string;
+    progress[id] = (progress[id] ?? 0) + (data.reps ?? 0);
+  });
+  return progress;
 };
 
 // Get leaderboard

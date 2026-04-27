@@ -4,6 +4,7 @@ import { useAppStore } from './store/appStore';
 import { LoginView } from './components/LoginView';
 import { DashboardView } from './components/DashboardView';
 import { ExerciseTrackerView } from './components/ExerciseTrackerView';
+import { Mascot } from './components/Mascot';
 import { signOutUser } from './services/firebase';
 
 type View = 'login' | 'dashboard' | 'tracker';
@@ -41,7 +42,6 @@ function App() {
         setLoading(false);
       }
     });
-
     return unsubscribe;
   }, [setUser, setUserProfile, setExercises, setLoading]);
 
@@ -59,18 +59,21 @@ function App() {
         <nav className="bg-white sticky top-0 z-50" style={{ borderBottom: '2px solid #e5e5e5' }}>
           <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
             {/* Logo */}
-            <div className="flex items-center gap-2">
-              <img src="/mascot.png" alt="DuoFit" className="w-9 h-9 rounded-full object-cover" />
+            <button
+              onClick={() => setCurrentView('dashboard')}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
+              <Mascot size={36} className="rounded-full" />
               <span className="text-2xl font-black text-duo-green tracking-tight">DuoFit</span>
-            </div>
+            </button>
 
-            {/* Nav items */}
+            {/* Nav */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentView('dashboard')}
                 className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
                   currentView === 'dashboard'
-                    ? 'bg-duo-green-light text-duo-green-dark border-b-2 border-duo-green'
+                    ? 'bg-duo-green-light text-duo-green-dark'
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
                 }`}
               >
@@ -80,7 +83,7 @@ function App() {
                 onClick={() => setCurrentView('tracker')}
                 className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
                   currentView === 'tracker'
-                    ? 'bg-duo-green-light text-duo-green-dark border-b-2 border-duo-green'
+                    ? 'bg-duo-green-light text-duo-green-dark'
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
                 }`}
               >

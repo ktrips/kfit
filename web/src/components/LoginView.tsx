@@ -1,8 +1,6 @@
 import React from 'react';
 import { signInWithGoogle } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-import { Mascot } from './Mascot';
-
 export const LoginView: React.FC = () => {
   const setUser = useAppStore((state) => state.setUser);
   const setError = useAppStore((state) => state.setError);
@@ -22,7 +20,12 @@ export const LoginView: React.FC = () => {
       {/* Hero */}
       <div className="flex flex-col items-center mb-8 animate-bounce_in">
         <div className="relative mb-4">
-          <Mascot size={160} className="rounded-full drop-shadow-2xl" />
+          <img
+            src="/mascot.png"
+            alt="DuoFit マスコット"
+            className="w-40 h-40 rounded-full object-cover drop-shadow-2xl"
+            style={{ border: '4px solid #58CC02', boxShadow: '0 8px 0 #46A302' }}
+          />
           {/* Glow ring */}
           <div
             className="absolute inset-0 rounded-full -z-10 scale-110 opacity-30 blur-md"

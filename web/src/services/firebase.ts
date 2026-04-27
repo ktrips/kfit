@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, updateDoc, increment, Timestamp } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -147,6 +147,10 @@ export const recordExercise = async (userId: string, exerciseData: any) => {
         timestamp: new Date(),
       }
     );
+    await updateDoc(doc(db, 'users', userId), {
+      totalPoints: increment(exerciseData.points || 0),
+      lastActiveDate: new Date(),
+    });
     return docRef.id;
   } catch (error) {
     console.error('Error recording exercise:', error);
@@ -164,9 +168,9 @@ interface CompletedExercise {
 
 // Get completed exercises for today
 export const getTodayExercises = async (userId: string): Promise<CompletedExercise[]> => {
-  const today = new Date().toISOString().split('T')[0];
-  const startOfDay = new Date(`${today}T00:00:00Z`);
-  const endOfDay = new Date(`${today}T23:59:59Z`);
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
   const q = query(
     collection(db, 'users', userId, 'completed-exercises'),
@@ -179,6 +183,54 @@ export const getTodayExercises = async (userId: string): Promise<CompletedExerci
     id: d.id,
     ...(d.data() as Omit<CompletedExercise, 'id'>),
   }));
+};
+
+export interface DayExercises {
+  date: string;
+  label: string;
+  exercises: CompletedExercise[];
+  totalReps: number;
+  totalPoints: number;
+}
+
+export const getRecentExercises = async (userId: string, days: number = 7): Promise<DayExercises[]> => {
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1, 0, 0, 0, 0);
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  const q = query(
+    collection(db, 'users', userId, 'completed-exercises'),
+    where('timestamp', '>=', startDate),
+    where('timestamp', '<=', endOfToday)
+  );
+  const snapshot = await getDocs(q);
+
+  const byDay: Record<string, CompletedExercise[]> = {};
+  snapshot.docs.forEach(d => {
+    const data = d.data();
+    const ts: Date = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+    const key = `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}`;
+    if (!byDay[key]) byDay[key] = [];
+    byDay[key].push({ id: d.id, ...(data as Omit<CompletedExercise, 'id'>) });
+  });
+
+  const result: DayExercises[] = [];
+  for (let i = 1; i < days; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const label = i === 1 ? '昨日' : `${date.getMonth() + 1}/${date.getDate()}`;
+    const exercises = byDay[key] ?? [];
+    if (exercises.length > 0) {
+      result.push({
+        date: key,
+        label,
+        exercises,
+        totalReps: exercises.reduce((s, e) => s + (e.reps || 0), 0),
+        totalPoints: exercises.reduce((s, e) => s + (e.points || 0), 0),
+      });
+    }
+  }
+  return result;
 };
 
 // Get achievements

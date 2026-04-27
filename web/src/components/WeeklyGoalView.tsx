@@ -4,6 +4,7 @@ import {
   setWeeklyGoals,
   getWeeklyProgress,
   getWeekLabel,
+  getActiveDaysElapsed,
   type WeeklyGoal,
   type WeeklyProgress,
 } from '../services/firebase';
@@ -102,10 +103,13 @@ export const WeeklyGoalView: React.FC = () => {
 
   const hasGoals = goals.length > 0;
   const weekLabel = getWeekLabel();
+  const activeDays = getActiveDaysElapsed();
 
+  // Progress is measured against "expected by today" (dailyReps × active days elapsed)
+  const totalExpected = goals.reduce((s, g) => s + g.dailyReps * activeDays, 0);
   const totalTarget = goals.reduce((s, g) => s + g.targetReps, 0);
   const totalDone = goals.reduce((s, g) => s + (progress[g.exerciseId] ?? 0), 0);
-  const overallPct = totalTarget > 0 ? Math.min((totalDone / totalTarget) * 100, 100) : 0;
+  const overallPct = totalExpected > 0 ? Math.min((totalDone / totalExpected) * 100, 100) : 0;
 
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
@@ -159,7 +163,7 @@ export const WeeklyGoalView: React.FC = () => {
               <div className="duo-progress-fill" style={{ width: `${overallPct}%` }} />
             </div>
             <p className="text-duo-gray font-bold text-sm mt-2">
-              {totalDone} / {totalTarget} rep 完了
+              {totalDone} / {totalExpected} rep（今日まで目標）・週間: {totalTarget} rep
             </p>
           </div>
         )}
@@ -247,46 +251,48 @@ export const WeeklyGoalView: React.FC = () => {
           <div className="space-y-3">
             {goals.map((goal, i) => {
               const done = progress[goal.exerciseId] ?? 0;
-              const pct = Math.min((done / goal.targetReps) * 100, 100);
+              const expectedToday = goal.dailyReps * activeDays;
+              const pct = Math.min((done / expectedToday) * 100, 100);
+              const weekPct = Math.min((done / goal.targetReps) * 100, 100);
               const col = GOAL_COLORS[i % GOAL_COLORS.length];
-              const isComplete = pct >= 100;
+              const isOnTrack = pct >= 100;
               return (
                 <div
                   key={goal.exerciseId}
                   className="duo-card p-4"
-                  style={{ borderColor: isComplete ? '#58CC02' : col.border, boxShadow: `0 4px 0 ${isComplete ? '#46A302' : col.shadow}` }}
+                  style={{ borderColor: isOnTrack ? '#58CC02' : col.border, boxShadow: `0 4px 0 ${isOnTrack ? '#46A302' : col.shadow}` }}
                 >
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-3 mb-2">
                     <span className="text-3xl">{emoji(goal.exerciseId)}</span>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <p className="font-black text-duo-dark">{goal.exerciseName}</p>
-                        {isComplete && <span className="text-lg">✅</span>}
+                        {isOnTrack && <span className="text-lg">✅</span>}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold" style={{ color: isComplete ? '#46A302' : col.text }}>
-                          {done} / {goal.targetReps} rep
-                        </p>
-                        <span className="text-xs text-duo-gray">·</span>
-                        <p className="text-xs font-bold text-duo-gray">
-                          1日 {goal.dailyReps} rep × 5日
-                        </p>
-                      </div>
+                      <p className="text-xs font-bold" style={{ color: isOnTrack ? '#46A302' : col.text }}>
+                        {done} / {expectedToday} rep（今日まで）
+                      </p>
                     </div>
-                    <p className="font-black text-xl shrink-0" style={{ color: isComplete ? '#46A302' : col.text }}>
+                    <p className="font-black text-xl shrink-0" style={{ color: isOnTrack ? '#46A302' : col.text }}>
                       {Math.round(pct)}%
                     </p>
                   </div>
+                  {/* Progress vs today's expected */}
                   <div className="duo-progress-bar" style={{ height: '12px' }}>
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
                         width: `${pct}%`,
-                        background: isComplete
+                        background: isOnTrack
                           ? 'linear-gradient(90deg, #58CC02, #91E62A)'
                           : `linear-gradient(90deg, ${col.border}, ${col.bg})`,
                       }}
                     />
+                  </div>
+                  {/* Week total sub-info */}
+                  <div className="flex justify-between mt-1.5">
+                    <p className="text-xs font-bold text-duo-gray">1日 {goal.dailyReps} rep × {activeDays}日経過</p>
+                    <p className="text-xs font-bold text-duo-gray">週間: {done}/{goal.targetReps} ({Math.round(weekPct)}%)</p>
                   </div>
                 </div>
               );

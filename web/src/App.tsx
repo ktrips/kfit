@@ -6,9 +6,10 @@ import { DashboardView } from './components/DashboardView';
 import { ExerciseTrackerView } from './components/ExerciseTrackerView';
 import { WeeklyGoalView } from './components/WeeklyGoalView';
 import { HistoryView } from './components/HistoryView';
+import { HelpView } from './components/HelpView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -117,6 +118,7 @@ function App() {
                         { view: 'tracker' as View, icon: '💪', label: 'トレーニング' },
                         { view: 'weekly' as View, icon: '🎯', label: '週間目標' },
                         { view: 'history' as View, icon: '📅', label: '履歴' },
+                        { view: 'help' as View, icon: '❓', label: 'ヘルプ' },
                       ].map(({ view, icon, label }) => (
                         <button
                           key={view}
@@ -164,6 +166,9 @@ function App() {
         )}
         {currentView === 'history' && user && (
           <HistoryView />
+        )}
+        {currentView === 'help' && user && (
+          <HelpView />
         )}
       </main>
     </div>

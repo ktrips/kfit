@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getTodayExercises, getUserProfile } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-import { Mascot } from './Mascot';
-
 interface DashboardViewProps {
   onLogWorkout?: () => void;
 }
@@ -64,7 +62,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Mascot size={96} className="animate-wiggle" />
+          <img src="/mascot.png" alt="mascot" className="w-24 h-24 rounded-full object-cover animate-wiggle" />
           <p className="text-duo-green font-extrabold text-xl">読み込み中...</p>
         </div>
       </div>
@@ -80,7 +78,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
 
         {/* Welcome banner */}
         <div className="duo-card p-5 flex items-center gap-4">
-          <Mascot size={64} className="rounded-full shrink-0" />
+          <img src="/mascot.png" alt="mascot" className="w-16 h-16 rounded-full object-cover shrink-0" style={{ border: '3px solid #58CC02' }} />
           <div className="flex-1 min-w-0">
             <p className="text-duo-gray font-bold text-xs uppercase tracking-wider">おかえり！</p>
             <h1 className="text-2xl font-black text-duo-dark truncate">
@@ -122,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout }) =>
 
           {todayExercises.length === 0 ? (
             <div className="text-center py-8 flex flex-col items-center gap-4">
-              <Mascot size={80} />
+              <img src="/mascot.png" alt="mascot" className="w-20 h-20 rounded-full object-cover" />
               <p className="text-duo-gray font-extrabold">まだトレーニングしていません</p>
               <button onClick={onLogWorkout} className="duo-btn-primary text-base">
                 最初のトレーニングを記録！

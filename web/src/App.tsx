@@ -4,7 +4,6 @@ import { useAppStore } from './store/appStore';
 import { LoginView } from './components/LoginView';
 import { DashboardView } from './components/DashboardView';
 import { ExerciseTrackerView } from './components/ExerciseTrackerView';
-import { Mascot } from './components/Mascot';
 import { signOutUser } from './services/firebase';
 
 type View = 'login' | 'dashboard' | 'tracker';
@@ -63,7 +62,7 @@ function App() {
               onClick={() => setCurrentView('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
-              <Mascot size={36} className="rounded-full" />
+              <img src="/mascot.png" alt="DuoFit" className="w-9 h-9 rounded-full object-cover" />
               <span className="text-2xl font-black text-duo-green tracking-tight">DuoFit</span>
             </button>
 

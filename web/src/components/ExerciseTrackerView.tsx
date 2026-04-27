@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { recordExercise } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-import { Mascot } from './Mascot';
-
 interface ExerciseTrackerProps {
   onSuccess?: () => void;
 }
@@ -86,7 +84,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="text-center animate-bounce_in flex flex-col items-center gap-4">
-          <Mascot size={140} className="animate-wiggle" />
+          <img src="/mascot.png" alt="mascot" className="w-36 h-36 rounded-full object-cover animate-wiggle" style={{ border: '4px solid #58CC02' }} />
           <p className="text-5xl font-black text-duo-green">やったー！🎉</p>
           <div
             className="px-8 py-4 rounded-2xl font-black text-3xl"
@@ -105,7 +103,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
-          <Mascot size={52} className="rounded-full shrink-0" />
+          <img src="/mascot.png" alt="mascot" className="w-14 h-14 rounded-full object-cover shrink-0" />
           <div>
             <h2 className="text-2xl font-black text-duo-dark">トレーニング記録</h2>
             <p className="text-duo-gray font-bold text-sm">種目を選んでレップ数を入力！</p>

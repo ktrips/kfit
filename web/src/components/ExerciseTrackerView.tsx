@@ -1,26 +1,35 @@
 import React, { useState } from 'react';
 import { recordExercise } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
+import { Mascot } from './Mascot';
 
 interface ExerciseTrackerProps {
   onSuccess?: () => void;
 }
 
-const EXERCISE_CONFIG: Record<string, { emoji: string; color: string; border: string; shadow: string; textColor: string }> = {
-  default: { emoji: '⚡', color: '#F7F7F7', border: '#e5e5e5', shadow: '#c5c5c5', textColor: '#3C3C3C' },
-  'push-up': { emoji: '💪', color: '#D7FFB8', border: '#58CC02', shadow: '#46A302', textColor: '#3C3C3C' },
-  'pushup': { emoji: '💪', color: '#D7FFB8', border: '#58CC02', shadow: '#46A302', textColor: '#3C3C3C' },
-  'squat': { emoji: '🏋️', color: '#E3F2FD', border: '#1CB0F6', shadow: '#0E8FC5', textColor: '#3C3C3C' },
-  'sit-up': { emoji: '🔥', color: '#FFF3E0', border: '#FF9600', shadow: '#CC7000', textColor: '#3C3C3C' },
-  'situp': { emoji: '🔥', color: '#FFF3E0', border: '#FF9600', shadow: '#CC7000', textColor: '#3C3C3C' },
+interface ExerciseCfg {
+  emoji: string;
+  bg: string;
+  border: string;
+  shadow: string;
+  numColor: string;
+}
+
+const EXERCISE_CFG: Record<string, ExerciseCfg> = {
+  default:   { emoji: '⚡', bg: '#F7F7F7', border: '#e5e5e5', shadow: '#c5c5c5', numColor: '#3C3C3C' },
+  'push-up': { emoji: '💪', bg: '#D7FFB8', border: '#58CC02', shadow: '#46A302', numColor: '#2d7a00' },
+  'pushup':  { emoji: '💪', bg: '#D7FFB8', border: '#58CC02', shadow: '#46A302', numColor: '#2d7a00' },
+  'squat':   { emoji: '🏋️', bg: '#E3F2FD', border: '#1CB0F6', shadow: '#0E8FC5', numColor: '#0a6c96' },
+  'sit-up':  { emoji: '🔥', bg: '#FFF3E0', border: '#FF9600', shadow: '#CC7000', numColor: '#8a4700' },
+  'situp':   { emoji: '🔥', bg: '#FFF3E0', border: '#FF9600', shadow: '#CC7000', numColor: '#8a4700' },
 };
 
-function getExerciseConfig(name: string) {
-  const key = name?.toLowerCase().replace(/\s+/g, '-') ?? '';
-  for (const [k, v] of Object.entries(EXERCISE_CONFIG)) {
+function getCfg(name: string): ExerciseCfg {
+  const key = (name ?? '').toLowerCase().replace(/\s+/g, '-');
+  for (const [k, v] of Object.entries(EXERCISE_CFG)) {
     if (k !== 'default' && key.includes(k)) return v;
   }
-  return EXERCISE_CONFIG.default;
+  return EXERCISE_CFG.default;
 }
 
 export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess }) => {
@@ -29,44 +38,45 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
   const updateUserPoints = useAppStore((state) => state.updateUserPoints);
   const setError = useAppStore((state) => state.setError);
 
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string>('');
-  const [reps, setReps] = useState<number>(0);
+  const [selectedId, setSelectedId] = useState('');
+  const [reps, setReps] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [earnedPoints, setEarnedPoints] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  const selectedExercise = exercises.find((e) => e.id === selectedExerciseId);
-  const selectedConfig = selectedExercise ? getExerciseConfig(selectedExercise.name) : EXERCISE_CONFIG.default;
-  const previewPoints = reps * (selectedExercise?.basePoints || 0);
+  const selected = exercises.find((e) => e.id === selectedId);
+  const cfg = selected ? getCfg(selected.name) : EXERCISE_CFG.default;
+  const preview = reps * (selected?.basePoints || 0);
 
-  const handleAddRep = () => setReps((r) => r + 1);
-  const handleRemoveRep = () => { if (reps > 0) setReps((r) => r - 1); };
+  const addRep = () => setReps((r) => r + 1);
+  const removeRep = () => { if (reps > 0) setReps((r) => r - 1); };
 
   const handleSubmit = async () => {
-    if (!user || !selectedExerciseId || reps === 0) {
+    if (!user || !selectedId || reps === 0) {
       setError('エクササイズを選んでレップ数を入力してください');
       return;
     }
     setIsSubmitting(true);
     try {
-      const basePoints = selectedExercise?.basePoints || 10;
-      const points = reps * basePoints;
+      const pts = reps * (selected?.basePoints || 10);
       await recordExercise(user.uid, {
-        exerciseId: selectedExerciseId,
-        exerciseName: selectedExercise?.name,
+        exerciseId: selectedId,
+        exerciseName: selected?.name,
         reps,
-        points,
+        points: pts,
         formScore: 85,
       });
-      updateUserPoints(points);
+      updateUserPoints(pts);
+      setEarnedPoints(pts);
       setShowCelebration(true);
       setTimeout(() => {
         setShowCelebration(false);
         setReps(0);
-        setSelectedExerciseId('');
+        setSelectedId('');
         onSuccess?.();
-      }, 1500);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'エラーが発生しました');
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エラーが発生しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -75,10 +85,15 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
   if (showCelebration) {
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
-        <div className="text-center animate-bounce_in">
-          <p className="text-8xl mb-4">🎉</p>
-          <p className="text-4xl font-black text-duo-green mb-2">やったー！</p>
-          <p className="text-2xl font-extrabold text-duo-yellow-dark">+{previewPoints} XP 獲得！</p>
+        <div className="text-center animate-bounce_in flex flex-col items-center gap-4">
+          <Mascot size={140} className="animate-wiggle" />
+          <p className="text-5xl font-black text-duo-green">やったー！🎉</p>
+          <div
+            className="px-8 py-4 rounded-2xl font-black text-3xl"
+            style={{ background: '#FFF8E1', border: '3px solid #FFD900', boxShadow: '0 4px 0 #CE9700', color: '#CE9700' }}
+          >
+            +{earnedPoints} XP 獲得！
+          </div>
         </div>
       </div>
     );
@@ -89,37 +104,38 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
       <div className="max-w-md mx-auto px-4 pt-6 space-y-4">
 
         {/* Header */}
-        <div className="text-center">
-          <h2 className="text-3xl font-black text-duo-dark">💪 トレーニング記録</h2>
-          <p className="text-duo-gray font-bold mt-1">エクササイズを選んでレップ数を入力！</p>
+        <div className="flex items-center gap-3 mb-2">
+          <Mascot size={52} className="rounded-full shrink-0" />
+          <div>
+            <h2 className="text-2xl font-black text-duo-dark">トレーニング記録</h2>
+            <p className="text-duo-gray font-bold text-sm">種目を選んでレップ数を入力！</p>
+          </div>
         </div>
 
         {/* Exercise selection */}
         <div className="duo-card p-5">
-          <p className="text-duo-dark font-extrabold mb-3 text-sm uppercase tracking-wider">エクササイズ選択</p>
-          <div className="grid grid-cols-1 gap-3">
-            {exercises.map((exercise) => {
-              const cfg = getExerciseConfig(exercise.name);
-              const isSelected = selectedExerciseId === exercise.id;
+          <p className="text-duo-dark font-extrabold mb-3 text-xs uppercase tracking-wider">エクササイズ選択</p>
+          <div className="flex flex-col gap-3">
+            {exercises.map((ex) => {
+              const c = getCfg(ex.name);
+              const isSelected = selectedId === ex.id;
               return (
                 <button
-                  key={exercise.id}
-                  onClick={() => { setSelectedExerciseId(exercise.id); setReps(0); }}
-                  className="duo-exercise-btn flex items-center gap-4 text-left"
+                  key={ex.id}
+                  onClick={() => { setSelectedId(ex.id); setReps(0); }}
+                  className="duo-exercise-btn flex items-center gap-4 text-left w-full"
                   style={isSelected ? {
-                    backgroundColor: cfg.color,
-                    borderColor: cfg.border,
-                    boxShadow: `0 4px 0 ${cfg.shadow}`,
+                    backgroundColor: c.bg,
+                    borderColor: c.border,
+                    boxShadow: `0 4px 0 ${c.shadow}`,
                   } : {}}
                 >
-                  <span className="text-4xl">{cfg.emoji}</span>
+                  <span className="text-4xl">{c.emoji}</span>
                   <div>
-                    <p className="font-black text-duo-dark text-lg">{exercise.name}</p>
-                    <p className="text-duo-gray font-bold text-sm">{exercise.basePoints} XP / rep</p>
+                    <p className="font-black text-duo-dark text-lg leading-tight">{ex.name}</p>
+                    <p className="text-duo-gray font-bold text-sm">{ex.basePoints} XP / rep</p>
                   </div>
-                  {isSelected && (
-                    <span className="ml-auto text-duo-green text-2xl">✓</span>
-                  )}
+                  {isSelected && <span className="ml-auto text-2xl" style={{ color: c.border }}>✓</span>}
                 </button>
               );
             })}
@@ -127,33 +143,43 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
         </div>
 
         {/* Rep counter */}
-        {selectedExerciseId && (
+        {selectedId && (
           <div
             className="duo-card p-6 text-center animate-bounce_in"
-            style={{ borderColor: selectedConfig.border, boxShadow: `0 4px 0 ${selectedConfig.shadow}` }}
+            style={{ borderColor: cfg.border, boxShadow: `0 4px 0 ${cfg.shadow}` }}
           >
-            <p className="text-duo-gray font-extrabold text-sm uppercase tracking-wider mb-2">レップ数</p>
+            <p className="text-duo-gray font-extrabold text-xs uppercase tracking-wider mb-1">レップ数</p>
 
-            <div
-              className="text-8xl font-black mb-6 transition-all"
-              style={{ color: selectedConfig.border }}
-            >
+            <div className="text-8xl font-black mb-5 leading-none" style={{ color: cfg.border }}>
               {reps}
             </div>
 
-            <div className="flex gap-5 justify-center mb-5">
+            <div className="flex gap-6 justify-center mb-5">
+              {/* Minus */}
               <button
-                onClick={handleRemoveRep}
-                className="duo-rep-btn w-16 h-16 text-2xl bg-red-100 text-duo-red"
-                style={{ boxShadow: '0 4px 0 #cc0000', borderColor: '#FF4B4B', border: '2px solid #FF4B4B' }}
+                onClick={removeRep}
                 disabled={reps === 0}
+                className="duo-rep-btn w-16 h-16 text-3xl"
+                style={{
+                  background: '#FFEAEA',
+                  border: '2px solid #FF4B4B',
+                  boxShadow: '0 4px 0 #cc0000',
+                  color: '#FF4B4B',
+                  opacity: reps === 0 ? 0.4 : 1,
+                }}
               >
                 −
               </button>
+              {/* Plus */}
               <button
-                onClick={handleAddRep}
-                className="duo-rep-btn w-16 h-16 text-2xl bg-duo-green-light text-duo-green-dark"
-                style={{ boxShadow: `0 4px 0 ${selectedConfig.shadow}`, border: `2px solid ${selectedConfig.border}` }}
+                onClick={addRep}
+                className="duo-rep-btn w-16 h-16 text-3xl"
+                style={{
+                  background: cfg.bg,
+                  border: `2px solid ${cfg.border}`,
+                  boxShadow: `0 4px 0 ${cfg.shadow}`,
+                  color: cfg.shadow,
+                }}
               >
                 ＋
               </button>
@@ -162,9 +188,9 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
             {reps > 0 && (
               <div
                 className="rounded-xl px-4 py-2 inline-block font-extrabold text-lg"
-                style={{ backgroundColor: selectedConfig.color, color: selectedConfig.shadow }}
+                style={{ backgroundColor: cfg.bg, color: cfg.shadow }}
               >
-                {reps} rep × {selectedExercise?.basePoints} XP = <span className="font-black">+{previewPoints} XP</span>
+                {reps} rep × {selected?.basePoints} XP = <span className="font-black">+{preview} XP</span>
               </div>
             )}
           </div>
@@ -173,7 +199,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={!selectedExerciseId || reps === 0 || isSubmitting}
+          disabled={!selectedId || reps === 0 || isSubmitting}
           className="duo-btn-primary w-full text-xl"
         >
           {isSubmitting ? '記録中...' : '✓ トレーニングを記録！'}

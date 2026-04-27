@@ -1,6 +1,7 @@
 import React from 'react';
 import { signInWithGoogle } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
+import { Mascot } from './Mascot';
 
 export const LoginView: React.FC = () => {
   const setUser = useAppStore((state) => state.setUser);
@@ -16,24 +17,27 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-duo-gray-light flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-duo-gray-light flex flex-col items-center justify-center px-4 py-10">
+
       {/* Hero */}
       <div className="flex flex-col items-center mb-8 animate-bounce_in">
-        <img
-          src="/mascot.png"
-          alt="DuoFit マスコット"
-          className="w-40 h-40 object-cover rounded-full mb-4"
-          style={{ boxShadow: '0 8px 0 #46A302', border: '4px solid #58CC02' }}
-        />
+        <div className="relative mb-4">
+          <Mascot size={160} className="rounded-full drop-shadow-2xl" />
+          {/* Glow ring */}
+          <div
+            className="absolute inset-0 rounded-full -z-10 scale-110 opacity-30 blur-md"
+            style={{ background: 'radial-gradient(circle, #FF9600, #FF4500)' }}
+          />
+        </div>
         <h1 className="text-6xl font-black text-duo-green tracking-tight mb-1">DuoFit</h1>
-        <p className="text-duo-dark font-bold text-xl">筋トレを、習慣に。毎日楽しく！</p>
+        <p className="text-duo-dark font-bold text-xl">筋トレを、習慣に。毎日楽しく！💪</p>
       </div>
 
       {/* Feature pills */}
       <div className="flex flex-wrap gap-3 justify-center mb-10">
         {[
           { emoji: '🔥', label: 'ストリーク継続' },
-          { emoji: '⭐', label: 'ポイント獲得' },
+          { emoji: '⭐', label: 'ポイント獲得'  },
           { emoji: '🏆', label: '実績アンロック' },
           { emoji: '📊', label: '進捗トラッキング' },
         ].map(({ emoji, label }) => (

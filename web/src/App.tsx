@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { onAuthChange, getExercises, getUserProfile } from './services/firebase';
 import { useAppStore } from './store/appStore';
 import { LoginView } from './components/LoginView';

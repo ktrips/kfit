@@ -1,6 +1,24 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc } from 'firebase/firestore';
+
+interface UserProfile {
+  uid: string;
+  email: string;
+  username: string;
+  totalPoints: number;
+  streak: number;
+  joinDate: Date;
+  lastActiveDate: Date;
+}
+
+interface Exercise {
+  id: string;
+  name: string;
+  basePoints: number;
+  difficulty: string;
+  muscleGroups: string[];
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -68,7 +86,7 @@ const DEFAULT_EXERCISES = [
 ];
 
 // Exercise operations
-export const getExercises = async () => {
+export const getExercises = async (): Promise<Exercise[]> => {
   const exercisesCollection = collection(db, 'exercises');
   const querySnapshot = await getDocs(exercisesCollection);
 
@@ -81,17 +99,17 @@ export const getExercises = async () => {
     return DEFAULT_EXERCISES;
   }
 
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
+  return querySnapshot.docs.map(d => ({
+    id: d.id,
+    ...(d.data() as Omit<Exercise, 'id'>),
   }));
 };
 
 // User profile operations
-export const getUserProfile = async (userId: string) => {
+export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
   const userRef = doc(db, 'users', userId);
   const userDoc = await getDoc(userRef);
-  return userDoc.exists() ? userDoc.data() : null;
+  return userDoc.exists() ? (userDoc.data() as UserProfile) : null;
 };
 
 // Daily goals operations
@@ -136,8 +154,16 @@ export const recordExercise = async (userId: string, exerciseData: any) => {
   }
 };
 
+interface CompletedExercise {
+  id: string;
+  exerciseName: string;
+  reps: number;
+  points: number;
+  timestamp?: Date;
+}
+
 // Get completed exercises for today
-export const getTodayExercises = async (userId: string) => {
+export const getTodayExercises = async (userId: string): Promise<CompletedExercise[]> => {
   const today = new Date().toISOString().split('T')[0];
   const startOfDay = new Date(`${today}T00:00:00Z`);
   const endOfDay = new Date(`${today}T23:59:59Z`);
@@ -149,9 +175,9 @@ export const getTodayExercises = async (userId: string) => {
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
+  return querySnapshot.docs.map(d => ({
+    id: d.id,
+    ...(d.data() as Omit<CompletedExercise, 'id'>),
   }));
 };
 
@@ -166,7 +192,7 @@ export const getAchievements = async (userId: string) => {
 };
 
 // Get leaderboard
-export const getLeaderboard = async (period: string = 'week') => {
+export const getLeaderboard = async (_period: string = 'week') => {
   const now = new Date();
   const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 / 7);
   const year = now.getFullYear();

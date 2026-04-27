@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Commit & Push Workflow
+
+**IMPORTANT**: Before running `git commit` and `git push`, always:
+1. Show the list of changed files (`git status` and `git diff --stat`)
+2. Show the proposed commit message
+3. Ask the user for confirmation before proceeding
+
+Do not commit or push without explicit user approval.
+
 ## Project Overview
 
 **kfit** - A Duolingo-like habit-building app for home exercise tracking across iOS and Web platforms. Uses iPhone motion sensors (Core Motion) to count reps for push-ups, squats, and sit-ups. Features gamification (points, streaks, achievements, leaderboards) backed by Firebase/Firestore.

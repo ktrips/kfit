@@ -4,9 +4,10 @@ import { useAppStore } from './store/appStore';
 import { LoginView } from './components/LoginView';
 import { DashboardView } from './components/DashboardView';
 import { ExerciseTrackerView } from './components/ExerciseTrackerView';
+import { WeeklyGoalView } from './components/WeeklyGoalView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -89,6 +90,16 @@ function App() {
                 💪 トレーニング
               </button>
               <button
+                onClick={() => setCurrentView('weekly')}
+                className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                  currentView === 'weekly'
+                    ? 'bg-duo-green-light text-duo-green-dark'
+                    : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
+                }`}
+              >
+                🎯 週間目標
+              </button>
+              <button
                 onClick={handleSignOut}
                 className="px-4 py-2 rounded-xl font-extrabold text-sm text-duo-gray hover:text-duo-red hover:bg-red-50 transition-all"
               >
@@ -102,10 +113,16 @@ function App() {
       <main>
         {currentView === 'login' && <LoginView />}
         {currentView === 'dashboard' && user && (
-          <DashboardView onLogWorkout={() => setCurrentView('tracker')} />
+          <DashboardView
+            onLogWorkout={() => setCurrentView('tracker')}
+            onWeeklyGoal={() => setCurrentView('weekly')}
+          />
         )}
         {currentView === 'tracker' && user && (
           <ExerciseTrackerView onSuccess={() => setCurrentView('dashboard')} />
+        )}
+        {currentView === 'weekly' && user && (
+          <WeeklyGoalView />
         )}
       </main>
     </div>

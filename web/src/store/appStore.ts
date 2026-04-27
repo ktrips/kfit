@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User } from 'firebase/auth';
+import type { WeeklyGoal, WeeklyProgress } from '../services/firebase';
 
 interface Exercise {
   id: string;
@@ -25,6 +26,8 @@ interface AppState {
   exercises: Exercise[];
   isLoading: boolean;
   error: string | null;
+  weeklyGoals: WeeklyGoal[];
+  weeklyProgress: WeeklyProgress;
   setUser: (user: User | null) => void;
   setUserProfile: (profile: UserProfile | null) => void;
   setExercises: (exercises: Exercise[]) => void;
@@ -33,6 +36,8 @@ interface AppState {
   updateUserPoints: (points: number) => void;
   incrementStreak: () => void;
   resetStreak: () => void;
+  setWeeklyGoals: (goals: WeeklyGoal[]) => void;
+  setWeeklyProgress: (progress: WeeklyProgress) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -41,6 +46,8 @@ export const useAppStore = create<AppState>((set) => ({
   exercises: [],
   isLoading: false,
   error: null,
+  weeklyGoals: [],
+  weeklyProgress: {},
 
   setUser: (user) => set({ user }),
   setUserProfile: (profile) => set({ userProfile: profile }),
@@ -65,4 +72,7 @@ export const useAppStore = create<AppState>((set) => ({
       ? { ...state.userProfile, streak: 0 }
       : null,
   })),
+
+  setWeeklyGoals: (goals) => set({ weeklyGoals: goals }),
+  setWeeklyProgress: (progress) => set({ weeklyProgress: progress }),
 }));

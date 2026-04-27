@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTodayExercises, getUserProfile, getWeeklyGoals, getWeeklyProgress, getWeekLabel } from '../services/firebase';
+import { getTodayExercises, getUserProfile, getWeeklyGoals, getWeeklyProgress, getWeekLabel, getActiveDaysElapsed } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
   onLogWorkout?: () => void;
@@ -183,13 +183,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWe
             <div className="space-y-2">
               {weeklyGoals.map(goal => {
                 const done = weeklyProgress[goal.exerciseId] ?? 0;
-                const pct = Math.min((done / goal.targetReps) * 100, 100);
+                const activeDays = getActiveDaysElapsed();
+                const expectedToday = (goal.dailyReps ?? 0) * activeDays || goal.targetReps;
+                const pct = Math.min((done / expectedToday) * 100, 100);
                 return (
                   <div key={goal.exerciseId}>
                     <div className="flex justify-between mb-1">
                       <span className="text-duo-dark font-extrabold text-sm">{goal.exerciseName}</span>
                       <span className="font-bold text-sm" style={{ color: pct >= 100 ? '#46A302' : '#AFAFAF' }}>
-                        {done}/{goal.targetReps}
+                        {done}/{expectedToday}
                       </span>
                     </div>
                     <div className="duo-progress-bar" style={{ height: '10px' }}>

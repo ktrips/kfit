@@ -274,6 +274,12 @@ export function getCurrentWeekId(): string {
   return start.toISOString().split('T')[0]; // Monday's date, e.g. "2026-04-27"
 }
 
+export function getActiveDaysElapsed(): number {
+  const day = new Date().getDay(); // Sun=0, Mon=1, ..., Sat=6
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  return Math.min(daysSinceMonday + 1, 5);
+}
+
 export function getWeekLabel(): string {
   const { start, end } = getWeekBounds();
   const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;

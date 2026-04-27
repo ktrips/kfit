@@ -248,7 +248,8 @@ export const getAchievements = async (userId: string) => {
 export interface WeeklyGoal {
   exerciseId: string;
   exerciseName: string;
-  targetReps: number;
+  dailyReps: number;   // 1日の目標rep数
+  targetReps: number;  // 週間目標 = dailyReps × 5
 }
 
 export interface WeeklyProgress {

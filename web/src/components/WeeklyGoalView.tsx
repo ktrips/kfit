@@ -31,6 +31,8 @@ const GOAL_COLORS = [
   { bg: '#FFF8E1', border: '#FFD900', shadow: '#CE9700', text: '#7a5800' },
 ];
 
+const ACTIVE_DAYS = 5; // 7 - 2 rest days
+
 export const WeeklyGoalView: React.FC = () => {
   const user = useAppStore((s) => s.user);
   const exercises = useAppStore((s) => s.exercises);
@@ -56,11 +58,10 @@ export const WeeklyGoalView: React.FC = () => {
       setProgress(p);
       setStoreGoals(g);
       setStoreProgress(p);
-      // Init drafts from saved goals or 0
       const d: Record<string, number> = {};
       exercises.forEach(ex => {
-        const saved = g.find(x => x.exerciseId === ex.id);
-        d[ex.id] = saved?.targetReps ?? 0;
+        const existing = g.find(x => x.exerciseId === ex.id);
+        d[ex.id] = existing?.dailyReps ?? 0;
       });
       setDrafts(d);
       setIsLoading(false);
@@ -76,7 +77,8 @@ export const WeeklyGoalView: React.FC = () => {
       .map(ex => ({
         exerciseId: ex.id,
         exerciseName: ex.name,
-        targetReps: drafts[ex.id],
+        dailyReps: drafts[ex.id],
+        targetReps: drafts[ex.id] * ACTIVE_DAYS,
       }));
     await setWeeklyGoals(user.uid, newGoals);
     setGoals(newGoals);
@@ -101,7 +103,6 @@ export const WeeklyGoalView: React.FC = () => {
   const hasGoals = goals.length > 0;
   const weekLabel = getWeekLabel();
 
-  // Overall weekly completion %
   const totalTarget = goals.reduce((s, g) => s + g.targetReps, 0);
   const totalDone = goals.reduce((s, g) => s + (progress[g.exerciseId] ?? 0), 0);
   const overallPct = totalTarget > 0 ? Math.min((totalDone / totalTarget) * 100, 100) : 0;
@@ -129,7 +130,18 @@ export const WeeklyGoalView: React.FC = () => {
           )}
         </div>
 
-        {/* Overall progress (when goals exist and not editing) */}
+        {/* Rule hint */}
+        <div
+          className="rounded-2xl px-4 py-2 flex items-center gap-2"
+          style={{ background: '#E3F2FD', border: '1.5px solid #1CB0F6' }}
+        >
+          <span className="text-lg">💡</span>
+          <p className="font-bold text-sm" style={{ color: '#0a6c96' }}>
+            1日の目標 × 5日（週2日休息）= 週間目標
+          </p>
+        </div>
+
+        {/* Overall progress */}
         {hasGoals && !isEditing && (
           <div
             className="duo-card p-5"
@@ -152,43 +164,59 @@ export const WeeklyGoalView: React.FC = () => {
           </div>
         )}
 
-        {/* Per-exercise progress or goal setting */}
+        {/* Edit mode */}
         {isEditing ? (
-          /* ── Edit mode ── */
           <div className="duo-card p-5 space-y-4">
-            <p className="text-duo-dark font-extrabold text-sm uppercase tracking-wider">
-              今週の目標rep数を設定
-            </p>
+            <div>
+              <p className="text-duo-dark font-extrabold text-sm uppercase tracking-wider">
+                1日のセット数を設定
+              </p>
+              <p className="text-duo-gray font-bold text-xs mt-0.5">週間目標は自動で × 5 計算されます</p>
+            </div>
             {exercises.map((ex, i) => {
               const col = GOAL_COLORS[i % GOAL_COLORS.length];
+              const daily = drafts[ex.id] ?? 0;
+              const weekly = daily * ACTIVE_DAYS;
               return (
                 <div
                   key={ex.id}
-                  className="rounded-2xl p-4 flex items-center gap-4"
+                  className="rounded-2xl p-4"
                   style={{ backgroundColor: col.bg, border: `2px solid ${col.border}` }}
                 >
-                  <span className="text-3xl shrink-0">{emoji(ex.id)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-duo-dark">{ex.name}</p>
-                    <p className="text-xs font-bold" style={{ color: col.text }}>{ex.basePoints} XP / rep</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-3xl shrink-0">{emoji(ex.id)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-duo-dark">{ex.name}</p>
+                      <p className="text-xs font-bold" style={{ color: col.text }}>{ex.basePoints} XP / rep</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setDrafts(d => ({ ...d, [ex.id]: Math.max(0, (d[ex.id] ?? 0) - 10) }))}
-                      className="w-8 h-8 rounded-full font-black text-lg flex items-center justify-center"
+                      onClick={() => setDrafts(d => ({ ...d, [ex.id]: Math.max(0, (d[ex.id] ?? 0) - 5) }))}
+                      className="w-9 h-9 rounded-full font-black text-lg flex items-center justify-center shrink-0"
                       style={{ background: 'white', border: `2px solid ${col.border}`, color: col.text }}
                     >−</button>
-                    <input
-                      type="number"
-                      min={0}
-                      value={drafts[ex.id] ?? 0}
-                      onChange={e => setDrafts(d => ({ ...d, [ex.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                      className="w-16 text-center font-black text-lg rounded-xl py-1 outline-none"
-                      style={{ border: `2px solid ${col.border}`, color: col.text, background: 'white' }}
-                    />
+                    <div className="flex-1 text-center">
+                      <div className="flex items-end justify-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          value={daily}
+                          onChange={e => setDrafts(d => ({ ...d, [ex.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-16 text-center font-black text-2xl rounded-xl py-1 outline-none"
+                          style={{ border: `2px solid ${col.border}`, color: col.text, background: 'white' }}
+                        />
+                        <span className="font-bold text-sm pb-1.5" style={{ color: col.text }}>rep/日</span>
+                      </div>
+                      {daily > 0 && (
+                        <p className="text-xs font-extrabold mt-1" style={{ color: col.shadow }}>
+                          週間目標: {weekly} rep
+                        </p>
+                      )}
+                    </div>
                     <button
-                      onClick={() => setDrafts(d => ({ ...d, [ex.id]: (d[ex.id] ?? 0) + 10 }))}
-                      className="w-8 h-8 rounded-full font-black text-lg flex items-center justify-center"
+                      onClick={() => setDrafts(d => ({ ...d, [ex.id]: (d[ex.id] ?? 0) + 5 }))}
+                      className="w-9 h-9 rounded-full font-black text-lg flex items-center justify-center shrink-0"
                       style={{ background: col.border, color: 'white' }}
                     >＋</button>
                   </div>
@@ -215,7 +243,7 @@ export const WeeklyGoalView: React.FC = () => {
             </div>
           </div>
         ) : hasGoals ? (
-          /* ── Progress mode ── */
+          /* Progress mode */
           <div className="space-y-3">
             {goals.map((goal, i) => {
               const done = progress[goal.exerciseId] ?? 0;
@@ -235,9 +263,15 @@ export const WeeklyGoalView: React.FC = () => {
                         <p className="font-black text-duo-dark">{goal.exerciseName}</p>
                         {isComplete && <span className="text-lg">✅</span>}
                       </div>
-                      <p className="text-xs font-bold" style={{ color: isComplete ? '#46A302' : col.text }}>
-                        {done} / {goal.targetReps} rep
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold" style={{ color: isComplete ? '#46A302' : col.text }}>
+                          {done} / {goal.targetReps} rep
+                        </p>
+                        <span className="text-xs text-duo-gray">·</span>
+                        <p className="text-xs font-bold text-duo-gray">
+                          1日 {goal.dailyReps} rep × 5日
+                        </p>
+                      </div>
                     </div>
                     <p className="font-black text-xl shrink-0" style={{ color: isComplete ? '#46A302' : col.text }}>
                       {Math.round(pct)}%

@@ -130,7 +130,7 @@ export const HelpView: React.FC = () => {
             <p className="text-duo-gray font-bold text-xs">API使用量・課金状況を確認</p>
           </div>
           <a
-            href="https://claude.ai/usage"
+            href="https://claude.ai/settings/usage"
             target="_blank"
             rel="noopener noreferrer"
             className="duo-btn-secondary px-3 py-1.5 text-xs font-extrabold shrink-0"

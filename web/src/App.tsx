@@ -86,7 +86,7 @@ function App() {
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
                 }`}
               >
-                💪 トレーニング
+                📝 ログ
               </button>
 
               {/* Hamburger */}

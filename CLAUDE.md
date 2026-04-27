@@ -11,6 +11,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Do not commit or push without explicit user approval.
 
+**Exception**: If the user's message ends with the word "commit" or "push" (in any language/case), treat that as pre-approval — complete the task, then commit and push automatically without asking for confirmation.
+
 ## Project Overview
 
 **kfit** - A Duolingo-like habit-building app for home exercise tracking across iOS and Web platforms. Uses iPhone motion sensors (Core Motion) to count reps for push-ups, squats, and sit-ups. Features gamification (points, streaks, achievements, leaderboards) backed by Firebase/Firestore.

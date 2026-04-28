@@ -124,7 +124,7 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
     }
 
     deinit {
-        stopDetection()
+        motionManager.stopDeviceMotionUpdates()
     }
 }
 

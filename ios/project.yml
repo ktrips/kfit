@@ -39,7 +39,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kfit.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app
         INFOPLIST_FILE: kfit/Info.plist
     dependencies:
       - target: kfitWatch
@@ -58,11 +58,13 @@ targets:
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.kfitappduo.app
         NSMotionUsageDescription: "kfit uses motion sensors to count exercise reps accurately."
         UIRequiredDeviceCapabilities:
           - accelerometer
           - gyroscope
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kfit.app.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.watchkitapp
         INFOPLIST_FILE: kfitWatch/Info.plist

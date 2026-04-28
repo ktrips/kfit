@@ -20,6 +20,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>WKApplication</key>
+	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>com.kfitappduo.app</string>
 	<key>NSMotionUsageDescription</key>
 	<string>kfit uses motion sensors to count exercise reps accurately.</string>
 	<key>UIRequiredDeviceCapabilities</key>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { recordExercise } from '../services/firebase';
+import { recordExercise, getUserProfile } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface ExerciseTrackerProps {
   onSuccess?: () => void;
@@ -34,6 +34,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
   const user = useAppStore((state) => state.user);
   const exercises = useAppStore((state) => state.exercises);
   const updateUserPoints = useAppStore((state) => state.updateUserPoints);
+  const setUserProfile = useAppStore((state) => state.setUserProfile);
   const setError = useAppStore((state) => state.setError);
 
   const [selectedId, setSelectedId] = useState('');
@@ -65,6 +66,8 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
         formScore: 85,
       });
       updateUserPoints(pts);
+      const refreshed = await getUserProfile(user.uid);
+      if (refreshed) setUserProfile(refreshed as any);
       setEarnedPoints(pts);
       setShowCelebration(true);
       setTimeout(() => {

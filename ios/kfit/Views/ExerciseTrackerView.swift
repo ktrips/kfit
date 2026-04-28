@@ -172,7 +172,7 @@ struct ExerciseTrackerView: View {
                 // モーション検出トグル
                 Toggle("モーション自動検出（iPhone）", isOn: $isUsingMotionDetection)
                     .tint(Color.duoGreen)
-                    .onChange(of: isUsingMotionDetection) { _, newValue in
+                    .onChange(of: isUsingMotionDetection) { newValue in
                         if newValue {
                             motionManager.startDetection(for: .pushup)
                         } else {

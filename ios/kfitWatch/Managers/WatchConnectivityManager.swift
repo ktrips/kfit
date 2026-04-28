@@ -5,7 +5,6 @@ import Foundation
 class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = WatchConnectivityManager()
 
-    @Published var isWatchAppInstalled = false
     @Published var lastWorkout: WorkoutData?
 
     // Watch側でリアルタイム表示するデータ
@@ -26,7 +25,6 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             session = WCSession.default
             session?.delegate = self
             session?.activate()
-            isWatchAppInstalled = (session?.isPaired ?? false) && (session?.isWatchAppInstalled ?? false)
         }
     }
 
@@ -84,12 +82,6 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let error = error {
             print("WCSession activation error: \(error)")
         }
-    }
-
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
-
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        session.activate()
     }
 
     // Watch からメッセージ受信（iOS側）/ iOS からメッセージ受信（Watch側）

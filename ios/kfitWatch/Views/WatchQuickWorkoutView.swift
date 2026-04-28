@@ -131,7 +131,7 @@ struct WatchQuickWorkoutView: View {
 
             Toggle("モーション検出", isOn: $isUsingMotion)
                 .tint(.green)
-                .onChange(of: isUsingMotion) { _, newValue in
+                .onChange(of: isUsingMotion) { newValue in
                     if newValue && !motionManager.isDetecting {
                         showCalibration = true
                     }

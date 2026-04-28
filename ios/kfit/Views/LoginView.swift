@@ -1,15 +1,6 @@
 import SwiftUI
 import GoogleSignIn
 
-// MARK: - DuoFit カラー定義
-extension Color {
-    static let duoGreen    = Color(red: 0.345, green: 0.800, blue: 0.008)  // #58CC02
-    static let duoOrange   = Color(red: 1.000, green: 0.588, blue: 0.000)  // #FF9600
-    static let duoYellow   = Color(red: 1.000, green: 0.851, blue: 0.000)  // #FFD900
-    static let duoRed      = Color(red: 1.000, green: 0.294, blue: 0.294)  // #FF4B4B
-    static let duoBlue     = Color(red: 0.110, green: 0.690, blue: 0.965)  // #1CB0F6
-    static let duoBg       = Color(red: 0.973, green: 0.973, blue: 0.973)  // #F8F8F8
-}
 
 struct LoginView: View {
     @EnvironmentObject var authManager: AuthenticationManager

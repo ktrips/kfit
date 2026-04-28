@@ -1,102 +1,95 @@
 import SwiftUI
 
 struct WatchDashboardView: View {
-    @State private var streak = 5
-    @State private var todayPoints = 240
-    @State private var todayReps = 45
+    @StateObject private var connectivity = WatchConnectivityManager.shared
     @State private var showWorkoutSheet = false
-    @State private var recentWorkouts: [String] = ["20 Push-ups", "15 Squats"]
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 10) {
-                // Title
-                Text("kfit")
-                    .font(.headline)
-                    .fontWeight(.bold)
+            ScrollView {
+                VStack(spacing: 8) {
+                    // ロゴ
+                    HStack(spacing: 6) {
+                        Image("mascot")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.green, lineWidth: 1.5))
 
-                // Quick stats (compact for watch)
-                HStack(spacing: 6) {
-                    VStack(spacing: 2) {
-                        Text("🔥")
-                            .font(.caption)
-                        Text("\(streak)")
-                            .font(.caption2)
-                            .fontWeight(.bold)
+                        Text("DuoFit")
+                            .font(.system(.headline, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.green)
                     }
-                    .frame(maxWidth: .infinity)
 
-                    Divider()
-                        .frame(height: 30)
-
-                    VStack(spacing: 2) {
-                        Text("🏆")
-                            .font(.caption)
-                        Text("\(todayPoints)")
-                            .font(.caption2)
-                            .fontWeight(.bold)
+                    // ステータス
+                    HStack(spacing: 4) {
+                        WatchStatView(icon: "🔥", value: "\(connectivity.streak)", label: "連続")
+                        Divider().frame(height: 28)
+                        WatchStatView(icon: "🏆", value: "\(connectivity.todayXP)", label: "XP")
+                        Divider().frame(height: 28)
+                        WatchStatView(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
                     }
-                    .frame(maxWidth: .infinity)
-
-                    Divider()
-                        .frame(height: 30)
-
-                    VStack(spacing: 2) {
-                        Text("💪")
-                            .font(.caption)
-                        Text("\(todayReps)")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .padding(6)
-                .background(Color(.systemGray5))
-                .cornerRadius(4)
-
-                Divider()
-                    .padding(.vertical, 2)
-
-                // Start workout button (prominent)
-                Button(action: { showWorkoutSheet = true }) {
-                    VStack(spacing: 4) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.title3)
-                        Text("Start")
-                            .font(.caption)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(4)
-                }
-
-                // Recent workouts
-                if !recentWorkouts.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Today")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                        ForEach(recentWorkouts, id: \.self) { workout in
-                            Text(workout)
-                                .font(.caption2)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(6)
+                    .padding(8)
                     .background(Color(.systemGray5))
-                    .cornerRadius(4)
-                }
+                    .cornerRadius(8)
 
-                Spacer()
+                    // スタートボタン
+                    Button(action: { showWorkoutSheet = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.circle.fill")
+                            Text("開始")
+                                .fontWeight(.bold)
+                        }
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+
+                    // 今日の記録
+                    if !connectivity.recentWorkouts.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("今日")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+
+                            ForEach(connectivity.recentWorkouts, id: \.self) { workout in
+                                Text(workout)
+                                    .font(.caption2)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                        .background(Color(.systemGray5))
+                        .cornerRadius(6)
+                    }
+                }
+                .padding(10)
             }
-            .padding()
-            .navigationTitle("Workouts")
             .sheet(isPresented: $showWorkoutSheet) {
                 WatchQuickWorkoutView(isPresented: $showWorkoutSheet)
             }
         }
+    }
+}
+
+// MARK: - ステータスアイテム
+struct WatchStatView: View {
+    let icon: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(icon).font(.caption)
+            Text(value).font(.caption2).fontWeight(.black)
+            Text(label).font(.system(size: 8)).foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

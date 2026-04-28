@@ -8,152 +8,192 @@ struct WatchQuickWorkoutView: View {
     @State private var isUsingMotion = true
     @State private var manualRepCount = 0
     @State private var showCalibration = false
-    @State private var isCalibrating = false
+    @State private var showCelebration = false
+    @State private var earnedXP = 0
 
-    var body: some View {
-        TabView {
-            // Exercise selection
-            VStack(spacing: 12) {
-                Text("Exercise")
-                    .font(.headline)
+    private let xpPerRep: [ExerciseType: Int] = [
+        .pushup: 2,
+        .squat: 2,
+        .situp: 1,
+    ]
 
-                Picker("Exercise", selection: $selectedExerciseType) {
-                    ForEach(ExerciseType.allCases, id: \.self) { type in
-                        Text("\(type.icon) \(type.rawValue)").tag(type)
-                    }
-                }
-                .pickerStyle(.wheel)
-
-                Spacer()
-
-                if !motionManager.isDetecting {
-                    Button(action: startWorkout) {
-                        Text("Start")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 8)
-                            .background(Color.green)
-                            .cornerRadius(4)
-                    }
-                }
-            }
-            .padding()
-
-            // Rep counter and form
-            if motionManager.isDetecting {
-                VStack(spacing: 10) {
-                    // Rep count (large)
-                    VStack(spacing: 4) {
-                        Text("Reps")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-
-                        Text("\(isUsingMotion ? motionManager.repCount : manualRepCount)")
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(.blue)
-                    }
-
-                    // Form score
-                    if isUsingMotion {
-                        VStack(spacing: 4) {
-                            Text("Form")
-                                .font(.caption2)
-                                .foregroundColor(.gray)
-
-                            HStack(spacing: 4) {
-                                Image(systemName: motionManager.formScore > 80 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                    .foregroundColor(motionManager.formScore > 80 ? .green : .orange)
-
-                                Text("\(Int(motionManager.formScore))%")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    // Manual controls (if not using motion)
-                    if !isUsingMotion {
-                        HStack(spacing: 8) {
-                            Button(action: { if manualRepCount > 0 { manualRepCount -= 1 } }) {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.title3)
-                                    .foregroundColor(.red)
-                            }
-
-                            Button(action: { manualRepCount += 1 }) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title3)
-                                    .foregroundColor(.green)
-                            }
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        Button(action: finishWorkout) {
-                            Text("✓ Done")
-                                .font(.caption)
-                                .frame(maxWidth: .infinity)
-                                .foregroundColor(.white)
-                                .padding(.vertical, 6)
-                                .background(Color.blue)
-                                .cornerRadius(4)
-                        }
-
-                        Button(action: cancelWorkout) {
-                            Text("✕")
-                                .font(.caption)
-                                .frame(maxWidth: .infinity)
-                                .foregroundColor(.white)
-                                .padding(.vertical, 6)
-                                .background(Color.red)
-                                .cornerRadius(4)
-                        }
-                    }
-                }
-                .padding()
-            }
-
-            // Settings
-            VStack(spacing: 12) {
-                Text("Settings")
-                    .font(.headline)
-
-                Toggle("Motion Detect", isOn: $isUsingMotion)
-                    .onChange(of: isUsingMotion) { _, newValue in
-                        if newValue && !motionManager.isDetecting {
-                            showCalibration = true
-                        }
-                    }
-
-                if isUsingMotion {
-                    Button(action: { showCalibration = true }) {
-                        Text("Calibrate")
-                            .font(.caption)
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.white)
-                            .padding(.vertical, 6)
-                            .background(Color.orange)
-                            .cornerRadius(4)
-                    }
-                }
-
-                Spacer()
-
-                Text(motionManager.isDetecting ? "Detecting..." : "Ready")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-            }
-            .padding()
-            .sheet(isPresented: $showCalibration) {
-                CalibrationView(isPresented: $showCalibration, motionManager: motionManager)
-            }
-        }
-        .tabViewStyle(.page)
+    var currentReps: Int {
+        isUsingMotion ? motionManager.repCount : manualRepCount
     }
 
+    var body: some View {
+        if showCelebration {
+            celebrationView
+        } else {
+            TabView {
+                exerciseSelectionPage
+                if motionManager.isDetecting { repCounterPage }
+                settingsPage
+            }
+            .tabViewStyle(.page)
+        }
+    }
+
+    // MARK: - 種目選択
+    private var exerciseSelectionPage: some View {
+        VStack(spacing: 8) {
+            Text("種目")
+                .font(.headline)
+                .foregroundColor(.green)
+
+            Picker("種目", selection: $selectedExerciseType) {
+                ForEach(ExerciseType.allCases, id: \.self) { type in
+                    Text("\(type.icon) \(type.rawValue)").tag(type)
+                }
+            }
+            .pickerStyle(.wheel)
+
+            Spacer()
+
+            if !motionManager.isDetecting {
+                Button(action: startWorkout) {
+                    Text("▶ 開始")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
+                        .padding(.vertical, 8)
+                        .background(Color.green)
+                        .cornerRadius(6)
+                }
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - Repカウンター
+    private var repCounterPage: some View {
+        VStack(spacing: 8) {
+            Text(selectedExerciseType.rawValue)
+                .font(.caption2)
+                .foregroundColor(.gray)
+
+            Text("\(currentReps)")
+                .font(.system(size: 44, weight: .black))
+                .foregroundColor(.green)
+
+            if isUsingMotion {
+                HStack(spacing: 4) {
+                    Image(systemName: motionManager.formScore > 80 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(motionManager.formScore > 80 ? .green : .orange)
+                    Text("\(Int(motionManager.formScore))%")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    Button(action: { if manualRepCount > 0 { manualRepCount -= 1 } }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title3).foregroundColor(.red)
+                    }
+                    Button(action: { manualRepCount += 1 }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3).foregroundColor(.green)
+                    }
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Button(action: finishWorkout) {
+                    Text("✓ 完了")
+                        .font(.caption).fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .cornerRadius(4)
+                }
+                Button(action: cancelWorkout) {
+                    Text("✕")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
+                        .padding(.vertical, 6)
+                        .background(Color.red)
+                        .cornerRadius(4)
+                }
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - 設定
+    private var settingsPage: some View {
+        VStack(spacing: 10) {
+            Text("設定")
+                .font(.headline)
+
+            Toggle("モーション検出", isOn: $isUsingMotion)
+                .tint(.green)
+                .onChange(of: isUsingMotion) { _, newValue in
+                    if newValue && !motionManager.isDetecting {
+                        showCalibration = true
+                    }
+                }
+
+            if isUsingMotion {
+                Button(action: { showCalibration = true }) {
+                    Text("キャリブレーション")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
+                        .padding(.vertical, 6)
+                        .background(Color.orange)
+                        .cornerRadius(4)
+                }
+            }
+
+            Spacer()
+
+            Text(motionManager.isDetecting ? "検出中..." : "待機中")
+                .font(.caption2).foregroundColor(.gray)
+        }
+        .padding()
+        .sheet(isPresented: $showCalibration) {
+            CalibrationView(isPresented: $showCalibration, motionManager: motionManager)
+        }
+    }
+
+    // MARK: - XPセレブレーション
+    private var celebrationView: some View {
+        VStack(spacing: 10) {
+            Image("mascot")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 60, height: 60)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.green, lineWidth: 2))
+
+            Text("やったー！")
+                .font(.system(.headline, design: .rounded))
+                .fontWeight(.black)
+                .foregroundColor(.green)
+
+            Text("+\(earnedXP) XP")
+                .font(.title2)
+                .fontWeight(.black)
+                .foregroundColor(.yellow)
+
+            Button(action: { isPresented = false }) {
+                Text("完了")
+                    .font(.caption).fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(.white)
+                    .padding(.vertical, 6)
+                    .background(Color.green)
+                    .cornerRadius(6)
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - アクション
     private func startWorkout() {
         if isUsingMotion {
             motionManager.startDetection(for: selectedExerciseType)
@@ -165,8 +205,23 @@ struct WatchQuickWorkoutView: View {
 
     private func finishWorkout() {
         motionManager.stopDetection()
-        // Send to iOS app via Watch Connectivity
-        isPresented = false
+        earnedXP = currentReps * (xpPerRep[selectedExerciseType] ?? 1)
+
+        // iOS アプリへデータ送信
+        let workout = WorkoutData(
+            exerciseName: selectedExerciseType.rawValue,
+            reps: currentReps,
+            points: earnedXP,
+            timestamp: Date()
+        )
+        WatchConnectivityManager.shared.sendWorkout(workout)
+        WatchConnectivityManager.shared.addRecentWorkout("\(currentReps) \(selectedExerciseType.rawValue)")
+        WatchConnectivityManager.shared.todayReps += currentReps
+        WatchConnectivityManager.shared.todayXP += earnedXP
+
+        WKInterfaceDevice.current().play(.success)
+
+        withAnimation { showCelebration = true }
     }
 
     private func cancelWorkout() {
@@ -183,20 +238,20 @@ struct CalibrationView: View {
     @State private var countDown = 3
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Calibration")
+        VStack(spacing: 12) {
+            Text("キャリブレーション")
                 .font(.headline)
 
             if !isCalibrating {
-                VStack(spacing: 12) {
-                    Text("Hold watch still on a flat surface")
+                VStack(spacing: 10) {
+                    Text("腕を静止させてください")
                         .font(.caption)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.gray)
 
                     Button(action: startCalibration) {
-                        Text("Start")
-                            .font(.caption)
+                        Text("開始")
+                            .font(.caption).fontWeight(.bold)
                             .frame(maxWidth: .infinity)
                             .foregroundColor(.white)
                             .padding(.vertical, 8)
@@ -205,18 +260,15 @@ struct CalibrationView: View {
                     }
                 }
             } else {
-                VStack(spacing: 12) {
-                    Text("Hold still...")
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                VStack(spacing: 10) {
+                    Text("静止中...")
+                        .font(.caption).foregroundColor(.gray)
 
                     Text("\(countDown)")
                         .font(.system(size: 36, weight: .bold))
                         .foregroundColor(.orange)
                         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-                            if countDown > 1 {
-                                countDown -= 1
-                            } else {
+                            if countDown > 1 { countDown -= 1 } else {
                                 isCalibrating = false
                                 isPresented = false
                             }
@@ -227,7 +279,7 @@ struct CalibrationView: View {
             Spacer()
 
             Button(action: { isPresented = false }) {
-                Text("Done")
+                Text("閉じる")
                     .font(.caption)
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.white)
@@ -244,10 +296,6 @@ struct CalibrationView: View {
         countDown = 3
         motionManager.calibrate()
     }
-}
-
-#Preview {
-    WatchQuickWorkoutView(isPresented: .constant(true))
 }
 
 #Preview {

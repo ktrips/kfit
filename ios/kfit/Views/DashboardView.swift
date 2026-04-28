@@ -127,11 +127,11 @@ struct DashboardView: View {
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Label("90日チャレンジ", systemImage: "flag.fill")
-                    .font(.headline).fontWeight(.black)
+                    .font(.system(.headline, weight: .black))
                     .foregroundColor(Color.duoGreen)
                 Spacer()
                 Text("\(streak) / 90日")
-                    .font(.subheadline).fontWeight(.bold)
+                    .font(.system(.subheadline, weight: .bold))
                     .foregroundColor(Color.duoGreen)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.duoGreen.opacity(0.12))
@@ -164,7 +164,7 @@ struct DashboardView: View {
     private var todayCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("今日のトレーニング", systemImage: "calendar.badge.checkmark")
-                .font(.headline).fontWeight(.black)
+                .font(.system(.headline, weight: .black))
 
             if todayExercises.isEmpty {
                 VStack(spacing: 16) {
@@ -179,7 +179,7 @@ struct DashboardView: View {
 
                     Button { showTracker = true } label: {
                         Label("最初の記録をつける", systemImage: "plus.circle.fill")
-                            .font(.headline).fontWeight(.black)
+                            .font(.system(.headline, weight: .black))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -235,7 +235,7 @@ struct DashboardView: View {
             Button { showTracker = true } label: {
                 Label(todayExercises.isEmpty ? "記録する" : "＋ 追加記録",
                       systemImage: "plus.circle.fill")
-                    .font(.headline).fontWeight(.black)
+                    .font(.system(.headline, weight: .black))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -284,9 +284,8 @@ struct StatCard: View {
         VStack(spacing: 6) {
             Text(icon).font(.title2)
             Text(value)
-                .font(.title3).fontWeight(.black)
+                .font(.system(.title3, weight: .black))
                 .foregroundColor(color)
-                .contentTransition(.numericText())
             Text(label)
                 .font(.caption2).foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

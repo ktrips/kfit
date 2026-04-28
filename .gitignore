@@ -29,3 +29,17 @@ web/build/
 .vscode/
 *.suo
 *.sw?
+
+# iOS - CocoaPods
+ios/Pods/
+ios/Podfile.lock
+
+# iOS - Xcode generated files
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/*.xcuserstate
+ios/xcuserdata/
+
+# iOS - Build artifacts
+ios/build/
+ios/DerivedData/

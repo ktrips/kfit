@@ -5,7 +5,11 @@
       "Bash(git stash *)",
       "Bash(git rm *)",
       "Bash(npm run *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(xcodegen generate *)",
+      "Bash(identify /Users/kmacmini/Git/kfit/web/public/mascot.png)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/kmacmini/Git/kfit/web/public/mascot.png)",
+      "Bash(pod install *)"
     ]
   },
   "hooks": {

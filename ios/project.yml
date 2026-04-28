@@ -20,6 +20,9 @@ targets:
       - path: kfit
         excludes:
           - "**/*.plist"
+      - path: kfit/GoogleService-Info.plist
+        buildPhase: resources
+      - path: kfit/Assets.xcassets
     info:
       path: kfit/Info.plist
       properties:
@@ -37,6 +40,10 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.447854410903-9p4cdpet97v8qecmv4lk61egqudq4t21
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app
@@ -52,6 +59,7 @@ targets:
       - path: kfitWatch
         excludes:
           - "**/*.plist"
+      - path: kfitWatch/Assets.xcassets
     info:
       path: kfitWatch/Info.plist
       properties:

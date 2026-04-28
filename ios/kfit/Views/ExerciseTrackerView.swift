@@ -92,7 +92,7 @@ struct ExerciseTrackerView: View {
     private var exerciseGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("種目を選ぼう", systemImage: "figure.strengthtraining.traditional")
-                .font(.headline).fontWeight(.black)
+                .font(.system(.headline, weight: .black))
                 .foregroundColor(.primary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -136,7 +136,6 @@ struct ExerciseTrackerView: View {
                 Text("\(currentReps)")
                     .font(.system(size: 80, weight: .black, design: .rounded))
                     .foregroundColor(currentReps > 0 ? Color.duoGreen : Color(.systemGray3))
-                    .contentTransition(.numericText())
                     .animation(.spring(), value: currentReps)
                 Text("reps")
                     .font(.title3).fontWeight(.bold)

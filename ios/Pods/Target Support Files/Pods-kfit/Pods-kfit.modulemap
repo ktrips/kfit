@@ -1,6 +1,0 @@
-framework module Pods_kfit {
-  umbrella header "Pods-kfit-umbrella.h"
-
-  export *
-  module * { export * }
-}

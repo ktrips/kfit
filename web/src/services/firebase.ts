@@ -140,17 +140,43 @@ export const setDailyGoals = async (userId: string, date: string, goals: any[]) 
 // Exercise completion
 export const recordExercise = async (userId: string, exerciseData: any) => {
   try {
+    const now = new Date();
     const docRef = await addDoc(
       collection(db, 'users', userId, 'completed-exercises'),
       {
         ...exerciseData,
-        timestamp: new Date(),
+        timestamp: now,
       }
     );
-    await updateDoc(doc(db, 'users', userId), {
+
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    const profile = userDoc.data();
+
+    let newStreak = 1;
+    if (profile?.lastActiveDate) {
+      const last: Date = profile.lastActiveDate.toDate
+        ? profile.lastActiveDate.toDate()
+        : new Date(profile.lastActiveDate);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+      const diffDays = Math.round((today.getTime() - lastDay.getTime()) / 86400000);
+
+      if (diffDays === 0) {
+        newStreak = profile.streak ?? 1; // 今日すでに運動済み
+      } else if (diffDays === 1) {
+        newStreak = (profile.streak ?? 0) + 1; // 昨日から継続
+      } else {
+        newStreak = 1; // 途切れたのでリセット
+      }
+    }
+
+    await updateDoc(userRef, {
       totalPoints: increment(exerciseData.points || 0),
-      lastActiveDate: new Date(),
+      streak: newStreak,
+      lastActiveDate: now,
     });
+
     return docRef.id;
   } catch (error) {
     console.error('Error recording exercise:', error);

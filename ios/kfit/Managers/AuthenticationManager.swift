@@ -123,13 +123,14 @@ class AuthenticationManager: ObservableObject {
     func recordExercise(_ exercise: Exercise, reps: Int, formScore: Double = 85.0) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
 
+        let now = Date()
         let data: [String: Any] = [
             "exerciseId": exercise.id,
             "exerciseName": exercise.name,
             "reps": reps,
             "points": reps * exercise.basePoints,
             "formScore": formScore,
-            "timestamp": Date()
+            "timestamp": now
         ]
 
         do {
@@ -137,9 +138,31 @@ class AuthenticationManager: ObservableObject {
                 .collection("completed-exercises").addDocument(data: data)
 
             if var profile = userProfile {
-                profile.totalPoints += reps * exercise.basePoints
-                profile.lastActiveDate = Date()
+                let earned = reps * exercise.basePoints
+                profile.totalPoints += earned
+
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: now)
+                let lastActive = calendar.startOfDay(for: profile.lastActiveDate)
+                let daysDiff = calendar.dateComponents([.day], from: lastActive, to: today).day ?? 0
+
+                switch daysDiff {
+                case 0:
+                    break // 今日すでに運動済み、ストリーク変更なし
+                case 1:
+                    profile.streak += 1 // 昨日から継続
+                default:
+                    profile.streak = 1 // 途切れたのでリセット
+                }
+
+                profile.lastActiveDate = now
                 self.userProfile = profile
+
+                try await db.collection("users").document(userId).updateData([
+                    "totalPoints": profile.totalPoints,
+                    "streak": profile.streak,
+                    "lastActiveDate": now
+                ])
             }
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"

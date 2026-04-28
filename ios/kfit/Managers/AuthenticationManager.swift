@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import GoogleSignIn
 
@@ -102,9 +103,7 @@ class AuthenticationManager: ObservableObject {
     private func loadUserProfile(userId: String) async {
         do {
             let doc = try await db.collection("users").document(userId).getDocument()
-            if let profile = try doc.data(as: UserProfile.self) {
-                self.userProfile = profile
-            }
+            self.userProfile = try doc.data(as: UserProfile.self)
         } catch {
             errorMessage = "Failed to load user profile: \(error.localizedDescription)"
         }

@@ -9,7 +9,7 @@ struct DashboardView: View {
     @State private var mascotWiggle = false
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
 

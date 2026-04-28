@@ -5,7 +5,7 @@ struct WatchDashboardView: View {
     @State private var showWorkoutSheet = false
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ScrollView {
                 VStack(spacing: 8) {
                     // ロゴ
@@ -32,7 +32,7 @@ struct WatchDashboardView: View {
                         WatchStatView(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
                     }
                     .padding(8)
-                    .background(Color(.systemGray5))
+                    .background(Color.gray.opacity(0.2))
                     .cornerRadius(8)
 
                     // スタートボタン
@@ -64,7 +64,7 @@ struct WatchDashboardView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(6)
-                        .background(Color(.systemGray5))
+                        .background(Color.gray.opacity(0.2))
                         .cornerRadius(6)
                     }
                 }

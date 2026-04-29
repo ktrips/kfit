@@ -99,9 +99,9 @@ struct HelpView: View {
                                 .overlay(Circle().stroke(Color.duoGreen, lineWidth: 2))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("ヘルプ・使い方")
-                                    .font(.title3).fontWeight(.black)
+                                    .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
                                 Text("DuoFit の使い方ガイド")
-                                    .font(.caption).foregroundColor(.secondary)
+                                    .font(.caption).foregroundColor(Color.duoSubtitle)
                             }
                             Spacer()
                         }
@@ -120,7 +120,7 @@ struct HelpView: View {
                                 Text("DuoFit")
                                     .font(.subheadline).fontWeight(.black)
                                 Text("Web・iOS・Apple Watch 対応")
-                                    .font(.caption).foregroundColor(.secondary)
+                                    .font(.caption).foregroundColor(Color.duoSubtitle)
                             }
                             Spacer()
                         }
@@ -157,7 +157,7 @@ struct HelpView: View {
                     Spacer()
                     Image(systemName: "chevron.down")
                         .font(.caption).fontWeight(.bold)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color.duoSubtitle)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
@@ -167,7 +167,7 @@ struct HelpView: View {
                 Divider().padding(.horizontal, 16)
                 Text(item.content)
                     .font(.subheadline).fontWeight(.medium)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.duoDark)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)

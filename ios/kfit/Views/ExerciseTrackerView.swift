@@ -111,7 +111,7 @@ struct ExerciseTrackerView: View {
                                 .foregroundColor(selected ? .white : .primary)
                             Text("\(exercise.basePoints) XP/rep")
                                 .font(.caption2)
-                                .foregroundColor(selected ? .white.opacity(0.85) : .secondary)
+                                .foregroundColor(selected ? Color.white.opacity(0.92) : Color.duoSubtitle)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -143,7 +143,7 @@ struct ExerciseTrackerView: View {
                     .animation(.spring(), value: currentReps)
                 Text("reps")
                     .font(.title3).fontWeight(.bold)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.duoSubtitle)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
@@ -163,9 +163,9 @@ struct ExerciseTrackerView: View {
 
                     VStack(spacing: 2) {
                         Text("タップで")
-                            .font(.caption2).foregroundColor(.secondary)
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
                         Text("カウント")
-                            .font(.caption2).foregroundColor(.secondary)
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
                     }
 
                     CountButton(icon: "plus", color: Color.duoGreen) {
@@ -178,16 +178,17 @@ struct ExerciseTrackerView: View {
             if let ex = selectedExercise, currentReps > 0 {
                 HStack {
                     Image(systemName: "bolt.fill")
-                        .foregroundColor(Color.duoYellow)
+                        .foregroundColor(Color.duoGold)
                     Text("今回の獲得 XP")
                         .font(.subheadline).fontWeight(.semibold)
+                        .foregroundColor(Color.duoDark)
                     Spacer()
                     Text("+\(currentReps * ex.basePoints) XP")
                         .font(.title3).fontWeight(.black)
-                        .foregroundColor(Color.duoYellow)
+                        .foregroundColor(Color.duoGold)
                 }
                 .padding(14)
-                .background(Color.duoYellow.opacity(0.12))
+                .background(Color.duoYellow.opacity(0.18))
                 .cornerRadius(14)
             }
 
@@ -285,15 +286,15 @@ struct ExerciseTrackerView: View {
                         Text("+\(earnedXP) XP").fontWeight(.black)
                     }
                     .font(.largeTitle)
-                    .foregroundColor(Color.duoYellow)
+                    .foregroundColor(Color.duoGold)
                     .padding(.horizontal, 28).padding(.vertical, 14)
                     .background(
-                        Capsule().fill(Color.duoYellow.opacity(0.15))
-                        .overlay(Capsule().stroke(Color.duoYellow.opacity(0.3), lineWidth: 2))
+                        Capsule().fill(Color.duoYellow.opacity(0.25))
+                        .overlay(Capsule().stroke(Color.duoYellow.opacity(0.5), lineWidth: 2))
                     )
 
                     Text("この調子で続けよう！")
-                        .font(.subheadline).foregroundColor(.secondary)
+                        .font(.subheadline).fontWeight(.medium).foregroundColor(Color.duoSubtitle)
                 }
 
                 Spacer()

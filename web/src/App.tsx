@@ -8,9 +8,10 @@ import { WeeklyGoalView } from './components/WeeklyGoalView';
 import { HistoryView } from './components/HistoryView';
 import { HelpView } from './components/HelpView';
 import { WorkoutPlanView } from './components/WorkoutPlanView';
+import { DailyWorkoutFlow } from './components/DailyWorkoutFlow';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -172,10 +173,14 @@ function App() {
         {currentView === 'login' && <LoginView />}
         {currentView === 'dashboard' && user && (
           <DashboardView
+            onStartWorkout={() => navigate('workout')}
             onLogWorkout={() => navigate('tracker')}
             onWeeklyGoal={() => navigate('weekly')}
             onWorkoutPlan={() => navigate('plan')}
           />
+        )}
+        {currentView === 'workout' && user && (
+          <DailyWorkoutFlow onFinish={() => navigate('dashboard')} />
         )}
         {currentView === 'tracker' && user && (
           <ExerciseTrackerView onSuccess={() => navigate('dashboard')} />

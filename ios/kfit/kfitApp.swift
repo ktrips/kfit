@@ -51,6 +51,10 @@ struct MainTabView: View {
             NavigationView { HistoryView() }
                 .tabItem { Label("履歴", systemImage: "calendar") }
                 .tag(4)
+
+            NavigationView { HelpView() }
+                .tabItem { Label("ヘルプ", systemImage: "questionmark.circle.fill") }
+                .tag(5)
         }
         .accentColor(Color.duoGreen)
         .onChange(of: selectedTab) { tab in

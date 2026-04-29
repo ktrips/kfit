@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { onAuthChange, getExercises, getUserProfile } from './services/firebase';
+import { onAuthChange, getExercises, getUserProfile, subscribeToUserProfile } from './services/firebase';
 import { useAppStore } from './store/appStore';
 import { LoginView } from './components/LoginView';
 import { DashboardView } from './components/DashboardView';
@@ -23,7 +23,11 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
+    let profileUnsub: (() => void) | null = null;
+
     const unsubscribe = onAuthChange(async (firebaseUser) => {
+      profileUnsub?.();
+      profileUnsub = null;
       setLoading(true);
       try {
         if (firebaseUser) {
@@ -35,6 +39,8 @@ function App() {
           if (profile) setUserProfile(profile);
           setExercises(exercisesList);
           setCurrentView('dashboard');
+          // Real-time listener: Cloud Function updates totalPoints/streak after each exercise
+          profileUnsub = subscribeToUserProfile(firebaseUser.uid, setUserProfile);
         } else {
           setUser(null);
           setUserProfile(null);
@@ -46,7 +52,7 @@ function App() {
         setLoading(false);
       }
     });
-    return unsubscribe;
+    return () => { unsubscribe(); profileUnsub?.(); };
   }, [setUser, setUserProfile, setExercises, setLoading]);
 
   const handleSignOut = async () => {

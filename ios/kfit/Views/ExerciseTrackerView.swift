@@ -53,7 +53,7 @@ struct ExerciseTrackerView: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .ignoresSafeArea(edges: .top)
         .onDisappear { motionManager.stopDetection() }
     }
 
@@ -83,7 +83,8 @@ struct ExerciseTrackerView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.bottom, 14)
+        .padding(.top, 60)
         .background(Color.white)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
     }
@@ -91,9 +92,12 @@ struct ExerciseTrackerView: View {
     // MARK: - 種目グリッド
     private var exerciseGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("種目を選ぼう", systemImage: "figure.strengthtraining.traditional")
-                .font(.system(.headline, weight: .black))
-                .foregroundColor(.primary)
+            HStack(spacing: 6) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                Text("種目を選ぼう").fontWeight(.black)
+            }
+            .font(.headline)
+            .foregroundColor(.primary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 ForEach(authManager.exercises) { exercise in
@@ -235,10 +239,10 @@ struct ExerciseTrackerView: View {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "checkmark.circle.fill")
-                    Text("記録する！")
+                    Text("記録する！").fontWeight(.black)
                 }
             }
-            .font(.headline).fontWeight(.black)
+            .font(.headline)
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
@@ -278,9 +282,9 @@ struct ExerciseTrackerView: View {
 
                     HStack(spacing: 6) {
                         Image(systemName: "bolt.fill")
-                        Text("+\(earnedXP) XP")
+                        Text("+\(earnedXP) XP").fontWeight(.black)
                     }
-                    .font(.largeTitle).fontWeight(.black)
+                    .font(.largeTitle)
                     .foregroundColor(Color.duoYellow)
                     .padding(.horizontal, 28).padding(.vertical, 14)
                     .background(

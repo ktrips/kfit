@@ -16,11 +16,14 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            Color.duoBg.ignoresSafeArea()
+            LinearGradient(
+                colors: [Color.duoGreen.opacity(0.18), Color.duoBg],
+                startPoint: .top, endPoint: .center
+            ).ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 32) {
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 60)
 
                     // マスコット + アプリ名
                     VStack(spacing: 16) {

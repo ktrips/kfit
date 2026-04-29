@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "4AY62KCVSN"
 
 targets:
   kfit:
@@ -68,11 +68,9 @@ targets:
         CFBundleVersion: "1"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.kfitappduo.app
-        NSMotionUsageDescription: "kfit uses motion sensors to count exercise reps accurately."
-        UIRequiredDeviceCapabilities:
-          - accelerometer
-          - gyroscope
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.watchkitapp
         INFOPLIST_FILE: kfitWatch/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "4AY62KCVSN"

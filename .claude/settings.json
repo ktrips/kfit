@@ -12,7 +12,11 @@
       "Bash(pod install *)",
       "Bash(sips -z 300 300 /Users/kmacmini/Git/kfit/web/public/mascot.png --setProperty format png --out /Users/kmacmini/Git/kfit/ios/kfit/Assets.xcassets/Mascot.imageset/mascot.png)",
       "Bash(sips -z 600 600 /Users/kmacmini/Git/kfit/web/public/mascot.png --setProperty format png --out /Users/kmacmini/Git/kfit/ios/kfit/Assets.xcassets/Mascot.imageset/mascot@2x.png)",
-      "Bash(sips -z 900 900 /Users/kmacmini/Git/kfit/web/public/mascot.png --setProperty format png --out /Users/kmacmini/Git/kfit/ios/kfit/Assets.xcassets/Mascot.imageset/mascot@3x.png)"
+      "Bash(sips -z 900 900 /Users/kmacmini/Git/kfit/web/public/mascot.png --setProperty format png --out /Users/kmacmini/Git/kfit/ios/kfit/Assets.xcassets/Mascot.imageset/mascot@3x.png)",
+      "Bash(awk -F: '{print $2}')",
+      "Bash(read line *)",
+      "Bash(:)",
+      "Bash(swift -e ' *)"
     ]
   },
   "hooks": {

@@ -1,98 +1,91 @@
 import SwiftUI
 
+private let duoGreen  = Color(red: 0.345, green: 0.800, blue: 0.008)
+private let duoYellow = Color(red: 1.0,   green: 0.851, blue: 0.0)
+
 struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
-    @State private var showWorkoutSheet = false
+    @State private var showFlow = false
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 8) {
-                    // ロゴ
-                    HStack(spacing: 6) {
-                        Image("mascot")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.green, lineWidth: 1.5))
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 10) {
 
-                        Text("DuoFit")
-                            .font(.system(.headline, design: .rounded))
-                            .fontWeight(.black)
-                            .foregroundColor(.green)
-                    }
-
-                    // ステータス
-                    HStack(spacing: 4) {
-                        WatchStatView(icon: "🔥", value: "\(connectivity.streak)", label: "連続")
-                        Divider().frame(height: 28)
-                        WatchStatView(icon: "🏆", value: "\(connectivity.todayXP)", label: "XP")
-                        Divider().frame(height: 28)
-                        WatchStatView(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
-                    }
-                    .padding(8)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(8)
-
-                    // スタートボタン
-                    Button(action: { showWorkoutSheet = true }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "play.circle.fill")
-                            Text("開始")
-                                .fontWeight(.bold)
-                        }
-                        .font(.subheadline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                    }
-
-                    // 今日の記録
-                    if !connectivity.recentWorkouts.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("今日")
-                                .font(.caption2)
-                                .foregroundColor(.gray)
-
-                            ForEach(connectivity.recentWorkouts, id: \.self) { workout in
-                                Text(workout)
-                                    .font(.caption2)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(6)
-                    }
+                // ── ロゴ ──────────────────────────────
+                HStack(spacing: 6) {
+                    Image("mascot")
+                        .resizable().scaledToFill()
+                        .frame(width: 26, height: 26)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(duoGreen, lineWidth: 1.5))
+                    Text("DuoFit")
+                        .font(.system(.headline, design: .rounded))
+                        .fontWeight(.black)
+                        .foregroundColor(duoGreen)
                 }
-                .padding(10)
+
+                // ── ステータス ────────────────────────
+                HStack(spacing: 0) {
+                    WatchStatItem(icon: "🔥", value: "\(connectivity.streak)", label: "連続")
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
+                    WatchStatItem(icon: "⭐", value: "\(connectivity.todayXP)", label: "XP")
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
+                    WatchStatItem(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
+                }
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+
+                // ── スタートボタン ────────────────────
+                Button { showFlow = true } label: {
+                    VStack(spacing: 3) {
+                        Text("🏋️").font(.title3)
+                        Text("今日のメニュー").font(.caption).fontWeight(.bold)
+                        Text("タップして開始").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                // ── 今日の記録 ────────────────────────
+                if !connectivity.recentWorkouts.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("今日の記録")
+                            .font(.system(size: 9)).foregroundColor(.gray)
+                        ForEach(connectivity.recentWorkouts, id: \.self) { w in
+                            Text(w)
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(Color.white.opacity(0.07))
+                    .cornerRadius(10)
+                }
             }
-            .sheet(isPresented: $showWorkoutSheet) {
-                WatchQuickWorkoutView(isPresented: $showWorkoutSheet)
-            }
+            .padding(10)
+        }
+        .fullScreenCover(isPresented: $showFlow) {
+            WatchWorkoutFlowView(isPresented: $showFlow)
         }
     }
 }
 
-// MARK: - ステータスアイテム
-struct WatchStatView: View {
-    let icon: String
-    let value: String
-    let label: String
-
+struct WatchStatItem: View {
+    let icon: String; let value: String; let label: String
     var body: some View {
         VStack(spacing: 2) {
             Text(icon).font(.caption)
-            Text(value).font(.caption2).fontWeight(.black)
+            Text(value).font(.caption).fontWeight(.black)
             Text(label).font(.system(size: 8)).foregroundColor(.gray)
         }
         .frame(maxWidth: .infinity)
     }
-}
-
-#Preview {
-    WatchDashboardView()
 }

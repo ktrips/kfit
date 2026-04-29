@@ -16,7 +16,8 @@
       "Bash(awk -F: '{print $2}')",
       "Bash(read line *)",
       "Bash(:)",
-      "Bash(swift -e ' *)"
+      "Bash(swift -e ' *)",
+      "Bash(xcodebuild -version)"
     ]
   },
   "hooks": {

@@ -10,34 +10,29 @@ struct DashboardView: View {
     @State private var showTracker = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            LinearGradient(
-                colors: [Color.duoGreen.opacity(0.15), Color.duoBg, Color.duoBg],
-                startPoint: .top, endPoint: .center
-            ).ignoresSafeArea()
-
+        ZStack {
+            Color.duoBg.ignoresSafeArea()
             VStack(spacing: 0) {
-                topBar
+                heroSection
                 if isLoading {
                     Spacer()
-                    loadingView
+                    ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 18) {
-                            welcomeBanner
-                            statsRow
+                        VStack(spacing: 16) {
                             challengeCard
                             todayCard
-                            Spacer(minLength: 100)
+                            Spacer(minLength: 80)
                         }
-                        .padding(.top, 12)
+                        .padding(16)
+                        .padding(.top, 8)
                     }
                 }
             }
-
         }
         .ignoresSafeArea(edges: .top)
+        .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showTracker) {
             ExerciseTrackerView()
                 .environmentObject(authManager)
@@ -46,92 +41,102 @@ struct DashboardView: View {
         .task { await loadData() }
     }
 
-    // MARK: - トップバー
-    private var topBar: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image("mascot")
-                    .resizable().scaledToFill()
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
-                Text("DuoFit")
-                    .font(.title3).fontWeight(.black)
-                    .foregroundColor(Color.duoGreen)
-            }
-            Spacer()
-            Button { authManager.signOut() } label: {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(8)
-                    .background(Color.white.opacity(0.7))
-                    .clipShape(Circle())
+    // MARK: - ヒーロー
+    private var heroSection: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            VStack(spacing: 0) {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image("mascot")
+                            .resizable().scaledToFill()
+                            .frame(width: 28, height: 28)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
+                        Text("DuoFit")
+                            .font(.system(.headline, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                    }
+                    Spacer()
+                    Button { authManager.signOut() } label: {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.subheadline)
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .padding(8)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 56)
+                .padding(.bottom, 16)
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("やあ、\(authManager.userProfile?.username ?? "ユーザー")！")
+                            .font(.system(.title2, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                        Text(todayExercises.isEmpty ? "今日も一緒に頑張ろう💪" : "今日も最高！続けよう🎉")
+                            .font(.subheadline)
+                            .foregroundColor(Color.white.opacity(0.88))
+                    }
+                    Spacer()
+                    Image("mascot")
+                        .resizable().scaledToFill()
+                        .frame(width: 68, height: 68)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2.5))
+                        .shadow(color: Color.black.opacity(0.2), radius: 6)
+                        .scaleEffect(mascotBounce ? 1.06 : 1.0)
+                        .animation(
+                            .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+                            value: mascotBounce
+                        )
+                        .onAppear { mascotBounce = true }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+
+                HStack(spacing: 0) {
+                    heroStat(icon: "🔥", value: "\(authManager.userProfile?.streak ?? 0)", label: "連続")
+                    Rectangle().fill(Color.white.opacity(0.3)).frame(width: 1, height: 32)
+                    heroStat(icon: "⚡", value: "\(totalReps)", label: "今日rep")
+                    Rectangle().fill(Color.white.opacity(0.3)).frame(width: 1, height: 32)
+                    heroStat(icon: "🏆", value: "\(totalXP)", label: "今日XP")
+                }
+                .padding(.vertical, 14)
+                .background(Color.white.opacity(0.15))
+                .cornerRadius(16)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 56)
-        .padding(.bottom, 12)
     }
 
-    // MARK: - ローディング
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            Image("mascot")
-                .resizable().scaledToFill()
-                .frame(width: 90, height: 90)
-                .clipShape(Circle())
-                .scaleEffect(mascotBounce ? 1.08 : 0.95)
-                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: mascotBounce)
-                .onAppear { mascotBounce = true }
-            Text("読み込み中…")
-                .font(.subheadline).foregroundColor(.secondary)
+    private func heroStat(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(icon).font(.title3)
+            Text(value)
+                .font(.system(.title2, design: .rounded))
+                .fontWeight(.black)
+                .foregroundColor(.white)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(Color.white.opacity(0.75))
         }
-    }
-
-    // MARK: - ウェルカムバナー
-    private var welcomeBanner: some View {
-        HStack(spacing: 14) {
-            Image("mascot")
-                .resizable().scaledToFill()
-                .frame(width: 60, height: 60)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 3))
-                .shadow(color: Color.duoGreen.opacity(0.3), radius: 6)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("やあ、\(authManager.userProfile?.username ?? "ユーザー")！")
-                    .font(.title3).fontWeight(.black)
-                Text(todayExercises.isEmpty ? "今日も一緒に頑張ろう💪" : "今日も最高！続けよう🎉")
-                    .font(.subheadline).foregroundColor(.secondary)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .background(Color.white)
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.07), radius: 6, y: 3)
-        .padding(.horizontal, 16)
-    }
-
-    // MARK: - スタッツ
-    private var statsRow: some View {
-        HStack(spacing: 10) {
-            StatCard(icon: "🔥", value: "\(authManager.userProfile?.streak ?? 0)",
-                     label: "日連続", color: Color.duoOrange)
-            StatCard(icon: "⚡", value: "\(totalReps)",
-                     label: "今日のrep", color: Color.duoGreen)
-            StatCard(icon: "🏆", value: "\(totalXP)",
-                     label: "今日のXP", color: Color.duoYellow)
-        }
-        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 90日チャレンジ
     private var challengeCard: some View {
         let streak = authManager.userProfile?.streak ?? 0
         let progress = min(Double(streak) / 90.0, 1.0)
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "flag.fill")
@@ -141,13 +146,12 @@ struct DashboardView: View {
                 .foregroundColor(Color.duoGreen)
                 Spacer()
                 Text("\(streak) / 90日")
-                    .font(Font.subheadline.weight(.bold))
+                    .font(.subheadline).fontWeight(.black)
                     .foregroundColor(Color.duoGreen)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.duoGreen.opacity(0.12))
                     .cornerRadius(10)
             }
-
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(.systemGray5)).frame(height: 14)
@@ -159,15 +163,13 @@ struct DashboardView: View {
                 }
             }
             .frame(height: 14)
-
             Text("毎日続けてフィットネス習慣を身につけよう！")
                 .font(.caption).foregroundColor(.secondary)
         }
         .padding(18)
         .background(Color.white)
         .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.07), radius: 6, y: 3)
-        .padding(.horizontal, 16)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
     }
 
     // MARK: - 今日のトレーニング
@@ -180,32 +182,27 @@ struct DashboardView: View {
             .font(.headline)
 
             if todayExercises.isEmpty {
-                VStack(spacing: 16) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 70, height: 70)
-                        .clipShape(Circle())
-                        .opacity(0.6)
-
-                    Text("まだ記録がありません")
-                        .font(.subheadline).foregroundColor(.secondary)
-
-                    Button { showTracker = true } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("記録する").fontWeight(.black)
-                        }
-                        .font(.headline)
+                Button { showTracker = true } label: {
+                    VStack(spacing: 10) {
+                        Text("🏋️").font(.system(size: 44))
+                        Text("今日のトレーニングを始めよう！")
+                            .font(.headline).fontWeight(.black)
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.duoGreen)
-                            .cornerRadius(16)
-                            .shadow(color: Color.duoGreen.opacity(0.4), radius: 4, y: 3)
+                        Text("タップして記録開始 →")
+                            .font(.subheadline)
+                            .foregroundColor(Color.white.opacity(0.85))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(18)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .buttonStyle(.plain)
             } else {
                 VStack(spacing: 8) {
                     ForEach(todayExercises) { ex in
@@ -215,7 +212,6 @@ struct DashboardView: View {
                                 .frame(width: 44, height: 44)
                                 .background(Color.duoGreen.opacity(0.1))
                                 .cornerRadius(12)
-
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(ex.exerciseName)
                                     .font(.subheadline).fontWeight(.bold)
@@ -234,16 +230,26 @@ struct DashboardView: View {
                         .background(Color.duoBg)
                         .cornerRadius(14)
                     }
+                    Button { showTracker = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("さらに記録する").fontWeight(.black)
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.duoGreen)
+                        .cornerRadius(14)
+                    }
                 }
             }
         }
         .padding(18)
         .background(Color.white)
         .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.07), radius: 6, y: 3)
-        .padding(.horizontal, 16)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
     }
-
 
     private func emojiFor(_ name: String) -> String {
         let key = name.lowercased().replacingOccurrences(of: " ", with: "")

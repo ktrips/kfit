@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, onSnapshot, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -147,16 +147,51 @@ export const setDailyGoals = async (userId: string, date: string, goals: any[]) 
   }
 };
 
-// Exercise completion — points, streak, lastActiveDate are handled by Cloud Function
+// Exercise completion — streak/points updated client-side as fallback
+// (Cloud Functions will override if deployed)
 export const recordExercise = async (userId: string, exerciseData: any) => {
   try {
+    const now = new Date();
     const docRef = await addDoc(
       collection(db, 'users', userId, 'completed-exercises'),
-      {
-        ...exerciseData,
-        timestamp: new Date(),
-      }
+      { ...exerciseData, timestamp: now }
     );
+
+    // Client-side streak + points update（Cloud Functions が未デプロイでも動作する）
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    const profile = userSnap.data() || {};
+
+    const today   = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let newStreak = profile.streak || 0;
+
+    if (profile.lastActiveDate) {
+      const last    = profile.lastActiveDate instanceof Timestamp
+        ? profile.lastActiveDate.toDate()
+        : new Date(profile.lastActiveDate);
+      const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+      const diffDays = Math.round((today.getTime() - lastDay.getTime()) / 86400000);
+
+      if (diffDays === 0) {
+        // 今日すでに記録済み — streak はそのまま
+      } else if (diffDays <= 3) {
+        // 1〜2日の休息は許容（週2チートデイ）
+        newStreak = (profile.streak || 0) + 1;
+      } else {
+        newStreak = 1; // streak リセット
+      }
+    } else {
+      newStreak = 1; // 初回記録
+    }
+
+    const points = exerciseData.points || 0;
+
+    await updateDoc(userRef, {
+      streak: newStreak,
+      totalPoints: increment(points),
+      lastActiveDate: Timestamp.fromDate(now),
+    });
+
     return docRef.id;
   } catch (error) {
     console.error('Error recording exercise:', error);

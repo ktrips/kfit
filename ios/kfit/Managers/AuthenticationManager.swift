@@ -159,25 +159,63 @@ class AuthenticationManager: ObservableObject {
         ("plank",   "Plank (sec)", 1),
     ]
 
-    // Points, streak, lastActiveDate are updated by Cloud Function after this write
+    // Records exercise and updates streak/points client-side
+    // (Cloud Function will override if deployed)
     func recordExercise(_ exercise: Exercise, reps: Int, formScore: Double = 85.0) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
 
+        let now   = Date()
+        let points = reps * exercise.basePoints
         let data: [String: Any] = [
-            "exerciseId": exercise.id,
+            "exerciseId":   exercise.id as Any,
             "exerciseName": exercise.name,
-            "reps": reps,
-            "points": reps * exercise.basePoints,
-            "formScore": formScore,
-            "timestamp": Date()
+            "reps":         reps,
+            "points":       points,
+            "formScore":    formScore,
+            "timestamp":    now
         ]
 
         do {
             try await db.collection("users").document(userId)
                 .collection("completed-exercises").addDocument(data: data)
+
+            // クライアント側でストリーク・ポイントを更新（Cloud Functions 未デプロイでも動作）
+            await updateStreakAndPoints(userId: userId, points: points, now: now)
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"
         }
+    }
+
+    private func updateStreakAndPoints(userId: String, points: Int, now: Date) async {
+        let userRef = db.collection("users").document(userId)
+        guard let doc = try? await userRef.getDocument(), doc.exists else { return }
+        let profile = doc.data() ?? [:]
+
+        let calendar = Calendar.current
+        let today    = calendar.startOfDay(for: now)
+
+        var newStreak = profile["streak"] as? Int ?? 0
+
+        if let lastTs = profile["lastActiveDate"] as? Timestamp {
+            let lastDay  = calendar.startOfDay(for: lastTs.dateValue())
+            let diffDays = calendar.dateComponents([.day], from: lastDay, to: today).day ?? 0
+
+            if diffDays == 0 {
+                // 同日 — streak はそのまま、ポイントだけ加算
+            } else if diffDays <= 3 {
+                newStreak += 1  // 週2チートデイ許容
+            } else {
+                newStreak = 1   // streak リセット
+            }
+        } else {
+            newStreak = 1       // 初回記録
+        }
+
+        try? await userRef.updateData([
+            "streak":         newStreak,
+            "totalPoints":    FieldValue.increment(Int64(points)),
+            "lastActiveDate": Timestamp(date: now),
+        ])
     }
 
     func getTodayExercises() async -> [CompletedExercise] {
@@ -206,12 +244,14 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Direct record (for WorkoutPlanView)
     func recordExerciseDirect(exerciseId: String, exerciseName: String, reps: Int, points: Int) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
         let data: [String: Any] = [
             "exerciseId": exerciseId, "exerciseName": exerciseName,
-            "reps": reps, "points": points, "formScore": 85.0, "timestamp": Date()
+            "reps": reps, "points": points, "formScore": 85.0, "timestamp": now
         ]
         try? await db.collection("users").document(userId)
             .collection("completed-exercises").addDocument(data: data)
+        await updateStreakAndPoints(userId: userId, points: points, now: now)
     }
 
     // MARK: - History

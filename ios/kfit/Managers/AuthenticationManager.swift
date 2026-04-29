@@ -112,13 +112,48 @@ class AuthenticationManager: ObservableObject {
     private func loadExercises() async {
         do {
             let snapshot = try await db.collection("exercises").getDocuments()
-            self.exercises = try snapshot.documents.compactMap { doc in
-                try doc.data(as: Exercise.self)
+            let loaded = snapshot.documents.compactMap { doc -> Exercise? in
+                try? doc.data(as: Exercise.self)
+            }
+            if loaded.isEmpty {
+                await seedDefaultExercises()
+            } else {
+                self.exercises = loaded
             }
         } catch {
-            errorMessage = "Failed to load exercises: \(error.localizedDescription)"
+            self.exercises = Self.defaultExerciseData.map {
+                Exercise(name: $0.name, basePoints: $0.pts)
+            }
         }
     }
+
+    private func seedDefaultExercises() async {
+        do {
+            for item in Self.defaultExerciseData {
+                try await db.collection("exercises").document(item.id).setData([
+                    "name": item.name,
+                    "basePoints": item.pts,
+                    "difficulty": "medium",
+                    "muscleGroups": []
+                ])
+            }
+            let snapshot = try await db.collection("exercises").getDocuments()
+            self.exercises = snapshot.documents.compactMap { try? $0.data(as: Exercise.self) }
+        } catch {
+            self.exercises = Self.defaultExerciseData.map {
+                Exercise(name: $0.name, basePoints: $0.pts)
+            }
+        }
+    }
+
+    static let defaultExerciseData: [(id: String, name: String, pts: Int)] = [
+        ("pushup",  "Push-up",     2),
+        ("squat",   "Squat",       2),
+        ("situp",   "Sit-up",      1),
+        ("lunge",   "Lunge",       2),
+        ("burpee",  "Burpee",      5),
+        ("plank",   "Plank (sec)", 1),
+    ]
 
     func recordExercise(_ exercise: Exercise, reps: Int, formScore: Double = 85.0) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
@@ -214,16 +249,17 @@ struct UserProfile: Codable {
 struct Exercise: Codable, Identifiable {
     @DocumentID var id: String?
     var name: String
-    var description: String
-    var difficulty: String
-    var muscleGroups: [String]
+    var description: String?
+    var difficulty: String?
+    var muscleGroups: [String]?
     var basePoints: Int
-    var caloriesPerRep: Double
+    var caloriesPerRep: Double?
     var motionProfile: MotionProfile?
     var formTips: [String]?
 
-    enum CodingKeys: String, CodingKey {
-        case id, name, description, difficulty, muscleGroups, basePoints, caloriesPerRep, motionProfile, formTips
+    init(name: String, basePoints: Int) {
+        self.name = name
+        self.basePoints = basePoints
     }
 }
 

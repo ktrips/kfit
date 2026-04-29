@@ -5,7 +5,12 @@ import GoogleSignIn
 @main
 struct kfitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var authManager = AuthenticationManager.shared
+    @StateObject private var authManager: AuthenticationManager
+
+    init() {
+        FirebaseApp.configure()
+        _authManager = StateObject(wrappedValue: AuthenticationManager.shared)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -25,7 +30,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        FirebaseApp.configure()
         return true
     }
 

@@ -24,12 +24,5 @@
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.kfitappduo.app</string>
-	<key>NSMotionUsageDescription</key>
-	<string>kfit uses motion sensors to count exercise reps accurately.</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>accelerometer</string>
-		<string>gyroscope</string>
-	</array>
 </dict>
 </plist>

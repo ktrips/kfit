@@ -8,17 +8,21 @@ struct DashboardView: View {
     @State private var isLoading = true
     @State private var mascotBounce = false
     @State private var showTracker = false
+    @State private var showPlan = false
 
     var body: some View {
-        NavigationView {
-            ZStack(alignment: .bottom) {
-                LinearGradient(
-                    colors: [Color.duoGreen.opacity(0.12), Color.duoBg, Color.duoBg],
-                    startPoint: .top, endPoint: .center
-                ).ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            LinearGradient(
+                colors: [Color.duoGreen.opacity(0.15), Color.duoBg, Color.duoBg],
+                startPoint: .top, endPoint: .center
+            ).ignoresSafeArea()
 
+            VStack(spacing: 0) {
+                topBar
                 if isLoading {
+                    Spacer()
                     loadingView
+                    Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 18) {
@@ -28,43 +32,54 @@ struct DashboardView: View {
                             todayCard
                             Spacer(minLength: 100)
                         }
-                        .padding(.top, 8)
+                        .padding(.top, 12)
                     }
                 }
+            }
 
-                // 記録ボタン（フローティング）
-                if !isLoading {
-                    bottomBar
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
-                        Image("mascot")
-                            .resizable().scaledToFill()
-                            .frame(width: 26, height: 26)
-                            .clipShape(Circle())
-                        Text("DuoFit")
-                            .font(.headline).fontWeight(.black)
-                            .foregroundColor(Color.duoGreen)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { authManager.signOut() } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .sheet(isPresented: $showTracker) {
-                ExerciseTrackerView()
-                    .environmentObject(authManager)
-                    .onDisappear { Task { await loadData() } }
+            if !isLoading {
+                bottomBar
             }
         }
+        .ignoresSafeArea(edges: .top)
+        .fullScreenCover(isPresented: $showTracker) {
+            ExerciseTrackerView()
+                .environmentObject(authManager)
+                .onDisappear { Task { await loadData() } }
+        }
+        .fullScreenCover(isPresented: $showPlan) {
+            WorkoutPlanView()
+                .environmentObject(authManager)
+        }
         .task { await loadData() }
+    }
+
+    // MARK: - トップバー
+    private var topBar: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image("mascot")
+                    .resizable().scaledToFill()
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
+                Text("DuoFit")
+                    .font(.title3).fontWeight(.black)
+                    .foregroundColor(Color.duoGreen)
+            }
+            Spacer()
+            Button { authManager.signOut() } label: {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(8)
+                    .background(Color.white.opacity(0.7))
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 56)
+        .padding(.bottom, 12)
     }
 
     // MARK: - ローディング
@@ -126,12 +141,15 @@ struct DashboardView: View {
         let progress = min(Double(streak) / 90.0, 1.0)
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("90日チャレンジ", systemImage: "flag.fill")
-                    .font(.system(.headline, weight: .black))
-                    .foregroundColor(Color.duoGreen)
+                HStack(spacing: 6) {
+                    Image(systemName: "flag.fill")
+                    Text("90日チャレンジ").fontWeight(.black)
+                }
+                .font(.headline)
+                .foregroundColor(Color.duoGreen)
                 Spacer()
                 Text("\(streak) / 90日")
-                    .font(.system(.subheadline, weight: .bold))
+                    .font(Font.subheadline.weight(.bold))
                     .foregroundColor(Color.duoGreen)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.duoGreen.opacity(0.12))
@@ -163,8 +181,11 @@ struct DashboardView: View {
     // MARK: - 今日のトレーニング
     private var todayCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("今日のトレーニング", systemImage: "calendar.badge.checkmark")
-                .font(.system(.headline, weight: .black))
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.checkmark")
+                Text("今日のトレーニング").fontWeight(.black)
+            }
+            .font(.headline)
 
             if todayExercises.isEmpty {
                 VStack(spacing: 16) {
@@ -178,8 +199,11 @@ struct DashboardView: View {
                         .font(.subheadline).foregroundColor(.secondary)
 
                     Button { showTracker = true } label: {
-                        Label("最初の記録をつける", systemImage: "plus.circle.fill")
-                            .font(.system(.headline, weight: .black))
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("最初の記録をつける").fontWeight(.black)
+                        }
+                        .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -232,21 +256,38 @@ struct DashboardView: View {
     private var bottomBar: some View {
         VStack(spacing: 0) {
             Divider()
-            Button { showTracker = true } label: {
-                Label(todayExercises.isEmpty ? "記録する" : "＋ 追加記録",
-                      systemImage: "plus.circle.fill")
-                    .font(.system(.headline, weight: .black))
+            HStack(spacing: 10) {
+                Button { showPlan = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "list.bullet")
+                        Text("今日のプラン").fontWeight(.black)
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoBlue)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.duoBlue.opacity(0.12))
+                    .cornerRadius(16)
+                }
+
+                Button { showTracker = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text(todayExercises.isEmpty ? "記録する" : "追加記録").fontWeight(.black)
+                    }
+                    .font(.subheadline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 15)
                     .background(
                         LinearGradient(colors: [Color.duoGreen, Color(red: 0.2, green: 0.7, blue: 0.0)],
                                        startPoint: .leading, endPoint: .trailing)
                     )
                     .cornerRadius(16)
                     .shadow(color: Color.duoGreen.opacity(0.4), radius: 6, y: 4)
-                    .padding(.horizontal, 16)
+                }
             }
+            .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.white)
         }
@@ -284,7 +325,7 @@ struct StatCard: View {
         VStack(spacing: 6) {
             Text(icon).font(.title2)
             Text(value)
-                .font(.system(.title3, weight: .black))
+                .font(Font.title3.weight(.black))
                 .foregroundColor(color)
             Text(label)
                 .font(.caption2).foregroundColor(.secondary)

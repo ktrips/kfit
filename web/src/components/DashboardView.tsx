@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
+  onWorkoutPlan?: () => void;
 }
 
 interface CompletedExercise {
@@ -28,7 +29,7 @@ function getExerciseEmoji(name: string): string {
   return '⚡';
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWeeklyGoal }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
@@ -38,7 +39,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWe
   const [todayExercises, setTodayExercises] = useState<CompletedExercise[]>([]);
   const [totalReps, setTotalReps] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number }[]>([]);
+  const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
   const [weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -227,6 +228,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWe
               : `あと ${90 - streak} 日で達成！続けよう！`}
           </p>
         </div>
+
+        {/* 今日のプランバナー */}
+        <button
+          onClick={onWorkoutPlan}
+          className="duo-card p-5 w-full text-left hover:opacity-90 active:scale-[0.98] transition-all"
+          style={{ background: 'linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%)', border: '2px solid rgba(88,204,2,0.25)' }}
+        >
+          <div className="flex items-center gap-4">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0"
+              style={{ background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+            >
+              📋
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-duo-dark text-base">今日のプラン</p>
+              <p className="text-duo-gray font-bold text-xs mt-0.5">
+                筋トレメニュー・有酸素・栄養目標を確認
+              </p>
+            </div>
+            <span className="text-duo-gray text-lg">›</span>
+          </div>
+        </button>
 
       </div>
     </div>

@@ -14,6 +14,7 @@ class AuthenticationManager: ObservableObject {
 
     private let db = Firestore.firestore()
     private var authStateHandle: AuthStateDidChangeListenerHandle?
+    private var profileListener: ListenerRegistration?
 
     init() {
         setupAuthStateListener()
@@ -68,6 +69,8 @@ class AuthenticationManager: ObservableObject {
 
     func signOut() {
         do {
+            profileListener?.remove()
+            profileListener = nil
             try Auth.auth().signOut()
             GIDSignIn.sharedInstance.signOut()
             isSignedIn = false
@@ -101,12 +104,13 @@ class AuthenticationManager: ObservableObject {
     }
 
     private func loadUserProfile(userId: String) async {
-        do {
-            let doc = try await db.collection("users").document(userId).getDocument()
-            self.userProfile = try doc.data(as: UserProfile.self)
-        } catch {
-            errorMessage = "Failed to load user profile: \(error.localizedDescription)"
-        }
+        // Cancel any existing listener before creating a new one
+        profileListener?.remove()
+        profileListener = db.collection("users").document(userId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self, let snapshot, snapshot.exists else { return }
+                self.userProfile = try? snapshot.data(as: UserProfile.self)
+            }
     }
 
     private func loadExercises() async {
@@ -155,50 +159,22 @@ class AuthenticationManager: ObservableObject {
         ("plank",   "Plank (sec)", 1),
     ]
 
+    // Points, streak, lastActiveDate are updated by Cloud Function after this write
     func recordExercise(_ exercise: Exercise, reps: Int, formScore: Double = 85.0) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
 
-        let now = Date()
         let data: [String: Any] = [
             "exerciseId": exercise.id,
             "exerciseName": exercise.name,
             "reps": reps,
             "points": reps * exercise.basePoints,
             "formScore": formScore,
-            "timestamp": now
+            "timestamp": Date()
         ]
 
         do {
             try await db.collection("users").document(userId)
                 .collection("completed-exercises").addDocument(data: data)
-
-            if var profile = userProfile {
-                let earned = reps * exercise.basePoints
-                profile.totalPoints += earned
-
-                let calendar = Calendar.current
-                let today = calendar.startOfDay(for: now)
-                let lastActive = calendar.startOfDay(for: profile.lastActiveDate)
-                let daysDiff = calendar.dateComponents([.day], from: lastActive, to: today).day ?? 0
-
-                switch daysDiff {
-                case 0:
-                    break // 今日すでに運動済み、ストリーク変更なし
-                case 1:
-                    profile.streak += 1 // 昨日から継続
-                default:
-                    profile.streak = 1 // 途切れたのでリセット
-                }
-
-                profile.lastActiveDate = now
-                self.userProfile = profile
-
-                try await db.collection("users").document(userId).updateData([
-                    "totalPoints": profile.totalPoints,
-                    "streak": profile.streak,
-                    "lastActiveDate": now
-                ])
-            }
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"
         }

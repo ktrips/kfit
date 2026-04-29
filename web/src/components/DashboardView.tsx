@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getTodayExercises, getUserProfile, getWeeklyGoals, getWeeklyProgress, getWeekLabel, getActiveDaysElapsed } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
+  onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
@@ -29,7 +30,7 @@ function getExerciseEmoji(name: string): string {
   return '⚡';
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
@@ -128,39 +129,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onLogWorkout, onWe
 
         {/* Today's workouts */}
         <div className="duo-card p-5">
-          <h2 className="text-lg font-black text-duo-dark mb-4">💪 今日のトレーニング</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-black text-duo-dark">💪 今日のトレーニング</h2>
+            {todayExercises.length > 0 && (
+              <button onClick={onLogWorkout} className="text-duo-gray font-bold text-xs hover:text-duo-dark">
+                ＋ 追加
+              </button>
+            )}
+          </div>
 
           {todayExercises.length === 0 ? (
-            <div className="text-center py-8 flex flex-col items-center gap-4">
+            <div className="text-center py-4 flex flex-col items-center gap-4">
               <img src="/mascot.png" alt="mascot" className="w-20 h-20 rounded-full object-cover" />
               <p className="text-duo-gray font-extrabold">まだトレーニングしていません</p>
-              <button onClick={onLogWorkout} className="duo-btn-primary text-base">
-                最初のトレーニングを記録！
+              {/* Big Duolingo-style start button */}
+              <button
+                onClick={onStartWorkout}
+                className="duo-btn-primary text-xl w-full py-5"
+                style={{ borderRadius: '1.25rem', fontSize: '1.25rem' }}
+              >
+                🏋️ 今日のメニューを開始！
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {todayExercises.map((ex) => (
                 <div
                   key={ex.id}
-                  className="flex items-center justify-between rounded-2xl p-4"
+                  className="flex items-center justify-between rounded-2xl p-3"
                   style={{ backgroundColor: '#F7F7F7', border: '2px solid #e5e5e5' }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{getExerciseEmoji(ex.exerciseName)}</span>
+                    <span className="text-xl">{getExerciseEmoji(ex.exerciseName)}</span>
                     <div>
-                      <p className="font-extrabold text-duo-dark">{ex.exerciseName}</p>
-                      <p className="text-duo-gray font-bold text-sm">{ex.reps} reps</p>
+                      <p className="font-extrabold text-duo-dark text-sm">{ex.exerciseName}</p>
+                      <p className="text-duo-gray font-bold text-xs">{ex.reps} reps</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xl font-black" style={{ color: '#CE9700' }}>+{ex.points}</p>
-                    <p className="text-duo-gray font-bold text-xs">XP</p>
-                  </div>
+                  <p className="text-lg font-black" style={{ color: '#CE9700' }}>+{ex.points} XP</p>
                 </div>
               ))}
-              <button onClick={onLogWorkout} className="duo-btn-secondary w-full text-base mt-2">
-                ＋ もっとトレーニングする
+              {/* Continue button after first round */}
+              <button
+                onClick={onStartWorkout}
+                className="duo-btn-primary w-full text-base mt-1"
+              >
+                🔄 もう一周する
               </button>
             </div>
           )}

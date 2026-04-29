@@ -242,7 +242,7 @@ private struct DetailSheet: View {
                     Text("記録完了！").font(.title2).fontWeight(.black).foregroundColor(Color.duoGreen)
                     Text("+\(pts) XP 獲得！")
                         .font(.headline).fontWeight(.black)
-                        .foregroundColor(Color.duoYellow)
+                        .foregroundColor(Color.duoGold)
                 }
                 .padding(.top, 40)
             } else {
@@ -274,7 +274,7 @@ private struct DetailSheet: View {
                 }
 
                 Text("+\(pts) XP")
-                    .font(.title3).fontWeight(.black).foregroundColor(Color.duoYellow)
+                    .font(.title3).fontWeight(.black).foregroundColor(Color.duoGold)
 
                 Button {
                     Task {

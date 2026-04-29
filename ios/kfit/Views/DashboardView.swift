@@ -128,7 +128,7 @@ struct DashboardView: View {
                 .foregroundColor(.white)
             Text(label)
                 .font(.caption2)
-                .foregroundColor(Color.white.opacity(0.75))
+                .foregroundColor(Color.white.opacity(0.92))
         }
         .frame(maxWidth: .infinity)
     }
@@ -222,9 +222,9 @@ struct DashboardView: View {
                             Spacer()
                             Text("+\(ex.points) XP")
                                 .font(.subheadline).fontWeight(.black)
-                                .foregroundColor(Color.duoYellow)
+                                .foregroundColor(Color.duoGold)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Color.duoYellow.opacity(0.15))
+                                .background(Color.duoYellow.opacity(0.22))
                                 .cornerRadius(10)
                         }
                         .padding(12)
@@ -281,11 +281,11 @@ struct DashboardView: View {
             Text(icon).font(.title2)
             Text(label)
                 .font(.caption2).fontWeight(.bold)
-                .foregroundColor(.secondary)
+                .foregroundColor(Color.duoDark)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(color.opacity(0.08))
+        .background(color.opacity(0.12))
         .cornerRadius(14)
     }
 

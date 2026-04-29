@@ -16,26 +16,28 @@ struct HistoryView: View {
             Color.duoBg.ignoresSafeArea()
 
             Group {
-            if isLoading {
+                if isLoading {
                     VStack(spacing: 16) {
                         Image("mascot")
                             .resizable().scaledToFit().frame(width: 72, height: 72)
                             .clipShape(Circle())
                         Text("読み込み中...")
-                            .foregroundColor(.secondary).font(.subheadline)
+                            .foregroundColor(Color.duoDark).font(.subheadline).fontWeight(.medium)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if history.isEmpty {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         Image("mascot")
                             .resizable().scaledToFit().frame(width: 80, height: 80)
                             .clipShape(Circle()).opacity(0.7)
                         Text("まだトレーニング記録がありません")
-                            .foregroundColor(.secondary).font(.subheadline)
+                            .foregroundColor(Color.duoDark).font(.subheadline).fontWeight(.semibold)
                         Text("トレーニングを記録するとここに表示されます")
-                            .foregroundColor(.secondary).font(.caption)
+                            .foregroundColor(Color.duoSubtitle).font(.caption)
                             .multilineTextAlignment(.center)
                     }
                     .padding(40)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
@@ -46,9 +48,11 @@ struct HistoryView: View {
                         }
                         .padding(.top, 8)
                         .padding(.horizontal, 20)
+                        .frame(maxWidth: .infinity)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("📅 履歴")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -72,7 +76,7 @@ struct HistoryView: View {
                     HStack(spacing: 4) {
                         Text("⭐")
                         Text("+\(day.totalPoints) XP")
-                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoYellow)
+                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGold)
                     }
                 }
             }
@@ -92,17 +96,18 @@ struct HistoryView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(ex.exerciseName)
                                 .font(.subheadline).fontWeight(.semibold)
+                                .foregroundColor(Color.duoDark)
                             Text("\(ex.reps) rep")
-                                .font(.caption).foregroundColor(.secondary)
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
                         }
 
                         Spacer()
 
                         Text("+\(ex.points) XP")
                             .font(.caption).fontWeight(.bold)
-                            .foregroundColor(Color.duoYellow)
+                            .foregroundColor(Color.duoGold)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.duoYellow.opacity(0.15))
+                            .background(Color.duoYellow.opacity(0.22))
                             .cornerRadius(6)
                     }
                 }

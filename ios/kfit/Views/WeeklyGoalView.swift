@@ -16,15 +16,15 @@ struct WeeklyGoalView: View {
         ZStack {
             Color.duoBg.ignoresSafeArea()
             Group {
-
                 if isLoading {
                     VStack(spacing: 16) {
                         Image("mascot")
                             .resizable().scaledToFit().frame(width: 72, height: 72)
                             .clipShape(Circle())
                         Text("読み込み中...")
-                            .foregroundColor(.secondary).font(.subheadline)
+                            .foregroundColor(Color.duoDark).font(.subheadline).fontWeight(.medium)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
@@ -77,9 +77,9 @@ struct WeeklyGoalView: View {
                 VStack(spacing: 16) {
                     Image("mascot")
                         .resizable().scaledToFit().frame(width: 80, height: 80)
-                        .clipShape(Circle()).opacity(0.7)
+                        .clipShape(Circle()).opacity(0.8)
                     Text("週間目標が設定されていません")
-                        .foregroundColor(.secondary).font(.subheadline)
+                        .foregroundColor(Color.duoDark).font(.subheadline).fontWeight(.semibold)
                     Button(action: startEditing) {
                         Text("目標を設定する")
                             .font(.headline).foregroundColor(.white)
@@ -111,7 +111,7 @@ struct WeeklyGoalView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("週間達成率")
-                    .font(.headline).fontWeight(.bold)
+                    .font(.headline).fontWeight(.bold).foregroundColor(Color.duoDark)
                 Spacer()
                 Text("\(Int(pct * 100))%")
                     .font(.title3).fontWeight(.black)
@@ -119,7 +119,7 @@ struct WeeklyGoalView: View {
             }
             progressBar(value: pct, color: pct >= 1 ? Color.duoGreen : Color.duoBlue)
             Text("\(totalDone) / \(totalExpected) rep（\(activeDaysElapsed())日経過）")
-                .font(.caption).foregroundColor(.secondary)
+                .font(.caption).foregroundColor(Color.duoSubtitle)
         }
         .padding(20)
         .background(Color.white).cornerRadius(16)
@@ -135,15 +135,15 @@ struct WeeklyGoalView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(goal.exerciseName)
-                    .font(.subheadline).fontWeight(.bold)
+                    .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
                 Spacer()
                 Text("\(done) / \(expected)")
                     .font(.caption).fontWeight(.bold)
-                    .foregroundColor(pct >= 1 ? Color.duoGreen : .secondary)
+                    .foregroundColor(pct >= 1 ? Color.duoGreen : Color.duoSubtitle)
             }
             progressBar(value: pct, color: pct >= 1 ? Color.duoGreen : Color.duoBlue)
             Text("1日 \(goal.dailyReps) rep・週合計目標 \(goal.targetReps) rep")
-                .font(.caption2).foregroundColor(.secondary)
+                .font(.caption2).foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
         .background(Color.white).cornerRadius(14)
@@ -155,7 +155,7 @@ struct WeeklyGoalView: View {
     private var editSection: some View {
         VStack(spacing: 12) {
             Text("各種目の1日目標 rep 数を設定してください")
-                .font(.caption).foregroundColor(.secondary)
+                .font(.caption).fontWeight(.medium).foregroundColor(Color.duoSubtitle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
 
@@ -172,9 +172,9 @@ struct WeeklyGoalView: View {
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
-                    .font(.subheadline).fontWeight(.bold)
+                    .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
                 Text("\(current * activeDays) rep / 週")
-                    .font(.caption2).foregroundColor(.secondary)
+                    .font(.caption2).foregroundColor(Color.duoSubtitle)
             }
             Spacer()
 

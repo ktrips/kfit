@@ -8,7 +8,6 @@ struct DashboardView: View {
     @State private var isLoading = true
     @State private var mascotBounce = false
     @State private var showTracker = false
-    @State private var showPlan = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -37,19 +36,12 @@ struct DashboardView: View {
                 }
             }
 
-            if !isLoading {
-                bottomBar
-            }
         }
         .ignoresSafeArea(edges: .top)
         .fullScreenCover(isPresented: $showTracker) {
             ExerciseTrackerView()
                 .environmentObject(authManager)
                 .onDisappear { Task { await loadData() } }
-        }
-        .fullScreenCover(isPresented: $showPlan) {
-            WorkoutPlanView()
-                .environmentObject(authManager)
         }
         .task { await loadData() }
     }
@@ -201,7 +193,7 @@ struct DashboardView: View {
                     Button { showTracker = true } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "plus.circle.fill")
-                            Text("最初の記録をつける").fontWeight(.black)
+                            Text("記録する").fontWeight(.black)
                         }
                         .font(.headline)
                             .foregroundColor(.white)
@@ -252,46 +244,6 @@ struct DashboardView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - 下部バー
-    private var bottomBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 10) {
-                Button { showPlan = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "list.bullet")
-                        Text("今日のプラン").fontWeight(.black)
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(Color.duoBlue)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Color.duoBlue.opacity(0.12))
-                    .cornerRadius(16)
-                }
-
-                Button { showTracker = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                        Text(todayExercises.isEmpty ? "記録する" : "追加記録").fontWeight(.black)
-                    }
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(
-                        LinearGradient(colors: [Color.duoGreen, Color(red: 0.2, green: 0.7, blue: 0.0)],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                    .cornerRadius(16)
-                    .shadow(color: Color.duoGreen.opacity(0.4), radius: 6, y: 4)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.white)
-        }
-    }
 
     private func emojiFor(_ name: String) -> String {
         let key = name.lowercased().replacingOccurrences(of: " ", with: "")

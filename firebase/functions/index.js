@@ -5,7 +5,8 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ===== POINTS CALCULATION =====
-// Triggered when a user completes an exercise
+// Single source of truth: triggered when any exercise is recorded (web or iOS)
+// Handles base points + form bonus + streak bonus + first-exercise-of-day bonus
 exports.calculatePoints = functions.firestore
   .document('users/{userId}/completed-exercises/{exerciseId}')
   .onCreate(async (snap, context) => {
@@ -13,78 +14,83 @@ exports.calculatePoints = functions.firestore
     const exerciseData = snap.data();
 
     try {
-      // Get exercise definition
-      const exerciseRef = db.collection('exercises').doc(exerciseData.exerciseId);
-      const exerciseDoc = await exerciseRef.get();
-
+      // Get exercise definition for basePoints
+      const exerciseDoc = await db.collection('exercises').doc(exerciseData.exerciseId).get();
       if (!exerciseDoc.exists) {
         console.error(`Exercise ${exerciseData.exerciseId} not found`);
         return null;
       }
-
       const exercise = exerciseDoc.data();
 
-      // Calculate base points
+      // ── Base points ──────────────────────────────────────────────────────────
       let points = exerciseData.reps * exercise.basePoints;
 
-      // Apply form bonus: +10% for perfect form (formScore >= 90)
+      // ── Form bonus: +10% if formScore >= 90 (iOS motion sensor) ─────────────
       if (exerciseData.formScore && exerciseData.formScore >= 90) {
         points = Math.round(points * 1.1);
       }
 
-      // Get current user profile for streak bonus
+      // ── Streak calculation ────────────────────────────────────────────────────
       const userRef = db.collection('users').doc(userId);
       const userDoc = await userRef.get();
-      const userProfile = userDoc.data();
-      const currentStreak = userProfile.streak || 0;
+      const profile = userDoc.data() || {};
 
-      // Apply streak bonus: +5% per consecutive day (max 50%)
-      const streakMultiplier = Math.min(1 + (currentStreak * 0.05), 1.5);
+      const now = exerciseData.timestamp?.toDate
+        ? exerciseData.timestamp.toDate()
+        : new Date();
+
+      let newStreak = profile.streak || 0;
+      if (profile.lastActiveDate) {
+        const last = profile.lastActiveDate.toDate
+          ? profile.lastActiveDate.toDate()
+          : new Date(profile.lastActiveDate);
+        const today    = new Date(now.getFullYear(),  now.getMonth(),  now.getDate());
+        const lastDay  = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+        const diffDays = Math.round((today - lastDay) / 86400000);
+
+        if (diffDays === 0) {
+          // Already exercised today — keep current streak
+        } else if (diffDays <= 3) {
+          // 1 active day elapsed, gap of 0-2 days = within 2 cheat days/week allowance
+          newStreak = (profile.streak || 0) + 1;
+        } else {
+          newStreak = 1; // Streak broken (missed more than 2 days in a row)
+        }
+      } else {
+        newStreak = 1; // First ever exercise
+      }
+
+      // ── Streak bonus: +5% per consecutive day (max +50%) ─────────────────────
+      const streakMultiplier = Math.min(1 + newStreak * 0.05, 1.5);
       points = Math.round(points * streakMultiplier);
 
-      // Check if this is first exercise of the day (20% bonus)
-      const today = new Date().toISOString().split('T')[0];
-      const todayExercises = await db
-        .collection('users')
-        .doc(userId)
+      // ── First-exercise-of-day bonus: +20% ─────────────────────────────────────
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+      const todaySnapshot = await db
+        .collection('users').doc(userId)
         .collection('completed-exercises')
-        .where('timestamp', '>=', new Date(`${today}T00:00:00Z`))
+        .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+        .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
         .get();
 
-      if (todayExercises.size === 1) {
-        // This is the first exercise of the day
+      if (todaySnapshot.size === 1) {
+        // This document is the only one today → first exercise of day
         points = Math.round(points * 1.2);
       }
 
-      // Add daily goal completion check
-      const dailyGoalRef = db
-        .collection('users')
-        .doc(userId)
-        .collection('daily-goals')
-        .where('exerciseId', '==', exerciseData.exerciseId)
-        .where('date', '==', today);
-
-      const dailyGoalDocs = await dailyGoalRef.get();
-      let goalCompletionBonus = 0;
-      if (!dailyGoalDocs.empty) {
-        const goalDoc = dailyGoalDocs.docs[0];
-        const goal = goalDoc.data();
-        if (goal.completedReps + exerciseData.reps >= goal.targetReps) {
-          goalCompletionBonus = 100;
-        }
-      }
-
-      // Update user profile with new total points
-      const newTotalPoints = (userProfile.totalPoints || 0) + points + goalCompletionBonus;
+      // ── Write to Firestore (increment to avoid race conditions) ───────────────
       await userRef.update({
-        totalPoints: newTotalPoints,
-        lastActiveDate: admin.firestore.Timestamp.now(),
+        totalPoints: admin.firestore.FieldValue.increment(points),
+        streak: newStreak,
+        lastActiveDate: admin.firestore.Timestamp.fromDate(now),
       });
 
-      console.log(
-        `Points calculated for user ${userId}: ${points} points (streak: ${currentStreak}x)`
-      );
+      // Store actual earned points back on the exercise record for history display
+      await snap.ref.update({ pointsEarned: points });
 
+      console.log(`[calculatePoints] user=${userId} base=${exerciseData.reps * exercise.basePoints} earned=${points} streak=${newStreak}`);
       return null;
     } catch (error) {
       console.error('Error calculating points:', error);
@@ -92,65 +98,39 @@ exports.calculatePoints = functions.firestore
     }
   });
 
-// ===== STREAK TRACKING =====
-// Runs daily at 11:59 PM UTC to update streaks
-exports.updateStreaks = functions.pubsub.schedule('every day 23:59').onRun(
-  async (context) => {
-    try {
-      const now = new Date();
-      const yesterday = new Date(now.getTime() - 86400000); // 24 hours ago
-      const yesterdayDate = yesterday.toISOString().split('T')[0];
+// ===== STREAK RESET (daily safety net) =====
+// Only resets streaks for users who missed yesterday — increment is handled above
+exports.updateStreaks = functions.pubsub.schedule('every day 23:59').onRun(async () => {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-      // Get all users
-      const usersSnapshot = await db.collection('users').get();
+    const usersSnapshot = await db.collection('users').get();
 
-      for (const userDoc of usersSnapshot.docs) {
-        const userId = userDoc.id;
-        const userProfile = userDoc.data();
-        const lastActiveDate = userProfile.lastActiveDate?.toDate?.();
+    for (const userDoc of usersSnapshot.docs) {
+      const profile = userDoc.data();
+      if (!profile.lastActiveDate) continue;
 
-        // Check if user exercised yesterday
-        const yesterdayExercises = await db
-          .collection('users')
-          .doc(userId)
-          .collection('completed-exercises')
-          .where('timestamp', '>=', new Date(`${yesterdayDate}T00:00:00Z`))
-          .where('timestamp', '<', new Date(`${yesterdayDate}T23:59:59Z`))
-          .limit(1)
-          .get();
+      const last = profile.lastActiveDate.toDate
+        ? profile.lastActiveDate.toDate()
+        : new Date(profile.lastActiveDate);
+      const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+      const diffDays = Math.round((todayStart - lastDay) / 86400000);
 
-        if (!yesterdayExercises.empty) {
-          // User exercised yesterday, increment streak
-          const newStreak = (userProfile.streak || 0) + 1;
-          const streakBonus = Math.min(newStreak * 10, 100); // Bonus points for streak milestone
-
-          await userDoc.ref.update({
-            streak: newStreak,
-            lastStreakDate: admin.firestore.Timestamp.fromDate(yesterday),
-            totalPoints: (userProfile.totalPoints || 0) + streakBonus,
-          });
-
-          console.log(`User ${userId} streak updated to ${newStreak}`);
-        } else {
-          // User didn't exercise yesterday, reset streak
-          await userDoc.ref.update({
-            streak: 0,
-          });
-
-          console.log(`User ${userId} streak reset`);
-        }
+      // Reset only if gap exceeds 3 days (more than 2 cheat days)
+      if (diffDays >= 4 && (profile.streak || 0) > 0) {
+        await userDoc.ref.update({ streak: 0 });
+        console.log(`[updateStreaks] reset streak for user ${userDoc.id}`);
       }
-
-      return null;
-    } catch (error) {
-      console.error('Error updating streaks:', error);
-      throw error;
     }
+    return null;
+  } catch (error) {
+    console.error('Error updating streaks:', error);
+    throw error;
   }
-);
+});
 
 // ===== ACHIEVEMENT CHECKING =====
-// Triggered when user profile is updated or exercise completed
 exports.checkAchievements = functions.firestore
   .document('users/{userId}/completed-exercises/{exerciseDoc}')
   .onCreate(async (snap, context) => {
@@ -161,30 +141,23 @@ exports.checkAchievements = functions.firestore
       const userDoc = await userRef.get();
       const userProfile = userDoc.data();
 
-      // Get all completed exercises for this user
       const allExercises = await userRef.collection('completed-exercises').get();
       const achievementsRef = userRef.collection('achievements');
 
-      // Get already earned achievements
       const earnedAchievements = await achievementsRef.get();
-      const earnedAchievementIds = new Set(earnedAchievements.docs.map((d) => d.id));
+      const earnedIds = new Set(earnedAchievements.docs.map((d) => d.id));
 
-      // Define achievements
       const achievementsList = [
         {
           id: 'early_bird',
           name: 'Early Bird',
-          description: 'Complete 10 workouts before 9 AM',
+          description: '9時前に10回トレーニング達成',
           check: async () => {
-            const earlyWorkouts = await userRef
-              .collection('completed-exercises')
-              .where('timestamp', '>=', new Date('2024-01-01T00:00:00Z'))
-              .get();
-
+            const docs = await userRef.collection('completed-exercises').get();
             let count = 0;
-            earlyWorkouts.forEach((doc) => {
-              const time = doc.data().timestamp.toDate();
-              if (time.getHours() < 9) count++;
+            docs.forEach((doc) => {
+              const t = doc.data().timestamp?.toDate?.();
+              if (t && t.getHours() < 9) count++;
             });
             return count >= 10;
           },
@@ -192,86 +165,78 @@ exports.checkAchievements = functions.firestore
         {
           id: 'form_master',
           name: 'Form Master',
-          description: '50 perfect-form exercises',
+          description: 'フォームスコア90以上を50回達成',
           check: async () => {
-            let perfectFormCount = 0;
+            let n = 0;
             allExercises.forEach((doc) => {
-              if (doc.data().formScore >= 90) perfectFormCount++;
+              if (doc.data().formScore >= 90) n++;
             });
-            return perfectFormCount >= 50;
+            return n >= 50;
           },
         },
         {
           id: 'iron_will',
           name: 'Iron Will',
-          description: '30-day streak',
-          check: async () => userProfile.streak >= 30,
+          description: '30日連続達成',
+          check: async () => (userProfile.streak || 0) >= 30,
         },
         {
           id: 'century_club',
           name: 'Century Club',
-          description: '100+ reps in one day',
+          description: '1日100rep以上',
           check: async () => {
-            const today = new Date().toISOString().split('T')[0];
-            const todayExercises = await userRef
-              .collection('completed-exercises')
-              .where('timestamp', '>=', new Date(`${today}T00:00:00Z`))
+            const now = snap.data().timestamp?.toDate?.() || new Date();
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+            const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+            const docs = await userRef.collection('completed-exercises')
+              .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(start))
+              .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(end))
               .get();
-
-            let totalReps = 0;
-            todayExercises.forEach((doc) => {
-              totalReps += doc.data().reps;
-            });
-            return totalReps >= 100;
+            let total = 0;
+            docs.forEach((d) => { total += d.data().reps || 0; });
+            return total >= 100;
           },
         },
         {
           id: 'pushup_master',
           name: 'Push Master',
-          description: '500 push-ups total',
+          description: 'プッシュアップ累計500rep',
           check: async () => {
-            let totalPushups = 0;
-            allExercises.forEach((doc) => {
-              if (doc.data().exerciseId === 'pushup') {
-                totalPushups += doc.data().reps;
-              }
+            let n = 0;
+            allExercises.forEach((d) => {
+              if (d.data().exerciseId === 'pushup') n += d.data().reps || 0;
             });
-            return totalPushups >= 500;
+            return n >= 500;
           },
         },
         {
           id: 'squat_destroyer',
           name: 'Quad Destroyer',
-          description: '500 squats total',
+          description: 'スクワット累計500rep',
           check: async () => {
-            let totalSquats = 0;
-            allExercises.forEach((doc) => {
-              if (doc.data().exerciseId === 'squat') {
-                totalSquats += doc.data().reps;
-              }
+            let n = 0;
+            allExercises.forEach((d) => {
+              if (d.data().exerciseId === 'squat') n += d.data().reps || 0;
             });
-            return totalSquats >= 500;
+            return n >= 500;
           },
         },
         {
           id: 'situp_master',
           name: 'Core Strength',
-          description: '500 sit-ups total',
+          description: 'シットアップ累計500rep',
           check: async () => {
-            let totalSitups = 0;
-            allExercises.forEach((doc) => {
-              if (doc.data().exerciseId === 'situp') {
-                totalSitups += doc.data().reps;
-              }
+            let n = 0;
+            allExercises.forEach((d) => {
+              if (d.data().exerciseId === 'situp') n += d.data().reps || 0;
             });
-            return totalSitups >= 500;
+            return n >= 500;
           },
         },
       ];
 
-      // Check each achievement
       for (const achievement of achievementsList) {
-        if (!earnedAchievementIds.has(achievement.id)) {
+        if (!earnedIds.has(achievement.id)) {
           const isEarned = await achievement.check();
           if (isEarned) {
             await achievementsRef.doc(achievement.id).set({
@@ -280,8 +245,7 @@ exports.checkAchievements = functions.firestore
               earnedDate: admin.firestore.Timestamp.now(),
               tier: 'gold',
             });
-
-            console.log(`Achievement unlocked for user ${userId}: ${achievement.id}`);
+            console.log(`[checkAchievements] unlocked ${achievement.id} for user ${userId}`);
           }
         }
       }
@@ -294,89 +258,68 @@ exports.checkAchievements = functions.firestore
   });
 
 // ===== LEADERBOARD AGGREGATION =====
-// Runs weekly on Sunday at 11:59 PM UTC
 exports.generateWeeklyLeaderboard = functions.pubsub
   .schedule('every sunday 23:59')
   .timeZone('UTC')
-  .onRun(async (context) => {
+  .onRun(async () => {
     try {
       const now = new Date();
       const weekNumber = getWeekNumber(now);
-      const year = now.getFullYear();
-      const period = `week-${year}-${String(weekNumber).padStart(2, '0')}`;
+      const period = `week-${now.getFullYear()}-${String(weekNumber).padStart(2, '0')}`;
 
-      // Get all users
       const usersSnapshot = await db.collection('users').get();
-      const leaderboardEntries = [];
+      const entries = [];
 
-      // Calculate points for each user this week
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const userProfile = userDoc.data();
-
-        // Get exercises completed this week
+        const profile = userDoc.data();
         const weekStart = getWeekStart(now);
-        const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+        const weekEnd   = new Date(weekStart.getTime() + 7 * 86400000);
 
-        const weekExercises = await db
-          .collection('users')
-          .doc(userId)
+        const weekDocs = await db
+          .collection('users').doc(userId)
           .collection('completed-exercises')
           .where('timestamp', '>=', weekStart)
           .where('timestamp', '<', weekEnd)
           .get();
 
         let weeklyPoints = 0;
-        weekExercises.forEach((doc) => {
-          weeklyPoints += doc.data().points || 0;
-        });
+        weekDocs.forEach((d) => { weeklyPoints += d.data().pointsEarned || d.data().points || 0; });
 
         if (weeklyPoints > 0) {
-          leaderboardEntries.push({
-            userId,
-            username: userProfile.username,
-            points: weeklyPoints,
-            timestamp: admin.firestore.Timestamp.now(),
-          });
+          entries.push({ userId, username: profile.username, points: weeklyPoints });
         }
       }
 
-      // Sort and rank
-      leaderboardEntries.sort((a, b) => b.points - a.points);
+      entries.sort((a, b) => b.points - a.points);
 
-      // Store leaderboard
       const leaderboardRef = db.collection('leaderboards').doc(period);
       const batch = db.batch();
 
-      for (let i = 0; i < leaderboardEntries.length; i++) {
-        const entry = leaderboardEntries[i];
+      for (let i = 0; i < entries.length; i++) {
         const rank = i + 1;
+        let bonus = 0;
+        if (rank === 1) bonus = 500;
+        else if (rank === 2) bonus = 300;
+        else if (rank === 3) bonus = 200;
+        else if (rank <= 10) bonus = 50;
 
-        // Award bonus points to top 10
-        let bonusPoints = 0;
-        if (rank === 1) bonusPoints = 500;
-        else if (rank === 2) bonusPoints = 300;
-        else if (rank === 3) bonusPoints = 200;
-        else if (rank <= 10) bonusPoints = 50;
-
-        // Add to leaderboard
-        batch.set(leaderboardRef.collection('entries').doc(entry.userId), {
-          ...entry,
+        batch.set(leaderboardRef.collection('entries').doc(entries[i].userId), {
+          ...entries[i],
           rank,
-          bonusPoints,
+          bonusPoints: bonus,
+          timestamp: admin.firestore.Timestamp.now(),
         });
 
-        // Add bonus points to user profile
-        if (bonusPoints > 0) {
-          batch.update(db.collection('users').doc(entry.userId), {
-            totalPoints: admin.firestore.FieldValue.increment(bonusPoints),
+        if (bonus > 0) {
+          batch.update(db.collection('users').doc(entries[i].userId), {
+            totalPoints: admin.firestore.FieldValue.increment(bonus),
           });
         }
       }
 
       await batch.commit();
-      console.log(`Leaderboard generated for ${period}`);
-
+      console.log(`[leaderboard] generated ${period}`);
       return null;
     } catch (error) {
       console.error('Error generating leaderboard:', error);
@@ -384,16 +327,16 @@ exports.generateWeeklyLeaderboard = functions.pubsub
     }
   });
 
-// ===== UTILITY FUNCTIONS =====
+// ===== UTILITY =====
 function getWeekNumber(date) {
-  const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-  const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
-  return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+  const start = new Date(date.getFullYear(), 0, 1);
+  return Math.ceil(((date - start) / 86400000 + start.getDay() + 1) / 7);
 }
 
 function getWeekStart(date) {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
+  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
 }

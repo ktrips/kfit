@@ -23,7 +23,8 @@ struct DashboardView: View {
                         VStack(spacing: 16) {
                             challengeCard
                             todayCard
-                            Spacer(minLength: 80)
+                            quickMenu
+                            Spacer(minLength: 40)
                         }
                         .padding(16)
                         .padding(.top, 8)
@@ -249,6 +250,43 @@ struct DashboardView: View {
         .background(Color.white)
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
+    }
+
+    // MARK: - クイックメニュー
+    private var quickMenu: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("メニュー")
+                .font(.headline).fontWeight(.black)
+
+            HStack(spacing: 10) {
+                NavigationLink(destination: WeeklyGoalView().environmentObject(authManager)) {
+                    quickMenuItem(icon: "🎯", label: "週間目標", color: Color.duoGreen)
+                }
+                NavigationLink(destination: HistoryView().environmentObject(authManager)) {
+                    quickMenuItem(icon: "📅", label: "履歴", color: Color.duoBlue)
+                }
+                NavigationLink(destination: HelpView()) {
+                    quickMenuItem(icon: "❓", label: "ヘルプ", color: Color.duoOrange)
+                }
+            }
+        }
+        .padding(18)
+        .background(Color.white)
+        .cornerRadius(20)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
+    }
+
+    private func quickMenuItem(icon: String, label: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(icon).font(.title2)
+            Text(label)
+                .font(.caption2).fontWeight(.bold)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(color.opacity(0.08))
+        .cornerRadius(14)
     }
 
     private func emojiFor(_ name: String) -> String {

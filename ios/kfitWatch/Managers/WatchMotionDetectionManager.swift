@@ -129,15 +129,28 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
 }
 
 enum ExerciseType: String, CaseIterable {
-    case pushup = "Push-ups"
-    case squat = "Squats"
-    case situp = "Sit-ups"
+    case pushup = "Push-up"
+    case squat  = "Squat"
+    case situp  = "Sit-up"
+    case lunge  = "Lunge"
+    case burpee = "Burpee"
+    // plank は時間計測のため除外
 
     var icon: String {
         switch self {
         case .pushup: return "💪"
-        case .squat: return "🦵"
-        case .situp: return "🏋️"
+        case .squat:  return "🏋️"
+        case .situp:  return "🔥"
+        case .lunge:  return "🦵"
+        case .burpee: return "⚡"
+        }
+    }
+
+    var xpPerRep: Int {
+        switch self {
+        case .pushup, .squat, .lunge: return 2
+        case .situp:                  return 1
+        case .burpee:                 return 5
         }
     }
 }

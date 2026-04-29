@@ -109,8 +109,31 @@ class MotionDetectionManager: NSObject, ObservableObject {
     }
 }
 
-enum ExerciseType: String {
-    case pushup
-    case squat
-    case situp
+enum ExerciseType: String, CaseIterable {
+    case pushup  = "pushup"
+    case squat   = "squat"
+    case situp   = "situp"
+    case lunge   = "lunge"
+    case burpee  = "burpee"
+    // plank は時間計測のため除外
+
+    /// Firestore の exerciseId / 名前から最近似の ExerciseType を返す
+    static func from(exerciseId: String) -> ExerciseType {
+        let id = exerciseId.lowercased()
+        if id.contains("squat")  { return .squat  }
+        if id.contains("sit")    { return .situp  }
+        if id.contains("lunge")  { return .lunge  }
+        if id.contains("burpee") { return .burpee }
+        return .pushup  // push-up / その他のデフォルト
+    }
+
+    var icon: String {
+        switch self {
+        case .pushup: return "💪"
+        case .squat:  return "🏋️"
+        case .situp:  return "🔥"
+        case .lunge:  return "🦵"
+        case .burpee: return "⚡"
+        }
+    }
 }

@@ -12,19 +12,35 @@ private func emoji(for name: String) -> String {
     return "🏃"
 }
 
+private func isPlank(_ exercise: Exercise?) -> Bool {
+    let id = (exercise?.id ?? exercise?.name ?? "").lowercased()
+    return id.contains("plank")
+}
+
 struct ExerciseTrackerView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var motionManager = MotionDetectionManager()
+
     @State private var selectedExercise: Exercise?
+    /// true = 手動 +/- モード、false = モーション検出（デフォルト）
+    @State private var isManualMode = false
     @State private var manualRepCount = 0
-    @State private var isUsingMotionDetection = false
+    /// プランク用タイマー（秒）
+    @State private var plankSeconds = 0
+    @State private var plankTimer: Timer?
+
     @State private var showCelebration = false
     @State private var earnedXP = 0
     @State private var isSubmitting = false
+    @State private var pulseAnimation = false
+
     @Environment(\.dismiss) var dismiss
 
+    private var isPlankSelected: Bool { isPlank(selectedExercise) }
+
     private var currentReps: Int {
-        isUsingMotionDetection ? motionManager.repCount : manualRepCount
+        if isPlankSelected { return plankSeconds }
+        return isManualMode ? manualRepCount : motionManager.repCount
     }
 
     var body: some View {
@@ -54,7 +70,13 @@ struct ExerciseTrackerView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .onDisappear { motionManager.stopDetection() }
+        .onChange(of: selectedExercise?.id) { _ in
+            onExerciseChanged()
+        }
+        .onDisappear {
+            motionManager.stopDetection()
+            stopPlankTimer()
+        }
     }
 
     // MARK: - ヘッダー
@@ -102,7 +124,11 @@ struct ExerciseTrackerView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 ForEach(authManager.exercises) { exercise in
                     let selected = selectedExercise?.id == exercise.id
-                    Button { withAnimation(.spring(response: 0.3)) { selectedExercise = exercise } } label: {
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            selectedExercise = exercise
+                        }
+                    } label: {
                         VStack(spacing: 6) {
                             Text(emoji(for: exercise.name))
                                 .font(.system(size: 32))
@@ -132,16 +158,42 @@ struct ExerciseTrackerView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 6, y: 2)
     }
 
-    // MARK: - Rep カウンター
+    // MARK: - Repカウンター
     private var repCounter: some View {
         VStack(spacing: 16) {
-            // 大きなRep表示
+            // モードバッジ
+            HStack(spacing: 6) {
+                if isPlankSelected {
+                    Image(systemName: "timer")
+                        .font(.caption).foregroundColor(Color.duoBlue)
+                    Text("タイマーモード（プランク）")
+                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoBlue)
+                } else if isManualMode {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.caption).foregroundColor(Color.duoOrange)
+                    Text("手動入力モード")
+                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoOrange)
+                } else {
+                    Image(systemName: "sensor.tag.radiowaves.forward.fill")
+                        .font(.caption).foregroundColor(Color.duoGreen)
+                        .scaleEffect(pulseAnimation ? 1.15 : 1.0)
+                        .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true),
+                                   value: pulseAnimation)
+                    Text("モーション検出中")
+                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
+            // 大きなカウント表示
             VStack(spacing: 4) {
                 Text("\(currentReps)")
                     .font(.system(size: 80, weight: .black, design: .rounded))
                     .foregroundColor(currentReps > 0 ? Color.duoGreen : Color(.systemGray3))
                     .animation(.spring(), value: currentReps)
-                Text("reps")
+                    .contentTransition(.numericText())
+                Text(isPlankSelected ? "秒" : "reps")
                     .font(.title3).fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
             }
@@ -152,8 +204,24 @@ struct ExerciseTrackerView: View {
                     .fill(currentReps > 0 ? Color.duoGreen.opacity(0.08) : Color(.systemGray6))
             )
 
-            // ＋／－ボタン（手動モード）
-            if !isUsingMotionDetection {
+            // モーション中：フォームスコア
+            if !isManualMode && !isPlankSelected && motionManager.isDetecting {
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("フォームスコア")
+                            .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                        Text("\(Int(motionManager.formScore))%")
+                            .font(.caption).fontWeight(.black)
+                            .foregroundColor(motionManager.formScore > 80 ? Color.duoGreen : Color.duoOrange)
+                    }
+                    ProgressView(value: motionManager.formScore / 100)
+                        .tint(motionManager.formScore > 80 ? Color.duoGreen : Color.duoOrange)
+                }
+            }
+
+            // 手動モード：+/- ボタン
+            if isManualMode && !isPlankSelected {
                 HStack(spacing: 20) {
                     CountButton(icon: "minus", color: Color.duoRed) {
                         withAnimation(.spring()) {
@@ -174,53 +242,67 @@ struct ExerciseTrackerView: View {
                 }
             }
 
+            // プランク：タイマー操作
+            if isPlankSelected {
+                HStack(spacing: 12) {
+                    if plankTimer == nil {
+                        Button(action: startPlankTimer) {
+                            Label("タイマー開始", systemImage: "play.circle.fill")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.vertical, 10).padding(.horizontal, 16)
+                                .background(Color.duoGreen).cornerRadius(12)
+                        }
+                    } else {
+                        Button(action: stopPlankTimer) {
+                            Label("停止", systemImage: "stop.circle.fill")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .padding(.vertical, 10).padding(.horizontal, 16)
+                                .background(Color.duoOrange).cornerRadius(12)
+                        }
+                    }
+                    Button(action: { plankSeconds = 0; stopPlankTimer() }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(10)
+                            .background(Color(.systemGray5)).cornerRadius(10)
+                    }
+                }
+            }
+
             // XP プレビュー
             if let ex = selectedExercise, currentReps > 0 {
                 HStack {
-                    Image(systemName: "bolt.fill")
-                        .foregroundColor(Color.duoGold)
+                    Image(systemName: "bolt.fill").foregroundColor(Color.duoGold)
                     Text("今回の獲得 XP")
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundColor(Color.duoDark)
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
                     Spacer()
                     Text("+\(currentReps * ex.basePoints) XP")
-                        .font(.title3).fontWeight(.black)
-                        .foregroundColor(Color.duoGold)
+                        .font(.title3).fontWeight(.black).foregroundColor(Color.duoGold)
                 }
                 .padding(14)
                 .background(Color.duoYellow.opacity(0.18))
                 .cornerRadius(14)
             }
 
-            // モーション検出トグル
-            HStack {
-                Image(systemName: "gyroscope")
-                    .foregroundColor(Color.duoBlue)
-                Text("モーション自動検出")
-                    .font(.subheadline).fontWeight(.semibold)
-                Spacer()
-                Toggle("", isOn: $isUsingMotionDetection)
-                    .tint(Color.duoGreen)
-                    .onChange(of: isUsingMotionDetection) { newValue in
-                        if newValue { motionManager.startDetection(for: .pushup) }
-                        else { motionManager.stopDetection() }
+            // モード切り替えボタン（プランクは非表示）
+            if !isPlankSelected {
+                Button(action: toggleMode) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isManualMode
+                              ? "sensor.tag.radiowaves.forward.fill"
+                              : "hand.tap.fill")
+                            .font(.caption)
+                        Text(isManualMode ? "自動検出に切り替え" : "手動入力に切り替え")
+                            .font(.caption).fontWeight(.semibold)
                     }
-            }
-            .padding(14)
-            .background(Color(.systemGray6))
-            .cornerRadius(14)
-
-            if isUsingMotionDetection {
-                HStack {
-                    Text("フォームスコア")
-                        .font(.caption).foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(motionManager.formScore))%")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(motionManager.formScore > 80 ? Color.duoGreen : Color.duoOrange)
+                    .foregroundColor(isManualMode ? Color.duoGreen : Color.duoSubtitle)
+                    .padding(.vertical, 8).padding(.horizontal, 14)
+                    .background((isManualMode ? Color.duoGreen : Color(.systemGray4)).opacity(0.12))
+                    .cornerRadius(10)
                 }
-                ProgressView(value: motionManager.formScore / 100)
-                    .tint(motionManager.formScore > 80 ? Color.duoGreen : Color.duoOrange)
             }
         }
         .padding(16)
@@ -247,11 +329,7 @@ struct ExerciseTrackerView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-            .background(
-                currentReps == 0
-                    ? Color(.systemGray3)
-                    : Color.duoGreen
-            )
+            .background(currentReps == 0 ? Color(.systemGray3) : Color.duoGreen)
             .cornerRadius(18)
             .shadow(
                 color: currentReps > 0 ? Color.duoGreen.opacity(0.45) : .clear,
@@ -268,7 +346,6 @@ struct ExerciseTrackerView: View {
             Color.duoGreen.opacity(0.07).ignoresSafeArea()
             VStack(spacing: 28) {
                 Spacer()
-
                 Image("mascot")
                     .resizable().scaledToFill()
                     .frame(width: 150, height: 150)
@@ -290,11 +367,12 @@ struct ExerciseTrackerView: View {
                     .padding(.horizontal, 28).padding(.vertical, 14)
                     .background(
                         Capsule().fill(Color.duoYellow.opacity(0.25))
-                        .overlay(Capsule().stroke(Color.duoYellow.opacity(0.5), lineWidth: 2))
+                            .overlay(Capsule().stroke(Color.duoYellow.opacity(0.5), lineWidth: 2))
                     )
 
                     Text("この調子で続けよう！")
-                        .font(.subheadline).fontWeight(.medium).foregroundColor(Color.duoSubtitle)
+                        .font(.subheadline).fontWeight(.medium)
+                        .foregroundColor(Color.duoSubtitle)
                 }
 
                 Spacer()
@@ -315,10 +393,60 @@ struct ExerciseTrackerView: View {
         }
     }
 
-    // MARK: - 送信処理
+    // MARK: - ロジック
+
+    private func onExerciseChanged() {
+        // リセット
+        motionManager.stopDetection()
+        stopPlankTimer()
+        manualRepCount = 0
+        plankSeconds  = 0
+        isManualMode  = false
+
+        guard let ex = selectedExercise else { return }
+
+        if isPlank(ex) {
+            // プランク → タイマーモード
+        } else {
+            // その他 → モーション検出を即時スタート
+            let type = ExerciseType.from(exerciseId: ex.id ?? ex.name)
+            motionManager.startDetection(for: type)
+            withAnimation { pulseAnimation = true }
+        }
+    }
+
+    private func toggleMode() {
+        if isManualMode {
+            // 手動 → モーション検出に切り替え
+            isManualMode = false
+            if let ex = selectedExercise {
+                motionManager.startDetection(for: ExerciseType.from(exerciseId: ex.id ?? ex.name))
+                withAnimation { pulseAnimation = true }
+            }
+        } else {
+            // モーション → 手動に切り替え
+            isManualMode = true
+            motionManager.stopDetection()
+            pulseAnimation = false
+            manualRepCount = motionManager.repCount  // 現在のカウントを引き継ぐ
+        }
+    }
+
+    private func startPlankTimer() {
+        plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in plankSeconds += 1 }
+        }
+    }
+
+    private func stopPlankTimer() {
+        plankTimer?.invalidate()
+        plankTimer = nil
+    }
+
     private func submitWorkout() {
         guard let exercise = selectedExercise, currentReps > 0 else { return }
-        let formScore = isUsingMotionDetection ? motionManager.formScore : 85.0
+        stopPlankTimer()
+        let formScore = (!isManualMode && !isPlankSelected) ? motionManager.formScore : 85.0
         earnedXP = currentReps * exercise.basePoints
         isSubmitting = true
         Task {
@@ -331,7 +459,7 @@ struct ExerciseTrackerView: View {
     }
 }
 
-// MARK: - ＋／－ ボタン
+// MARK: - +/- ボタン
 private struct CountButton: View {
     let icon: String
     let color: Color

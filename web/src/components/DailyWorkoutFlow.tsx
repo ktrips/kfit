@@ -174,8 +174,6 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
   }
 
   // ── Exercise screen ────────────────────────────────────────────────────────
-  const pct = ((stepIdx) / steps.length) * 100;
-
   return (
     <div className="min-h-screen bg-duo-gray-light flex flex-col">
 

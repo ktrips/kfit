@@ -203,6 +203,117 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
+    // MARK: - Direct record (for WorkoutPlanView)
+    func recordExerciseDirect(exerciseId: String, exerciseName: String, reps: Int, points: Int) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let data: [String: Any] = [
+            "exerciseId": exerciseId, "exerciseName": exerciseName,
+            "reps": reps, "points": points, "formScore": 85.0, "timestamp": Date()
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-exercises").addDocument(data: data)
+    }
+
+    // MARK: - History
+    func getRecentExercises(days: Int = 14) async -> [DayExercises] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -(days - 1), to: Date()) ?? Date())
+        let end   = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
+
+        guard let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: start)
+            .whereField("timestamp", isLessThan: end)
+            .getDocuments() else { return [] }
+
+        var byDay: [String: [CompletedExercise]] = [:]
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
+        for doc in snapshot.documents {
+            if let ex = try? doc.data(as: CompletedExercise.self) {
+                let key = formatter.string(from: ex.timestamp)
+                byDay[key, default: []].append(ex)
+            }
+        }
+
+        var result: [DayExercises] = []
+        for i in 1..<days {
+            let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: Date())) ?? Date()
+            let key = formatter.string(from: date)
+            let exs = byDay[key] ?? []
+            if !exs.isEmpty {
+                let month = calendar.component(.month, from: date)
+                let day   = calendar.component(.day, from: date)
+                let label = i == 1 ? "昨日" : "\(month)/\(day)"
+                result.append(DayExercises(date: key, label: label, exercises: exs,
+                                           totalReps: exs.reduce(0) { $0 + $1.reps },
+                                           totalPoints: exs.reduce(0) { $0 + $1.points }))
+            }
+        }
+        return result
+    }
+
+    // MARK: - Weekly Goals
+    func getWeeklyGoals() async -> [WeeklyGoal] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        let weekId = currentWeekId()
+        guard let doc = try? await db.collection("users").document(userId)
+            .collection("weekly-goals").document(weekId).getDocument(),
+              doc.exists, let arr = doc.data()?["goals"] as? [[String: Any]] else { return [] }
+        return arr.compactMap { d -> WeeklyGoal? in
+            guard let eid = d["exerciseId"] as? String,
+                  let ename = d["exerciseName"] as? String,
+                  let daily = d["dailyReps"] as? Int,
+                  let target = d["targetReps"] as? Int else { return nil }
+            return WeeklyGoal(exerciseId: eid, exerciseName: ename, dailyReps: daily, targetReps: target)
+        }
+    }
+
+    func setWeeklyGoals(_ goals: [WeeklyGoal]) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let weekId = currentWeekId()
+        let arr: [[String: Any]] = goals.map { [
+            "exerciseId": $0.exerciseId, "exerciseName": $0.exerciseName,
+            "dailyReps": $0.dailyReps, "targetReps": $0.targetReps
+        ] }
+        try? await db.collection("users").document(userId)
+            .collection("weekly-goals").document(weekId).setData(["weekId": weekId, "goals": arr])
+    }
+
+    func getWeeklyProgress() async -> [String: Int] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [:] }
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)
+        let daysToMonday = weekday == 1 ? -6 : 2 - weekday
+        let monday = calendar.startOfDay(for: calendar.date(byAdding: .day, value: daysToMonday, to: today) ?? today)
+        let nextMonday = calendar.date(byAdding: .day, value: 7, to: monday) ?? today
+
+        guard let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: monday)
+            .whereField("timestamp", isLessThan: nextMonday)
+            .getDocuments() else { return [:] }
+
+        var progress: [String: Int] = [:]
+        for doc in snapshot.documents {
+            if let data = try? doc.data(as: CompletedExercise.self) {
+                progress[data.exerciseId, default: 0] += data.reps
+            }
+        }
+        return progress
+    }
+
+    private func currentWeekId() -> String {
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)
+        let daysToMonday = weekday == 1 ? -6 : 2 - weekday
+        let monday = calendar.date(byAdding: .day, value: daysToMonday, to: today) ?? today
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        return fmt.string(from: monday)
+    }
+
     deinit {
         if let authStateHandle = authStateHandle {
             Auth.auth().removeStateDidChangeListener(authStateHandle)
@@ -244,6 +355,23 @@ struct MotionProfile: Codable {
     var primaryAxis: String
     var detectionMethod: String
     var threshold: Double
+}
+
+struct WeeklyGoal: Codable, Identifiable {
+    var id: String { exerciseId }
+    var exerciseId: String
+    var exerciseName: String
+    var dailyReps: Int
+    var targetReps: Int
+}
+
+struct DayExercises: Identifiable {
+    var id: String { date }
+    var date: String
+    var label: String
+    var exercises: [CompletedExercise]
+    var totalReps: Int
+    var totalPoints: Int
 }
 
 struct CompletedExercise: Codable, Identifiable {

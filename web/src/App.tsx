@@ -7,9 +7,10 @@ import { ExerciseTrackerView } from './components/ExerciseTrackerView';
 import { WeeklyGoalView } from './components/WeeklyGoalView';
 import { HistoryView } from './components/HistoryView';
 import { HelpView } from './components/HelpView';
+import { WorkoutPlanView } from './components/WorkoutPlanView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -79,6 +80,16 @@ function App() {
             {/* Right side: Training shortcut + hamburger */}
             <div className="flex items-center gap-2">
               <button
+                onClick={() => navigate('plan')}
+                className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                  currentView === 'plan'
+                    ? 'bg-duo-green-light text-duo-green-dark'
+                    : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
+                }`}
+              >
+                📋 プラン
+              </button>
+              <button
                 onClick={() => navigate('tracker')}
                 className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
                   currentView === 'tracker'
@@ -115,6 +126,7 @@ function App() {
                     >
                       {[
                         { view: 'dashboard' as View, icon: '🏠', label: 'ホーム' },
+                        { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
                         { view: 'tracker' as View, icon: '💪', label: 'トレーニング' },
                         { view: 'weekly' as View, icon: '🎯', label: '週間目標' },
                         { view: 'history' as View, icon: '📅', label: '履歴' },
@@ -156,6 +168,7 @@ function App() {
           <DashboardView
             onLogWorkout={() => navigate('tracker')}
             onWeeklyGoal={() => navigate('weekly')}
+            onWorkoutPlan={() => navigate('plan')}
           />
         )}
         {currentView === 'tracker' && user && (
@@ -169,6 +182,9 @@ function App() {
         )}
         {currentView === 'help' && user && (
           <HelpView />
+        )}
+        {currentView === 'plan' && user && (
+          <WorkoutPlanView />
         )}
       </main>
     </div>

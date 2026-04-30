@@ -31,10 +31,10 @@ struct DashboardView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 14) {
                             dailySetsCard
+                            todaySummaryCard   // 記録済み種目サマリー（ボタンなし）
                             challengeCard
-                            todayCard
                             quickMenu
-                            Spacer(minLength: 40)
+                            Spacer(minLength: 90)  // FABの高さ分
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
@@ -45,12 +45,79 @@ struct DashboardView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarHidden(true)
+        // 画面下部に固定のCTAボタン（タブバーの上）
+        .safeAreaInset(edge: .bottom) {
+            if !isLoading { startTrainingButton }
+        }
         .fullScreenCover(isPresented: $showTracker) {
             ExerciseTrackerView()
                 .environmentObject(authManager)
                 .onDisappear { Task { await loadData() } }
         }
         .task { await loadData() }
+        .onAppear { withAnimation { mascotBounce = true } }
+    }
+
+    // MARK: - 常時表示CTAボタン（タブバー上に固定）
+    private var startTrainingButton: some View {
+        Button { showTracker = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(width: 44, height: 44)
+                        .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.15 : 1.0)
+                        .animation(
+                            todayExercises.isEmpty
+                                ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                : .default,
+                            value: mascotBounce
+                        )
+                    Text(todayExercises.isEmpty ? "💪" : "➕")
+                        .font(.title3)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(todayExercises.isEmpty
+                         ? "今日のトレーニングを始めよう！"
+                         : "さらに記録する")
+                        .font(.headline).fontWeight(.black)
+                        .foregroundColor(.white)
+                    Text(todayExercises.isEmpty
+                         ? "タップしてトレーニング開始"
+                         : "\(todayExercises.count) 種目 · \(totalXP) XP 獲得済み")
+                        .font(.caption)
+                        .foregroundColor(Color.white.opacity(0.88))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(Color.white.opacity(0.85))
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: Color.duoGreen.opacity(
+                    todayExercises.isEmpty ? 0.6 : 0.35
+                ), radius: todayExercises.isEmpty ? 14 : 8, y: 5)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(
+            Color.duoBg
+                .shadow(color: Color.black.opacity(0.08), radius: 8, y: -4)
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 
     // MARK: - ヒーロー（コンパクト版）
@@ -299,45 +366,32 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
     }
 
-    // MARK: - 今日のトレーニング
-    private var todayCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 5) {
-                Image(systemName: "calendar.badge.checkmark")
-                Text("今日のトレーニング").fontWeight(.black)
-            }
-            .font(.subheadline)
-            .foregroundColor(Color.duoDark)
-
-            if todayExercises.isEmpty {
-                Button { showTracker = true } label: {
-                    VStack(spacing: 8) {
-                        Text("🏋️").font(.system(size: 36))
-                        Text("今日のトレーニングを始めよう！")
-                            .font(.subheadline).fontWeight(.black)
-                            .foregroundColor(.white)
-                        Text("タップして記録開始 →")
-                            .font(.caption)
-                            .foregroundColor(Color.white.opacity(0.9))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 22)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(14)
+    // MARK: - 今日の記録サマリー（ボタンは下部FABに集約）
+    @ViewBuilder
+    private var todaySummaryCard: some View {
+        if !todayExercises.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Color.duoGreen)
+                    Text("今日の記録").fontWeight(.black)
+                    Spacer()
+                    Text("\(totalReps) rep · \(totalXP) XP")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(Color.duoGold)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.duoYellow.opacity(0.18))
+                        .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
-            } else {
+                .font(.subheadline)
+                .foregroundColor(Color.duoDark)
+
                 VStack(spacing: 6) {
                     ForEach(todayExercises) { ex in
                         HStack(spacing: 10) {
                             Text(emojiFor(ex.exerciseName))
                                 .font(.title3)
-                                .frame(width: 38, height: 38)
+                                .frame(width: 36, height: 36)
                                 .background(Color.duoGreen.opacity(0.1))
                                 .cornerRadius(10)
                             VStack(alignment: .leading, spacing: 2) {
@@ -351,7 +405,7 @@ struct DashboardView: View {
                             Text("+\(ex.points) XP")
                                 .font(.caption).fontWeight(.black)
                                 .foregroundColor(Color.duoGold)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
                                 .background(Color.duoYellow.opacity(0.22))
                                 .cornerRadius(8)
                         }
@@ -359,25 +413,13 @@ struct DashboardView: View {
                         .background(Color.duoBg)
                         .cornerRadius(12)
                     }
-                    Button { showTracker = true } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("さらに記録する").fontWeight(.black)
-                        }
-                        .font(.caption)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.duoGreen)
-                        .cornerRadius(12)
-                    }
                 }
             }
+            .padding(14)
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
-        .padding(14)
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
     }
 
     // MARK: - クイックメニュー

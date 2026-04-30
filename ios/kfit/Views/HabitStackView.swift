@@ -184,7 +184,7 @@ struct AddHabitView: View {
     private let emojiOptions = ["🦷","☕️","🚿","🌙","📱","🚌","🏠","🍽️","📚","🛏️","🐕","🎮"]
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView {
@@ -373,5 +373,5 @@ struct AddHabitView: View {
 }
 
 #Preview {
-    NavigationStack { HabitStackView() }
+    NavigationView { HabitStackView() }
 }

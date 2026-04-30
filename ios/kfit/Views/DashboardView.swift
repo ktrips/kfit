@@ -58,7 +58,7 @@ struct DashboardView: View {
                 .onDisappear { Task { await loadData() } }
         }
         .sheet(isPresented: $showHabits) {
-            NavigationStack { HabitStackView() }
+            NavigationView { HabitStackView() }
         }
         .task { await loadData() }
         .onAppear { withAnimation { mascotBounce = true } }
@@ -155,7 +155,7 @@ struct DashboardView: View {
                     Spacer()
                     Button { authManager.signOut() } label: {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.caption).fontWeight(.bold)
+                            .font(.caption.weight(.bold))
                             .foregroundColor(Color.white.opacity(0.9))
                             .padding(7)
                             .background(Color.white.opacity(0.18))

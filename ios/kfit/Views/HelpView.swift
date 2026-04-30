@@ -156,7 +156,7 @@ struct HelpView: View {
                         .multilineTextAlignment(.leading)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.caption).fontWeight(.bold)
+                        .font(.caption.weight(.bold))
                         .foregroundColor(Color.duoSubtitle)
                         .rotationEffect(.degrees(isOpen ? 180 : 0))
                 }

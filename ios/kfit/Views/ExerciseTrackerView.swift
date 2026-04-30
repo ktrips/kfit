@@ -192,7 +192,6 @@ struct ExerciseTrackerView: View {
                     .font(.system(size: 80, weight: .black, design: .rounded))
                     .foregroundColor(currentReps > 0 ? Color.duoGreen : Color(.systemGray3))
                     .animation(.spring(), value: currentReps)
-                    .contentTransition(.numericText())
                 Text(isPlankSelected ? "秒" : "reps")
                     .font(.title3).fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
@@ -248,7 +247,7 @@ struct ExerciseTrackerView: View {
                     if plankTimer == nil {
                         Button(action: startPlankTimer) {
                             Label("タイマー開始", systemImage: "play.circle.fill")
-                                .font(.subheadline).fontWeight(.bold)
+                                .font(Font.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.vertical, 10).padding(.horizontal, 16)
                                 .background(Color.duoGreen).cornerRadius(12)
@@ -256,7 +255,7 @@ struct ExerciseTrackerView: View {
                     } else {
                         Button(action: stopPlankTimer) {
                             Label("停止", systemImage: "stop.circle.fill")
-                                .font(.subheadline).fontWeight(.bold)
+                                .font(Font.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.vertical, 10).padding(.horizontal, 16)
                                 .background(Color.duoOrange).cornerRadius(12)
@@ -264,7 +263,7 @@ struct ExerciseTrackerView: View {
                     }
                     Button(action: { plankSeconds = 0; stopPlankTimer() }) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.subheadline).fontWeight(.bold)
+                            .font(Font.system(size: 15, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(10)
                             .background(Color(.systemGray5)).cornerRadius(10)

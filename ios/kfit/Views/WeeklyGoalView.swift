@@ -40,20 +40,22 @@ struct WeeklyGoalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isEditing ? "保存" : "編集") {
+                    Button {
                         if isEditing { Task { await save() } }
                         else         { startEditing() }
+                    } label: {
+                        Text(isEditing ? "保存" : "編集")
+                            .fontWeight(.bold)
+                            .foregroundColor(Color.duoGreen)
                     }
-                    .fontWeight(.bold)
-                    .foregroundColor(Color.duoGreen)
                 }
-                if isEditing {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("キャンセル") {
-                            isEditing = false
-                        }
-                        .foregroundColor(.secondary)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("キャンセル") {
+                        isEditing = false
                     }
+                    .foregroundColor(.secondary)
+                    .opacity(isEditing ? 1 : 0)
+                    .disabled(!isEditing)
                 }
             }
         }
@@ -63,8 +65,7 @@ struct WeeklyGoalView: View {
     // MARK: - 週ラベル
     private var weekLabel: some View {
         Text(currentWeekLabel())
-            .font(.caption)
-            .fontWeight(.bold)
+            .font(.caption).bold()
             .foregroundColor(.secondary)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, 20)

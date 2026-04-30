@@ -10,13 +10,15 @@ private var statusBarHeight: CGFloat {
 
 struct DashboardView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @StateObject private var habitManager = HabitStackManager.shared
     @State private var todayExercises: [CompletedExercise] = []
-    @State private var totalReps  = 0
-    @State private var totalXP    = 0
-    @State private var dailySets  = DailySets(amSets: 0, pmSets: 0)
-    @State private var isLoading  = true
+    @State private var totalReps    = 0
+    @State private var totalXP      = 0
+    @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)
+    @State private var isLoading    = true
     @State private var mascotBounce = false
     @State private var showTracker  = false
+    @State private var showHabits   = false
 
     var body: some View {
         ZStack {
@@ -31,7 +33,8 @@ struct DashboardView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 14) {
                             dailySetsCard
-                            todaySummaryCard   // 記録済み種目サマリー（ボタンなし）
+                            habitStackCard       // ハビットスタック
+                            todaySummaryCard     // 記録済み種目サマリー（ボタンなし）
                             challengeCard
                             quickMenu
                             Spacer(minLength: 90)  // FABの高さ分
@@ -53,6 +56,9 @@ struct DashboardView: View {
             ExerciseTrackerView()
                 .environmentObject(authManager)
                 .onDisappear { Task { await loadData() } }
+        }
+        .sheet(isPresented: $showHabits) {
+            NavigationStack { HabitStackView() }
         }
         .task { await loadData() }
         .onAppear { withAnimation { mascotBounce = true } }
@@ -324,6 +330,93 @@ struct DashboardView: View {
                     .background(Color(.systemGray5)).cornerRadius(6)
             }
         }
+    }
+
+    // MARK: - ハビットスタックカード
+    private var habitStackCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // ヘッダー
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "link")
+                    Text("ハビットスタック").fontWeight(.black)
+                }
+                .font(.subheadline)
+                .foregroundColor(Color.duoGreen)
+                Spacer()
+                Button {
+                    showHabits = true
+                } label: {
+                    Text(habitManager.habits.isEmpty ? "設定する" : "管理")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.duoGreen.opacity(0.12))
+                        .cornerRadius(8)
+                }
+            }
+
+            if habitManager.habits.isEmpty {
+                // 未設定状態
+                Button { showHabits = true } label: {
+                    HStack(spacing: 10) {
+                        Text("🔗").font(.title2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("日課とトレーニングをリンク")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoDark)
+                            Text("歯磨き後・コーヒー後などに通知")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(12)
+                    .background(Color.duoGreen.opacity(0.06))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // 習慣一覧（有効なものだけ表示、最大3件）
+                let active = habitManager.habits.filter { $0.isEnabled }.prefix(3)
+                ForEach(Array(active)) { habit in
+                    HStack(spacing: 10) {
+                        Text(habit.emoji).font(.title3)
+                        Text(habit.name)
+                            .font(.subheadline).fontWeight(.medium)
+                            .foregroundColor(Color.duoDark)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                            Text(habit.timeString)
+                                .font(.caption).fontWeight(.bold)
+                        }
+                        .foregroundColor(Color.duoGreen)
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                        Image(systemName: "figure.run")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoGreen)
+                    }
+                    .padding(.vertical, 4)
+                    if habit.id != active.last?.id {
+                        Divider()
+                    }
+                }
+                if habitManager.habits.filter({ $0.isEnabled }).count > 3 {
+                    Text("他 \(habitManager.habits.filter { $0.isEnabled }.count - 3) 件")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
     }
 
     // MARK: - 90日チャレンジ

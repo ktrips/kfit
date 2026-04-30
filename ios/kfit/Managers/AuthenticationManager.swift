@@ -181,6 +181,9 @@ class AuthenticationManager: ObservableObject {
 
             // クライアント側でストリーク・ポイントを更新（Cloud Functions 未デプロイでも動作）
             await updateStreakAndPoints(userId: userId, points: points, now: now)
+
+            // トレーニング記録 → 今日不要な通知をキャンセル
+            NotificationManager.shared.handleWorkoutRecorded()
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"
         }
@@ -241,6 +244,23 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
+    // MARK: - Apple Watch からのワークアウトを Firestore に記録
+    func recordWatchWorkout(_ workout: WatchWorkoutData) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let data: [String: Any] = [
+            "exerciseId":   "watch",
+            "exerciseName": workout.exerciseName,
+            "reps":         workout.reps,
+            "points":       workout.points,
+            "formScore":    85.0,
+            "timestamp":    workout.timestamp,
+            "source":       "watch"
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-exercises").addDocument(data: data)
+        await updateStreakAndPoints(userId: userId, points: workout.points, now: workout.timestamp)
+    }
+
     // MARK: - Direct record (for WorkoutPlanView)
     func recordExerciseDirect(exerciseId: String, exerciseName: String, reps: Int, points: Int) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
@@ -252,6 +272,7 @@ class AuthenticationManager: ObservableObject {
         try? await db.collection("users").document(userId)
             .collection("completed-exercises").addDocument(data: data)
         await updateStreakAndPoints(userId: userId, points: points, now: now)
+        NotificationManager.shared.handleWorkoutRecorded()
     }
 
     // MARK: - History

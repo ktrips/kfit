@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private let exerciseEmoji: [String: String] = [
     "pushup": "💪", "push-up": "💪",
@@ -79,36 +80,39 @@ struct ExerciseTrackerView: View {
         }
     }
 
-    // MARK: - ヘッダー
+    // MARK: - ヘッダー（コンパクト）
     private var header: some View {
-        HStack(spacing: 10) {
+        let safeTop = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 44
+
+        return HStack(spacing: 10) {
             Image("mascot")
                 .resizable().scaledToFill()
-                .frame(width: 40, height: 40)
+                .frame(width: 30, height: 30)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 2))
-                .shadow(color: Color.duoGreen.opacity(0.3), radius: 4)
+                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 1.5))
 
             Text("トレーニング記録")
-                .font(.title3).fontWeight(.black)
-                .foregroundColor(.primary)
+                .font(.subheadline).fontWeight(.black)
+                .foregroundColor(Color.duoDark)
 
             Spacer()
 
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .padding(8)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(7)
                     .background(Color(.systemGray5))
                     .clipShape(Circle())
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 14)
-        .padding(.top, 60)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .padding(.top, safeTop + 4)
         .background(Color.white)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
     }
 
     // MARK: - 種目グリッド

@@ -293,6 +293,45 @@ class AuthenticationManager: ObservableObject {
         return result
     }
 
+    // MARK: - Daily Sets
+    /// 今日のセット状況（30分間隔でセッションを分割し、午前/午後を判定）
+    func getDailySets() async -> DailySets {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return DailySets(amSets: 0, pmSets: 0)
+        }
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay   = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+
+        guard let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments() else { return DailySets(amSets: 0, pmSets: 0) }
+
+        let timestamps: [Date] = snapshot.documents
+            .compactMap { try? $0.data(as: CompletedExercise.self) }
+            .map { $0.timestamp }
+            .sorted()
+
+        // 30分以上の間隔 → 新セッションとみなす
+        var sessions: [Date] = []
+        var lastTime: Date? = nil
+        for ts in timestamps {
+            if let last = lastTime, ts.timeIntervalSince(last) <= 30 * 60 {
+                // 同セッション内 — スキップ
+            } else {
+                sessions.append(ts)
+            }
+            lastTime = ts
+        }
+
+        let noon   = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        let amSets = sessions.filter { $0 < noon }.count
+        let pmSets = sessions.filter { $0 >= noon }.count
+        return DailySets(amSets: amSets, pmSets: pmSets)
+    }
+
     // MARK: - Weekly Goals
     func getWeeklyGoals() async -> [WeeklyGoal] {
         guard let userId = Auth.auth().currentUser?.uid else { return [] }
@@ -422,4 +461,19 @@ struct CompletedExercise: Codable, Identifiable {
     var points: Int
     var formScore: Double
     var timestamp: Date
+}
+
+struct DailySets {
+    var amSets: Int   // 午前（0:00〜11:59）のセット数
+    var pmSets: Int   // 午後（12:00〜23:59）のセット数
+
+    /// 達成条件: 午前1+午後1 OR 午前0+午後2以上
+    var isGoalMet: Bool {
+        (amSets >= 1 && pmSets >= 1) || (amSets == 0 && pmSets >= 2)
+    }
+
+    /// 午後に必要な追加セット数（午前なし時は2、午前あり時は1）
+    var pmSetsNeeded: Int {
+        amSets >= 1 ? max(0, 1 - pmSets) : max(0, 2 - pmSets)
+    }
 }

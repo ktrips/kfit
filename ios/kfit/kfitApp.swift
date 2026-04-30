@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseCore
 import GoogleSignIn
+import UserNotifications
 
 @main
 struct kfitApp: App {
@@ -70,15 +71,50 @@ struct MainTabView: View {
     }
 }
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    ) -> Bool { return true }
+    ) -> Bool {
+        // 通知デリゲートを自身に設定（フォアグラウンドでも通知を表示するため）
+        UNUserNotificationCenter.current().delegate = self
+
+        // 通知権限をリクエストし、許可後に全通知をスケジュール
+        Task { @MainActor in
+            let granted = await NotificationManager.shared.requestPermission()
+            if granted {
+                NotificationManager.shared.scheduleAllDaily()
+                HabitStackManager.shared.rescheduleAll()
+            }
+        }
+
+        // Apple Watch → iPhone ブリッジを起動
+        _ = iOSWatchBridge.shared
+
+        return true
+    }
 
     func application(
         _ app: UIApplication,
         open url: URL,
         options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool { return GIDSignIn.sharedInstance.handle(url) }
+
+    // フォアグラウンド中でも通知バナーを表示する
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    // 通知タップ時のハンドリング（将来的に特定画面へ遷移可能）
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        completionHandler()
+    }
 }

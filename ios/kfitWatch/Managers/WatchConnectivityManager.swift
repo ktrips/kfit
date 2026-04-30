@@ -39,7 +39,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         do {
             let encoder = JSONEncoder()
             let data = try encoder.encode(workout)
-            session.sendMessage(["workout": data], replyHandler: nil) { error in
+            // "workout_recorded": true を付与し iPhone 側で通知キャンセルを識別
+            session.sendMessage(["workout": data, "workout_recorded": true], replyHandler: nil) { error in
                 print("WatchConnectivity sendMessage error: \(error)")
             }
         } catch {

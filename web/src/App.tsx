@@ -9,9 +9,10 @@ import { HistoryView } from './components/HistoryView';
 import { HelpView } from './components/HelpView';
 import { WorkoutPlanView } from './components/WorkoutPlanView';
 import { DailyWorkoutFlow } from './components/DailyWorkoutFlow';
+import { SettingsView } from './components/SettingsView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -153,6 +154,19 @@ function App() {
                         </button>
                       ))}
                       <div style={{ borderTop: '1.5px solid #e5e5e5', margin: '4px 0' }} />
+                      {/* 設定 */}
+                      <button
+                        onClick={() => navigate('settings')}
+                        className={`flex items-center gap-3 px-4 py-3 text-left font-extrabold text-sm transition-all ${
+                          currentView === 'settings'
+                            ? 'text-duo-green bg-duo-green-light'
+                            : 'text-duo-dark hover:bg-duo-gray-light'
+                        }`}
+                      >
+                        <span>⚙️</span>
+                        <span>設定</span>
+                      </button>
+                      <div style={{ borderTop: '1.5px solid #e5e5e5', margin: '4px 0' }} />
                       <button
                         onClick={handleSignOut}
                         className="flex items-center gap-3 px-4 py-3 text-left font-extrabold text-sm text-duo-gray hover:text-duo-red hover:bg-red-50 transition-all"
@@ -196,6 +210,9 @@ function App() {
         )}
         {currentView === 'plan' && user && (
           <WorkoutPlanView />
+        )}
+        {currentView === 'settings' && user && (
+          <SettingsView />
         )}
       </main>
     </div>

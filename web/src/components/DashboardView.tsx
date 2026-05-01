@@ -1,19 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { getTodayExercises, getUserProfile, getWeeklyGoals, getWeeklyProgress, getWeekLabel, getActiveDaysElapsed } from '../services/firebase';
+import {
+  getTodayExercises, getUserProfile,
+  getWeeklyGoals, getWeeklyProgress,
+  getWeeklySetProgress, getDailySetGoal, getTodaySetCount,
+  getWeekLabel, getActiveDaysElapsed,
+  type WeeklySetProgress,
+} from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
-}
-
-interface CompletedExercise {
-  id: string;
-  exerciseName: string;
-  reps: number;
-  points: number;
-  timestamp?: Date;
 }
 
 const EXERCISE_EMOJI: Record<string, string> = {
@@ -30,6 +28,20 @@ function getExerciseEmoji(name: string): string {
   return '⚡';
 }
 
+/** 種目ごとの推定カロリー（kcal/rep） */
+const KCAL_PER_REP: Record<string, number> = {
+  pushup: 0.5, 'push-up': 0.5,
+  squat: 0.6,
+  situp: 0.3, 'sit-up': 0.3,
+  lunge: 0.5,
+  burpee: 1.0,
+  plank: 0.1,
+};
+function estimateKcal(exerciseId: string, reps: number): number {
+  const rate = KCAL_PER_REP[(exerciseId ?? '').toLowerCase()] ?? 0.4;
+  return reps * rate;
+}
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
@@ -37,31 +49,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
   const setStoreWeeklyProgress = useAppStore((s) => s.setWeeklyProgress);
 
-  const [todayExercises, setTodayExercises] = useState<CompletedExercise[]>([]);
   const [totalReps, setTotalReps] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
+  const [totalCalories, setTotalCalories] = useState(0);
   const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
   const [weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
+  const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
+  const [dailySets, setDailySets] = useState(2);
+  const [todaySetCount, setTodaySetCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress] = await Promise.all([
+        const [profile, exercises, goals, progress, sp, ds, tsc] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
           getWeeklyProgress(user.uid),
+          getWeeklySetProgress(user.uid),
+          getDailySetGoal(user.uid),
+          getTodaySetCount(user.uid),
         ]);
         if (profile) setUserProfile(profile);
-        setTodayExercises(exercises);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
         setTotalPoints(exercises.reduce((s: number, e: any) => s + (e.points || 0), 0));
+        setTotalCalories(Math.round(
+          exercises.reduce((s: number, e: any) => s + estimateKcal(e.exerciseId ?? '', e.reps || 0), 0)
+        ));
         setWeeklyGoals(goals);
         setWeeklyProgress(progress);
         setStoreWeeklyGoals(goals);
         setStoreWeeklyProgress(progress);
+        setSetProgress(sp);
+        setDailySets(ds);
+        setTodaySetCount(tsc);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -117,8 +140,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
           <div className="duo-stat-card" style={{ backgroundColor: '#E8F5E9', borderColor: '#58CC02', boxShadow: '0 3px 0 #46A302' }}>
             <span className="text-3xl">⚡</span>
-            <p className="text-3xl font-black text-duo-green">{totalReps}</p>
-            <p className="text-xs font-extrabold text-duo-green-dark uppercase tracking-wide">今日のRep</p>
+            <p className="text-2xl font-black text-duo-green leading-tight">{totalReps}回</p>
+            <p className="text-sm font-extrabold leading-none" style={{ color: '#46A302' }}>
+              {totalCalories}kcal
+            </p>
+            <p className="text-xs font-extrabold text-duo-green-dark uppercase tracking-wide mt-0.5">今日</p>
           </div>
           <div className="duo-stat-card" style={{ backgroundColor: '#FFF8E1', borderColor: '#FFD900', boxShadow: '0 3px 0 #CE9700' }}>
             <span className="text-3xl">⭐</span>
@@ -127,105 +153,131 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         </div>
 
-        {/* Today's workouts */}
-        <div className="duo-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-black text-duo-dark">💪 今日のトレーニング</h2>
-            {todayExercises.length > 0 && (
-              <button onClick={onLogWorkout} className="text-duo-gray font-bold text-xs hover:text-duo-dark">
-                ＋ 追加
-              </button>
-            )}
-          </div>
-
-          {todayExercises.length === 0 ? (
-            <div className="text-center py-4 flex flex-col items-center gap-4">
-              <img src="/mascot.png" alt="mascot" className="w-20 h-20 rounded-full object-cover" />
-              <p className="text-duo-gray font-extrabold">まだトレーニングしていません</p>
-              {/* Big Duolingo-style start button */}
-              <button
-                onClick={onStartWorkout}
-                className="duo-btn-primary text-xl w-full py-5"
-                style={{ borderRadius: '1.25rem', fontSize: '1.25rem' }}
+        {/* Today's set status — count-based */}
+        {todaySetCount === 0 ? (
+          <div className="duo-card p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+                style={{ background: '#F7F7F7', border: '2px solid #e5e5e5' }}
               >
-                🏋️ 今日のメニューを開始！
-              </button>
+                🔲
+              </div>
+              <div>
+                <p className="font-black text-duo-dark text-lg leading-tight">今日のセット</p>
+                <p className="text-duo-gray font-bold text-sm">
+                  {weeklyGoals.length > 0
+                    ? weeklyGoals.map(g => g.exerciseName).join(' · ')
+                    : 'まだトレーニングしていません'}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {todayExercises.map((ex) => (
-                <div
-                  key={ex.id}
-                  className="flex items-center justify-between rounded-2xl p-3"
-                  style={{ backgroundColor: '#F7F7F7', border: '2px solid #e5e5e5' }}
+            <button
+              onClick={onStartWorkout}
+              className="duo-btn-primary text-xl w-full py-5"
+              style={{ borderRadius: '1.25rem' }}
+            >
+              🏋️ 今日のセットを始める
+            </button>
+          </div>
+        ) : (
+          <div
+            className="duo-card p-5"
+            style={{
+              borderColor: '#58CC02',
+              boxShadow: '0 4px 0 #46A302',
+              background: 'linear-gradient(135deg, #D7FFB8 0%, #E8F5E9 100%)',
+            }}
+          >
+            <div className="flex items-center gap-4">
+              {/* 件数バッジ */}
+              <div
+                className="shrink-0 w-16 h-16 rounded-2xl flex flex-col items-center justify-center"
+                style={{ background: '#58CC02', boxShadow: '0 3px 0 #46A302' }}
+              >
+                <span className="text-white font-black text-3xl leading-none">{todaySetCount}</span>
+                <span className="text-white font-bold text-[10px] leading-none mt-0.5">セット</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-duo-dark text-lg leading-tight">
+                  今日は{todaySetCount}セット完了！
+                </p>
+                <p className="text-duo-green font-extrabold text-sm mt-0.5">
+                  {totalReps}回 / {totalCalories}kcal · +{totalPoints} XP 🎉
+                </p>
+                {dailySets > todaySetCount && (
+                  <p className="text-duo-gray font-bold text-xs mt-1">
+                    目標まであと {dailySets - todaySetCount} セット
+                  </p>
+                )}
+                {dailySets <= todaySetCount && (
+                  <p className="font-extrabold text-xs mt-1" style={{ color: '#46A302' }}>
+                    ✅ 今日の目標達成！
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onStartWorkout}
+              className="mt-4 w-full text-center text-duo-green font-bold text-sm underline"
+            >
+              もう1セットやる →
+            </button>
+          </div>
+        )}
+
+        {/* Weekly set progress mini card */}
+        {(() => {
+          const weeklyTarget = dailySets * 5;
+          const activeDays = getActiveDaysElapsed();
+          const expectedNow = dailySets * activeDays;
+          const done = setProgress.completedSets;
+          const pct = weeklyTarget > 0 ? Math.min((done / weeklyTarget) * 100, 100) : 0;
+          const onTrack = expectedNow > 0 && done >= expectedNow;
+          return (
+            <div
+              className="duo-card p-5 cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={onWeeklyGoal}
+              style={onTrack ? { borderColor: '#58CC02', boxShadow: '0 4px 0 #46A302' } : {}}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-black text-duo-dark">🎯 週間セット目標</h2>
+                <span className="text-duo-gray font-bold text-xs">📅 {getWeekLabel()}</span>
+              </div>
+              <div className="flex items-end gap-2 mb-2">
+                <span
+                  className="text-3xl font-black leading-none"
+                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{getExerciseEmoji(ex.exerciseName)}</span>
-                    <div>
-                      <p className="font-extrabold text-duo-dark text-sm">{ex.exerciseName}</p>
-                      <p className="text-duo-gray font-bold text-xs">{ex.reps} reps</p>
-                    </div>
-                  </div>
-                  <p className="text-lg font-black" style={{ color: '#CE9700' }}>+{ex.points} XP</p>
-                </div>
-              ))}
-              {/* Continue button after first round */}
-              <button
-                onClick={onStartWorkout}
-                className="duo-btn-primary w-full text-base mt-1"
-              >
-                🔄 もう一周する
-              </button>
+                  {done}
+                </span>
+                <span className="font-bold text-duo-gray text-base mb-0.5">/ {weeklyTarget} セット</span>
+                <span
+                  className="ml-auto font-black text-base"
+                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
+                >
+                  {Math.round(pct)}%
+                </span>
+              </div>
+              <div className="duo-progress-bar" style={{ height: '10px' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${pct}%`,
+                    background: onTrack
+                      ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                      : 'linear-gradient(90deg, #FFD900, #FF9600)',
+                  }}
+                />
+              </div>
+              <p className="text-duo-gray font-bold text-xs mt-2">
+                {onTrack ? '✅ ペース通り！' : `今日まで目標 ${expectedNow} セット`}
+                {'  '}
+                <span className="underline text-duo-green">詳細 →</span>
+              </p>
             </div>
-          )}
-        </div>
-
-        {/* Weekly goal mini card */}
-        <div
-          className="duo-card p-5 cursor-pointer hover:opacity-90 transition-opacity"
-          onClick={onWeeklyGoal}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-black text-duo-dark">🎯 週間目標</h2>
-            <span className="text-duo-gray font-bold text-xs">📅 {getWeekLabel()}</span>
-          </div>
-          {weeklyGoals.length === 0 ? (
-            <div className="flex items-center justify-between">
-              <p className="text-duo-gray font-bold text-sm">目標がまだ設定されていません</p>
-              <span className="text-duo-green font-extrabold text-sm">設定する →</span>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {weeklyGoals.map(goal => {
-                const done = weeklyProgress[goal.exerciseId] ?? 0;
-                const activeDays = getActiveDaysElapsed();
-                const expectedToday = (goal.dailyReps ?? 0) * activeDays || goal.targetReps;
-                const pct = Math.min((done / expectedToday) * 100, 100);
-                return (
-                  <div key={goal.exerciseId}>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-duo-dark font-extrabold text-sm">{goal.exerciseName}</span>
-                      <span className="font-bold text-sm" style={{ color: pct >= 100 ? '#46A302' : '#AFAFAF' }}>
-                        {done}/{expectedToday}
-                      </span>
-                    </div>
-                    <div className="duo-progress-bar" style={{ height: '10px' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${pct}%`,
-                          background: pct >= 100
-                            ? 'linear-gradient(90deg, #58CC02, #91E62A)'
-                            : 'linear-gradient(90deg, #1CB0F6, #58CC02)',
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* 90-day goal */}
         <div className="duo-card p-5">

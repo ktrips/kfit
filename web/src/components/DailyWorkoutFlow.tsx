@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { recordExercise } from '../services/firebase';
+import React, { useEffect, useRef, useState } from 'react';
+import { recordExercise, recordCompletedSet } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 
 const EMOJI: Record<string, string> = {
@@ -20,6 +20,7 @@ interface WorkoutStep {
 }
 
 interface Result {
+  exerciseId: string;
   exerciseName: string;
   reps: number;
   points: number;
@@ -58,19 +59,34 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
 
   const [stepIdx, setStepIdx] = useState(0);
   const [reps, setReps] = useState(steps[0]?.targetReps ?? 10);
+  const [adjusting, setAdjusting] = useState(false);
   const [phase, setPhase] = useState<'exercise' | 'feedback' | 'done'>('exercise');
   const [results, setResults] = useState<Result[]>([]);
   const [earnedXP, setEarnedXP] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const setRecordedRef = useRef(false);
 
   const current = steps[stepIdx];
 
   // Sync rep counter to new step
   useEffect(() => {
-    if (current) setReps(current.targetReps);
+    if (current) { setReps(current.targetReps); setAdjusting(false); }
   }, [stepIdx, current]);
 
   const totalXP = results.reduce((s, r) => s + r.points, 0);
+
+  // フロー全体が完了したとき1セットとして記録（重複防止のため ref でガード）
+  useEffect(() => {
+    if (phase === 'done' && results.length > 0 && user && !setRecordedRef.current) {
+      setRecordedRef.current = true;
+      recordCompletedSet(user.uid, results.map(r => ({
+        exerciseId: r.exerciseId,
+        exerciseName: r.exerciseName,
+        reps: r.reps,
+        points: r.points,
+      }))).catch(console.error);
+    }
+  }, [phase, results, user]);
 
   const handleDone = async () => {
     if (!user || !current || isSaving) return;
@@ -88,12 +104,14 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
       console.error(e);
     }
     setEarnedXP(pts);
-    setResults(prev => [...prev, {
+    const newResult: Result = {
+      exerciseId: current.exerciseId,
       exerciseName: current.exerciseName,
       reps,
       points: pts,
       emoji: getEmoji(current.exerciseId),
-    }]);
+    };
+    setResults(prev => [...prev, newResult]);
     setIsSaving(false);
     setPhase('feedback');
     setTimeout(() => {
@@ -216,46 +234,63 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
         {/* Exercise identity */}
         <div className="text-center">
           <div
-            className="w-28 h-28 rounded-3xl flex items-center justify-center text-7xl mx-auto mb-4"
-            style={{ background: '#D7FFB8', border: '3px solid #58CC02' }}
+            className="w-32 h-32 rounded-3xl flex items-center justify-center text-8xl mx-auto mb-5"
+            style={{ background: '#D7FFB8', border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}
           >
             {getEmoji(current.exerciseId)}
           </div>
           <h2 className="text-3xl font-black text-duo-dark">{current.exerciseName}</h2>
-          <p className="text-duo-gray font-bold text-base mt-1">
-            目標 <span className="text-duo-green font-black">{current.targetReps}</span> rep
-          </p>
         </div>
 
-        {/* Rep counter */}
-        <div className="w-full">
-          <p className="text-center text-duo-gray font-extrabold text-xs uppercase tracking-widest mb-4">
-            rep 数
-          </p>
-          <div className="flex items-center justify-center gap-8">
-            <button
-              onClick={() => setReps(r => Math.max(1, r - 1))}
-              className="w-16 h-16 rounded-2xl font-black text-4xl flex items-center justify-center transition-all active:scale-90"
-              style={{ background: '#E5E5E5', color: '#AFAFAF', boxShadow: '0 4px 0 #c0c0c0' }}
-            >
-              −
-            </button>
-            <span
-              className="text-8xl font-black leading-none"
-              style={{ color: '#58CC02', minWidth: '2.5ch', textAlign: 'center' }}
-            >
-              {reps}
-            </span>
-            <button
-              onClick={() => setReps(r => r + 1)}
-              className="w-16 h-16 rounded-2xl font-black text-4xl flex items-center justify-center transition-all active:scale-90"
-              style={{ background: '#D7FFB8', color: '#46A302', boxShadow: '0 4px 0 #46A302' }}
-            >
-              ＋
-            </button>
-          </div>
-          <p className="text-center font-extrabold text-sm mt-3" style={{ color: '#CE9700' }}>
-            +{reps * current.basePoints} XP
+        {/* Target reps display */}
+        <div
+          className="w-full rounded-3xl py-6 px-6 text-center"
+          style={{ background: '#D7FFB8', border: '3px solid #58CC02' }}
+        >
+          {!adjusting ? (
+            <>
+              <p className="text-duo-green font-extrabold text-xs uppercase tracking-widest mb-1">目標</p>
+              <p className="text-7xl font-black leading-none" style={{ color: '#2d7a00' }}>{reps}</p>
+              <p className="text-duo-green font-extrabold text-base mt-1">reps</p>
+              <button
+                onClick={() => setAdjusting(true)}
+                className="mt-3 text-xs font-bold underline"
+                style={{ color: '#46A302' }}
+              >
+                回数を変更
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-duo-green font-extrabold text-xs uppercase tracking-widest mb-3">回数を調整</p>
+              <div className="flex items-center justify-center gap-6">
+                <button
+                  onClick={() => setReps(r => Math.max(1, r - 1))}
+                  className="w-14 h-14 rounded-2xl font-black text-3xl flex items-center justify-center"
+                  style={{ background: 'white', border: '2px solid #58CC02', color: '#46A302', boxShadow: '0 3px 0 #46A302' }}
+                >
+                  −
+                </button>
+                <span className="text-6xl font-black" style={{ color: '#2d7a00', minWidth: '2.5ch', textAlign: 'center' }}>{reps}</span>
+                <button
+                  onClick={() => setReps(r => r + 1)}
+                  className="w-14 h-14 rounded-2xl font-black text-3xl flex items-center justify-center"
+                  style={{ background: '#58CC02', color: 'white', boxShadow: '0 3px 0 #46A302' }}
+                >
+                  ＋
+                </button>
+              </div>
+              <button
+                onClick={() => setAdjusting(false)}
+                className="mt-3 text-xs font-bold underline"
+                style={{ color: '#46A302' }}
+              >
+                確定
+              </button>
+            </>
+          )}
+          <p className="font-extrabold text-sm mt-3" style={{ color: '#CE9700' }}>
+            +{reps * current.basePoints} XP 獲得
           </p>
         </div>
 
@@ -266,7 +301,7 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
           className="duo-btn-primary w-full text-2xl py-5"
           style={{ borderRadius: '1.25rem' }}
         >
-          {isSaving ? '記録中…' : '完了！'}
+          {isSaving ? '記録中…' : '✓ 完了！'}
         </button>
 
         {/* Skip */}

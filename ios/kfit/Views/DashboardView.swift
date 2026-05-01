@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import HealthKit
 
 // デバイスのステータスバー高さを動的取得
 private var statusBarHeight: CGFloat {
@@ -11,8 +12,10 @@ private var statusBarHeight: CGFloat {
 struct DashboardView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var habitManager = HabitStackManager.shared
+    @StateObject private var healthKit    = HealthKitManager.shared
     @State private var todayExercises: [CompletedExercise] = []
-    @State private var totalReps    = 0
+    @State private var totalReps     = 0
+    @State private var totalCalories = 0
     @State private var totalXP      = 0
     @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)
     @State private var isLoading    = true
@@ -31,16 +34,17 @@ struct DashboardView: View {
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 14) {
+                        VStack(spacing: 18) {
                             dailySetsCard
-                            habitStackCard       // ハビットスタック
-                            todaySummaryCard     // 記録済み種目サマリー（ボタンなし）
+                            habitStackCard
+                            todaySummaryCard
+                            healthSummaryCard
                             challengeCard
                             quickMenu
-                            Spacer(minLength: 90)  // FABの高さ分
+                            Spacer(minLength: 90)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 12)
+                        .padding(.top, 16)
                         .padding(.bottom, 16)
                     }
                 }
@@ -126,89 +130,82 @@ struct DashboardView: View {
         )
     }
 
-    // MARK: - ヒーロー（コンパクト版）
+    // MARK: - ヒーロー（極小1行バー）
     private var heroSection: some View {
         ZStack {
             LinearGradient(
                 colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            VStack(spacing: 0) {
-                // タイトルバー
-                HStack {
-                    HStack(spacing: 7) {
-                        Image("mascot")
-                            .resizable().scaledToFill()
-                            .frame(width: 24, height: 24)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
-                        Text("DuoFit")
-                            .font(.system(.subheadline, design: .rounded))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                    }
-                    Spacer()
-                    // あいさつテキスト（コンパクト）
-                    Text("やあ、\(authManager.userProfile?.username ?? "ユーザー")！")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.white.opacity(0.92))
-                    Spacer()
-                    Button { authManager.signOut() } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(Color.white.opacity(0.9))
-                            .padding(7)
-                            .background(Color.white.opacity(0.18))
-                            .clipShape(Circle())
-                    }
+            HStack(spacing: 0) {
+                // ── ロゴ ──────────────────
+                HStack(spacing: 5) {
+                    Image("mascot")
+                        .resizable().scaledToFill()
+                        .frame(width: 20, height: 20)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                    Text("DuoFit")
+                        .font(.system(.caption, design: .rounded))
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, statusBarHeight + 6)
-                .padding(.bottom, 10)
 
-                // 統計バー（コンパクト）
-                HStack(spacing: 0) {
-                    heroStat(icon: "🔥",
-                             value: "\(authManager.userProfile?.streak ?? 0)",
-                             label: "連続")
-                    divider
-                    heroStat(icon: "⚡",
-                             value: "\(totalReps)",
-                             label: "今日 rep")
-                    divider
-                    heroStat(icon: "🏆",
-                             value: "\(totalXP)",
-                             label: "今日 XP")
-                    divider
-                    heroStat(icon: "⭐",
-                             value: "\(authManager.userProfile?.totalPoints ?? 0)",
-                             label: "総 XP")
+                Spacer()
+
+                // ── 統計 3項目（横1列）───
+                HStack(spacing: 14) {
+                    miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
+                    repCalStat(reps: totalReps, kcal: totalCalories)
+                    miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
                 }
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.15))
-                .cornerRadius(12)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+
+                Spacer()
+
+                // ── ログアウト ────────────
+                Button { authManager.signOut() } label: {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 11).weight(.bold))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .padding(6)
+                        .background(Color.white.opacity(0.16))
+                        .clipShape(Circle())
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, statusBarHeight + 4)
+            .padding(.bottom, 8)
         }
     }
 
-    private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.3)).frame(width: 1, height: 26)
-    }
-
-    private func heroStat(icon: String, value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(icon).font(.subheadline)
-            Text(value)
-                .font(.system(.subheadline, design: .rounded))
-                .fontWeight(.black)
-                .foregroundColor(.white)
+    private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 2) {
+                Text(icon).font(.system(size: 10))
+                Text(value)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
             Text(label)
-                .font(.system(size: 9))
-                .foregroundColor(Color.white.opacity(0.92))
+                .font(.system(size: 8))
+                .foregroundColor(Color.white.opacity(0.82))
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    /// 回数＋カロリーを2行で表示するヘッダー統計アイテム
+    @ViewBuilder
+    private func repCalStat(reps: Int, kcal: Int) -> some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 2) {
+                Text("⚡").font(.system(size: 10))
+                Text("\(reps)回")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            Text("\(kcal)kcal")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.white.opacity(0.82))
+        }
     }
 
     // MARK: - 今日のセット状況カード
@@ -287,7 +284,7 @@ struct DashboardView: View {
                     .padding(.top, 2)
             }
         }
-        .padding(16)
+        .padding(20)
         .background(Color.white)
         .cornerRadius(18)
         .shadow(color: Color.black.opacity(0.07), radius: 6, y: 3)
@@ -413,7 +410,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(20)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -453,7 +450,7 @@ struct DashboardView: View {
             Text("毎日続けてフィットネス習慣を身につけよう！")
                 .font(.caption).foregroundColor(Color.duoSubtitle)
         }
-        .padding(14)
+        .padding(20)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -469,7 +466,7 @@ struct DashboardView: View {
                         .foregroundColor(Color.duoGreen)
                     Text("今日の記録").fontWeight(.black)
                     Spacer()
-                    Text("\(totalReps) rep · \(totalXP) XP")
+                    Text("\(totalReps)回 / \(totalCalories)kcal · \(totalXP) XP")
                         .font(.caption).fontWeight(.bold)
                         .foregroundColor(Color.duoGold)
                         .padding(.horizontal, 8).padding(.vertical, 3)
@@ -508,7 +505,7 @@ struct DashboardView: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(20)
             .background(Color.white)
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -534,7 +531,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(20)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -562,14 +559,138 @@ struct DashboardView: View {
         return "🏃"
     }
 
+    // MARK: - 健康サマリーカード（HealthKit）
+
+    private var healthSummaryCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // カードタイトル
+            HStack(spacing: 8) {
+                Image(systemName: "heart.fill")
+                    .font(.subheadline)
+                    .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
+                Text("今日の健康データ")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                if !healthKit.isAuthorized {
+                    Text("連動する →")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .padding(.bottom, 12)
+
+            if !healthKit.isAvailable || !healthKit.isAuthorized {
+                // 未連携時のプレースホルダー
+                HStack(spacing: 10) {
+                    Image(systemName: "heart.text.square")
+                        .font(.title3)
+                        .foregroundColor(Color.duoSubtitle)
+                    Text("Apple Healthと連動するとデータが表示されます")
+                        .font(.subheadline).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.vertical, 4)
+            } else {
+                // 3つのメトリクスを横並びで表示
+                HStack(spacing: 10) {
+                    healthMetricTile(
+                        icon: "figure.walk",
+                        value: healthKit.todaySteps > 0 ? "\(healthKit.todaySteps.formatted())" : "—",
+                        unit: "歩",
+                        bg: Color(red: 0.843, green: 1.0, blue: 0.722) // #D7FFB8
+                    )
+                    healthMetricTile(
+                        icon: "flame.fill",
+                        value: healthKit.todayCalories > 0 ? "\(Int(healthKit.todayCalories))" : "—",
+                        unit: "kcal",
+                        bg: Color(red: 1.0, green: 0.953, blue: 0.878) // #FFF3E0
+                    )
+                    healthMetricTile(
+                        icon: "heart.fill",
+                        value: healthKit.latestHeartRate > 0 ? "\(Int(healthKit.latestHeartRate))" : "—",
+                        unit: "bpm",
+                        bg: Color(red: 0.988, green: 0.894, blue: 0.925) // #FCE4EC
+                    )
+                }
+
+                // 睡眠がある場合は追加表示
+                if healthKit.lastNightTotalHours > 0.1 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bed.double.fill")
+                            .font(.caption)
+                            .foregroundColor(Color(red: 0.808, green: 0.510, blue: 1.0))
+                        let h = Int(healthKit.lastNightTotalHours)
+                        let m = Int((healthKit.lastNightTotalHours - Double(h)) * 60)
+                        Text("昨夜の睡眠: \(h)h \(m)m")
+                            .font(.caption).fontWeight(.bold)
+                            .foregroundColor(Color.duoDark)
+                        Spacer()
+                        if healthKit.lastNightDeepHours > 0.05 {
+                            let dh = Int(healthKit.lastNightDeepHours)
+                            let dm = Int((healthKit.lastNightDeepHours - Double(dh)) * 60)
+                            Text("深い睡眠 \(dh)h \(dm)m")
+                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+            }
+        }
+        .padding(20)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        .task {
+            if healthKit.isAvailable && !healthKit.isAuthorized {
+                healthKit.refreshAuthorizationStatus()
+            }
+            if healthKit.isAuthorized && healthKit.todaySteps == 0 {
+                await healthKit.fetchAll()
+            }
+        }
+    }
+
+    private func healthMetricTile(icon: String, value: String, unit: String, bg: Color) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundColor(Color.duoDark)
+            Text(value)
+                .font(.system(.subheadline, design: .rounded))
+                .fontWeight(.black)
+                .foregroundColor(Color.duoDark)
+            Text(unit)
+                .font(.system(size: 9)).fontWeight(.bold)
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(bg)
+        .cornerRadius(10)
+    }
+
+    /// 種目 ID → 推定 kcal/rep
+    private static let kcalPerRep: [String: Double] = [
+        "pushup": 0.5, "push-up": 0.5,
+        "squat":  0.6,
+        "situp":  0.3, "sit-up": 0.3,
+        "lunge":  0.5,
+        "burpee": 1.0,
+        "plank":  0.1,
+    ]
+
     private func loadData() async {
         isLoading = true
         async let exercises = authManager.getTodayExercises()
         async let sets      = authManager.getDailySets()
         todayExercises = await exercises
         dailySets      = await sets
-        totalReps = todayExercises.reduce(0) { $0 + $1.reps }
-        totalXP   = todayExercises.reduce(0) { $0 + $1.points }
+        totalReps     = todayExercises.reduce(0) { $0 + $1.reps }
+        totalXP       = todayExercises.reduce(0) { $0 + $1.points }
+        totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in
+            let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
+            return acc + Double(ex.reps) * rate
+        })
         isLoading = false
     }
 }

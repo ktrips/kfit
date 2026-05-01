@@ -75,6 +75,17 @@ struct WatchDashboardView: View {
         .fullScreenCover(isPresented: $showFlow) {
             WatchWorkoutFlowView(isPresented: $showFlow)
         }
+        // iOS アプリ起動シグナルを受信したら自動でワークアウトを開始する
+        .onChange(of: connectivity.shouldAutoStartWorkout) { triggered in
+            if triggered && !showFlow {
+                showFlow = true
+                connectivity.shouldAutoStartWorkout = false
+            }
+        }
+        // 起動時に最新 stats を iOS に問い合わせる
+        .onAppear {
+            connectivity.requestStatsFromiOS()
+        }
     }
 }
 

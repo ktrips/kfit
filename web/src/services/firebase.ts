@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, orderBy, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -358,6 +358,121 @@ export const getWeeklyProgress = async (userId: string): Promise<WeeklyProgress>
     progress[id] = (progress[id] ?? 0) + (data.reps ?? 0);
   });
   return progress;
+};
+
+// ── Completed sets (1セット = DailyWorkoutFlow を1周完了) ─────────────────────
+
+export interface SetExercise {
+  exerciseId: string;
+  exerciseName: string;
+  reps: number;
+  points: number;
+}
+
+export interface WeeklySetProgress {
+  completedSets: number;
+  exercises: Record<string, { reps: number; sets: number; exerciseName: string }>;
+}
+
+export const recordCompletedSet = async (
+  userId: string,
+  exercises: SetExercise[]
+): Promise<void> => {
+  const now = new Date();
+  await addDoc(collection(db, 'users', userId, 'completed-sets'), {
+    timestamp: now,
+    exercises,
+    totalXP: exercises.reduce((s, e) => s + e.points, 0),
+    totalReps: exercises.reduce((s, e) => s + e.reps, 0),
+  });
+};
+
+export const getWeeklySetProgress = async (userId: string): Promise<WeeklySetProgress> => {
+  const { start, end } = getWeekBounds();
+  const q = query(
+    collection(db, 'users', userId, 'completed-sets'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end)
+  );
+  const snapshot = await getDocs(q);
+
+  const exercises: WeeklySetProgress['exercises'] = {};
+  snapshot.docs.forEach(d => {
+    const data = d.data();
+    (data.exercises ?? []).forEach((e: SetExercise) => {
+      if (!exercises[e.exerciseId]) {
+        exercises[e.exerciseId] = { reps: 0, sets: 0, exerciseName: e.exerciseName };
+      }
+      exercises[e.exerciseId].reps += e.reps;
+      exercises[e.exerciseId].sets += 1;
+    });
+  });
+
+  return { completedSets: snapshot.size, exercises };
+};
+
+// ── 個別セット記録（タイムスタンプ付き一覧） ────────────────────────────────
+
+export interface CompletedSetRecord {
+  id: string;
+  timestamp: Date;
+  exercises: SetExercise[];
+  totalXP: number;
+  totalReps: number;
+}
+
+/** 今週完了したセットを新しい順で取得 */
+export const getWeeklySetLog = async (userId: string): Promise<CompletedSetRecord[]> => {
+  const { start, end } = getWeekBounds();
+  const q = query(
+    collection(db, 'users', userId, 'completed-sets'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end),
+    orderBy('timestamp', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    const ts = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp);
+    return {
+      id: d.id,
+      timestamp: ts,
+      exercises: data.exercises ?? [],
+      totalXP: data.totalXP ?? 0,
+      totalReps: data.totalReps ?? 0,
+    };
+  });
+};
+
+/** 今日完了したセット数を返す */
+export const getTodaySetCount = async (userId: string): Promise<number> => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const q = query(
+    collection(db, 'users', userId, 'completed-sets'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.size;
+};
+
+export const getDailySetGoal = async (userId: string): Promise<number> => {
+  const weekId = getCurrentWeekId();
+  const snap = await getDoc(doc(db, 'users', userId, 'weekly-goals', weekId));
+  return snap.exists() ? (snap.data().dailySets ?? 2) : 2;
+};
+
+export const saveDailySetGoal = async (userId: string, dailySets: number): Promise<void> => {
+  const weekId = getCurrentWeekId();
+  await setDoc(
+    doc(db, 'users', userId, 'weekly-goals', weekId),
+    { weekId, dailySets, updatedAt: Timestamp.now() },
+    { merge: true }
+  );
 };
 
 // Get leaderboard

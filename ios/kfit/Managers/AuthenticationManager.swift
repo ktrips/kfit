@@ -244,11 +244,11 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
-    // MARK: - Apple Watch からのワークアウトを Firestore に記録
+    // MARK: - Apple Watch からのワークアウトを Firestore に記録（種目ごと通知キャンセル用）
     func recordWatchWorkout(_ workout: WatchWorkoutData) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         let data: [String: Any] = [
-            "exerciseId":   "watch",
+            "exerciseId":   workout.exerciseId,      // "watch" ではなく実際の ID を使用
             "exerciseName": workout.exerciseName,
             "reps":         workout.reps,
             "points":       workout.points,
@@ -258,7 +258,56 @@ class AuthenticationManager: ObservableObject {
         ]
         try? await db.collection("users").document(userId)
             .collection("completed-exercises").addDocument(data: data)
-        await updateStreakAndPoints(userId: userId, points: workout.points, now: workout.timestamp)
+        // ポイント・ストリーク更新は完了セット受信時にまとめて行うため、ここでは通知キャンセルのみ
+        NotificationManager.shared.handleWorkoutRecorded()
+    }
+
+    // MARK: - Apple Watch セット完了 → completed-sets に記録 + stats 更新
+    /// 戻り値: (streak, todayReps, todayXP) を Watch へ逆同期するために返す
+    @discardableResult
+    func recordWatchCompletedSet(_ set: WatchSetData) async -> (streak: Int, todayReps: Int, todayXP: Int) {
+        guard let userId = Auth.auth().currentUser?.uid else { return (0, 0, 0) }
+        let now = set.timestamp
+
+        // completed-sets に記録（Web の recordCompletedSet と同一スキーマ）
+        let exercisesData: [[String: Any]] = set.exercises.map { [
+            "exerciseId":   $0.exerciseId,
+            "exerciseName": $0.exerciseName,
+            "reps":         $0.reps,
+            "points":       $0.points,
+        ] }
+        let setDoc: [String: Any] = [
+            "timestamp":  now,
+            "exercises":  exercisesData,
+            "totalXP":    set.totalXP,
+            "totalReps":  set.totalReps,
+            "source":     "watch"
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-sets").addDocument(data: setDoc)
+
+        // ストリーク・ポイントをまとめて更新
+        await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
+
+        // 更新後のプロフィールを取得して返す（Watch への逆同期用）
+        let snap = try? await db.collection("users").document(userId).getDocument()
+        let streak = snap?.data()?["streak"] as? Int ?? (userProfile?.streak ?? 0)
+        let totalXP = snap?.data()?["totalPoints"] as? Int ?? (userProfile?.totalPoints ?? 0)
+
+        // 今日の rep 合計を completed-exercises から集計
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: now)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? now
+        let todaySnap = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments()
+        let todayReps = todaySnap?.documents
+            .compactMap { $0.data()["reps"] as? Int }
+            .reduce(0, +) ?? set.totalReps
+
+        return (streak, todayReps, totalXP)
     }
 
     // MARK: - Direct record (for WorkoutPlanView)

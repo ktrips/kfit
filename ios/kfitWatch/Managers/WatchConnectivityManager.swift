@@ -13,6 +13,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var todayReps: Int = 0
     @Published var recentWorkouts: [String] = []
 
+    /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
+    @Published var shouldAutoStartWorkout: Bool = false
+
     private var session: WCSession?
 
     override init() {
@@ -28,34 +31,40 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
-    // MARK: - Watch → iOS: ワークアウト送信
+    // MARK: - Watch → iOS: 種目ごとの送信（通知キャンセル用）
     func sendWorkout(_ workout: WorkoutData) {
         guard let session = session, session.isReachable else {
-            // リーチ不可の場合はアプリコンテキストで送信（後で処理）
             sendWorkoutViaContext(workout)
             return
         }
-
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(workout)
-            // "workout_recorded": true を付与し iPhone 側で通知キャンセルを識別
-            session.sendMessage(["workout": data, "workout_recorded": true], replyHandler: nil) { error in
-                print("WatchConnectivity sendMessage error: \(error)")
-            }
-        } catch {
-            print("Error encoding workout: \(error)")
-        }
+        guard let data = try? JSONEncoder().encode(workout) else { return }
+        session.sendMessage(
+            ["workout": data, "workout_recorded": true],
+            replyHandler: nil
+        ) { error in print("WatchConnectivity sendMessage error: \(error)") }
     }
 
     private func sendWorkoutViaContext(_ workout: WorkoutData) {
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(workout)
-            try session?.updateApplicationContext(["pendingWorkout": data])
-        } catch {
-            print("Error sending workout via context: \(error)")
+        guard let data = try? JSONEncoder().encode(workout) else { return }
+        try? session?.updateApplicationContext(["pendingWorkout": data])
+    }
+
+    // MARK: - Watch → iOS: セット完了（全種目まとめて送信）
+    func sendCompletedSet(_ set: WatchSetData) {
+        guard let data = try? JSONEncoder().encode(set) else { return }
+        if let session = session, session.isReachable {
+            session.sendMessage(["completed_set": data], replyHandler: nil) { error in
+                print("WatchConnectivity sendCompletedSet error: \(error)")
+            }
+        } else {
+            try? session?.updateApplicationContext(["pendingCompletedSet": data])
         }
+    }
+
+    // MARK: - iOS → Watch: stats リクエスト
+    func requestStatsFromiOS() {
+        guard let session = session, session.isReachable else { return }
+        session.sendMessage(["action": "request_stats"], replyHandler: nil, errorHandler: nil)
     }
 
     // MARK: - 今日の記録に追加（Watch側UI更新）
@@ -88,6 +97,12 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     // Watch からメッセージ受信（iOS側）/ iOS からメッセージ受信（Watch側）
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         Task { @MainActor in
+            // iOS アプリ起動シグナル → ワークアウト自動開始
+            if (message["action"] as? String) == "start_workout" {
+                self.shouldAutoStartWorkout = true
+                return
+            }
+
             if let workoutData = message["workout"] as? Data {
                 do {
                     let decoder = JSONDecoder()
@@ -108,6 +123,12 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     // アプリコンテキスト受信（バックグラウンド時のデータ同期）
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         Task { @MainActor in
+            // iOS アプリ起動シグナル（バックグラウンド経由）→ 次回 Watch 起動時に自動開始
+            if (applicationContext["action"] as? String) == "start_workout" {
+                self.shouldAutoStartWorkout = true
+                return
+            }
+
             if let workoutData = applicationContext["pendingWorkout"] as? Data {
                 do {
                     let decoder = JSONDecoder()
@@ -126,8 +147,24 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 }
 
 struct WorkoutData: Codable {
+    let exerciseId: String
     let exerciseName: String
     let reps: Int
     let points: Int
+    let timestamp: Date
+}
+
+// MARK: - セット完了データ（全種目をまとめて送る）
+struct WatchSetExercise: Codable {
+    let exerciseId: String
+    let exerciseName: String
+    let reps: Int
+    let points: Int
+}
+
+struct WatchSetData: Codable {
+    let exercises: [WatchSetExercise]
+    let totalXP: Int
+    let totalReps: Int
     let timestamp: Date
 }

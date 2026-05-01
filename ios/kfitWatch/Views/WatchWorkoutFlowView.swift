@@ -26,6 +26,8 @@ struct WatchWorkoutFlowView: View {
     @State private var reps = 0
     @State private var totalXP = 0
     @State private var done = false
+    /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
+    @State private var allResults: [WatchSetExercise] = []
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
@@ -137,7 +139,9 @@ struct WatchWorkoutFlowView: View {
         let xp = reps * current.xp
         totalXP += xp
 
+        // 通知キャンセル用に種目ごとに即送信
         let workout = WorkoutData(
+            exerciseId: current.exerciseId,
             exerciseName: current.name,
             reps: reps,
             points: xp,
@@ -148,9 +152,25 @@ struct WatchWorkoutFlowView: View {
         WatchConnectivityManager.shared.todayReps += reps
         WatchConnectivityManager.shared.todayXP += xp
 
+        // セット完了用に結果を蓄積
+        allResults.append(WatchSetExercise(
+            exerciseId: current.exerciseId,
+            exerciseName: current.name,
+            reps: reps,
+            points: xp
+        ))
+
         WKInterfaceDevice.current().play(.success)
 
         if isLast {
+            // 全種目完了 → まとめてセット記録を送信
+            let setData = WatchSetData(
+                exercises: allResults,
+                totalXP: totalXP,
+                totalReps: allResults.reduce(0) { $0 + $1.reps },
+                timestamp: Date()
+            )
+            WatchConnectivityManager.shared.sendCompletedSet(setData)
             done = true
         } else {
             stepIdx += 1

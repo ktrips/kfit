@@ -22,6 +22,45 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         session.activate()
     }
 
+    /// Watch 自動起動の UserDefaults キー（SettingsView と共有）
+    static let watchAutoLaunchKey = "duofit.watchAutoLaunch"
+
+    /// Watch 自動起動が有効かどうか（デフォルト: true）
+    static var isWatchAutoLaunchEnabled: Bool {
+        get {
+            let stored = UserDefaults.standard.object(forKey: watchAutoLaunchKey)
+            return stored == nil ? true : UserDefaults.standard.bool(forKey: watchAutoLaunchKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: watchAutoLaunchKey) }
+    }
+
+    /// iOSアプリ起動時に Watch へ「ワークアウト開始」シグナルを送る
+    ///
+    /// Watch アプリが前面にある場合は sendMessage でリアルタイム起動。
+    /// バックグラウンド・未起動の場合は updateApplicationContext で
+    /// 「次に Watch アプリを開いたとき自動開始」にフォールバックする。
+    /// ユーザーが設定で無効にしている場合は何もしない。
+    func sendStartWorkoutSignal() {
+        guard Self.isWatchAutoLaunchEnabled else {
+            print("[iOSWatchBridge] Watch自動起動はユーザーによって無効化されています")
+            return
+        }
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return }
+
+        let payload: [String: Any] = ["action": "start_workout", "ts": Date().timeIntervalSince1970]
+
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { error in
+                print("[iOSWatchBridge] sendMessage error: \(error)")
+            }
+        } else {
+            // Watch が非到達 → Application Context に保存（Watch 次回起動時に読まれる）
+            try? session.updateApplicationContext(payload)
+        }
+    }
+
     // MARK: - WCSessionDelegate
 
     nonisolated func session(
@@ -39,17 +78,33 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
     // Watch からワークアウトデータを受信
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        guard message["workout"] != nil || message["workout_recorded"] != nil else { return }
         Task { @MainActor in
-            print("[iOSWatchBridge] Watch からワークアウト受信 → 通知キャンセル処理")
-            NotificationManager.shared.handleWorkoutRecorded()
+            // ① 種目ごとのデータ（通知キャンセル用）
+            if let workoutData = message["workout"] as? Data,
+               let workout = try? JSONDecoder().decode(WatchWorkoutData.self, from: workoutData) {
+                print("[iOSWatchBridge] 種目受信: \(workout.exerciseName) \(workout.reps)rep")
+                await AuthenticationManager.shared.recordWatchWorkout(workout)
+                return
+            }
 
-            // Watch から生のワークアウトデータが届いた場合は Firestore にも記録
-            if let workoutData = message["workout"] as? Data {
-                let decoder = JSONDecoder()
-                if let workout = try? decoder.decode(WatchWorkoutData.self, from: workoutData) {
-                    await AuthenticationManager.shared.recordWatchWorkout(workout)
-                }
+            // ② セット完了（全種目まとめて）
+            if let setData = message["completed_set"] as? Data,
+               let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
+                print("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
+                let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP)
+                return
+            }
+
+            // ③ stats リクエスト（Watch 起動時）
+            if (message["action"] as? String) == "request_stats" {
+                let profile = AuthenticationManager.shared.userProfile
+                sendStatsToWatch(
+                    streak:    profile?.streak ?? 0,
+                    todayReps: 0,   // 即計算するとコストがかかるため 0 を返す（簡易実装）
+                    todayXP:   profile?.totalPoints ?? 0
+                )
+                return
             }
         }
     }
@@ -59,24 +114,57 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
-        guard applicationContext["pendingWorkout"] != nil else { return }
         Task { @MainActor in
-            NotificationManager.shared.handleWorkoutRecorded()
-
-            if let workoutData = applicationContext["pendingWorkout"] as? Data {
-                let decoder = JSONDecoder()
-                if let workout = try? decoder.decode(WatchWorkoutData.self, from: workoutData) {
-                    await AuthenticationManager.shared.recordWatchWorkout(workout)
-                }
+            if let workoutData = applicationContext["pendingWorkout"] as? Data,
+               let workout = try? JSONDecoder().decode(WatchWorkoutData.self, from: workoutData) {
+                await AuthenticationManager.shared.recordWatchWorkout(workout)
             }
+
+            if let setData = applicationContext["pendingCompletedSet"] as? Data,
+               let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
+                let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP)
+            }
+        }
+    }
+
+    // iOS → Watch: 更新後の数値を送信
+    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return }
+        let payload: [String: Any] = [
+            "streak":    streak,
+            "todayReps": todayReps,
+            "todayXP":   todayXP,
+        ]
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        } else {
+            try? session.updateApplicationContext(payload)
         }
     }
 }
 
 /// Watch 側の WorkoutData と共通のシリアライズ構造
 struct WatchWorkoutData: Codable {
+    let exerciseId: String
     let exerciseName: String
     let reps: Int
     let points: Int
+    let timestamp: Date
+}
+
+/// Watch 側の WatchSetData と共通のシリアライズ構造（iOS 側ミラー）
+struct WatchSetData: Codable {
+    struct Exercise: Codable {
+        let exerciseId: String
+        let exerciseName: String
+        let reps: Int
+        let points: Int
+    }
+    let exercises: [Exercise]
+    let totalXP: Int
+    let totalReps: Int
     let timestamp: Date
 }

@@ -2,11 +2,13 @@ import SwiftUI
 import FirebaseCore
 import GoogleSignIn
 import UserNotifications
+import WatchConnectivity
 
 @main
 struct kfitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authManager: AuthenticationManager
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         FirebaseApp.configure()
@@ -21,6 +23,12 @@ struct kfitApp: App {
             } else {
                 LoginView()
                     .environmentObject(authManager)
+            }
+        }
+        // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
             }
         }
     }
@@ -56,6 +64,14 @@ struct MainTabView: View {
             NavigationView { HelpView() }
                 .tabItem { Label("ヘルプ", systemImage: "questionmark.circle.fill") }
                 .tag(5)
+
+            NavigationView { HealthView() }
+                .tabItem { Label("健康", systemImage: "heart.fill") }
+                .tag(6)
+
+            NavigationView { SettingsView() }
+                .tabItem { Label("設定", systemImage: "gearshape.fill") }
+                .tag(7)
         }
         .accentColor(Color.duoGreen)
         .onChange(of: selectedTab) { tab in

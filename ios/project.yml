@@ -58,6 +58,7 @@ targets:
           - health-records
     dependencies:
       - target: kfitWatch
+      - sdk: HealthKit.framework
 
   kfitWatch:
     type: application

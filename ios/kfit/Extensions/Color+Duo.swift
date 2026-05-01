@@ -10,6 +10,16 @@ extension Color {
     static let duoBlue   = Color(red: 0.110, green: 0.690, blue: 0.965) // #1CB0F6
     static let duoPurple = Color(red: 0.573, green: 0.278, blue: 0.910) // #9247E8
     static let duoDark   = Color(red: 0.220, green: 0.220, blue: 0.220) // #383838
-    // 汎用セマンティックカラー
-    static let duoSubtitle = Color(red: 0.40, green: 0.40, blue: 0.45)  // .secondary より濃いサブタイトル用
+    static let duoSubtitle = Color(red: 0.40, green: 0.40, blue: 0.45)
+
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        self.init(
+            red:   Double((int >> 16) & 0xFF) / 255,
+            green: Double((int >>  8) & 0xFF) / 255,
+            blue:  Double( int        & 0xFF) / 255
+        )
+    }
 }

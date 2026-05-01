@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/appStore';
 import { recordExercise } from '../services/firebase';
+import { CreatePlanModal } from './CreatePlanModal';
+import {
+  getSavedPlans, deletePlan,
+  type AIGeneratedPlan,
+  PROVIDER_LABELS,
+} from '../services/aiService';
 
 // ── データ定義 ────────────────────────────────────────────────────────────────
 
@@ -343,6 +349,28 @@ export const WorkoutPlanView: React.FC = () => {
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<PlannedExercise | null>(null);
 
+  // ── AIプランタブ ─────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'standard' | 'ai'>('standard');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [savedPlans, setSavedPlans] = useState<AIGeneratedPlan[]>([]);
+  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSavedPlans(getSavedPlans());
+  }, []);
+
+  const handlePlanSaved = (plan: AIGeneratedPlan) => {
+    setSavedPlans(getSavedPlans());
+    setExpandedPlanId(plan.id);
+    setActiveTab('ai');
+  };
+
+  const handleDeletePlan = (id: string) => {
+    deletePlan(id);
+    setSavedPlans(getSavedPlans());
+    if (expandedPlanId === id) setExpandedPlanId(null);
+  };
+
   const dayOfWeek = new Date().getDay();
 
   const joinDate: Date = userProfile?.joinDate
@@ -366,6 +394,181 @@ export const WorkoutPlanView: React.FC = () => {
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
       <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
+
+        {/* ── タブ切替 ──────────────────────────────────────────────────── */}
+        <div className="flex gap-2">
+          {(['standard', 'ai'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="flex-1 rounded-2xl py-2.5 font-extrabold text-sm transition-all"
+              style={{
+                background: activeTab === tab ? '#58CC02' : 'white',
+                color: activeTab === tab ? 'white' : '#4b4b4b',
+                border: `2px solid ${activeTab === tab ? '#46A302' : '#e5e5e5'}`,
+                boxShadow: activeTab === tab ? '0 3px 0 #46A302' : 'none',
+              }}
+            >
+              {tab === 'standard' ? '📋 標準プラン' : '🤖 AIプラン'}
+              {tab === 'ai' && savedPlans.length > 0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black"
+                  style={{ background: activeTab === 'ai' ? 'rgba(255,255,255,0.3)' : '#58CC02', color: 'white' }}
+                >
+                  {savedPlans.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── AIプランタブ ─────────────────────────────────────────────── */}
+        {activeTab === 'ai' && (
+          <div className="space-y-4">
+            {/* 作成ボタン */}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="duo-btn-primary w-full py-4 text-base flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">🤖</span>
+              <span>新しいプランをAIで作成</span>
+            </button>
+
+            {/* 保存済みプラン一覧 */}
+            {savedPlans.length === 0 ? (
+              <div
+                className="rounded-2xl p-8 text-center"
+                style={{ background: 'white', border: '2px dashed #e5e5e5' }}
+              >
+                <div className="text-5xl mb-3">🤖</div>
+                <p className="font-black text-duo-dark text-lg mb-1">まだプランがありません</p>
+                <p className="text-duo-gray font-bold text-sm">
+                  上のボタンから目標を入力して、<br/>AIにあなた専用プランを作ってもらいましょう！
+                </p>
+              </div>
+            ) : (
+              savedPlans.map(plan => {
+                const isOpen = expandedPlanId === plan.id;
+                return (
+                  <div key={plan.id} className="duo-card overflow-hidden">
+                    {/* プランヘッダー */}
+                    <button
+                      onClick={() => setExpandedPlanId(isOpen ? null : plan.id)}
+                      className="w-full text-left px-5 py-4 flex items-start gap-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+                        style={{ background: '#D7FFB8' }}
+                      >
+                        🤖
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-duo-dark text-base leading-tight truncate">{plan.title}</p>
+                        <p className="text-duo-gray font-bold text-xs truncate mt-0.5">{plan.goal}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E8F5E9', color: '#46A302' }}>
+                            週{plan.daysPerWeek}日
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E3F2FD', color: '#0a6c96' }}>
+                            {PROVIDER_LABELS[plan.provider].split(' ')[0]}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#F7F7F7', color: '#9e9e9e' }}>
+                            {new Date(plan.createdAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDeletePlan(plan.id); }}
+                          className="text-duo-gray hover:text-red-500 text-sm p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                          title="削除"
+                        >
+                          🗑
+                        </button>
+                        <span className="text-duo-gray text-sm">{isOpen ? '▲' : '▼'}</span>
+                      </div>
+                    </button>
+
+                    {/* 展開時：プラン詳細 */}
+                    {isOpen && (
+                      <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                        {/* サマリー */}
+                        <p className="text-duo-dark font-bold text-sm leading-relaxed">{plan.summary}</p>
+
+                        {/* スケジュール（折りたたみ） */}
+                        <div>
+                          <p className="font-extrabold text-duo-dark text-xs uppercase tracking-wider mb-2">📅 週間スケジュール</p>
+                          <div className="space-y-1.5">
+                            {plan.weeklySchedule.map((day, i) => (
+                              <div
+                                key={i}
+                                className="rounded-xl px-3 py-2.5"
+                                style={{ background: '#F7F7F7', border: '1.5px solid #e5e5e5' }}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="font-extrabold text-duo-dark text-sm">{day.day}</p>
+                                  <div className="flex gap-1.5">
+                                    {day.estimatedTime && (
+                                      <span className="text-[10px] font-bold text-duo-gray">⏱ {day.estimatedTime}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className="text-duo-gray font-bold text-xs mb-1.5">{day.focus}</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {day.exercises.map((ex, j) => (
+                                    <span
+                                      key={j}
+                                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                      style={{ background: '#E8F5E9', color: '#2d7a00' }}
+                                    >
+                                      {ex.name} {ex.reps}×{ex.sets}
+                                    </span>
+                                  ))}
+                                  {day.cardio && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#E3F2FD', color: '#0a6c96' }}>
+                                      🏃 {day.cardio}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 栄養 + マイルストーン（横2列） */}
+                        {(plan.nutritionTips.length > 0 || plan.progressMilestones.length > 0) && (
+                          <div className="grid grid-cols-2 gap-3">
+                            {plan.nutritionTips.length > 0 && (
+                              <div className="rounded-xl p-3" style={{ background: '#E8F5E9', border: '1.5px solid #58CC02' }}>
+                                <p className="font-extrabold text-xs mb-1.5" style={{ color: '#2d7a00' }}>🥗 栄養</p>
+                                {plan.nutritionTips.slice(0, 2).map((tip, i) => (
+                                  <p key={i} className="text-[11px] font-bold leading-tight mb-1" style={{ color: '#2d7a00' }}>• {tip}</p>
+                                ))}
+                              </div>
+                            )}
+                            {plan.progressMilestones.length > 0 && (
+                              <div className="rounded-xl p-3" style={{ background: '#FFF3E0', border: '1.5px solid #FF9600' }}>
+                                <p className="font-extrabold text-xs mb-1.5" style={{ color: '#8a4700' }}>🏆 目標</p>
+                                {plan.progressMilestones.slice(0, 2).map((m, i) => (
+                                  <p key={i} className="text-[11px] font-bold leading-tight mb-1" style={{ color: '#8a4700' }}>
+                                    {m.week}週: {m.milestone}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── 標準プランタブ ──────────────────────────────────────────── */}
+        {activeTab === 'standard' && <>
 
         {/* フェーズカード */}
         <div className="duo-card p-5">
@@ -523,7 +726,9 @@ export const WorkoutPlanView: React.FC = () => {
           </div>
         </div>
 
-      </div>
+        </> /* 標準プランタブ閉じ */}
+
+      </div>{/* max-w-2xl 閉じ */}
 
       {/* Detail sheet */}
       {selected && (
@@ -534,6 +739,14 @@ export const WorkoutPlanView: React.FC = () => {
             setDoneIds(prev => new Set(prev).add(id));
             setSelected(null);
           }}
+        />
+      )}
+
+      {/* AI プラン作成モーダル */}
+      {showCreateModal && (
+        <CreatePlanModal
+          onClose={() => setShowCreateModal(false)}
+          onSaved={handlePlanSaved}
         />
       )}
     </div>

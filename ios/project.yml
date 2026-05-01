@@ -32,6 +32,8 @@ targets:
         NSMotionUsageDescription: "kfit uses motion sensors to accurately count your exercise reps and measure form quality."
         NSCameraUsageDescription: "kfit may use camera for form analysis in the future."
         NSLocalNetworkUsageDescription: "kfit needs local network access for Firebase authentication."
+        NSHealthShareUsageDescription: "kfit reads heart rate, activity, and sleep data from Apple Health to show your fitness summary."
+        NSHealthUpdateUsageDescription: "kfit may write workout data to Apple Health."
         NSBonjourServices:
           - _firebase._tcp
         UIRequiredDeviceCapabilities:
@@ -48,6 +50,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app
         INFOPLIST_FILE: kfit/Info.plist
+    entitlements:
+      path: kfit/kfit.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access:
+          - health-records
     dependencies:
       - target: kfitWatch
 

@@ -54,8 +54,6 @@ targets:
       path: kfit/kfit.entitlements
       properties:
         com.apple.developer.healthkit: true
-        com.apple.developer.healthkit.access:
-          - health-records
     dependencies:
       - target: kfitWatch
       - sdk: HealthKit.framework

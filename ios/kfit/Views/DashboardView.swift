@@ -681,10 +681,21 @@ struct DashboardView: View {
 
     private func loadData() async {
         isLoading = true
-        async let exercises = authManager.getTodayExercises()
-        async let sets      = authManager.getDailySets()
-        todayExercises = await exercises
-        dailySets      = await sets
+        // 10秒でタイムアウト — ネットワーク不調時でも UI が止まらないようにする
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                async let exercises = self.authManager.getTodayExercises()
+                async let sets      = self.authManager.getDailySets()
+                let (ex, st) = await (exercises, sets)
+                self.todayExercises = ex
+                self.dailySets      = st
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+            await group.next()
+            group.cancelAll()
+        }
         totalReps     = todayExercises.reduce(0) { $0 + $1.reps }
         totalXP       = todayExercises.reduce(0) { $0 + $1.points }
         totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in

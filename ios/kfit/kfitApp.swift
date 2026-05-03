@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseFirestore
 import GoogleSignIn
 import UserNotifications
 import WatchConnectivity
@@ -12,6 +13,10 @@ struct kfitApp: App {
 
     init() {
         FirebaseApp.configure()
+        // オフラインキャッシュを有効化（ネットワーク不調時でもデータを返す）
+        let settings = FirestoreSettings()
+        settings.cacheSettings = PersistentCacheSettings()
+        Firestore.firestore().settings = settings
         _authManager = StateObject(wrappedValue: AuthenticationManager.shared)
     }
 

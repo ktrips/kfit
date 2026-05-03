@@ -229,17 +229,17 @@ class AuthenticationManager: ObservableObject {
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
 
         do {
+            // キャッシュ優先で取得（オフライン時もブロックしない）
             let snapshot = try await db.collection("users").document(userId)
                 .collection("completed-exercises")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
-                .getDocuments()
+                .getDocuments(source: .default)
 
-            return try snapshot.documents.compactMap { doc in
-                try doc.data(as: CompletedExercise.self)
+            return snapshot.documents.compactMap { doc in
+                try? doc.data(as: CompletedExercise.self)
             }
         } catch {
-            errorMessage = "Failed to load today's exercises: \(error.localizedDescription)"
             return []
         }
     }
@@ -377,7 +377,7 @@ class AuthenticationManager: ObservableObject {
             .collection("completed-exercises")
             .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
             .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments() else { return DailySets(amSets: 0, pmSets: 0) }
+            .getDocuments(source: .default) else { return DailySets(amSets: 0, pmSets: 0) }
 
         let timestamps: [Date] = snapshot.documents
             .compactMap { try? $0.data(as: CompletedExercise.self) }

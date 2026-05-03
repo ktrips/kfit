@@ -30,6 +30,9 @@ struct ExerciseTrackerView: View {
     @State private var plankSeconds = 0
     @State private var plankTimer: Timer?
 
+    /// セット内の記録済み種目
+    @State private var completedExercises: [(exercise: Exercise, reps: Int, points: Int)] = []
+
     @State private var showCelebration = false
     @State private var earnedXP = 0
     @State private var isSubmitting = false
@@ -58,10 +61,16 @@ struct ExerciseTrackerView: View {
                     header
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 16) {
+                            if !completedExercises.isEmpty {
+                                completedList
+                            }
                             exerciseGrid
                             if selectedExercise != nil {
                                 repCounter
                                 recordButton
+                            }
+                            if !completedExercises.isEmpty {
+                                finishSetButton
                             }
                         }
                         .padding(16)
@@ -314,33 +323,76 @@ struct ExerciseTrackerView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 6, y: 2)
     }
 
-    // MARK: - 記録ボタン
+    // MARK: - 記録ボタン（種目追加）
     private var recordButton: some View {
         Button {
             guard !isSubmitting else { return }
-            submitWorkout()
+            addExerciseToSet()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                Text("この種目を追加").fontWeight(.black)
+            }
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(currentReps == 0 ? Color(.systemGray3) : Color.duoBlue)
+            .cornerRadius(18)
+            .shadow(
+                color: currentReps > 0 ? Color.duoBlue.opacity(0.45) : .clear,
+                radius: 6, y: 4
+            )
+        }
+        .disabled(currentReps == 0)
+        .animation(.easeInOut, value: currentReps)
+    }
+
+    // MARK: - 完了リスト
+    private var completedList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("このセットの記録")
+                .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+            ForEach(completedExercises.indices, id: \.self) { idx in
+                let item = completedExercises[idx]
+                HStack {
+                    Text(emoji(for: item.exercise.name)).font(.title3)
+                    Text(item.exercise.name).font(.subheadline).fontWeight(.medium)
+                    Spacer()
+                    Text("\(item.reps) rep").font(.caption).foregroundColor(Color.duoSubtitle)
+                    Text("+\(item.points) XP").font(.caption).fontWeight(.bold).foregroundColor(Color.duoGold)
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .padding(16)
+        .background(Color.duoYellow.opacity(0.1))
+        .cornerRadius(16)
+    }
+
+    // MARK: - セット完了ボタン
+    private var finishSetButton: some View {
+        Button {
+            guard !isSubmitting else { return }
+            submitSet()
         } label: {
             HStack(spacing: 8) {
                 if isSubmitting {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "checkmark.circle.fill")
-                    Text("記録する！").fontWeight(.black)
+                    Text("セットを完了！").fontWeight(.black)
                 }
             }
             .font(.headline)
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-            .background(currentReps == 0 ? Color(.systemGray3) : Color.duoGreen)
+            .background(Color.duoGreen)
             .cornerRadius(18)
-            .shadow(
-                color: currentReps > 0 ? Color.duoGreen.opacity(0.45) : .clear,
-                radius: 6, y: 4
-            )
+            .shadow(color: Color.duoGreen.opacity(0.45), radius: 6, y: 4)
         }
-        .disabled(currentReps == 0 || isSubmitting)
-        .animation(.easeInOut, value: currentReps)
+        .disabled(isSubmitting)
     }
 
     // MARK: - セレブレーション
@@ -446,14 +498,36 @@ struct ExerciseTrackerView: View {
         plankTimer = nil
     }
 
-    private func submitWorkout() {
+    private func addExerciseToSet() {
         guard let exercise = selectedExercise, currentReps > 0 else { return }
         stopPlankTimer()
-        let formScore = (!isManualMode && !isPlankSelected) ? motionManager.formScore : 85.0
-        earnedXP = currentReps * exercise.basePoints
+        let points = currentReps * exercise.basePoints
+        completedExercises.append((exercise, currentReps, points))
+
+        // リセット
+        selectedExercise = nil
+        motionManager.stopDetection()
+        manualRepCount = 0
+        plankSeconds = 0
+        pulseAnimation = false
+    }
+
+    private func submitSet() {
+        guard !completedExercises.isEmpty else { return }
         isSubmitting = true
+        earnedXP = completedExercises.reduce(0) { $0 + $1.points }
+
         Task {
-            await authManager.recordExercise(exercise, reps: currentReps, formScore: formScore)
+            // 各種目を個別に記録
+            for item in completedExercises {
+                await authManager.recordExerciseDirect(
+                    exerciseId: item.exercise.id ?? item.exercise.name,
+                    exerciseName: item.exercise.name,
+                    reps: item.reps,
+                    points: item.points
+                )
+            }
+
             withAnimation(.spring(response: 0.5)) {
                 isSubmitting = false
                 showCelebration = true

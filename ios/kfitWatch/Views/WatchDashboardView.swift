@@ -8,6 +8,36 @@ struct WatchDashboardView: View {
     @State private var showFlow = false
 
     var body: some View {
+        ZStack {
+            if connectivity.isLoading && !connectivity.hasLoadedData {
+                // 初回ロード中
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: duoGreen))
+                        .scaleEffect(1.2)
+                    Text("データ読み込み中...")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+            } else {
+                // メインコンテンツ
+                mainContent
+            }
+        }
+        // iOS アプリ起動シグナルを受信したら自動でワークアウトを開始する
+        .onChange(of: connectivity.shouldAutoStartWorkout) { triggered in
+            if triggered && !showFlow {
+                showFlow = true
+                connectivity.shouldAutoStartWorkout = false
+            }
+        }
+        // 起動時に最新 stats を iOS に問い合わせる
+        .onAppear {
+            connectivity.requestStatsFromiOS()
+        }
+    }
+
+    private var mainContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 10) {
 
@@ -74,17 +104,6 @@ struct WatchDashboardView: View {
         }
         .fullScreenCover(isPresented: $showFlow) {
             WatchWorkoutFlowView(isPresented: $showFlow)
-        }
-        // iOS アプリ起動シグナルを受信したら自動でワークアウトを開始する
-        .onChange(of: connectivity.shouldAutoStartWorkout) { triggered in
-            if triggered && !showFlow {
-                showFlow = true
-                connectivity.shouldAutoStartWorkout = false
-            }
-        }
-        // 起動時に最新 stats を iOS に問い合わせる
-        .onAppear {
-            connectivity.requestStatsFromiOS()
         }
     }
 }

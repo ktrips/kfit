@@ -1,15 +1,18 @@
-# kfit Web App
+# kfit Web App (v0.4.13)
 
 A React-based web application for tracking fitness habits with Duolingo-like gamification.
 
 ## Features
 
 - **Google Authentication** - Sign in with Google
-- **Exercise Tracking** - Log push-ups, squats, and sit-ups with rep counting
+- **Exercise Tracking** - Manual rep counting for push-ups, squats, sit-ups, lunges, planks, burpees
+- **AI Training Plans** - Generate personalized workout plans
+- **Weekly Goals** - Set and track weekly exercise targets
+- **History View** - Review past 14 days of workouts
 - **Daily Dashboard** - View today's workouts, points, and streaks
-- **Points System** - Earn points based on reps and form
+- **XP System** - Earn points based on reps and exercise type
 - **Streak Tracking** - Build consecutive day streaks
-- **Real-time Sync** - Firestore backend for data persistence
+- **Real-time Sync** - Firestore backend syncs with iOS/Watch apps
 
 ## Tech Stack
 
@@ -49,7 +52,11 @@ src/
 ├── components/          # React components
 │   ├── LoginView.tsx
 │   ├── DashboardView.tsx
-│   └── ExerciseTrackerView.tsx
+│   ├── ExerciseTrackerView.tsx
+│   ├── WeeklyGoalView.tsx
+│   ├── HistoryView.tsx
+│   ├── HelpView.tsx
+│   └── WorkoutPlanView.tsx
 ├── services/
 │   └── firebase.ts      # Firebase SDK wrapper
 ├── store/
@@ -85,3 +92,17 @@ See `../firebase/SETUP.md` for detailed Firebase setup instructions including:
 - Deploying security rules
 - Setting up Cloud Functions
 - Configuring Google Authentication
+
+## Recent Updates (v0.4.x)
+
+- ✅ AI Training Plan generation
+- ✅ Weekly Goals view
+- ✅ History view (past 14 days)
+- ✅ Help/FAQ view
+- ✅ Real-time sync with iOS and Apple Watch
+- ✅ Enhanced XP system with multiple exercise types
+- ✅ Client-side streak and points calculation
+
+## Version
+
+Current version: **0.4.13** (May 2026)

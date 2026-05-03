@@ -1,29 +1,39 @@
-# kfit iOS App
+# kfit iOS App (v0.4.13)
 
-A SwiftUI-based iOS fitness app with motion sensor exercise detection and Firebase backend integration.
+A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, and Firebase backend integration.
 
 ## Features
 
 - **Google Authentication** - Sign in with Google
-- **Core Motion Integration** - Motion sensor rep counting for push-ups, squats, sit-ups
-- **Exercise Tracking** - Log workouts with automatic or manual rep counting
+- **Motion Detection (Default)** - Automatic rep counting using Core Motion (50Hz accelerometer/gyroscope)
+- **Manual Counter (Optional)** - Fallback manual rep input
+- **Apple Watch Support** - Companion watchOS app with motion detection (20Hz) and haptic feedback
+- **HealthKit Integration** - Read heart rate, activity, and sleep data from Apple Health
+- **AI Training Plans** - Generate personalized workout plans
+- **Weekly Goals** - Set and track weekly exercise targets
+- **History View** - Review past 14 days of workouts
 - **Form Scoring** - Real-time form quality feedback based on motion patterns
-- **Daily Dashboard** - View streaks, points, and workout history
-- **Real-time Sync** - Firebase Firestore for data persistence
+- **Daily Dashboard** - View streaks, XP, and 90-day challenge progress
+- **Real-time Sync** - Firebase Firestore syncs with Web and Watch apps
+- **Watch Connectivity** - Bidirectional data sync between iPhone and Apple Watch
 
 ## Tech Stack
 
 - **SwiftUI** - Modern UI framework
 - **Combine** - Reactive programming
-- **CoreMotion** - Motion sensor integration
+- **CoreMotion** - Motion sensor integration (50Hz on iPhone, 20Hz on Watch)
+- **WatchConnectivity** - iPhone ↔ Apple Watch bidirectional sync
+- **HealthKit** - Heart rate, activity, and sleep data integration
 - **Firebase** - Authentication & Firestore database
 - **GoogleSignIn** - OAuth authentication
 
 ## Requirements
 
 - iOS 15.0+
+- watchOS 8.0+ (for Apple Watch app)
 - Xcode 14.0+
 - CocoaPods (for Firebase dependencies)
+- Physical device with accelerometer/gyroscope (motion detection won't work in simulator)
 
 ## Setup
 
@@ -61,16 +71,32 @@ Or open in Xcode and press Cmd+R
 ## Project Structure
 
 ```
-ios/kfit/
-├── kfitApp.swift              # App entry point
-├── Managers/
-│   ├── AuthenticationManager.swift
-│   └── MotionDetectionManager.swift
-├── Views/
-│   ├── LoginView.swift
-│   ├── DashboardView.swift
-│   └── ExerciseTrackerView.swift
-└── Info.plist                 # App configuration
+ios/
+├── kfit/                      # iPhone App
+│   ├── kfitApp.swift
+│   ├── Managers/
+│   │   ├── AuthenticationManager.swift
+│   │   ├── MotionDetectionManager.swift
+│   │   └── HealthKitManager.swift
+│   ├── Views/
+│   │   ├── LoginView.swift
+│   │   ├── DashboardView.swift
+│   │   ├── ExerciseTrackerView.swift
+│   │   ├── WeeklyGoalView.swift
+│   │   ├── HistoryView.swift
+│   │   ├── HelpView.swift
+│   │   └── WorkoutPlanView.swift
+│   └── Info.plist
+│
+└── kfitWatch/                 # Apple Watch App
+    ├── kfitWatchApp.swift
+    ├── Managers/
+    │   ├── WatchMotionDetectionManager.swift
+    │   └── WatchConnectivityManager.swift
+    ├── Views/
+    │   ├── WatchDashboardView.swift
+    │   └── WatchQuickWorkoutView.swift
+    └── Info.plist
 ```
 
 ## Core Motion Implementation
@@ -152,14 +178,28 @@ xcodebuild -scheme kfit test
 2. Verify accelerometer data is being received
 3. Ensure motion threshold is appropriate for exercise type
 
+## Recent Updates (v0.4.x)
+
+- ✅ Apple Watch companion app with motion detection and haptic feedback
+- ✅ HealthKit integration (heart rate, activity, sleep data)
+- ✅ AI Training Plan generation
+- ✅ Weekly Goals view
+- ✅ History view (past 14 days)
+- ✅ Help/FAQ view
+- ✅ Motion detection as default (manual as optional fallback)
+- ✅ Set recording accuracy improvements
+- ✅ iOS/Watch data consistency fixes
+- ✅ Full-screen support and text contrast improvements
+- ✅ Client-side streak and XP calculation
+
 ## Future Enhancements
 
-- [ ] Apple Watch companion app
+- [ ] App Store submission
 - [ ] Advanced form analysis with machine learning
 - [ ] Push notifications for workout reminders
 - [ ] Social leaderboards and friend challenges
 - [ ] Workout video tutorials
-- [ ] More exercise types (burpees, planks, lunges)
+- [ ] More exercise types and variations
 
 ## Dependencies
 
@@ -171,6 +211,10 @@ pod 'Firebase/Auth'
 pod 'Firebase/Firestore'
 pod 'GoogleSignIn'
 ```
+
+## Version
+
+Current version: **0.4.13** (May 2026)
 
 ## License
 

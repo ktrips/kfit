@@ -114,20 +114,20 @@ class AuthenticationManager: ObservableObject {
     }
 
     private func loadExercises() async {
-        do {
-            let snapshot = try await db.collection("exercises").getDocuments()
-            let loaded = snapshot.documents.compactMap { doc -> Exercise? in
-                try? doc.data(as: Exercise.self)
-            }
-            if loaded.isEmpty {
-                await seedDefaultExercises()
-            } else {
-                self.exercises = loaded
-            }
-        } catch {
-            self.exercises = Self.defaultExerciseData.map {
-                Exercise(name: $0.name, basePoints: $0.pts)
-            }
+        // まずキャッシュ or ローカルデフォルトで即時設定
+        if let cached = try? await db.collection("exercises").getDocuments(source: .cache),
+           !cached.documents.isEmpty {
+            self.exercises = cached.documents.compactMap { try? $0.data(as: Exercise.self) }
+            return
+        }
+        // キャッシュなし → デフォルトをセットしてバックグラウンドでサーバー取得
+        self.exercises = Self.defaultExerciseData.map { Exercise(name: $0.name, basePoints: $0.pts) }
+        Task {
+            do {
+                let snapshot = try await db.collection("exercises").getDocuments(source: .server)
+                let loaded = snapshot.documents.compactMap { try? $0.data(as: Exercise.self) }
+                if !loaded.isEmpty { self.exercises = loaded }
+            } catch {}
         }
     }
 
@@ -221,27 +221,35 @@ class AuthenticationManager: ObservableObject {
         ])
     }
 
+    // MARK: - キャッシュから即時取得（ブロックしない）
+    func getTodayExercisesFromCache() async -> [CompletedExercise] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        let (startOfDay, endOfDay) = todayRange()
+        let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments(source: .cache)
+        return snapshot?.documents.compactMap { try? $0.data(as: CompletedExercise.self) } ?? []
+    }
+
+    // MARK: - サーバーから最新取得（バックグラウンド用）
     func getTodayExercises() async -> [CompletedExercise] {
         guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        let (startOfDay, endOfDay) = todayRange()
+        let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments(source: .server)
+        return snapshot?.documents.compactMap { try? $0.data(as: CompletedExercise.self) } ?? []
+    }
 
-        let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: Date())
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
-
-        do {
-            // キャッシュ優先で取得（オフライン時もブロックしない）
-            let snapshot = try await db.collection("users").document(userId)
-                .collection("completed-exercises")
-                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-                .whereField("timestamp", isLessThan: endOfDay)
-                .getDocuments(source: .default)
-
-            return snapshot.documents.compactMap { doc in
-                try? doc.data(as: CompletedExercise.self)
-            }
-        } catch {
-            return []
-        }
+    private func todayRange() -> (start: Date, end: Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let end   = cal.date(byAdding: .day, value: 1, to: start) ?? Date()
+        return (start, end)
     }
 
     // MARK: - Apple Watch からのワークアウトを Firestore に記録（種目ごと通知キャンセル用）
@@ -365,26 +373,38 @@ class AuthenticationManager: ObservableObject {
 
     // MARK: - Daily Sets
     /// 今日のセット状況（30分間隔でセッションを分割し、午前/午後を判定）
+    func getDailySetsFromCache() async -> DailySets {
+        guard let userId = Auth.auth().currentUser?.uid else { return DailySets(amSets: 0, pmSets: 0) }
+        let (startOfDay, endOfDay) = todayRange()
+        guard let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments(source: .cache) else { return DailySets(amSets: 0, pmSets: 0) }
+        return buildDailySets(from: snapshot)
+    }
+
     func getDailySets() async -> DailySets {
         guard let userId = Auth.auth().currentUser?.uid else {
             return DailySets(amSets: 0, pmSets: 0)
         }
-        let calendar = Calendar.current
-        let startOfDay = calendar.startOfDay(for: Date())
-        let endOfDay   = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+        let (startOfDay, endOfDay) = todayRange()
 
         guard let snapshot = try? await db.collection("users").document(userId)
             .collection("completed-exercises")
             .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
             .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments(source: .default) else { return DailySets(amSets: 0, pmSets: 0) }
+            .getDocuments(source: .server) else { return DailySets(amSets: 0, pmSets: 0) }
 
+        return buildDailySets(from: snapshot)
+    }
+
+    private func buildDailySets(from snapshot: QuerySnapshot) -> DailySets {
         let timestamps: [Date] = snapshot.documents
             .compactMap { try? $0.data(as: CompletedExercise.self) }
             .map { $0.timestamp }
             .sorted()
 
-        // 30分以上の間隔 → 新セッションとみなす
         var sessions: [Date] = []
         var lastTime: Date? = nil
         for ts in timestamps {
@@ -396,7 +416,8 @@ class AuthenticationManager: ObservableObject {
             lastTime = ts
         }
 
-        let noon   = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
+        let cal    = Calendar.current
+        let noon   = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
         let amSets = sessions.filter { $0 < noon }.count
         let pmSets = sessions.filter { $0 >= noon }.count
         return DailySets(amSets: amSets, pmSets: pmSets)

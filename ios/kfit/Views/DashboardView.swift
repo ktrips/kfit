@@ -681,28 +681,33 @@ struct DashboardView: View {
 
     private func loadData() async {
         isLoading = true
-        // 10秒でタイムアウト — ネットワーク不調時でも UI が止まらないようにする
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                async let exercises = self.authManager.getTodayExercises()
-                async let sets      = self.authManager.getDailySets()
-                let (ex, st) = await (exercises, sets)
-                self.todayExercises = ex
-                self.dailySets      = st
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-            }
-            await group.next()
-            group.cancelAll()
+
+        // ① キャッシュから即時取得（ネットワーク待ちなし）
+        async let cachedEx   = authManager.getTodayExercisesFromCache()
+        async let cachedSets = authManager.getDailySetsFromCache()
+        todayExercises = await cachedEx
+        dailySets      = await cachedSets
+        recalcTotals()
+        isLoading = false   // キャッシュ結果でスピナーを止める
+
+        // ② バックグラウンドでサーバーから最新を取得して更新
+        Task {
+            async let freshEx   = authManager.getTodayExercises()
+            async let freshSets = authManager.getDailySets()
+            let (ex, st) = await (freshEx, freshSets)
+            todayExercises = ex
+            dailySets      = st
+            recalcTotals()
         }
+    }
+
+    private func recalcTotals() {
         totalReps     = todayExercises.reduce(0) { $0 + $1.reps }
         totalXP       = todayExercises.reduce(0) { $0 + $1.points }
         totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
             return acc + Double(ex.reps) * rate
         })
-        isLoading = false
     }
 }
 

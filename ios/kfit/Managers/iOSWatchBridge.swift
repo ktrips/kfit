@@ -99,11 +99,17 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             // ③ stats リクエスト（Watch 起動時）
             if (message["action"] as? String) == "request_stats" {
                 let profile = AuthenticationManager.shared.userProfile
-                sendStatsToWatch(
-                    streak:    profile?.streak ?? 0,
-                    todayReps: 0,   // 即計算するとコストがかかるため 0 を返す（簡易実装）
-                    todayXP:   profile?.totalPoints ?? 0
-                )
+                // 今日の運動データを取得（非同期）
+                Task {
+                    let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+                    let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
+                    let todayXP = todayExercises.reduce(0) { $0 + $1.points }
+                    self.sendStatsToWatch(
+                        streak:    profile?.streak ?? 0,
+                        todayReps: todayReps,
+                        todayXP:   todayXP
+                    )
+                }
                 return
             }
         }

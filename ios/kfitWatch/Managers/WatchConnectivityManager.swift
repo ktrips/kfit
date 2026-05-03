@@ -16,6 +16,12 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
 
+    /// データロード中かどうか
+    @Published var isLoading: Bool = false
+
+    /// データロード済みフラグ（初回データ取得成功）
+    @Published var hasLoadedData: Bool = false
+
     private var session: WCSession?
 
     override init() {
@@ -63,8 +69,40 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
     // MARK: - iOS → Watch: stats リクエスト
     func requestStatsFromiOS() {
-        guard let session = session, session.isReachable else { return }
-        session.sendMessage(["action": "request_stats"], replyHandler: nil, errorHandler: nil)
+        guard let session = session else {
+            // セッションがない場合はデフォルト値で表示開始
+            isLoading = false
+            hasLoadedData = true
+            return
+        }
+
+        isLoading = true
+
+        guard session.isReachable else {
+            // iOSアプリが起動していない場合は5秒でタイムアウト
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                if self?.isLoading == true {
+                    self?.isLoading = false
+                    self?.hasLoadedData = true
+                }
+            }
+            return
+        }
+
+        session.sendMessage(["action": "request_stats"], replyHandler: nil) { [weak self] error in
+            Task { @MainActor in
+                self?.isLoading = false
+                self?.hasLoadedData = true
+            }
+        }
+
+        // タイムアウト保険（10秒）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            if self?.isLoading == true {
+                self?.isLoading = false
+                self?.hasLoadedData = true
+            }
+        }
     }
 
     // MARK: - 今日の記録に追加（Watch側UI更新）
@@ -80,6 +118,10 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
+
+        // データ受信完了
+        isLoading = false
+        hasLoadedData = true
     }
 
     // MARK: - WCSessionDelegate

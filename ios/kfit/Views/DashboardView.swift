@@ -2,12 +2,6 @@ import SwiftUI
 import UIKit
 import HealthKit
 
-// デバイスのステータスバー高さを動的取得
-private var statusBarHeight: CGFloat {
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first?.windows.first?.safeAreaInsets.top ?? 44
-}
 
 struct DashboardView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -50,7 +44,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea(edges: [.top, .bottom])
         .navigationBarHidden(true)
         // 画面下部に固定のCTAボタン（タブバーの上）
         .safeAreaInset(edge: .bottom) {
@@ -132,50 +126,55 @@ struct DashboardView: View {
 
     // MARK: - ヒーロー（極小1行バー）
     private var heroSection: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            HStack(spacing: 0) {
-                // ── ロゴ ──────────────────
-                HStack(spacing: 5) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 20, height: 20)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
-                    Text("DuoFit")
-                        .font(.system(.caption, design: .rounded))
-                        .fontWeight(.black)
-                        .foregroundColor(.white)
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                HStack(spacing: 0) {
+                    // ── ロゴ ──────────────────
+                    HStack(spacing: 5) {
+                        Image("mascot")
+                            .resizable().scaledToFill()
+                            .frame(width: 20, height: 20)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                        Text("DuoFit")
+                            .font(.system(.caption, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                    }
+
+                    Spacer()
+
+                    // ── 統計 3項目（横1列）───
+                    HStack(spacing: 14) {
+                        miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
+                        repCalStat(reps: totalReps, kcal: totalCalories)
+                        miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
+                    }
+
+                    Spacer()
+
+                    // ── ログアウト ────────────
+                    Button { authManager.signOut() } label: {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 11).weight(.bold))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .padding(6)
+                            .background(Color.white.opacity(0.16))
+                            .clipShape(Circle())
+                    }
                 }
-
-                Spacer()
-
-                // ── 統計 3項目（横1列）───
-                HStack(spacing: 14) {
-                    miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
-                    repCalStat(reps: totalReps, kcal: totalCalories)
-                    miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
-                }
-
-                Spacer()
-
-                // ── ログアウト ────────────
-                Button { authManager.signOut() } label: {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 11).weight(.bold))
-                        .foregroundColor(Color.white.opacity(0.85))
-                        .padding(6)
-                        .background(Color.white.opacity(0.16))
-                        .clipShape(Circle())
-                }
+                .padding(.horizontal, 16)
+                .padding(.top, geometry.safeAreaInsets.top + 8)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, statusBarHeight + 4)
-            .padding(.bottom, 8)
         }
+        .frame(height: 50 + (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 44))
     }
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
@@ -685,20 +684,26 @@ struct DashboardView: View {
         // ① キャッシュから即時取得（ネットワーク待ちなし）
         async let cachedEx   = authManager.getTodayExercisesFromCache()
         async let cachedSets = authManager.getDailySetsFromCache()
-        todayExercises = await cachedEx
-        dailySets      = await cachedSets
-        recalcTotals()
-        isLoading = false   // キャッシュ結果でスピナーを止める
+        let cachedExercises = await cachedEx
+        let cachedDailySets = await cachedSets
 
-        // ② バックグラウンドでサーバーから最新を取得して更新
-        Task {
-            async let freshEx   = authManager.getTodayExercises()
-            async let freshSets = authManager.getDailySets()
-            let (ex, st) = await (freshEx, freshSets)
-            todayExercises = ex
-            dailySets      = st
+        // キャッシュデータがある場合のみローディングを解除
+        let hasCache = !cachedExercises.isEmpty || cachedDailySets.amSets > 0 || cachedDailySets.pmSets > 0
+        if hasCache {
+            todayExercises = cachedExercises
+            dailySets      = cachedDailySets
             recalcTotals()
+            isLoading = false
         }
+
+        // ② サーバーから最新を取得して更新（キャッシュなしの場合はここでローディング解除）
+        async let freshEx   = authManager.getTodayExercises()
+        async let freshSets = authManager.getDailySets()
+        let (ex, st) = await (freshEx, freshSets)
+        todayExercises = ex
+        dailySets      = st
+        recalcTotals()
+        isLoading = false
     }
 
     private func recalcTotals() {

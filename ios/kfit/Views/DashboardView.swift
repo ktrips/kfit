@@ -733,11 +733,12 @@ struct DashboardView: View {
         let hasCache = !cachedExercises.isEmpty || cachedDailySets.amSets > 0 || cachedDailySets.pmSets > 0
         if hasCache {
             print("✅ キャッシュあり - 即座に表示")
-            todayExercises = cachedExercises
-            dailySets      = cachedDailySets
-            recalcTotals()
-            isLoading = false
-            timeoutTask.cancel()
+            await MainActor.run {
+                self.todayExercises = cachedExercises
+                self.dailySets      = cachedDailySets
+                self.recalcTotals()
+                self.isLoading = false
+            }
 
             // バックグラウンドでサーバーから更新
             Task {
@@ -745,27 +746,29 @@ struct DashboardView: View {
                 let freshEx = await authManager.getTodayExercises()
                 let freshSets = await authManager.getDailySets()
                 print("🔵 サーバー更新完了: exercises=\(freshEx.count)")
-                todayExercises = freshEx
-                dailySets = freshSets
-                recalcTotals()
+                await MainActor.run {
+                    self.todayExercises = freshEx
+                    self.dailySets = freshSets
+                    self.recalcTotals()
+                }
             }
             return
         }
 
         print("⚠️ キャッシュなし - サーバーから取得")
-        // ② キャッシュなし：サーバーから取得（最大5秒待機）
+        // ② キャッシュなし：サーバーから取得（タイムアウトで自動解除される）
         async let freshEx   = authManager.getTodayExercises()
         async let freshSets = authManager.getDailySets()
         let (ex, st) = await (freshEx, freshSets)
 
         print("🔵 サーバー取得完了: exercises=\(ex.count), amSets=\(st.amSets), pmSets=\(st.pmSets)")
-        todayExercises = ex
-        dailySets      = st
-        recalcTotals()
-
-        print("✅ loadData END - isLoading = false")
-        isLoading = false
-        timeoutTask.cancel()
+        await MainActor.run {
+            self.todayExercises = ex
+            self.dailySets      = st
+            self.recalcTotals()
+            self.isLoading = false
+        }
+        print("✅ loadData END")
     }
 
     private func recalcTotals() {

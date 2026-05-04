@@ -24,6 +24,12 @@ web/build/
 # macOS
 .DS_Store
 
+# Archive / Backup directory (contains sensitive files)
+Arc/
+arc/
+Archive/
+archive/
+
 # Editor
 .idea/
 .vscode/

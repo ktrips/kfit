@@ -17,6 +17,7 @@ interface WorkoutStep {
   exerciseName: string;
   targetReps: number;
   basePoints: number;
+  round: number;
 }
 
 interface Result {
@@ -36,8 +37,10 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
   const exercises = useAppStore((s) => s.exercises);
   const weeklyGoals = useAppStore((s) => s.weeklyGoals);
 
-  // Build ordered exercise list from weekly goals (with dailyReps) or all exercises
-  const steps: WorkoutStep[] = (() => {
+  // 午前(0-12)は1周、午後(12-24)は2周
+  const totalRounds = new Date().getHours() < 12 ? 1 : 2;
+
+  const baseSteps = (() => {
     if (weeklyGoals.length > 0) {
       return weeklyGoals.map(g => {
         const def = exercises.find(e => e.id === g.exerciseId);
@@ -56,6 +59,10 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
       basePoints: e.basePoints,
     }));
   })();
+
+  const steps: WorkoutStep[] = Array.from({ length: totalRounds }, (_, i) =>
+    baseSteps.map(s => ({ ...s, round: i + 1 }))
+  ).flat();
 
   const [stepIdx, setStepIdx] = useState(0);
   const [reps, setReps] = useState(steps[0]?.targetReps ?? 10);
@@ -132,7 +139,9 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
           <img src="/mascot.png" alt="" className="w-32 h-32 rounded-full object-cover mx-auto animate-wiggle"
             style={{ border: '4px solid #58CC02' }} />
           <h2 className="text-4xl font-black text-duo-dark">完了！🎉</h2>
-          <p className="text-duo-green font-extrabold text-lg">今日のメニュー全部やったね！</p>
+          <p className="text-duo-green font-extrabold text-lg">
+            {totalRounds === 2 ? '午前・午後の2周完走！' : '今日のメニュー全部やったね！'}
+          </p>
 
           {/* Total XP */}
           <div
@@ -205,25 +214,37 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
             >
               ✕
             </button>
-            {/* Segmented progress */}
-            <div className="flex-1 flex gap-1.5">
-              {steps.map((_, i) => (
-                <div
-                  key={i}
-                  className="flex-1 h-3 rounded-full transition-all duration-500"
-                  style={{
-                    background: i < stepIdx
-                      ? '#58CC02'
-                      : i === stepIdx
-                        ? 'linear-gradient(90deg, #58CC02, #91E62A)'
-                        : '#e5e5e5',
-                  }}
-                />
+            {/* Segmented progress (round区切り付き) */}
+            <div className="flex-1 flex gap-1.5 items-center">
+              {steps.map((step, i) => (
+                <React.Fragment key={i}>
+                  {/* ラウンド区切り */}
+                  {i > 0 && step.round !== steps[i - 1].round && (
+                    <div className="w-px h-4 shrink-0" style={{ background: '#AFAFAF' }} />
+                  )}
+                  <div
+                    className="flex-1 h-3 rounded-full transition-all duration-500"
+                    style={{
+                      background: i < stepIdx
+                        ? '#58CC02'
+                        : i === stepIdx
+                          ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                          : '#e5e5e5',
+                    }}
+                  />
+                </React.Fragment>
               ))}
             </div>
-            <span className="text-duo-gray font-bold text-xs shrink-0">
-              {stepIdx + 1}/{steps.length}
-            </span>
+            <div className="flex flex-col items-end shrink-0">
+              {totalRounds > 1 && (
+                <span className="text-xs font-black" style={{ color: '#58CC02' }}>
+                  Round {current.round}/{totalRounds}
+                </span>
+              )}
+              <span className="text-duo-gray font-bold text-xs">
+                {(stepIdx % baseSteps.length) + 1}/{baseSteps.length}
+              </span>
+            </div>
           </div>
         </div>
       </div>

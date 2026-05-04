@@ -346,8 +346,13 @@ const DetailSheet: React.FC<DetailSheetProps> = ({ exercise, onClose, onRecorded
 
 export const WorkoutPlanView: React.FC = () => {
   const userProfile = useAppStore((s) => s.userProfile);
-  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  const [r1Done, setR1Done] = useState<Set<string>>(new Set());
+  const [r2Done, setR2Done] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<PlannedExercise | null>(null);
+  const [selectedRound, setSelectedRound] = useState<1 | 2>(1);
+
+  const hour = new Date().getHours();
+  const isMorning = hour < 12;
 
   // ── AIプランタブ ─────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'standard' | 'ai'>('standard');
@@ -390,6 +395,101 @@ export const WorkoutPlanView: React.FC = () => {
     phase === 1 ? PHASE1_CIRCUIT : (isUpperDay ? PHASE2_UPPER : PHASE2_LOWER);
 
   const todayCardio = WEEKLY_CARDIO[dayOfWeek];
+
+  const handleRecorded = (id: string) => {
+    if (selectedRound === 1) setR1Done(prev => new Set(prev).add(id));
+    else setR2Done(prev => new Set(prev).add(id));
+    setSelected(null);
+  };
+
+  const renderRound = (round: 1 | 2) => {
+    const done = round === 1 ? r1Done : r2Done;
+    const isActive = round === 1 ? isMorning : !isMorning;
+    const isLocked = round === 2 && isMorning;
+
+    return (
+      <div key={`round${round}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span className="font-black text-base" style={{ color: isActive ? '#3C3C3C' : '#AFAFAF' }}>
+                {round === 1 ? '☀️ 午前の部' : '🌙 午後の部'}
+              </span>
+              {isActive && !isLocked && (
+                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full" style={{ background: '#D7FFB8', color: '#46A302' }}>
+                  NOW
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-bold text-duo-gray">
+              {round === 1 ? '0:00 〜 12:00' : '12:00 〜 24:00'}
+            </span>
+          </div>
+          <span className="font-extrabold text-sm" style={{ color: isLocked ? '#AFAFAF' : '#58CC02' }}>
+            {done.size}/{todayExercises.length}
+          </span>
+        </div>
+
+        {isLocked ? (
+          <div className="rounded-2xl py-5 text-center" style={{ background: '#F7F7F7', border: '2px dashed #e5e5e5' }}>
+            <p className="text-3xl mb-2">🌙</p>
+            <p className="text-duo-gray font-bold text-sm">12:00から開始</p>
+            <p className="text-duo-gray font-bold text-xs mt-1">午前できなくても午後にまとめてOK！</p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {todayExercises.map(ex => {
+                const isDone = done.has(ex.id);
+                const diff = DIFFICULTY_COLOR[ex.difficulty];
+                return (
+                  <button
+                    key={ex.id}
+                    onClick={() => { setSelected(ex); setSelectedRound(round); }}
+                    className="w-full flex items-center gap-3 rounded-2xl p-3 transition-all text-left active:scale-98"
+                    style={{
+                      background: isDone ? 'rgba(88,204,2,0.06)' : '#F7F7F7',
+                      border: `2px solid ${isDone ? 'rgba(88,204,2,0.25)' : '#e5e5e5'}`,
+                    }}
+                  >
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                      style={{ background: isDone ? 'rgba(88,204,2,0.15)' : 'white', border: '1.5px solid #e5e5e5' }}>
+                      {ex.emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-extrabold text-sm"
+                          style={{ color: isDone ? '#AFAFAF' : '#3C3C3C', textDecoration: isDone ? 'line-through' : 'none' }}>
+                          {ex.name}
+                        </p>
+                        <span className="text-xs font-extrabold px-1.5 py-0.5 rounded-full shrink-0"
+                          style={{ background: diff.bg, color: diff.text }}>
+                          {ex.difficulty}
+                        </span>
+                      </div>
+                      <p className="text-duo-gray font-bold text-xs">{ex.reps}</p>
+                    </div>
+                    <div className="shrink-0">
+                      {isDone
+                        ? <span className="text-xl" style={{ color: '#58CC02' }}>✅</span>
+                        : <span className="text-duo-gray font-bold text-xs">›</span>
+                      }
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {done.size === todayExercises.length && todayExercises.length > 0 && (
+              <div className="mt-3 py-3 rounded-2xl text-center font-black text-sm"
+                style={{ background: 'rgba(88,204,2,0.08)', color: '#46A302' }}>
+                🎉 Round {round} 完了！すごい！
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
@@ -619,82 +719,41 @@ export const WorkoutPlanView: React.FC = () => {
           </div>
         )}
 
-        {/* 筋トレカード */}
+        {/* 午前スキップ通知 */}
+        {!isMorning && r1Done.size === 0 && (
+          <div
+            className="duo-card p-4 flex items-center gap-3"
+            style={{ background: 'linear-gradient(135deg, #FFF8E1, #FFF3E0)', border: '2px solid rgba(255,150,0,0.3)' }}
+          >
+            <span className="text-2xl">💡</span>
+            <div>
+              <p className="font-extrabold text-duo-dark text-sm">午前の部を飛ばした？まとめてやろう！</p>
+              <p className="text-duo-gray font-bold text-xs mt-0.5">午前・午後の2周を今やってもOK！</p>
+            </div>
+          </div>
+        )}
+
+        {/* 筋トレカード（午前・午後2ラウンド） */}
         <div className="duo-card p-5">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-1">
             <h2 className="font-black text-duo-dark text-lg">
-              {phase === 1 ? '💥 15分サーキット × 3周' : '💪 分割トレーニング'}
+              {phase === 1 ? '💥 15分サーキット' : '💪 分割トレーニング'}
             </h2>
             <span className="font-extrabold text-sm" style={{ color: '#58CC02' }}>
-              {doneIds.size}/{todayExercises.length}
+              {r1Done.size + r2Done.size}/{todayExercises.length * 2}
             </span>
           </div>
-
           {phase === 1 && (
-            <p className="text-xs font-extrabold mb-3" style={{ color: '#FF9600' }}>
-              タップで詳細・記録 ／ インターバルなし・限界まで！
+            <p className="text-xs font-extrabold mb-4" style={{ color: '#FF9600' }}>
+              午前・午後に1周ずつ ／ タップで詳細・記録
             </p>
           )}
 
-          <div className="space-y-2">
-            {todayExercises.map((ex) => {
-              const done = doneIds.has(ex.id);
-              const diff = DIFFICULTY_COLOR[ex.difficulty];
-              return (
-                <button
-                  key={ex.id}
-                  onClick={() => setSelected(ex)}
-                  className="w-full flex items-center gap-3 rounded-2xl p-3 transition-all text-left active:scale-98"
-                  style={{
-                    background: done ? 'rgba(88,204,2,0.06)' : '#F7F7F7',
-                    border: `2px solid ${done ? 'rgba(88,204,2,0.25)' : '#e5e5e5'}`,
-                  }}
-                >
-                  <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
-                    style={{ background: done ? 'rgba(88,204,2,0.15)' : 'white', border: '1.5px solid #e5e5e5' }}
-                  >
-                    {ex.emoji}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p
-                        className="font-extrabold text-sm"
-                        style={{
-                          color: done ? '#AFAFAF' : '#3C3C3C',
-                          textDecoration: done ? 'line-through' : 'none',
-                        }}
-                      >
-                        {ex.name}
-                      </p>
-                      <span
-                        className="text-xs font-extrabold px-1.5 py-0.5 rounded-full shrink-0"
-                        style={{ background: diff.bg, color: diff.text }}
-                      >
-                        {ex.difficulty}
-                      </span>
-                    </div>
-                    <p className="text-duo-gray font-bold text-xs">{ex.reps}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {done
-                      ? <span className="text-xl" style={{ color: '#58CC02' }}>✅</span>
-                      : <span className="text-duo-gray font-bold text-xs">›</span>
-                    }
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          {renderRound(1)}
 
-          {doneIds.size === todayExercises.length && todayExercises.length > 0 && (
-            <div
-              className="mt-3 py-3 rounded-2xl text-center font-black text-sm"
-              style={{ background: 'rgba(88,204,2,0.08)', color: '#46A302' }}
-            >
-              🎉 今日のメニュー完了！すごい！
-            </div>
-          )}
+          <div className="my-4" style={{ borderTop: '1.5px dashed #e5e5e5' }} />
+
+          {renderRound(2)}
         </div>
 
         {/* 栄養目標カード */}
@@ -735,10 +794,7 @@ export const WorkoutPlanView: React.FC = () => {
         <DetailSheet
           exercise={selected}
           onClose={() => setSelected(null)}
-          onRecorded={(id) => {
-            setDoneIds(prev => new Set(prev).add(id));
-            setSelected(null);
-          }}
+          onRecorded={handleRecorded}
         />
       )}
 

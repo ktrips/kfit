@@ -53,13 +53,23 @@ struct DashboardView: View {
         .fullScreenCover(isPresented: $showTracker) {
             ExerciseTrackerView()
                 .environmentObject(authManager)
-                .onDisappear { Task { await loadData() } }
+                .onDisappear {
+                    Task { await loadData() }
+                }
         }
         .sheet(isPresented: $showHabits) {
             NavigationView { HabitStackView() }
         }
-        .task { await loadData() }
-        .onAppear { withAnimation { mascotBounce = true } }
+        .onAppear {
+            withAnimation { mascotBounce = true }
+            // 初回のみloadDataを実行
+            if isLoading {
+                Task {
+                    print("🟢 DashboardView.onAppear - loadDataを開始")
+                    await loadData()
+                }
+            }
+        }
     }
 
     // MARK: - 常時表示CTAボタン（タブバー上に固定）
@@ -679,28 +689,42 @@ struct DashboardView: View {
     ]
 
     private func loadData() async {
+        print("🔵 loadData START - isLoading = true")
+        print("🔵 Auth状態: isSignedIn=\(authManager.isSignedIn), userProfile=\(authManager.userProfile?.username ?? "nil")")
+
+        // 認証されていない場合は早期リターン
+        guard authManager.isSignedIn else {
+            print("⚠️ 未認証 - loadDataをスキップ")
+            isLoading = false
+            return
+        }
+
         isLoading = true
 
-        // タイムアウト設定（10秒）
+        // タイムアウト設定（3秒に短縮）
         let timeoutTask = Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            if isLoading {
-                print("⚠️ loadData timeout - setting isLoading = false")
-                await MainActor.run {
-                    isLoading = false
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await MainActor.run {
+                if self.isLoading {
+                    print("⏱️ TIMEOUT: 3秒経過 - 強制的にローディング解除")
+                    self.isLoading = false
                 }
             }
         }
 
+        print("🔵 Step 1: キャッシュ取得開始")
         // ① キャッシュから即時取得（ネットワーク待ちなし）
         async let cachedEx   = authManager.getTodayExercisesFromCache()
         async let cachedSets = authManager.getDailySetsFromCache()
         let cachedExercises = await cachedEx
         let cachedDailySets = await cachedSets
 
+        print("🔵 キャッシュ取得完了: exercises=\(cachedExercises.count), amSets=\(cachedDailySets.amSets), pmSets=\(cachedDailySets.pmSets)")
+
         // キャッシュデータがある場合のみローディングを解除
         let hasCache = !cachedExercises.isEmpty || cachedDailySets.amSets > 0 || cachedDailySets.pmSets > 0
         if hasCache {
+            print("✅ キャッシュあり - 即座に表示")
             todayExercises = cachedExercises
             dailySets      = cachedDailySets
             recalcTotals()
@@ -709,8 +733,10 @@ struct DashboardView: View {
 
             // バックグラウンドでサーバーから更新
             Task {
+                print("🔵 バックグラウンドでサーバー更新開始")
                 let freshEx = await authManager.getTodayExercises()
                 let freshSets = await authManager.getDailySets()
+                print("🔵 サーバー更新完了: exercises=\(freshEx.count)")
                 todayExercises = freshEx
                 dailySets = freshSets
                 recalcTotals()
@@ -718,18 +744,18 @@ struct DashboardView: View {
             return
         }
 
-        // ② キャッシュなし：サーバーから取得（最大10秒待機）
-        do {
-            async let freshEx   = authManager.getTodayExercises()
-            async let freshSets = authManager.getDailySets()
-            let (ex, st) = await (freshEx, freshSets)
-            todayExercises = ex
-            dailySets      = st
-            recalcTotals()
-        } catch {
-            print("❌ loadData error: \(error)")
-        }
+        print("⚠️ キャッシュなし - サーバーから取得")
+        // ② キャッシュなし：サーバーから取得（最大5秒待機）
+        async let freshEx   = authManager.getTodayExercises()
+        async let freshSets = authManager.getDailySets()
+        let (ex, st) = await (freshEx, freshSets)
 
+        print("🔵 サーバー取得完了: exercises=\(ex.count), amSets=\(st.amSets), pmSets=\(st.pmSets)")
+        todayExercises = ex
+        dailySets      = st
+        recalcTotals()
+
+        print("✅ loadData END - isLoading = false")
         isLoading = false
         timeoutTask.cancel()
     }

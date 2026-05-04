@@ -223,26 +223,46 @@ class AuthenticationManager: ObservableObject {
 
     // MARK: - キャッシュから即時取得（ブロックしない）
     func getTodayExercisesFromCache() async -> [CompletedExercise] {
-        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("❌ getTodayExercisesFromCache: userId is nil")
+            return []
+        }
+        print("🔵 getTodayExercisesFromCache: userId=\(userId)")
         let (startOfDay, endOfDay) = todayRange()
-        let snapshot = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments(source: .cache)
-        return snapshot?.documents.compactMap { try? $0.data(as: CompletedExercise.self) } ?? []
+        do {
+            let snapshot = try await db.collection("users").document(userId)
+                .collection("completed-exercises")
+                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+                .whereField("timestamp", isLessThan: endOfDay)
+                .getDocuments(source: .cache)
+            print("✅ getTodayExercisesFromCache: \(snapshot.documents.count) docs from cache")
+            return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
+        } catch {
+            print("❌ getTodayExercisesFromCache error: \(error)")
+            return []
+        }
     }
 
     // MARK: - サーバーから最新取得（バックグラウンド用）
     func getTodayExercises() async -> [CompletedExercise] {
-        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("❌ getTodayExercises: userId is nil")
+            return []
+        }
+        print("🔵 getTodayExercises: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
-        let snapshot = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments(source: .server)
-        return snapshot?.documents.compactMap { try? $0.data(as: CompletedExercise.self) } ?? []
+        do {
+            let snapshot = try await db.collection("users").document(userId)
+                .collection("completed-exercises")
+                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+                .whereField("timestamp", isLessThan: endOfDay)
+                .getDocuments(source: .server)
+            print("✅ getTodayExercises: \(snapshot.documents.count) docs from server")
+            return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
+        } catch {
+            print("❌ getTodayExercises error: \(error)")
+            return []
+        }
     }
 
     private func todayRange() -> (start: Date, end: Date) {
@@ -374,29 +394,48 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Daily Sets
     /// 今日のセット状況（30分間隔でセッションを分割し、午前/午後を判定）
     func getDailySetsFromCache() async -> DailySets {
-        guard let userId = Auth.auth().currentUser?.uid else { return DailySets(amSets: 0, pmSets: 0) }
+        guard let userId = Auth.auth().currentUser?.uid else {
+            print("❌ getDailySetsFromCache: userId is nil")
+            return DailySets(amSets: 0, pmSets: 0)
+        }
+        print("🔵 getDailySetsFromCache: userId=\(userId)")
         let (startOfDay, endOfDay) = todayRange()
-        guard let snapshot = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments(source: .cache) else { return DailySets(amSets: 0, pmSets: 0) }
-        return buildDailySets(from: snapshot)
+        do {
+            let snapshot = try await db.collection("users").document(userId)
+                .collection("completed-exercises")
+                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+                .whereField("timestamp", isLessThan: endOfDay)
+                .getDocuments(source: .cache)
+            let sets = buildDailySets(from: snapshot)
+            print("✅ getDailySetsFromCache: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
+            return sets
+        } catch {
+            print("❌ getDailySetsFromCache error: \(error)")
+            return DailySets(amSets: 0, pmSets: 0)
+        }
     }
 
     func getDailySets() async -> DailySets {
         guard let userId = Auth.auth().currentUser?.uid else {
+            print("❌ getDailySets: userId is nil")
             return DailySets(amSets: 0, pmSets: 0)
         }
+        print("🔵 getDailySets: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
 
-        guard let snapshot = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments(source: .server) else { return DailySets(amSets: 0, pmSets: 0) }
-
-        return buildDailySets(from: snapshot)
+        do {
+            let snapshot = try await db.collection("users").document(userId)
+                .collection("completed-exercises")
+                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+                .whereField("timestamp", isLessThan: endOfDay)
+                .getDocuments(source: .server)
+            let sets = buildDailySets(from: snapshot)
+            print("✅ getDailySets: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
+            return sets
+        } catch {
+            print("❌ getDailySets error: \(error)")
+            return DailySets(amSets: 0, pmSets: 0)
+        }
     }
 
     private func buildDailySets(from snapshot: QuerySnapshot) -> DailySets {

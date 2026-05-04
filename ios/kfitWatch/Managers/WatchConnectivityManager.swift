@@ -12,6 +12,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
     @Published var recentWorkouts: [String] = []
+    @Published var todayExercises: [CompletedExerciseWatch] = []
 
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
@@ -119,9 +120,36 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
 
+        // 今日の運動記録を受信
+        if let exercisesData = message["todayExercises"] as? Data {
+            do {
+                let exercises = try JSONDecoder().decode([CompletedExerciseWatch].self, from: exercisesData)
+                self.todayExercises = exercises
+
+                // recentWorkouts も更新（下位互換性のため）
+                self.recentWorkouts = exercises.map { ex in
+                    "\(exerciseEmoji(ex.exerciseId)) \(ex.exerciseName): \(ex.reps)回"
+                }
+            } catch {
+                print("⚠️ todayExercises decode error: \(error)")
+            }
+        }
+
         // データ受信完了
         isLoading = false
         hasLoadedData = true
+    }
+
+    private func exerciseEmoji(_ id: String) -> String {
+        let map: [String: String] = [
+            "pushup": "💪", "push-up": "💪",
+            "squat": "🏋️", "situp": "🔥", "sit-up": "🔥",
+            "lunge": "🦵", "burpee": "⚡", "plank": "🧘"
+        ]
+        for (key, emoji) in map {
+            if id.lowercased().contains(key) { return emoji }
+        }
+        return "🏃"
     }
 
     // MARK: - WCSessionDelegate
@@ -208,5 +236,15 @@ struct WatchSetData: Codable {
     let exercises: [WatchSetExercise]
     let totalXP: Int
     let totalReps: Int
+    let timestamp: Date
+}
+
+// MARK: - Watch用の完了記録
+struct CompletedExerciseWatch: Codable, Identifiable, Hashable {
+    var id: String { "\(exerciseId)-\(timestamp.timeIntervalSince1970)" }
+    let exerciseId: String
+    let exerciseName: String
+    let reps: Int
+    let points: Int
     let timestamp: Date
 }

@@ -52,7 +52,7 @@ struct DashboardView: View {
             if !isLoading { startTrainingButton }
         }
         .fullScreenCover(isPresented: $showTracker) {
-            ExerciseTrackerView()
+            WorkoutFlowView()
                 .environmentObject(authManager)
                 .onDisappear {
                     Task { await loadData() }

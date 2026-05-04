@@ -34,6 +34,10 @@ web/build/
 ios/Pods/
 ios/Podfile.lock
 
+# iOS - Firebase config (contains API keys)
+ios/kfit/GoogleService-Info.plist
+ios/*/GoogleService-Info.plist
+
 # iOS - Xcode generated files
 ios/*.xcodeproj/
 ios/*.xcworkspace/

@@ -12,10 +12,11 @@ struct DashboardView: View {
     @State private var totalCalories = 0
     @State private var totalXP      = 0
     @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)
-    @State private var isLoading    = true
+    @State private var isLoading    = false  // 初期値をfalseに変更
     @State private var mascotBounce = false
     @State private var showTracker  = false
     @State private var showHabits   = false
+    @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
 
     var body: some View {
         ZStack {
@@ -63,11 +64,15 @@ struct DashboardView: View {
         .onAppear {
             withAnimation { mascotBounce = true }
             // 初回のみloadDataを実行
-            if isLoading {
+            if !hasLoadedOnce {
+                hasLoadedOnce = true
+                isLoading = true
                 Task {
                     print("🟢 DashboardView.onAppear - loadDataを開始")
                     await loadData()
                 }
+            } else {
+                print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
             }
         }
     }
@@ -689,26 +694,29 @@ struct DashboardView: View {
     ]
 
     private func loadData() async {
-        print("🔵 loadData START - isLoading = true")
+        print("🔵 loadData START")
         print("🔵 Auth状態: isSignedIn=\(authManager.isSignedIn), userProfile=\(authManager.userProfile?.username ?? "nil")")
 
         // 認証されていない場合は早期リターン
         guard authManager.isSignedIn else {
             print("⚠️ 未認証 - loadDataをスキップ")
-            isLoading = false
+            await MainActor.run {
+                self.isLoading = false
+            }
             return
         }
 
-        isLoading = true
+        await MainActor.run {
+            print("🔵 isLoading = true に設定")
+            self.isLoading = true
+        }
 
-        // タイムアウト設定（3秒に短縮）
-        let timeoutTask = Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await MainActor.run {
-                if self.isLoading {
-                    print("⏱️ TIMEOUT: 3秒経過 - 強制的にローディング解除")
-                    self.isLoading = false
-                }
+        // タイムアウトハンドラ（2秒）
+        Task.detached { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if self.isLoading {
+                print("⏱️ TIMEOUT: 2秒経過 - 強制的にローディング解除")
+                self.isLoading = false
             }
         }
 

@@ -15,8 +15,10 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
     private var baselineAcceleration: Double = 0.0
     private var accelerationBuffer: [Double] = []
     private var peakDetected = false
-    private let peakThreshold: Double = 0.3  // 閾値を下げて検出しやすく（1.2 → 0.3）
-    private let bufferSize = 5
+    private let peakThreshold: Double = 0.15  // さらに下げて検出しやすく
+    private let bufferSize = 3  // バッファサイズを小さくして反応を早く
+    private var lastRepTime: Date = Date.distantPast  // 前回のrep時刻（連続検出防止）
+    private let minRepInterval: TimeInterval = 0.5  // 最小rep間隔（秒）
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable && motionManager.isGyroAvailable else {
@@ -115,35 +117,41 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
             accelerationBuffer.removeFirst()
         }
 
-        // バッファが満たされるまで待機
-        guard accelerationBuffer.count >= bufferSize else { return }
+        // 最低2サンプルあれば検出開始（より早く反応）
+        guard accelerationBuffer.count >= 2 else { return }
 
         // Calculate moving average
         let avgAcceleration = accelerationBuffer.reduce(0, +) / Double(accelerationBuffer.count)
 
-        // Detect peak (動きのある状態を検出)
-        let threshold = baselineAcceleration + peakThreshold
-        let valley = baselineAcceleration - 0.2  // 谷の閾値（ベースラインより下）
+        // より単純な検出ロジック：絶対値の変化を見る
+        let delta = abs(avgAcceleration - baselineAcceleration)
 
-        if avgAcceleration > threshold && !peakDetected {
-            // ピーク検出（動きの上昇）
-            peakDetected = true
-            print("🔵 WatchMotion: Peak detected - acc=\(String(format: "%.2f", avgAcceleration)), threshold=\(String(format: "%.2f", threshold))")
-        } else if avgAcceleration < valley && peakDetected {
-            // 谷検出（動きの下降） → 1rep完了
-            repCount += 1
-            formScore = max(50, min(100, 100 - (abs(avgAcceleration - baselineAcceleration) * 5)))
-            peakDetected = false
+        // 連続検出防止：前回のrepから最小間隔が経過しているか
+        let now = Date()
+        let timeSinceLastRep = now.timeIntervalSince(lastRepTime)
 
-            print("✅ WatchMotion: Rep #\(repCount) detected! acc=\(String(format: "%.2f", avgAcceleration))")
+        // 動きの変化が閾値を超え、かつ最小間隔が経過している
+        if delta > peakThreshold && timeSinceLastRep > minRepInterval {
+            // ピーク/谷の区別なく、大きな変化があればカウント
+            if !peakDetected {
+                peakDetected = true
+            } else {
+                // 2回目の大きな変化 = 1rep完了
+                repCount += 1
+                formScore = max(60, min(100, 100 - (delta * 20)))
+                peakDetected = false
+                lastRepTime = now
 
-            // Haptic feedback
-            WKInterfaceDevice.current().play(.notification)
+                print("✅ WatchMotion: Rep #\(repCount) detected! delta=\(String(format: "%.2f", delta)), acc=\(String(format: "%.2f", avgAcceleration))")
+
+                // Haptic feedback
+                WKInterfaceDevice.current().play(.notification)
+            }
         }
 
-        // デバッグ：加速度の値を定期的にログ（10回に1回）
-        if accelerationBuffer.count % 10 == 0 {
-            print("📊 WatchMotion: avg=\(String(format: "%.2f", avgAcceleration)), baseline=\(String(format: "%.2f", baselineAcceleration)), peak=\(peakDetected)")
+        // デバッグ：加速度の値を頻繁にログ（5回に1回）
+        if accelerationBuffer.count % 5 == 0 {
+            print("📊 WatchMotion: acc=\(String(format: "%.2f", avgAcceleration)), baseline=\(String(format: "%.2f", baselineAcceleration)), delta=\(String(format: "%.2f", delta)), peak=\(peakDetected), reps=\(repCount)")
         }
     }
 

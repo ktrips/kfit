@@ -3,6 +3,18 @@ import SwiftUI
 private let duoGreen  = Color(red: 0.345, green: 0.800, blue: 0.008)
 private let duoYellow = Color(red: 1.0,   green: 0.851, blue: 0.0)
 
+private func exerciseEmoji(_ id: String) -> String {
+    let map: [String: String] = [
+        "pushup": "💪", "push-up": "💪",
+        "squat": "🏋️", "situp": "🔥", "sit-up": "🔥",
+        "lunge": "🦵", "burpee": "⚡", "plank": "🧘"
+    ]
+    for (key, emoji) in map {
+        if id.lowercased().contains(key) { return emoji }
+    }
+    return "🏃"
+}
+
 struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @State private var showFlow = false
@@ -84,7 +96,33 @@ struct WatchDashboardView: View {
                 .buttonStyle(.plain)
 
                 // ── 今日の記録 ────────────────────────
-                if !connectivity.recentWorkouts.isEmpty {
+                if !connectivity.todayExercises.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("今日の記録")
+                            .font(.system(size: 9)).foregroundColor(.gray)
+                        ForEach(connectivity.todayExercises) { ex in
+                            HStack(spacing: 4) {
+                                Text(exerciseEmoji(ex.exerciseId))
+                                    .font(.system(size: 14))
+                                Text(ex.exerciseName)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.75))
+                                Spacer()
+                                Text("\(ex.reps)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.9))
+                                Text("+\(ex.points)")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(duoYellow.opacity(0.9))
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(Color.white.opacity(0.07))
+                    .cornerRadius(10)
+                } else if !connectivity.recentWorkouts.isEmpty {
+                    // フォールバック：古い形式の表示
                     VStack(alignment: .leading, spacing: 3) {
                         Text("今日の記録")
                             .font(.system(size: 9)).foregroundColor(.gray)

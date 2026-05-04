@@ -92,7 +92,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 print("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP)
+                let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP, todayExercises: todayExercises)
                 return
             }
 
@@ -107,7 +108,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     self.sendStatsToWatch(
                         streak:    profile?.streak ?? 0,
                         todayReps: todayReps,
-                        todayXP:   todayXP
+                        todayXP:   todayXP,
+                        todayExercises: todayExercises
                     )
                 }
                 return
@@ -129,21 +131,40 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             if let setData = applicationContext["pendingCompletedSet"] as? Data,
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP)
+                let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP, todayExercises: todayExercises)
             }
         }
     }
 
     // iOS → Watch: 更新後の数値を送信
-    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int) {
+    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todayExercises: [CompletedExercise] = []) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
-        let payload: [String: Any] = [
+
+        var payload: [String: Any] = [
             "streak":    streak,
             "todayReps": todayReps,
             "todayXP":   todayXP,
         ]
+
+        // 今日の運動記録を含める
+        if !todayExercises.isEmpty {
+            let watchExercises = todayExercises.map { ex in
+                CompletedExerciseForWatch(
+                    exerciseId: ex.exerciseId,
+                    exerciseName: ex.exerciseName,
+                    reps: ex.reps,
+                    points: ex.points,
+                    timestamp: ex.timestamp
+                )
+            }
+            if let data = try? JSONEncoder().encode(watchExercises) {
+                payload["todayExercises"] = data
+            }
+        }
+
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
         } else {
@@ -172,5 +193,14 @@ struct WatchSetData: Codable {
     let exercises: [Exercise]
     let totalXP: Int
     let totalReps: Int
+    let timestamp: Date
+}
+
+/// Watch に送信する運動記録（CompletedExercise から変換）
+struct CompletedExerciseForWatch: Codable {
+    let exerciseId: String
+    let exerciseName: String
+    let reps: Int
+    let points: Int
     let timestamp: Date
 }

@@ -52,11 +52,17 @@ struct DashboardView: View {
             if !isLoading { startTrainingButton }
         }
         .fullScreenCover(isPresented: $showTracker) {
-            WorkoutFlowView()
+            ExerciseTrackerView()
                 .environmentObject(authManager)
-                .onDisappear {
-                    Task { await loadData() }
+        }
+        .onChange(of: showTracker) { _, newValue in
+            if !newValue {
+                // ExerciseTrackerViewが閉じられた時にデータを再読み込み
+                Task {
+                    print("🔄 ExerciseTrackerView閉じた - データ再読み込み")
+                    await loadData()
                 }
+            }
         }
         .sheet(isPresented: $showHabits) {
             NavigationView { HabitStackView() }
@@ -706,13 +712,8 @@ struct DashboardView: View {
             return
         }
 
-        await MainActor.run {
-            print("🔵 isLoading = true に設定")
-            self.isLoading = true
-        }
-
         // タイムアウトハンドラ（2秒）
-        Task.detached { @MainActor in
+        let timeoutTask = Task.detached { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if self.isLoading {
                 print("⏱️ TIMEOUT: 2秒経過 - 強制的にローディング解除")
@@ -729,34 +730,15 @@ struct DashboardView: View {
 
         print("🔵 キャッシュ取得完了: exercises=\(cachedExercises.count), amSets=\(cachedDailySets.amSets), pmSets=\(cachedDailySets.pmSets)")
 
-        // キャッシュデータがある場合のみローディングを解除
-        let hasCache = !cachedExercises.isEmpty || cachedDailySets.amSets > 0 || cachedDailySets.pmSets > 0
-        if hasCache {
-            print("✅ キャッシュあり - 即座に表示")
-            await MainActor.run {
-                self.todayExercises = cachedExercises
-                self.dailySets      = cachedDailySets
-                self.recalcTotals()
-                self.isLoading = false
-            }
-
-            // バックグラウンドでサーバーから更新
-            Task {
-                print("🔵 バックグラウンドでサーバー更新開始")
-                let freshEx = await authManager.getTodayExercises()
-                let freshSets = await authManager.getDailySets()
-                print("🔵 サーバー更新完了: exercises=\(freshEx.count)")
-                await MainActor.run {
-                    self.todayExercises = freshEx
-                    self.dailySets = freshSets
-                    self.recalcTotals()
-                }
-            }
-            return
+        // キャッシュデータを即座に表示
+        await MainActor.run {
+            self.todayExercises = cachedExercises
+            self.dailySets      = cachedDailySets
+            self.recalcTotals()
         }
 
-        print("⚠️ キャッシュなし - サーバーから取得")
-        // ② キャッシュなし：サーバーから取得（タイムアウトで自動解除される）
+        // サーバーから最新データを取得して更新
+        print("🔵 サーバーから最新データ取得開始")
         async let freshEx   = authManager.getTodayExercises()
         async let freshSets = authManager.getDailySets()
         let (ex, st) = await (freshEx, freshSets)
@@ -768,6 +750,8 @@ struct DashboardView: View {
             self.recalcTotals()
             self.isLoading = false
         }
+
+        timeoutTask.cancel()
         print("✅ loadData END")
     }
 

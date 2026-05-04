@@ -18,29 +18,41 @@ private func isPlank(_ exercise: Exercise?) -> Bool {
     return id.contains("plank")
 }
 
+// 固定の連続フロー（Watchと同じ）
+private let flowSteps: [(emoji: String, name: String, target: Int, id: String, xp: Int)] = [
+    ("🏋️", "スクワット", 20, "squat", 2),
+    ("💪", "腕立て伏せ", 15, "pushup", 2),
+    ("🔥", "腹筋", 15, "situp", 1),
+    ("🧘", "プランク", 45, "plank", 1),
+    ("🦵", "ランジ", 20, "lunge", 2),
+]
+
 struct ExerciseTrackerView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var motionManager = MotionDetectionManager()
+    @Environment(\.dismiss) var dismiss
 
-    @State private var selectedExercise: Exercise?
-    /// true = 手動 +/- モード、false = モーション検出（デフォルト）
-    @State private var isManualMode = false
-    @State private var manualRepCount = 0
-    /// プランク用タイマー（秒）
-    @State private var plankSeconds = 0
-    @State private var plankTimer: Timer?
-
-    /// セット内の記録済み種目
-    @State private var completedExercises: [(exercise: Exercise, reps: Int, points: Int)] = []
-
+    // フロー管理
+    @State private var stepIdx = 0
     @State private var showCelebration = false
     @State private var earnedXP = 0
     @State private var isSubmitting = false
+
+    // 現在の種目の記録
+    @State private var isManualMode = false
+    @State private var manualRepCount = 0
+    @State private var plankSeconds = 0
+    @State private var plankTimer: Timer?
     @State private var pulseAnimation = false
 
-    @Environment(\.dismiss) var dismiss
+    /// セット内の記録済み種目
+    @State private var completedExercises: [(name: String, emoji: String, reps: Int, points: Int)] = []
 
-    private var isPlankSelected: Bool { isPlank(selectedExercise) }
+    private var current: (emoji: String, name: String, target: Int, id: String, xp: Int) {
+        flowSteps[stepIdx]
+    }
+    private var isLast: Bool { stepIdx == flowSteps.count - 1 }
+    private var isPlankSelected: Bool { current.id == "plank" }
 
     private var currentReps: Int {
         if isPlankSelected { return plankSeconds }
@@ -48,40 +60,52 @@ struct ExerciseTrackerView: View {
     }
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.duoGreen.opacity(0.08), Color.duoBg],
-                startPoint: .top, endPoint: .bottom
-            ).ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [Color.duoGreen.opacity(0.08), Color.duoBg],
+                    startPoint: .top, endPoint: .bottom
+                ).ignoresSafeArea()
 
-            if showCelebration {
-                celebrationView
-            } else {
-                VStack(spacing: 0) {
-                    header
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            if !completedExercises.isEmpty {
-                                completedList
-                            }
-                            exerciseGrid
-                            if selectedExercise != nil {
+                if showCelebration {
+                    celebrationView
+                } else {
+                    VStack(spacing: 0) {
+                        header
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 10) {
+                                progressDots
+                                if !completedExercises.isEmpty {
+                                    completedList
+                                }
+                                currentExerciseCard
                                 repCounter
-                                recordButton
                             }
-                            if !completedExercises.isEmpty {
-                                finishSetButton
-                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 4)
+                            .padding(.bottom, geometry.safeAreaInsets.bottom + 70)
                         }
-                        .padding(16)
-                        .padding(.bottom, 32)
+                    }
+
+                    VStack {
+                        Spacer()
+                        recordButton
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, max(geometry.safeAreaInsets.bottom, 8))
+                            .padding(.top, 8)
+                            .background(
+                                Rectangle()
+                                    .fill(Color.duoBg.opacity(0.98))
+                                    .ignoresSafeArea(edges: .bottom)
+                            )
                     }
                 }
             }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea(edges: .top)
-        .onChange(of: selectedExercise?.id) { _ in
-            onExerciseChanged()
+        .persistentSystemOverlays(.hidden)
+        .onAppear {
+            startCurrentExercise()
         }
         .onDisappear {
             motionManager.stopDetection()
@@ -89,142 +113,122 @@ struct ExerciseTrackerView: View {
         }
     }
 
-    // MARK: - ヘッダー（コンパクト）
-    private var header: some View {
-        let safeTop = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.top ?? 44
-
-        return HStack(spacing: 10) {
-            Image("mascot")
-                .resizable().scaledToFill()
-                .frame(width: 30, height: 30)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 1.5))
-
-            Text("トレーニング記録")
-                .font(.subheadline).fontWeight(.black)
-                .foregroundColor(Color.duoDark)
-
-            Spacer()
-
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
-                    .padding(7)
-                    .background(Color(.systemGray5))
-                    .clipShape(Circle())
+    // MARK: - 進捗ドット
+    private var progressDots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<flowSteps.count, id: \.self) { i in
+                Circle()
+                    .fill(i < stepIdx ? Color.duoGreen : i == stepIdx ? Color.duoBlue : Color.gray.opacity(0.3))
+                    .frame(width: i == stepIdx ? 10 : 7, height: i == stepIdx ? 10 : 7)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
-        .padding(.top, safeTop + 4)
-        .background(Color.white)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+        .padding(.vertical, 6)
     }
 
-    // MARK: - 種目グリッド
-    private var exerciseGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "figure.strengthtraining.traditional")
-                Text("種目を選ぼう").fontWeight(.black)
-            }
-            .font(.headline)
-            .foregroundColor(.primary)
+    // MARK: - 現在の種目カード
+    private var currentExerciseCard: some View {
+        VStack(spacing: 12) {
+            Text(current.emoji).font(.system(size: 70))
+            Text(current.name)
+                .font(.title2).fontWeight(.black)
+                .foregroundColor(Color.duoGreen)
+            Text("目標: \(current.target) 回")
+                .font(.caption).foregroundColor(Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(authManager.exercises) { exercise in
-                    let selected = selectedExercise?.id == exercise.id
-                    Button {
-                        withAnimation(.spring(response: 0.3)) {
-                            selectedExercise = exercise
-                        }
-                    } label: {
-                        VStack(spacing: 6) {
-                            Text(emoji(for: exercise.name))
-                                .font(.system(size: 32))
-                            Text(exercise.name)
-                                .font(.subheadline).fontWeight(.bold)
-                                .foregroundColor(selected ? .white : .primary)
-                            Text("\(exercise.basePoints) XP/rep")
-                                .font(.caption2)
-                                .foregroundColor(selected ? Color.white.opacity(0.92) : Color.duoSubtitle)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(selected ? Color.duoGreen : Color.white)
-                        .cornerRadius(16)
-                        .shadow(
-                            color: selected ? Color.duoGreen.opacity(0.4) : Color.black.opacity(0.06),
-                            radius: selected ? 6 : 3, y: selected ? 3 : 2
-                        )
-                        .scaleEffect(selected ? 1.03 : 1.0)
-                    }
+    // MARK: - ヘッダー（コンパクト）
+    private var header: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topTrailing) {
+                HStack(spacing: 3) {
+                    Image("mascot")
+                        .resizable().scaledToFill()
+                        .frame(width: 14, height: 14)
+                        .clipShape(Circle())
+
+                    Text("トレーニング")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color.duoDark)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(3)
+                        .background(Color.white.opacity(0.8))
+                        .clipShape(Circle())
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.top, geometry.safeAreaInsets.top > 0 ? geometry.safeAreaInsets.top + 2 : 6)
+            .padding(.bottom, 1)
+            .background(Color.duoBg.opacity(0.95))
         }
-        .padding(16)
-        .background(Color.white)
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.05), radius: 6, y: 2)
+        .frame(height: 28)
     }
 
     // MARK: - Repカウンター
     private var repCounter: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             // モードバッジ
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 if isPlankSelected {
                     Image(systemName: "timer")
-                        .font(.caption).foregroundColor(Color.duoBlue)
-                    Text("タイマーモード（プランク）")
-                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoBlue)
+                        .font(.caption2).foregroundColor(Color.duoBlue)
+                    Text("タイマー")
+                        .font(.caption2).fontWeight(.bold).foregroundColor(Color.duoBlue)
                 } else if isManualMode {
                     Image(systemName: "hand.tap.fill")
-                        .font(.caption).foregroundColor(Color.duoOrange)
-                    Text("手動入力モード")
-                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoOrange)
+                        .font(.caption2).foregroundColor(Color.duoOrange)
+                    Text("手動入力")
+                        .font(.caption2).fontWeight(.bold).foregroundColor(Color.duoOrange)
                 } else {
                     Image(systemName: "sensor.tag.radiowaves.forward.fill")
-                        .font(.caption).foregroundColor(Color.duoGreen)
+                        .font(.caption2).foregroundColor(Color.duoGreen)
                         .scaleEffect(pulseAnimation ? 1.15 : 1.0)
                         .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true),
                                    value: pulseAnimation)
                     Text("モーション検出中")
-                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
+                        .font(.caption2).fontWeight(.bold).foregroundColor(Color.duoGreen)
                 }
                 Spacer()
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
 
             // 大きなカウント表示
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text("\(currentReps)")
-                    .font(.system(size: 80, weight: .black, design: .rounded))
+                    .font(.system(size: 72, weight: .black, design: .rounded))
                     .foregroundColor(currentReps > 0 ? Color.duoGreen : Color(.systemGray3))
                     .animation(.spring(), value: currentReps)
                 Text(isPlankSelected ? "秒" : "reps")
-                    .font(.title3).fontWeight(.bold)
+                    .font(.subheadline).fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
+            .padding(.vertical, 20)
             .background(
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 16)
                     .fill(currentReps > 0 ? Color.duoGreen.opacity(0.08) : Color(.systemGray6))
             )
 
             // モーション中：フォームスコア
             if !isManualMode && !isPlankSelected && motionManager.isDetecting {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     HStack {
-                        Text("フォームスコア")
-                            .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoSubtitle)
+                        Text("フォーム")
+                            .font(.caption2).fontWeight(.semibold).foregroundColor(Color.duoSubtitle)
                         Spacer()
                         Text("\(Int(motionManager.formScore))%")
-                            .font(.caption).fontWeight(.black)
+                            .font(.caption2).fontWeight(.black)
                             .foregroundColor(motionManager.formScore > 80 ? Color.duoGreen : Color.duoOrange)
                     }
                     ProgressView(value: motionManager.formScore / 100)
@@ -234,14 +238,14 @@ struct ExerciseTrackerView: View {
 
             // 手動モード：+/- ボタン
             if isManualMode && !isPlankSelected {
-                HStack(spacing: 20) {
+                HStack(spacing: 16) {
                     CountButton(icon: "minus", color: Color.duoRed) {
                         withAnimation(.spring()) {
                             if manualRepCount > 0 { manualRepCount -= 1 }
                         }
                     }
 
-                    VStack(spacing: 2) {
+                    VStack(spacing: 1) {
                         Text("タップで")
                             .font(.caption2).foregroundColor(Color.duoSubtitle)
                         Text("カウント")
@@ -256,143 +260,117 @@ struct ExerciseTrackerView: View {
 
             // プランク：タイマー操作
             if isPlankSelected {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     if plankTimer == nil {
                         Button(action: startPlankTimer) {
-                            Label("タイマー開始", systemImage: "play.circle.fill")
-                                .font(Font.system(size: 15, weight: .bold))
+                            Label("開始", systemImage: "play.circle.fill")
+                                .font(Font.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(.vertical, 10).padding(.horizontal, 16)
-                                .background(Color.duoGreen).cornerRadius(12)
+                                .padding(.vertical, 8).padding(.horizontal, 14)
+                                .background(Color.duoGreen).cornerRadius(10)
                         }
                     } else {
                         Button(action: stopPlankTimer) {
                             Label("停止", systemImage: "stop.circle.fill")
-                                .font(Font.system(size: 15, weight: .bold))
+                                .font(Font.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(.vertical, 10).padding(.horizontal, 16)
-                                .background(Color.duoOrange).cornerRadius(12)
+                                .padding(.vertical, 8).padding(.horizontal, 14)
+                                .background(Color.duoOrange).cornerRadius(10)
                         }
                     }
                     Button(action: { plankSeconds = 0; stopPlankTimer() }) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(Font.system(size: 15, weight: .bold))
+                            .font(Font.system(size: 14, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
-                            .padding(10)
-                            .background(Color(.systemGray5)).cornerRadius(10)
+                            .padding(8)
+                            .background(Color(.systemGray5)).cornerRadius(8)
                     }
                 }
             }
 
             // XP プレビュー
-            if let ex = selectedExercise, currentReps > 0 {
+            if currentReps > 0 {
                 HStack {
                     Image(systemName: "bolt.fill").foregroundColor(Color.duoGold)
-                    Text("今回の獲得 XP")
-                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                    Text("獲得 XP")
+                        .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
                     Spacer()
-                    Text("+\(currentReps * ex.basePoints) XP")
-                        .font(.title3).fontWeight(.black).foregroundColor(Color.duoGold)
+                    Text("+\(currentReps * current.xp) XP")
+                        .font(.callout).fontWeight(.black).foregroundColor(Color.duoGold)
                 }
-                .padding(14)
+                .padding(10)
                 .background(Color.duoYellow.opacity(0.18))
-                .cornerRadius(14)
+                .cornerRadius(12)
             }
 
             // モード切り替えボタン（プランクは非表示）
             if !isPlankSelected {
-                Button(action: toggleMode) {
-                    HStack(spacing: 6) {
+                Button(action: { isManualMode.toggle() }) {
+                    HStack(spacing: 4) {
                         Image(systemName: isManualMode
                               ? "sensor.tag.radiowaves.forward.fill"
                               : "hand.tap.fill")
-                            .font(.caption)
-                        Text(isManualMode ? "自動検出に切り替え" : "手動入力に切り替え")
-                            .font(.caption).fontWeight(.semibold)
+                            .font(.caption2)
+                        Text(isManualMode ? "自動検出に切替" : "手動入力に切替")
+                            .font(.caption2).fontWeight(.semibold)
                     }
                     .foregroundColor(isManualMode ? Color.duoGreen : Color.duoSubtitle)
-                    .padding(.vertical, 8).padding(.horizontal, 14)
+                    .padding(.vertical, 6).padding(.horizontal, 12)
                     .background((isManualMode ? Color.duoGreen : Color(.systemGray4)).opacity(0.12))
-                    .cornerRadius(10)
+                    .cornerRadius(8)
                 }
             }
         }
-        .padding(16)
+        .padding(12)
         .background(Color.white)
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.05), radius: 6, y: 2)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
-    // MARK: - 記録ボタン（種目追加）
+    // MARK: - 記録ボタン（次へ/完了）
     private var recordButton: some View {
         Button {
             guard !isSubmitting else { return }
-            addExerciseToSet()
+            advance()
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle.fill")
-                Text("この種目を追加").fontWeight(.black)
+            HStack(spacing: 6) {
+                Image(systemName: isLast ? "checkmark.circle.fill" : "arrow.right.circle.fill")
+                Text(isLast ? "完了！" : "次へ").fontWeight(.black)
             }
-            .font(.headline)
+            .font(.subheadline)
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(currentReps == 0 ? Color(.systemGray3) : Color.duoBlue)
-            .cornerRadius(18)
+            .padding(.vertical, 14)
+            .background(isLast ? Color.duoGreen : Color.duoBlue)
+            .cornerRadius(14)
             .shadow(
-                color: currentReps > 0 ? Color.duoBlue.opacity(0.45) : .clear,
-                radius: 6, y: 4
+                color: isLast ? Color.duoGreen.opacity(0.45) : Color.duoBlue.opacity(0.45),
+                radius: 4, y: 3
             )
         }
-        .disabled(currentReps == 0)
-        .animation(.easeInOut, value: currentReps)
+        .disabled(isSubmitting)
     }
 
     // MARK: - 完了リスト
     private var completedList: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("このセットの記録")
-                .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
-            ForEach(completedExercises.indices, id: \.self) { idx in
+        VStack(alignment: .leading, spacing: 6) {
+            Text("完了")
+                .font(.caption2).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+            ForEach(0..<completedExercises.count, id: \.self) { idx in
                 let item = completedExercises[idx]
                 HStack {
-                    Text(emoji(for: item.exercise.name)).font(.title3)
-                    Text(item.exercise.name).font(.subheadline).fontWeight(.medium)
+                    Text(item.emoji).font(.callout)
+                    Text(item.name).font(.caption).fontWeight(.medium)
                     Spacer()
-                    Text("\(item.reps) rep").font(.caption).foregroundColor(Color.duoSubtitle)
-                    Text("+\(item.points) XP").font(.caption).fontWeight(.bold).foregroundColor(Color.duoGold)
+                    Text("\(item.reps)").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    Text("+\(item.points)").font(.caption2).fontWeight(.bold).foregroundColor(Color.duoGold)
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
             }
         }
-        .padding(16)
+        .padding(12)
         .background(Color.duoYellow.opacity(0.1))
-        .cornerRadius(16)
-    }
-
-    // MARK: - セット完了ボタン
-    private var finishSetButton: some View {
-        Button {
-            guard !isSubmitting else { return }
-            submitSet()
-        } label: {
-            HStack(spacing: 8) {
-                if isSubmitting {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("セットを完了！").fontWeight(.black)
-                }
-            }
-            .font(.headline)
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .background(Color.duoGreen)
-            .cornerRadius(18)
-            .shadow(color: Color.duoGreen.opacity(0.45), radius: 6, y: 4)
-        }
-        .disabled(isSubmitting)
+        .cornerRadius(12)
     }
 
     // MARK: - セレブレーション
@@ -450,43 +428,6 @@ struct ExerciseTrackerView: View {
 
     // MARK: - ロジック
 
-    private func onExerciseChanged() {
-        // リセット
-        motionManager.stopDetection()
-        stopPlankTimer()
-        manualRepCount = 0
-        plankSeconds  = 0
-        isManualMode  = false
-
-        guard let ex = selectedExercise else { return }
-
-        if isPlank(ex) {
-            // プランク → タイマーモード
-        } else {
-            // その他 → モーション検出を即時スタート
-            let type = ExerciseType.from(exerciseId: ex.id ?? ex.name)
-            motionManager.startDetection(for: type)
-            withAnimation { pulseAnimation = true }
-        }
-    }
-
-    private func toggleMode() {
-        if isManualMode {
-            // 手動 → モーション検出に切り替え
-            isManualMode = false
-            if let ex = selectedExercise {
-                motionManager.startDetection(for: ExerciseType.from(exerciseId: ex.id ?? ex.name))
-                withAnimation { pulseAnimation = true }
-            }
-        } else {
-            // モーション → 手動に切り替え
-            isManualMode = true
-            motionManager.stopDetection()
-            pulseAnimation = false
-            manualRepCount = motionManager.repCount  // 現在のカウントを引き継ぐ
-        }
-    }
-
     private func startPlankTimer() {
         plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             Task { @MainActor in plankSeconds += 1 }
@@ -498,40 +439,60 @@ struct ExerciseTrackerView: View {
         plankTimer = nil
     }
 
-    private func addExerciseToSet() {
-        guard let exercise = selectedExercise, currentReps > 0 else { return }
-        stopPlankTimer()
-        let points = currentReps * exercise.basePoints
-        completedExercises.append((exercise, currentReps, points))
+    // 現在の種目のモーション検出を開始
+    private func startCurrentExercise() {
+        guard !isPlankSelected && !isManualMode else { return }
 
-        // リセット
-        selectedExercise = nil
-        motionManager.stopDetection()
-        manualRepCount = 0
-        plankSeconds = 0
-        pulseAnimation = false
+        let type: ExerciseType
+        switch current.id {
+        case "pushup": type = .pushup
+        case "squat": type = .squat
+        case "situp": type = .situp
+        case "lunge": type = .lunge
+        case "burpee": type = .burpee
+        default: return
+        }
+
+        motionManager.startDetection(for: type)
+        pulseAnimation = true
     }
 
-    private func submitSet() {
-        guard !completedExercises.isEmpty else { return }
-        isSubmitting = true
-        earnedXP = completedExercises.reduce(0) { $0 + $1.points }
+    // 次の種目へ進む / セット完了
+    private func advance() {
+        stopPlankTimer()
+        motionManager.stopDetection()
 
+        let xp = currentReps * current.xp
+        earnedXP += xp
+        completedExercises.append((current.name, current.emoji, currentReps, xp))
+
+        // 記録を保存
         Task {
-            // 各種目を個別に記録
-            for item in completedExercises {
-                await authManager.recordExerciseDirect(
-                    exerciseId: item.exercise.id ?? item.exercise.name,
-                    exerciseName: item.exercise.name,
-                    reps: item.reps,
-                    points: item.points
-                )
-            }
+            await authManager.recordExerciseDirect(
+                exerciseId: current.id,
+                exerciseName: current.name,
+                reps: currentReps,
+                points: xp
+            )
+        }
 
-            withAnimation(.spring(response: 0.5)) {
-                isSubmitting = false
-                showCelebration = true
+        if isLast {
+            // 全種目完了
+            isSubmitting = true
+            Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run {
+                    isSubmitting = false
+                    showCelebration = true
+                }
             }
+        } else {
+            // 次の種目へ
+            stepIdx += 1
+            manualRepCount = 0
+            plankSeconds = 0
+            pulseAnimation = false
+            startCurrentExercise()
         }
     }
 }
@@ -545,9 +506,9 @@ private struct CountButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "\(icon).circle.fill")
-                .font(.system(size: 56))
+                .font(.system(size: 48))
                 .foregroundColor(color)
-                .shadow(color: color.opacity(0.35), radius: 4, y: 3)
+                .shadow(color: color.opacity(0.35), radius: 3, y: 2)
         }
         .buttonStyle(.plain)
     }

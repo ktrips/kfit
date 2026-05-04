@@ -157,7 +157,10 @@ struct WatchWorkoutFlowView: View {
 
     // モーション検出開始
     private func startMotionDetection() {
-        guard !isPlank else { return }
+        guard !isPlank else {
+            print("⚠️ WatchFlow: Skipping motion detection for plank")
+            return
+        }
 
         let exerciseType: ExerciseType
         switch current.exerciseId {
@@ -166,9 +169,12 @@ struct WatchWorkoutFlowView: View {
         case "situp": exerciseType = .situp
         case "lunge": exerciseType = .lunge
         case "burpee": exerciseType = .burpee
-        default: return
+        default:
+            print("⚠️ WatchFlow: Unknown exercise type: \(current.exerciseId)")
+            return
         }
 
+        print("🟢 WatchFlow: Starting motion detection for \(current.name)")
         motionManager.startDetection(for: exerciseType)
     }
 

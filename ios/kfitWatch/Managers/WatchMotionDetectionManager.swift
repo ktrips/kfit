@@ -15,23 +15,37 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
     private var baselineAcceleration: Double = 0.0
     private var accelerationBuffer: [Double] = []
     private var peakDetected = false
-    private let peakThreshold: Double = 1.2
+    private let peakThreshold: Double = 0.3  // 閾値を下げて検出しやすく（1.2 → 0.3）
     private let bufferSize = 5
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable && motionManager.isGyroAvailable else {
-            print("Motion sensors not available")
+            print("⚠️ Motion sensors not available")
             return
         }
 
+        print("🔵 WatchMotion: startDetection for \(exerciseType.rawValue)")
         isDetecting = true
         repCount = 0
         formScore = 100.0
         accelerationBuffer = []
+        peakDetected = false
+
+        // デフォルトのベースライン（重力加速度: 1G = 9.81 m/s²）
+        // Apple Watchの加速度は重力の倍数で表現される（1.0 = 1G）
+        if baselineAcceleration == 0.0 {
+            baselineAcceleration = 1.0  // 静止時の重力
+            print("🔵 WatchMotion: Using default baseline = 1.0G")
+        }
 
         motionManager.accelerometerUpdateInterval = 0.05 // 20 Hz (lower for watch battery)
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
-            guard let self = self, let data = data else { return }
+            guard let self = self, let data = data else {
+                if let error = error {
+                    print("❌ WatchMotion: Accelerometer error: \(error)")
+                }
+                return
+            }
 
             let acceleration = sqrt(
                 data.acceleration.x * data.acceleration.x +
@@ -45,10 +59,17 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
 
         // Also start gyro for form quality
         motionManager.gyroUpdateInterval = 0.05
-        motionManager.startGyroUpdates(to: .main) { [weak self] data, _ in
-            guard let self = self, let data = data else { return }
+        motionManager.startGyroUpdates(to: .main) { [weak self] data, error in
+            guard let self = self, let data = data else {
+                if let error = error {
+                    print("❌ WatchMotion: Gyro error: \(error)")
+                }
+                return
+            }
             self.analyzeFormQuality(gyroData: data)
         }
+
+        print("✅ WatchMotion: Detection started successfully")
     }
 
     func calibrate() {
@@ -80,6 +101,7 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
     }
 
     func stopDetection() {
+        print("🔵 WatchMotion: stopDetection - finalRepCount=\(repCount)")
         isDetecting = false
         motionManager.stopAccelerometerUpdates()
         motionManager.stopGyroUpdates()
@@ -93,21 +115,35 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
             accelerationBuffer.removeFirst()
         }
 
+        // バッファが満たされるまで待機
+        guard accelerationBuffer.count >= bufferSize else { return }
+
         // Calculate moving average
         let avgAcceleration = accelerationBuffer.reduce(0, +) / Double(accelerationBuffer.count)
 
-        // Detect peak
+        // Detect peak (動きのある状態を検出)
         let threshold = baselineAcceleration + peakThreshold
+        let valley = baselineAcceleration - 0.2  // 谷の閾値（ベースラインより下）
+
         if avgAcceleration > threshold && !peakDetected {
+            // ピーク検出（動きの上昇）
             peakDetected = true
-        } else if avgAcceleration < (baselineAcceleration + 0.3) && peakDetected {
-            // Rep completed
+            print("🔵 WatchMotion: Peak detected - acc=\(String(format: "%.2f", avgAcceleration)), threshold=\(String(format: "%.2f", threshold))")
+        } else if avgAcceleration < valley && peakDetected {
+            // 谷検出（動きの下降） → 1rep完了
             repCount += 1
             formScore = max(50, min(100, 100 - (abs(avgAcceleration - baselineAcceleration) * 5)))
             peakDetected = false
 
+            print("✅ WatchMotion: Rep #\(repCount) detected! acc=\(String(format: "%.2f", avgAcceleration))")
+
             // Haptic feedback
             WKInterfaceDevice.current().play(.notification)
+        }
+
+        // デバッグ：加速度の値を定期的にログ（10回に1回）
+        if accelerationBuffer.count % 10 == 0 {
+            print("📊 WatchMotion: avg=\(String(format: "%.2f", avgAcceleration)), baseline=\(String(format: "%.2f", baselineAcceleration)), peak=\(peakDetected)")
         }
     }
 

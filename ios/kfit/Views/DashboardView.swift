@@ -681,6 +681,17 @@ struct DashboardView: View {
     private func loadData() async {
         isLoading = true
 
+        // タイムアウト設定（10秒）
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            if isLoading {
+                print("⚠️ loadData timeout - setting isLoading = false")
+                await MainActor.run {
+                    isLoading = false
+                }
+            }
+        }
+
         // ① キャッシュから即時取得（ネットワーク待ちなし）
         async let cachedEx   = authManager.getTodayExercisesFromCache()
         async let cachedSets = authManager.getDailySetsFromCache()
@@ -694,16 +705,33 @@ struct DashboardView: View {
             dailySets      = cachedDailySets
             recalcTotals()
             isLoading = false
+            timeoutTask.cancel()
+
+            // バックグラウンドでサーバーから更新
+            Task {
+                let freshEx = await authManager.getTodayExercises()
+                let freshSets = await authManager.getDailySets()
+                todayExercises = freshEx
+                dailySets = freshSets
+                recalcTotals()
+            }
+            return
         }
 
-        // ② サーバーから最新を取得して更新（キャッシュなしの場合はここでローディング解除）
-        async let freshEx   = authManager.getTodayExercises()
-        async let freshSets = authManager.getDailySets()
-        let (ex, st) = await (freshEx, freshSets)
-        todayExercises = ex
-        dailySets      = st
-        recalcTotals()
+        // ② キャッシュなし：サーバーから取得（最大10秒待機）
+        do {
+            async let freshEx   = authManager.getTodayExercises()
+            async let freshSets = authManager.getDailySets()
+            let (ex, st) = await (freshEx, freshSets)
+            todayExercises = ex
+            dailySets      = st
+            recalcTotals()
+        } catch {
+            print("❌ loadData error: \(error)")
+        }
+
         isLoading = false
+        timeoutTask.cancel()
     }
 
     private func recalcTotals() {

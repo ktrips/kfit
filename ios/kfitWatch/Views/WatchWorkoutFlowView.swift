@@ -22,15 +22,18 @@ private let flowSteps: [FlowStep] = [
 
 struct WatchWorkoutFlowView: View {
     @Binding var isPresented: Bool
+    @StateObject private var motionManager = WatchMotionDetectionManager()
     @State private var stepIdx = 0
     @State private var reps = 0
     @State private var totalXP = 0
     @State private var done = false
+    @State private var useMotionSensor = true  // デフォルトでモーションセンサーON
     /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
     @State private var allResults: [WatchSetExercise] = []
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
+    private var isPlank: Bool { current.exerciseId == "plank" }
 
     var body: some View {
         if done {
@@ -58,13 +61,32 @@ struct WatchWorkoutFlowView: View {
 
                 Text(current.emoji).font(.system(size: 34))
 
-                Text(current.name)
-                    .font(.system(.caption, design: .rounded))
-                    .fontWeight(.black)
-                    .foregroundColor(duoGreen)
+                HStack(spacing: 4) {
+                    Text(current.name)
+                        .font(.system(.caption, design: .rounded))
+                        .fontWeight(.black)
+                        .foregroundColor(duoGreen)
+
+                    // モーションセンサー切り替え（プランク以外）
+                    if !isPlank {
+                        Button {
+                            useMotionSensor.toggle()
+                            if useMotionSensor {
+                                startMotionDetection()
+                            } else {
+                                motionManager.stopDetection()
+                            }
+                        } label: {
+                            Image(systemName: useMotionSensor ? "sensor.fill" : "hand.tap.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(useMotionSensor ? duoGreen : .gray)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
 
                 VStack(spacing: 0) {
-                    Text("\(reps)")
+                    Text("\(displayReps)")
                         .font(.system(size: 44, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("/ \(current.target)")
@@ -72,20 +94,35 @@ struct WatchWorkoutFlowView: View {
                         .foregroundColor(Color.white.opacity(0.5))
                 }
 
-                Button {
-                    reps += 1
-                    WKInterfaceDevice.current().play(.click)
-                } label: {
-                    Text("＋1")
-                        .font(.system(.headline, design: .rounded))
-                        .fontWeight(.black)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(duoGreen)
-                        .cornerRadius(12)
+                // モーション検出中の表示
+                if useMotionSensor && motionManager.isDetecting && !isPlank {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(duoGreen)
+                            .frame(width: 5, height: 5)
+                        Text("検出中")
+                            .font(.system(size: 9))
+                            .foregroundColor(duoGreen)
+                    }
                 }
-                .buttonStyle(.plain)
+
+                // 手動カウントボタン（手動モード時のみ表示）
+                if !useMotionSensor || isPlank {
+                    Button {
+                        reps += 1
+                        WKInterfaceDevice.current().play(.click)
+                    } label: {
+                        Text("＋1")
+                            .font(.system(.headline, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(duoGreen)
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Button { advance() } label: {
                     Text(isLast ? "完了 ✓" : "次へ →")
@@ -100,6 +137,39 @@ struct WatchWorkoutFlowView: View {
             }
             .padding(.horizontal, 8)
         }
+        .onAppear {
+            if useMotionSensor && !isPlank {
+                startMotionDetection()
+            }
+        }
+        .onDisappear {
+            motionManager.stopDetection()
+        }
+    }
+
+    // 表示用のreps（モーションセンサー使用時はmotionManagerから取得）
+    private var displayReps: Int {
+        if useMotionSensor && !isPlank {
+            return motionManager.repCount
+        }
+        return reps
+    }
+
+    // モーション検出開始
+    private func startMotionDetection() {
+        guard !isPlank else { return }
+
+        let exerciseType: ExerciseType
+        switch current.exerciseId {
+        case "pushup": exerciseType = .pushup
+        case "squat": exerciseType = .squat
+        case "situp": exerciseType = .situp
+        case "lunge": exerciseType = .lunge
+        case "burpee": exerciseType = .burpee
+        default: return
+        }
+
+        motionManager.startDetection(for: exerciseType)
     }
 
     // MARK: - 完了画面
@@ -136,29 +206,34 @@ struct WatchWorkoutFlowView: View {
 
     // MARK: - 次の種目へ
     private func advance() {
-        let xp = reps * current.xp
+        // モーションセンサー使用時はmotionManagerのrepCountを使用
+        let actualReps = useMotionSensor && !isPlank ? motionManager.repCount : reps
+        let xp = actualReps * current.xp
         totalXP += xp
 
         // 通知キャンセル用に種目ごとに即送信
         let workout = WorkoutData(
             exerciseId: current.exerciseId,
             exerciseName: current.name,
-            reps: reps,
+            reps: actualReps,
             points: xp,
             timestamp: Date()
         )
         WatchConnectivityManager.shared.sendWorkout(workout)
-        WatchConnectivityManager.shared.addRecentWorkout("\(current.emoji) \(current.name) \(reps)rep")
-        WatchConnectivityManager.shared.todayReps += reps
+        WatchConnectivityManager.shared.addRecentWorkout("\(current.emoji) \(current.name) \(actualReps)rep")
+        WatchConnectivityManager.shared.todayReps += actualReps
         WatchConnectivityManager.shared.todayXP += xp
 
         // セット完了用に結果を蓄積
         allResults.append(WatchSetExercise(
             exerciseId: current.exerciseId,
             exerciseName: current.name,
-            reps: reps,
+            reps: actualReps,
             points: xp
         ))
+
+        // モーション検出を停止
+        motionManager.stopDetection()
 
         WKInterfaceDevice.current().play(.success)
 
@@ -175,6 +250,11 @@ struct WatchWorkoutFlowView: View {
         } else {
             stepIdx += 1
             reps = 0
+
+            // 次の種目でモーション検出を開始
+            if useMotionSensor && !isPlank {
+                startMotionDetection()
+            }
         }
     }
 }

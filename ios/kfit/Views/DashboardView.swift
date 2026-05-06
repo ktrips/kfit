@@ -700,59 +700,30 @@ struct DashboardView: View {
     ]
 
     private func loadData() async {
-        print("🔵 loadData START")
-        print("🔵 Auth状態: isSignedIn=\(authManager.isSignedIn), userProfile=\(authManager.userProfile?.username ?? "nil")")
-
-        // 認証されていない場合は早期リターン
         guard authManager.isSignedIn else {
-            print("⚠️ 未認証 - loadDataをスキップ")
-            await MainActor.run {
-                self.isLoading = false
-            }
+            isLoading = false
             return
         }
 
-        // タイムアウトハンドラ（2秒）
-        let timeoutTask = Task.detached { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if self.isLoading {
-                print("⏱️ TIMEOUT: 2秒経過 - 強制的にローディング解除")
-                self.isLoading = false
-            }
-        }
+        isLoading = true
 
-        print("🔵 Step 1: キャッシュ取得開始")
-        // ① キャッシュから即時取得（ネットワーク待ちなし）
+        // ① キャッシュから即時取得してスピナーを止める（空でも必ず解除）
         async let cachedEx   = authManager.getTodayExercisesFromCache()
         async let cachedSets = authManager.getDailySetsFromCache()
-        let cachedExercises = await cachedEx
-        let cachedDailySets = await cachedSets
+        todayExercises = await cachedEx
+        dailySets      = await cachedSets
+        recalcTotals()
+        isLoading = false
 
-        print("🔵 キャッシュ取得完了: exercises=\(cachedExercises.count), amSets=\(cachedDailySets.amSets), pmSets=\(cachedDailySets.pmSets)")
-
-        // キャッシュデータを即座に表示
-        await MainActor.run {
-            self.todayExercises = cachedExercises
-            self.dailySets      = cachedDailySets
-            self.recalcTotals()
+        // ② バックグラウンドでサーバーから最新値を取得して反映
+        Task {
+            async let freshEx   = authManager.getTodayExercises()
+            async let freshSets = authManager.getDailySets()
+            let (ex, sets) = await (freshEx, freshSets)
+            todayExercises = ex
+            dailySets      = sets
+            recalcTotals()
         }
-
-        // サーバーから最新データを取得して更新
-        print("🔵 サーバーから最新データ取得開始")
-        async let freshEx   = authManager.getTodayExercises()
-        async let freshSets = authManager.getDailySets()
-        let (ex, st) = await (freshEx, freshSets)
-
-        print("🔵 サーバー取得完了: exercises=\(ex.count), amSets=\(st.amSets), pmSets=\(st.pmSets)")
-        await MainActor.run {
-            self.todayExercises = ex
-            self.dailySets      = st
-            self.recalcTotals()
-            self.isLoading = false
-        }
-
-        timeoutTask.cancel()
-        print("✅ loadData END")
     }
 
     private func recalcTotals() {

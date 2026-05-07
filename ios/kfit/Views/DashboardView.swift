@@ -29,18 +29,18 @@ struct DashboardView: View {
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 18) {
+                        VStack(spacing: 22) {
                             dailySetsCard
                             habitStackCard
                             todaySummaryCard
                             healthSummaryCard
                             challengeCard
                             quickMenu
-                            Spacer(minLength: 90)
+                            Spacer(minLength: 100)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 16)
+                        .padding(.top, 20)
+                        .padding(.bottom, 20)
                     }
                 }
             }
@@ -86,12 +86,12 @@ struct DashboardView: View {
     // MARK: - 常時表示CTAボタン（タブバー上に固定）
     private var startTrainingButton: some View {
         Button { showTracker = true } label: {
-            HStack(spacing: 16) {
+            HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.22))
-                        .frame(width: 57, height: 57)
-                        .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.15 : 1.0)
+                        .frame(width: 40, height: 40)
+                        .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.12 : 1.0)
                         .animation(
                             todayExercises.isEmpty
                                 ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
@@ -99,48 +99,48 @@ struct DashboardView: View {
                             value: mascotBounce
                         )
                     Text(todayExercises.isEmpty ? "💪" : "➕")
-                        .font(.title2)
+                        .font(.title3)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(todayExercises.isEmpty
                          ? "今日のトレーニングを始めよう！"
                          : "さらに記録する")
-                        .font(.title3).fontWeight(.black)
+                        .font(.callout).fontWeight(.black)
                         .foregroundColor(.white)
                     Text(todayExercises.isEmpty
-                         ? "タップしてトレーニング開始"
-                         : "\(todayExercises.count) 種目 · \(totalXP) XP 獲得済み")
-                        .font(.subheadline)
+                         ? "タップして開始"
+                         : "\(todayExercises.count) 種目 · \(totalXP) XP")
+                        .font(.caption)
                         .foregroundColor(Color.white.opacity(0.88))
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right.circle.fill")
-                    .font(.title)
+                    .font(.title3)
                     .foregroundColor(Color.white.opacity(0.85))
             }
-            .padding(.horizontal, 26)
-            .padding(.vertical, 21)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(
                 LinearGradient(
                     colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
                     startPoint: .leading, endPoint: .trailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 26))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .shadow(color: Color.duoGreen.opacity(
-                    todayExercises.isEmpty ? 0.6 : 0.35
-                ), radius: todayExercises.isEmpty ? 14 : 8, y: 5)
+                    todayExercises.isEmpty ? 0.5 : 0.3
+                ), radius: todayExercises.isEmpty ? 10 : 6, y: 4)
             )
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.top, 13)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
         .background(
             Color.duoBg
-                .shadow(color: Color.black.opacity(0.08), radius: 8, y: -4)
+                .shadow(color: Color.black.opacity(0.08), radius: 6, y: -3)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -155,14 +155,14 @@ struct DashboardView: View {
                 )
                 HStack(spacing: 0) {
                     // ── ロゴ ──────────────────
-                    HStack(spacing: 7) {
+                    HStack(spacing: 4) {
                         Image("mascot")
                             .resizable().scaledToFill()
-                            .frame(width: 26, height: 26)
+                            .frame(width: 16, height: 16)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
                         Text("DuoFit")
-                            .font(.system(.subheadline, design: .rounded))
+                            .font(.system(size: 11, design: .rounded))
                             .fontWeight(.black)
                             .foregroundColor(.white)
                     }
@@ -170,7 +170,7 @@ struct DashboardView: View {
                     Spacer()
 
                     // ── 統計 3項目（横1列）───
-                    HStack(spacing: 18) {
+                    HStack(spacing: 12) {
                         miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
                         repCalStat(reps: totalReps, kcal: totalCalories)
                         miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
@@ -181,33 +181,33 @@ struct DashboardView: View {
                     // ── ログアウト ────────────
                     Button { authManager.signOut() } label: {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 14).weight(.bold))
+                            .font(.system(size: 10).weight(.bold))
                             .foregroundColor(Color.white.opacity(0.85))
-                            .padding(8)
+                            .padding(5)
                             .background(Color.white.opacity(0.16))
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, geometry.safeAreaInsets.top + 10)
-                .padding(.bottom, 10)
+                .padding(.horizontal, 12)
+                .padding(.top, geometry.safeAreaInsets.top + 4)
+                .padding(.bottom, 5)
             }
         }
-        .frame(height: 65 + (UIApplication.shared.connectedScenes
+        .frame(height: 33 + (UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first?.windows.first?.safeAreaInsets.top ?? 44))
     }
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            HStack(spacing: 3) {
-                Text(icon).font(.system(size: 13))
+        VStack(spacing: 1) {
+            HStack(spacing: 2) {
+                Text(icon).font(.system(size: 10))
                 Text(value)
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: 12, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text(label)
-                .font(.system(size: 10))
+                .font(.system(size: 8))
                 .foregroundColor(Color.white.opacity(0.82))
         }
     }
@@ -215,15 +215,15 @@ struct DashboardView: View {
     /// 回数＋カロリーを2行で表示するヘッダー統計アイテム
     @ViewBuilder
     private func repCalStat(reps: Int, kcal: Int) -> some View {
-        VStack(spacing: 2) {
-            HStack(spacing: 3) {
-                Text("⚡").font(.system(size: 13))
+        VStack(spacing: 1) {
+            HStack(spacing: 2) {
+                Text("⚡").font(.system(size: 10))
                 Text("\(reps)回")
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: 12, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text("\(kcal)kcal")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
                 .foregroundColor(Color.white.opacity(0.82))
         }
     }

@@ -35,6 +35,7 @@ struct ExerciseTrackerView: View {
     // フロー管理
     @State private var stepIdx = 0
     @State private var showCelebration = false
+    @State private var showGoalReached = false
     @State private var earnedXP = 0
     @State private var isSubmitting = false
 
@@ -100,6 +101,10 @@ struct ExerciseTrackerView: View {
                             )
                     }
                 }
+
+                if showGoalReached {
+                    goalReachedOverlay
+                }
             }
             .ignoresSafeArea()
         }
@@ -110,6 +115,14 @@ struct ExerciseTrackerView: View {
         .onDisappear {
             motionManager.stopDetection()
             stopPlankTimer()
+        }
+        .onChange(of: motionManager.repCount) { count in
+            guard !isManualMode && !isPlankSelected else { return }
+            if count == current.target && !showGoalReached { triggerGoalReached() }
+        }
+        .onChange(of: manualRepCount) { count in
+            guard isManualMode && !isPlankSelected else { return }
+            if count == current.target && !showGoalReached { triggerGoalReached() }
         }
     }
 
@@ -373,6 +386,33 @@ struct ExerciseTrackerView: View {
         .cornerRadius(12)
     }
 
+    // MARK: - 目標達成フラッシュ
+    private var goalReachedOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("🎯")
+                    .font(.system(size: 72))
+                Text("Good job!")
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+                Text("目標 \(current.target) 回 達成！")
+                    .font(.headline).fontWeight(.bold)
+                    .foregroundColor(.white)
+                Text("続けても記録できます 💪")
+                    .font(.subheadline).foregroundColor(.white.opacity(0.75))
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color.black.opacity(0.85))
+                    .shadow(color: Color.duoGreen.opacity(0.4), radius: 20)
+            )
+            .padding(32)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+    }
+
     // MARK: - セレブレーション
     private var celebrationView: some View {
         ZStack {
@@ -427,6 +467,16 @@ struct ExerciseTrackerView: View {
     }
 
     // MARK: - ロジック
+
+    private func triggerGoalReached() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+            showGoalReached = true
+        }
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { showGoalReached = false }
+        }
+    }
 
     private func startPlankTimer() {
         plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in

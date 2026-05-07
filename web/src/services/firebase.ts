@@ -256,10 +256,10 @@ export const getRecentExercises = async (userId: string, days: number = 7): Prom
   });
 
   const result: DayExercises[] = [];
-  for (let i = 1; i < days; i++) {
+  for (let i = 0; i < days; i++) {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const label = i === 1 ? '昨日' : `${date.getMonth() + 1}/${date.getDate()}`;
+    const label = i === 0 ? '今日' : i === 1 ? '昨日' : `${date.getMonth() + 1}/${date.getDate()}`;
     const exercises = byDay[key] ?? [];
     if (exercises.length > 0) {
       result.push({

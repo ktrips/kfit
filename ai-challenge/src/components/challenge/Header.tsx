@@ -1,4 +1,4 @@
-import { Trophy, Settings, LogOut, Zap } from 'lucide-react';
+import { Trophy, Settings, LogOut } from 'lucide-react';
 import { useGameStore } from '../../store/gameStore';
 import { signOutUser } from '../../services/firebase';
 
@@ -17,11 +17,9 @@ export function Header() {
           onClick={() => setView('map')}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
+          <img src="/icon.svg" alt="AiLingo" className="w-8 h-8" />
           <span className="text-xl font-black text-gray-900 tracking-tight">
-            AI <span className="text-brand">Challenge</span>
+            Ai<span className="text-red-500">Lingo</span>
           </span>
         </button>
 

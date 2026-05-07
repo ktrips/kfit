@@ -1,8 +1,8 @@
 {
-  "name": "ai-challenge",
+  "name": "ailingo",
   "type": "module",
   "version": "0.1.0",
-  "description": "AI Challenge - Learn efficient Claude usage through gamified coding challenges",
+  "description": "AiLingo (アイリンゴ) - Claudeを効率的に使いこなす技術をゲーム感覚で習得するアプリ",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

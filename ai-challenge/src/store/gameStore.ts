@@ -91,7 +91,7 @@ interface GameState {
   unlockStage: (stage: Stage) => void;
 }
 
-const STORAGE_KEY = 'ai-challenge.apiKey';
+const STORAGE_KEY = 'ailingo.apiKey';
 
 export const useGameStore = create<GameState>((set, get) => ({
   // ── Auth ──────────────────────────────────────────────────────────────────

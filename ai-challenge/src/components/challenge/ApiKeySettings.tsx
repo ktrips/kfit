@@ -90,7 +90,7 @@ export function ApiKeySettings() {
             <li>生成されたキーをコピーして貼り付け</li>
           </ol>
           <p className="mt-2 text-xs text-amber-600">
-            ※ チャレンジで使用するモデルは claude-haiku-4-5（最小コスト）です
+            ※ AiLingoが使用するモデルは claude-haiku-4-5（最小コスト）です
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, Trophy, Clock, TrendingUp } from 'lucide-react';
+import { Trophy, Clock, TrendingUp } from 'lucide-react';
 import { signInWithGoogle } from '../../services/firebase';
 import { useGameStore } from '../../store/gameStore';
 
@@ -23,16 +23,19 @@ export function LoginView() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-light via-white to-purple-50 flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-rose-50 flex flex-col items-center justify-center px-4">
       <div className="max-w-md w-full">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-brand flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand/30">
-            <Zap className="w-9 h-9 text-white" />
-          </div>
-          <h1 className="text-4xl font-black text-gray-900 mb-2">
-            AI <span className="text-brand">Challenge</span>
+          <img
+            src="/icon.svg"
+            alt="AiLingo"
+            className="w-20 h-20 mx-auto mb-4 drop-shadow-lg"
+          />
+          <h1 className="text-4xl font-black text-gray-900 mb-1">
+            Ai<span className="text-red-500">Lingo</span>
           </h1>
+          <p className="text-red-400 font-semibold text-sm mb-2">アイリンゴ</p>
           <p className="text-gray-500 text-sm leading-relaxed">
             Claudeを効率的に使いこなす技術を<br />ゲーム感覚で習得しよう
           </p>
@@ -77,10 +80,10 @@ export function LoginView() {
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-4 font-bold text-gray-700 hover:border-brand hover:text-brand transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-2xl py-4 font-bold text-gray-700 hover:border-red-400 hover:text-red-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
-            <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
           ) : (
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

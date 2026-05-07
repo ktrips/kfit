@@ -12,13 +12,10 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
 
     private let motionManager = CMMotionManager()
     private let pedometer = CMPedometer()
-    private var baselineAcceleration: Double = 1.0  // 重力加速度（1G）で初期化
-    private var accelerationBuffer: [Double] = []
-    private var peakDetected = false
-    private let peakThreshold: Double = 0.12  // 検出閾値をさらに下げる
-    private let bufferSize = 3  // バッファサイズを小さくして反応を早く
+    private var previousAcceleration: Double = 1.0  // 前回の加速度
     private var lastRepTime: Date = Date.distantPast  // 前回のrep時刻（連続検出防止）
-    private let minRepInterval: TimeInterval = 0.4  // 最小rep間隔を短縮（秒）
+    private let minRepInterval: TimeInterval = 0.3  // 最小rep間隔を短縮（秒）
+    private let changeThreshold: Double = 0.15  // 加速度変化の閾値
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable && motionManager.isGyroAvailable else {
@@ -30,13 +27,9 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         isDetecting = true
         repCount = 0
         formScore = 100.0
-        accelerationBuffer = []
-        peakDetected = false
+        previousAcceleration = 1.0
         lastRepTime = Date.distantPast
-
-        // 常にベースラインを重力加速度にリセット
-        baselineAcceleration = 1.0  // 静止時の重力（1G）
-        print("🔵 WatchMotion: Reset baseline = 1.0G")
+        print("🔵 WatchMotion: Reset detection state")
 
         motionManager.accelerometerUpdateInterval = 0.05 // 20 Hz (lower for watch battery)
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
@@ -54,12 +47,6 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
             )
 
             self.currentAcceleration = acceleration
-
-            // 初回の加速度値をログ
-            if self.accelerationBuffer.isEmpty {
-                print("🔵 WatchMotion: First acceleration reading = \(String(format: "%.3f", acceleration))G")
-            }
-
             self.detectRepWatch(acceleration: acceleration, exerciseType: exerciseType)
         }
 
@@ -80,79 +67,40 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         print("✅ WatchMotion: Detection started successfully")
     }
 
-    func calibrate() {
-        guard motionManager.isAccelerometerAvailable else { return }
-
-        var readings: [Double] = []
-        var calibrationCount = 0
-        let calibrationSamples = 15
-
-        motionManager.accelerometerUpdateInterval = 0.1
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let self = self, let data = data else { return }
-
-            let acceleration = sqrt(
-                data.acceleration.x * data.acceleration.x +
-                data.acceleration.y * data.acceleration.y +
-                data.acceleration.z * data.acceleration.z
-            )
-
-            readings.append(acceleration)
-            calibrationCount += 1
-
-            if calibrationCount >= calibrationSamples {
-                self.baselineAcceleration = readings.reduce(0, +) / Double(readings.count)
-                self.motionManager.stopAccelerometerUpdates()
-                print("Calibration complete. Baseline: \(self.baselineAcceleration)")
-            }
-        }
-    }
 
     func stopDetection() {
         print("🔵 WatchMotion: stopDetection - finalRepCount=\(repCount)")
         isDetecting = false
         motionManager.stopAccelerometerUpdates()
         motionManager.stopGyroUpdates()
-        accelerationBuffer = []
     }
 
     private func detectRepWatch(acceleration: Double, exerciseType: ExerciseType) {
-        // Use circular buffer for smoother detection
-        accelerationBuffer.append(acceleration)
-        if accelerationBuffer.count > bufferSize {
-            accelerationBuffer.removeFirst()
-        }
+        // 前回との加速度変化を計算
+        let change = abs(acceleration - previousAcceleration)
 
-        // 最低2サンプルあれば検出開始（より早く反応）
-        guard accelerationBuffer.count >= 2 else { return }
-
-        // Calculate moving average
-        let avgAcceleration = accelerationBuffer.reduce(0, +) / Double(accelerationBuffer.count)
-
-        // より単純な検出ロジック：絶対値の変化を見る
-        let delta = abs(avgAcceleration - baselineAcceleration)
-
-        // 連続検出防止：前回のrepから最小間隔が経過しているか
         let now = Date()
         let timeSinceLastRep = now.timeIntervalSince(lastRepTime)
 
-        // 動きの変化が閾値を超え、かつ最小間隔が経過している
-        if delta > peakThreshold && timeSinceLastRep > minRepInterval {
-            // 1回の大きな変化で1repとカウント（シンプル化）
+        // 十分な変化があり、かつ最小間隔が経過している場合にカウント
+        if change > changeThreshold && timeSinceLastRep > minRepInterval {
             repCount += 1
-            formScore = max(60, min(100, 100 - (delta * 20)))
+            formScore = max(60, min(100, 100 - (change * 30)))
             lastRepTime = now
 
-            print("✅ WatchMotion: Rep #\(repCount) detected! delta=\(String(format: "%.3f", delta)), acc=\(String(format: "%.3f", avgAcceleration)), baseline=\(String(format: "%.3f", baselineAcceleration))")
+            print("✅ WatchMotion: Rep #\(repCount) detected! change=\(String(format: "%.3f", change)), acc=\(String(format: "%.3f", acceleration)), prev=\(String(format: "%.3f", previousAcceleration))")
 
             // Haptic feedback
             WKInterfaceDevice.current().play(.click)
         }
 
-        // デバッグ：加速度の値をログ（10回に1回に削減）
-        let sampleCount = accelerationBuffer.count
-        if sampleCount > 0 && (Int(now.timeIntervalSince1970 * 20) % 10 == 0) {
-            print("📊 WatchMotion: acc=\(String(format: "%.3f", avgAcceleration)), baseline=\(String(format: "%.3f", baselineAcceleration)), delta=\(String(format: "%.3f", delta)), reps=\(repCount)")
+        // 現在の加速度を保存
+        previousAcceleration = acceleration
+
+        // 定期的にデバッグログ出力（2秒に1回）
+        let currentTime = now.timeIntervalSince1970
+        if Int(currentTime * 10) % 20 == 0 {
+            print("📊 WatchMotion: acc=\(String(format: "%.3f", acceleration)), change=\(String(format: "%.3f", change)), threshold=\(String(format: "%.3f", changeThreshold)), reps=\(repCount)")
         }
     }
 

@@ -13,10 +13,10 @@ const sections: Section[] = [
     content: (
       <ol className="space-y-2 text-sm font-bold text-duo-gray list-decimal list-inside">
         <li>ヘッダーの「💪 トレーニング」ボタンをタップ</li>
-        <li>種目（プッシュアップ・スクワットなど）を選択</li>
-        <li>＋ ボタンでレップ数を入力</li>
-        <li>「✓ トレーニングを記録！」で保存</li>
-        <li>XP が獲得されてホームに戻ります</li>
+        <li>5種目（スクワット→腕立て伏せ→腹筋→プランク→ランジ）が自動で順番に表示</li>
+        <li>各種目で目標回数を達成したら「次へ」をタップ</li>
+        <li>最後まで完了すると獲得XPが表示されます</li>
+        <li>ダッシュボードに戻ると記録が反映されます</li>
       </ol>
     ),
   },
@@ -86,13 +86,17 @@ const sections: Section[] = [
         <ul className="list-disc list-inside space-y-1">
           <li>
             <strong className="text-duo-dark">iOSアプリ</strong>：
-            モーションセンサーによる自動 rep 計測・フォームスコア表示
+            モーションセンサーによる自動 rep 計測・フォームスコア表示・iPhone全画面最適化
           </li>
           <li>
             <strong className="text-duo-dark">Apple Watch</strong>：
-            手首だけで rep を自動検知・触覚フィードバック・トレーニング完了後に iPhone へ自動同期
+            手首だけで rep を自動検知・触覚フィードバック・過去記録表示（iOS連動）
           </li>
-          <li>3つのプラットフォームのデータは Firebase でリアルタイム同期されます</li>
+          <li>
+            <strong className="text-duo-dark">連続ワークアウトフロー</strong>：
+            3プラットフォームすべてで5種目を自動進行（手動選択不要）
+          </li>
+          <li>データは Firebase で双方向リアルタイム同期されます</li>
         </ul>
       </div>
     ),

@@ -13,11 +13,6 @@ private func emoji(for name: String) -> String {
     return "🏃"
 }
 
-private func isPlank(_ exercise: Exercise?) -> Bool {
-    let id = (exercise?.id ?? exercise?.name ?? "").lowercased()
-    return id.contains("plank")
-}
-
 // 固定の連続フロー（Watchと同じ）
 private let flowSteps: [(emoji: String, name: String, target: Int, id: String, xp: Int)] = [
     ("🏋️", "スクワット", 20, "squat", 2),
@@ -103,7 +98,6 @@ struct ExerciseTrackerView: View {
             }
             .ignoresSafeArea()
         }
-        .persistentSystemOverlays(.hidden)
         .onAppear {
             startCurrentExercise()
         }

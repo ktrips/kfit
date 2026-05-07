@@ -31,8 +31,8 @@ struct kfitApp: App {
             }
         }
         // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
-        .onChange(of: scenePhase) { phase in
-            if phase == .active {
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
             }
         }
@@ -79,8 +79,8 @@ struct MainTabView: View {
                 .tag(7)
         }
         .accentColor(Color.duoGreen)
-        .onChange(of: selectedTab) { tab in
-            if tab == 2 {
+        .onChange(of: selectedTab) { oldTab, newTab in
+            if newTab == 2 {
                 showTracker = true
                 selectedTab = 0
             }

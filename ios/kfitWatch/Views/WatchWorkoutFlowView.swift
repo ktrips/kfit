@@ -140,18 +140,24 @@ struct WatchWorkoutFlowView: View {
 
                 // モーション検出中の表示
                 if useMotionSensor && motionManager.isDetecting && !isPlank {
-                    HStack(spacing: 3) {
-                        Circle()
-                            .fill(duoGreen)
-                            .frame(width: 5, height: 5)
-                        Text("検出中")
-                            .font(.system(size: 9))
-                            .foregroundColor(duoGreen)
+                    VStack(spacing: 2) {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(duoGreen)
+                                .frame(width: 5, height: 5)
+                            Text("検出中")
+                                .font(.system(size: 9))
+                                .foregroundColor(duoGreen)
+                        }
+                        Text("加速度: \(String(format: "%.2f", motionManager.currentAcceleration))G")
+                            .font(.system(size: 8))
+                            .foregroundColor(.gray)
                     }
                 }
 
-                // 手動カウントボタン（手動モード時のみ表示）
-                if !useMotionSensor || isPlank {
+                // 手動カウントボタン（プランク時または手動モード時）
+                // モーションセンサーモード時も+1ボタンを表示（テスト・補助用）
+                if isPlank || !useMotionSensor {
                     Button {
                         reps += 1
                         WKInterfaceDevice.current().play(.click)
@@ -164,6 +170,22 @@ struct WatchWorkoutFlowView: View {
                             .padding(.vertical, 9)
                             .background(duoGreen)
                             .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                } else if useMotionSensor && !isPlank {
+                    // モーション検出モード時：補助的な+1ボタン（薄く表示）
+                    Button {
+                        reps += 1
+                        WKInterfaceDevice.current().play(.click)
+                    } label: {
+                        Text("手動+1")
+                            .font(.system(size: 9))
+                            .fontWeight(.bold)
+                            .foregroundColor(duoGreen)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(duoGreen.opacity(0.1))
+                            .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
                 }

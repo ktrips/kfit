@@ -12,13 +12,13 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
 
     private let motionManager = CMMotionManager()
     private let pedometer = CMPedometer()
-    private var baselineAcceleration: Double = 0.0
+    private var baselineAcceleration: Double = 1.0  // 重力加速度（1G）で初期化
     private var accelerationBuffer: [Double] = []
     private var peakDetected = false
-    private let peakThreshold: Double = 0.15  // さらに下げて検出しやすく
+    private let peakThreshold: Double = 0.12  // 検出閾値をさらに下げる
     private let bufferSize = 3  // バッファサイズを小さくして反応を早く
     private var lastRepTime: Date = Date.distantPast  // 前回のrep時刻（連続検出防止）
-    private let minRepInterval: TimeInterval = 0.5  // 最小rep間隔（秒）
+    private let minRepInterval: TimeInterval = 0.4  // 最小rep間隔を短縮（秒）
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable && motionManager.isGyroAvailable else {
@@ -32,13 +32,11 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         formScore = 100.0
         accelerationBuffer = []
         peakDetected = false
+        lastRepTime = Date.distantPast
 
-        // デフォルトのベースライン（重力加速度: 1G = 9.81 m/s²）
-        // Apple Watchの加速度は重力の倍数で表現される（1.0 = 1G）
-        if baselineAcceleration == 0.0 {
-            baselineAcceleration = 1.0  // 静止時の重力
-            print("🔵 WatchMotion: Using default baseline = 1.0G")
-        }
+        // 常にベースラインを重力加速度にリセット
+        baselineAcceleration = 1.0  // 静止時の重力（1G）
+        print("🔵 WatchMotion: Reset baseline = 1.0G")
 
         motionManager.accelerometerUpdateInterval = 0.05 // 20 Hz (lower for watch battery)
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
@@ -56,8 +54,16 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
             )
 
             self.currentAcceleration = acceleration
+
+            // 初回の加速度値をログ
+            if self.accelerationBuffer.isEmpty {
+                print("🔵 WatchMotion: First acceleration reading = \(String(format: "%.3f", acceleration))G")
+            }
+
             self.detectRepWatch(acceleration: acceleration, exerciseType: exerciseType)
         }
+
+        print("✅ WatchMotion: Accelerometer updates started")
 
         // Also start gyro for form quality
         motionManager.gyroUpdateInterval = 0.05
@@ -132,26 +138,21 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
 
         // 動きの変化が閾値を超え、かつ最小間隔が経過している
         if delta > peakThreshold && timeSinceLastRep > minRepInterval {
-            // ピーク/谷の区別なく、大きな変化があればカウント
-            if !peakDetected {
-                peakDetected = true
-            } else {
-                // 2回目の大きな変化 = 1rep完了
-                repCount += 1
-                formScore = max(60, min(100, 100 - (delta * 20)))
-                peakDetected = false
-                lastRepTime = now
+            // 1回の大きな変化で1repとカウント（シンプル化）
+            repCount += 1
+            formScore = max(60, min(100, 100 - (delta * 20)))
+            lastRepTime = now
 
-                print("✅ WatchMotion: Rep #\(repCount) detected! delta=\(String(format: "%.2f", delta)), acc=\(String(format: "%.2f", avgAcceleration))")
+            print("✅ WatchMotion: Rep #\(repCount) detected! delta=\(String(format: "%.3f", delta)), acc=\(String(format: "%.3f", avgAcceleration)), baseline=\(String(format: "%.3f", baselineAcceleration))")
 
-                // Haptic feedback
-                WKInterfaceDevice.current().play(.notification)
-            }
+            // Haptic feedback
+            WKInterfaceDevice.current().play(.click)
         }
 
-        // デバッグ：加速度の値を頻繁にログ（5回に1回）
-        if accelerationBuffer.count % 5 == 0 {
-            print("📊 WatchMotion: acc=\(String(format: "%.2f", avgAcceleration)), baseline=\(String(format: "%.2f", baselineAcceleration)), delta=\(String(format: "%.2f", delta)), peak=\(peakDetected), reps=\(repCount)")
+        // デバッグ：加速度の値をログ（10回に1回に削減）
+        let sampleCount = accelerationBuffer.count
+        if sampleCount > 0 && (Int(now.timeIntervalSince1970 * 20) % 10 == 0) {
+            print("📊 WatchMotion: acc=\(String(format: "%.3f", avgAcceleration)), baseline=\(String(format: "%.3f", baselineAcceleration)), delta=\(String(format: "%.3f", delta)), reps=\(repCount)")
         }
     }
 

@@ -83,7 +83,7 @@ final class HealthKitManager: ObservableObject {
     @Published var lastNightDeepHours:  Double         = 0
     @Published var sleepSegments:       [SleepSegment] = []
 
-    // MARK: - 読み取り権限セット
+    // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
         var set = Set<HKObjectType>()
@@ -102,16 +102,92 @@ final class HealthKitManager: ObservableObject {
         return set
     }
 
+    private var writeTypes: Set<HKSampleType> {
+        var set = Set<HKSampleType>()
+        if let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+            set.insert(energy)
+        }
+        set.insert(HKWorkoutType.workoutType())
+        return set
+    }
+
     // MARK: - 権限リクエスト
 
     func requestAuthorization() async {
         guard isAvailable else { return }
         do {
-            try await store.requestAuthorization(toShare: [], read: readTypes)
+            try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
             isAuthorized = true
             await fetchAll()
         } catch {
             print("[HealthKit] 権限エラー: \(error)")
+        }
+    }
+
+    // MARK: - ワークアウト書き込み
+
+    private static let caloriesPerRep: [String: Double] = [
+        "pushup": 0.32, "squat": 0.32, "situp": 0.15,
+        "lunge": 0.40,  "burpee": 1.00, "plank": 0.08,
+    ]
+
+    func saveExercise(exerciseId: String, reps: Int, startDate: Date, endDate: Date) async {
+        guard isAvailable else { return }
+        let kcal = (Self.caloriesPerRep[exerciseId.lowercased()] ?? 0.25) * Double(reps)
+        guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
+        let energySample = HKQuantitySample(
+            type: energyType,
+            quantity: HKQuantity(unit: .kilocalorie(), doubleValue: kcal),
+            start: startDate, end: endDate
+        )
+        let workout = HKWorkout(
+            activityType: workoutActivity(for: exerciseId),
+            start: startDate, end: endDate,
+            duration: max(endDate.timeIntervalSince(startDate), 1),
+            totalEnergyBurned: HKQuantity(unit: .kilocalorie(), doubleValue: kcal),
+            totalDistance: nil, metadata: nil
+        )
+        do {
+            try await store.save(energySample)
+            try await store.save(workout)
+        } catch {
+            print("[HealthKit] ❌ 書き込みエラー: \(error)")
+        }
+    }
+
+    func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)], startDate: Date) async {
+        guard isAvailable else { return }
+        let endDate = Date()
+        let totalKcal = exercises.reduce(0.0) {
+            $0 + (Self.caloriesPerRep[$1.id.lowercased()] ?? 0.25) * Double($1.reps)
+        }
+        guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
+        let energySample = HKQuantitySample(
+            type: energyType,
+            quantity: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
+            start: startDate, end: endDate
+        )
+        let workout = HKWorkout(
+            activityType: .functionalStrengthTraining,
+            start: startDate, end: endDate,
+            duration: max(endDate.timeIntervalSince(startDate), 1),
+            totalEnergyBurned: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
+            totalDistance: nil, metadata: nil
+        )
+        do {
+            try await store.save(energySample)
+            try await store.save(workout)
+        } catch {
+            print("[HealthKit] ❌ セット書き込みエラー: \(error)")
+        }
+    }
+
+    private func workoutActivity(for exerciseId: String) -> HKWorkoutActivityType {
+        switch exerciseId.lowercased() {
+        case "pushup", "situp", "lunge", "burpee": return .traditionalStrengthTraining
+        case "squat":  return .functionalStrengthTraining
+        case "plank":  return .coreTraining
+        default:       return .functionalStrengthTraining
         }
     }
 

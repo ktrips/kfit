@@ -309,9 +309,12 @@ private struct DetailSheet: View {
 
 struct WorkoutPlanView: View {
     @EnvironmentObject var authManager: AuthenticationManager
-    @State private var doneIds: Set<UUID> = []
+    @State private var r1Done: Set<UUID> = []
+    @State private var r2Done: Set<UUID> = []
     @State private var selected: PlannedExercise?
+    @State private var selectedRound: Int = 1
 
+    private var isMorning: Bool { Calendar.current.component(.hour, from: Date()) < 12 }
     private var dayOfWeek: Int { Calendar.current.component(.weekday, from: Date()) }
 
     private var phase: Int {
@@ -355,7 +358,8 @@ struct WorkoutPlanView: View {
         .navigationTitle("今日のプラン")
         .sheet(item: $selected) { ex in
             DetailSheet(exercise: ex) { id in
-                doneIds.insert(id)
+                if selectedRound == 1 { r1Done.insert(id) }
+                else { r2Done.insert(id) }
                 selected = nil
             }
             .environmentObject(authManager)
@@ -412,51 +416,114 @@ struct WorkoutPlanView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 
-    // MARK: 筋トレカード
+    // MARK: 筋トレカード（午前・午後2ラウンド）
     private var strengthCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(phase == 1 ? "💥 15分サーキット × 3周" : "💪 分割トレーニング")
+                Text(phase == 1 ? "💥 15分サーキット" : "💪 分割トレーニング")
                     .font(.headline).fontWeight(.black)
                 Spacer()
-                Text("\(doneIds.filter { id in todayExercises.contains(where: { $0.id == id }) }.count)/\(todayExercises.count)")
+                Text("\(r1Done.count + r2Done.count)/\(todayExercises.count * 2)")
                     .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoGreen)
             }
             if phase == 1 {
-                Text("タップで詳細・記録 ／ インターバルなし・限界まで！")
+                Text("午前・午後に1周ずつ ／ タップで詳細・記録")
                     .font(.caption).foregroundColor(Color.duoOrange)
             }
-            VStack(spacing: 8) {
-                ForEach(todayExercises) { ex in exerciseRow(ex) }
-            }
-            let doneCount = doneIds.filter { id in todayExercises.contains(where: { $0.id == id }) }.count
-            if doneCount == todayExercises.count && !todayExercises.isEmpty {
-                HStack { Spacer()
-                    Text("🎉 今日のメニュー完了！すごい！")
-                        .font(.subheadline).fontWeight(.black).foregroundColor(Color.duoGreen)
-                    Spacer()
+
+            // 午前スキップ通知（午後で午前未完）
+            if !isMorning && r1Done.isEmpty {
+                HStack(spacing: 10) {
+                    Text("💡").font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("午前の部を飛ばした？まとめてやろう！")
+                            .font(.caption).fontWeight(.black).foregroundColor(.primary)
+                        Text("午前・午後の2周を今やってもOK！")
+                            .font(.caption2).foregroundColor(.secondary)
+                    }
                 }
-                .padding(.vertical, 8)
-                .background(Color.duoGreen.opacity(0.08)).cornerRadius(12)
+                .padding(10)
+                .background(Color.duoOrange.opacity(0.1))
+                .cornerRadius(12)
             }
+
+            roundSection(round: 1, done: r1Done)
+
+            Divider().padding(.vertical, 4)
+
+            roundSection(round: 2, done: r2Done)
         }
         .padding(16).background(Color.white).cornerRadius(18)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 
-    private func exerciseRow(_ ex: PlannedExercise) -> some View {
-        let done = doneIds.contains(ex.id)
-        return Button { selected = ex } label: {
+    private func roundSection(round: Int, done: Set<UUID>) -> some View {
+        let isActive = round == 1 ? isMorning : !isMorning
+        let isLocked = round == 2 && isMorning
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(round == 1 ? "☀️ 午前の部" : "🌙 午後の部")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(isActive ? .primary : .secondary)
+                if isActive && !isLocked {
+                    Text("NOW")
+                        .font(.caption2).fontWeight(.black).foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.duoGreen.opacity(0.12)).cornerRadius(6)
+                }
+                Spacer()
+                Text("\(done.count)/\(todayExercises.count)")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(isLocked ? Color(.systemGray3) : Color.duoGreen)
+            }
+            Text(round == 1 ? "0:00 〜 12:00" : "12:00 〜 24:00")
+                .font(.caption2).foregroundColor(.secondary)
+
+            if isLocked {
+                HStack { Spacer()
+                    VStack(spacing: 4) {
+                        Text("🌙").font(.title2)
+                        Text("12:00から開始").font(.subheadline).foregroundColor(.secondary)
+                        Text("午前中できなかった分もまとめてOK")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(12).background(Color(.systemGray6)).cornerRadius(12)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(todayExercises) { ex in exerciseRow(ex, round: round, done: done) }
+                }
+                if done.count == todayExercises.count && !todayExercises.isEmpty {
+                    HStack { Spacer()
+                        Text("🎉 Round \(round) 完了！")
+                            .font(.subheadline).fontWeight(.black).foregroundColor(Color.duoGreen)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color.duoGreen.opacity(0.08)).cornerRadius(12)
+                }
+            }
+        }
+    }
+
+    private func exerciseRow(_ ex: PlannedExercise, round: Int, done: Set<UUID>) -> some View {
+        let isDone = done.contains(ex.id)
+        return Button {
+            selectedRound = round
+            selected = ex
+        } label: {
             HStack(spacing: 12) {
                 Text(ex.emoji).font(.title3)
                     .frame(width: 42, height: 42)
-                    .background(done ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
+                    .background(isDone ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
                     .cornerRadius(12)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(ex.name).font(.subheadline).fontWeight(.bold)
-                            .strikethrough(done)
-                            .foregroundColor(done ? .secondary : .primary)
+                            .strikethrough(isDone)
+                            .foregroundColor(isDone ? .secondary : .primary)
                         Text(ex.difficulty)
                             .font(.caption2).fontWeight(.black)
                             .foregroundColor(difficultyColor(ex.difficulty))
@@ -467,12 +534,12 @@ struct WorkoutPlanView: View {
                     Text(ex.reps).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()
-                Image(systemName: done ? "checkmark.circle.fill" : "chevron.right")
+                Image(systemName: isDone ? "checkmark.circle.fill" : "chevron.right")
                     .font(.subheadline)
-                    .foregroundColor(done ? Color.duoGreen : Color(.systemGray3))
+                    .foregroundColor(isDone ? Color.duoGreen : Color(.systemGray3))
             }
             .padding(12)
-            .background(done ? Color.duoGreen.opacity(0.05) : Color.duoBg)
+            .background(isDone ? Color.duoGreen.opacity(0.05) : Color.duoBg)
             .cornerRadius(14)
         }
         .buttonStyle(.plain)

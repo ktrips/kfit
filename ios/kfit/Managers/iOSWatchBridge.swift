@@ -137,6 +137,22 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    // iOS側で直接記録した後にWatchへ通知
+    func notifyWatchAfterDirectRecord() {
+        Task {
+            let profile = AuthenticationManager.shared.userProfile
+            let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+            let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
+            let todayXP   = todayExercises.reduce(0) { $0 + $1.points }
+            sendStatsToWatch(
+                streak: profile?.streak ?? 0,
+                todayReps: todayReps,
+                todayXP: todayXP,
+                todayExercises: todayExercises
+            )
+        }
+    }
+
     // iOS → Watch: 更新後の数値を送信
     private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todayExercises: [CompletedExercise] = []) {
         guard WCSession.isSupported() else { return }

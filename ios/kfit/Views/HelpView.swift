@@ -12,11 +12,11 @@ private let helpItems: [HelpItem] = [
         icon: "💪",
         title: "トレーニングの記録方法",
         content: """
-        1. ダッシュボードの「トレーニング開始」ボタンをタップ
-        2. 5種目（スクワット→腕立て伏せ→腹筋→プランク→ランジ）が自動で順番に表示
-        3. 各種目でモーション自動検出または手動入力で記録
-        4. 目標達成したら「次へ」をタップして次の種目へ
-        5. 全種目完了すると獲得XPが表示されます
+        1. ダッシュボードの「記録する」ボタンをタップ
+        2. 種目（プッシュアップ・スクワットなど）を選択
+        3. ＋ ボタンでレップ数を入力、または「モーション自動検出」をONにする
+        4. 「✓ トレーニングを記録」で保存
+        5. XP が獲得されてダッシュボードに戻ります
         """
     ),
     HelpItem(
@@ -61,14 +61,13 @@ private let helpItems: [HelpItem] = [
     ),
     HelpItem(
         icon: "📱",
-        title: "モーション自動検出とApple Watch",
+        title: "モーション自動検出（iPhone）",
         content: """
-        iPhone・Apple Watch両方でモーション自動検出が使えます。
-        • iPhoneの加速度センサーでrepを自動カウント（50Hz）
+        トレーニング記録画面で「モーション自動検出」をONにすると、
+        iPhoneの加速度センサーでrepを自動カウントします。
         • フォームスコアも同時に計算されます
-        • Apple Watch は手首だけで検出（20Hz + 触覚フィードバック）
-        • Watch→iPhone双方向同期で過去記録も連動
-        • 連続ワークアウトフローで種目を自動進行
+        • Apple Watch からもモーション検出が使えます
+        • Watch でのトレーニングはiPhoneに自動同期されます
         """
     ),
     HelpItem(
@@ -118,9 +117,9 @@ struct HelpView: View {
                         HStack(spacing: 12) {
                             Text("ℹ️").font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("DuoFit v0.6.1")
+                                Text("DuoFit")
                                     .font(.subheadline).fontWeight(.black)
-                                Text("Web・iOS・Apple Watch 対応 | 連続ワークアウトフロー・全画面最適化")
+                                Text("Web・iOS・Apple Watch 対応")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)
                             }
                             Spacer()

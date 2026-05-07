@@ -30,6 +30,7 @@ struct WatchWorkoutFlowView: View {
     @State private var useMotionSensor = true  // デフォルトでモーションセンサーON
     /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
     @State private var allResults: [WatchSetExercise] = []
+    @State private var showGoalReached = false
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
@@ -39,7 +40,50 @@ struct WatchWorkoutFlowView: View {
         if done {
             finishView
         } else {
-            exerciseView
+            ZStack {
+                exerciseView
+                if showGoalReached {
+                    goalReachedOverlay
+                }
+            }
+            .onChange(of: motionManager.repCount) { count in
+                if useMotionSensor && !isPlank { checkGoalReached(count) }
+            }
+            .onChange(of: reps) { count in
+                if !useMotionSensor || isPlank { checkGoalReached(count) }
+            }
+        }
+    }
+
+    // MARK: - 目標達成オーバーレイ
+    private var goalReachedOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.65).ignoresSafeArea()
+            VStack(spacing: 8) {
+                Text("🎯").font(.system(size: 36))
+                Text("Good job!")
+                    .font(.system(.title3, design: .rounded))
+                    .fontWeight(.black)
+                    .foregroundColor(duoGreen)
+                Text("目標達成！続けてOK")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .padding(16)
+            .background(Color.black.opacity(0.8))
+            .cornerRadius(16)
+        }
+        .transition(.scale.combined(with: .opacity))
+        .animation(.spring(response: 0.4, dampingFraction: 0.6), value: showGoalReached)
+    }
+
+    private func checkGoalReached(_ count: Int) {
+        if count == current.target && !showGoalReached {
+            showGoalReached = true
+            WKInterfaceDevice.current().play(.success)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                showGoalReached = false
+            }
         }
     }
 
@@ -96,24 +140,18 @@ struct WatchWorkoutFlowView: View {
 
                 // モーション検出中の表示
                 if useMotionSensor && motionManager.isDetecting && !isPlank {
-                    VStack(spacing: 2) {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(duoGreen)
-                                .frame(width: 5, height: 5)
-                            Text("検出中")
-                                .font(.system(size: 9))
-                                .foregroundColor(duoGreen)
-                        }
-                        Text("加速度: \(String(format: "%.2f", motionManager.currentAcceleration))G")
-                            .font(.system(size: 8))
-                            .foregroundColor(.gray)
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(duoGreen)
+                            .frame(width: 5, height: 5)
+                        Text("検出中")
+                            .font(.system(size: 9))
+                            .foregroundColor(duoGreen)
                     }
                 }
 
-                // 手動カウントボタン（プランク時または手動モード時）
-                // モーションセンサーモード時も+1ボタンを表示（テスト・補助用）
-                if isPlank || !useMotionSensor {
+                // 手動カウントボタン（手動モード時のみ表示）
+                if !useMotionSensor || isPlank {
                     Button {
                         reps += 1
                         WKInterfaceDevice.current().play(.click)
@@ -126,22 +164,6 @@ struct WatchWorkoutFlowView: View {
                             .padding(.vertical, 9)
                             .background(duoGreen)
                             .cornerRadius(12)
-                    }
-                    .buttonStyle(.plain)
-                } else if useMotionSensor && !isPlank {
-                    // モーション検出モード時：補助的な+1ボタン（薄く表示）
-                    Button {
-                        reps += 1
-                        WKInterfaceDevice.current().play(.click)
-                    } label: {
-                        Text("手動+1")
-                            .font(.system(size: 9))
-                            .fontWeight(.bold)
-                            .foregroundColor(duoGreen)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background(duoGreen.opacity(0.1))
-                            .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
                 }

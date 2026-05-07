@@ -182,8 +182,13 @@ class AuthenticationManager: ObservableObject {
             // クライアント側でストリーク・ポイントを更新（Cloud Functions 未デプロイでも動作）
             await updateStreakAndPoints(userId: userId, points: points, now: now)
 
-            // トレーニング記録 → 今日不要な通知をキャンセル
+            // トレーニング記録 → 今日不要な通知をキャンセル + Watch通知 + Apple Health
             NotificationManager.shared.handleWorkoutRecorded()
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+            await HealthKitManager.shared.saveExercise(
+                exerciseId: exercise.id ?? exercise.name.lowercased(),
+                reps: reps, startDate: now, endDate: now
+            )
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"
         }
@@ -317,6 +322,13 @@ class AuthenticationManager: ObservableObject {
         // ストリーク・ポイントをまとめて更新
         await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
 
+        // Apple Health にセット全体を記録
+        let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
+        await HealthKitManager.shared.saveCompletedSet(
+            exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
+            startDate: setStart
+        )
+
         // 更新後のプロフィールを取得して返す（Watch への逆同期用）
         let snap = try? await db.collection("users").document(userId).getDocument()
         let streak = snap?.data()?["streak"] as? Int ?? (userProfile?.streak ?? 0)
@@ -350,6 +362,10 @@ class AuthenticationManager: ObservableObject {
             .collection("completed-exercises").addDocument(data: data)
         await updateStreakAndPoints(userId: userId, points: points, now: now)
         NotificationManager.shared.handleWorkoutRecorded()
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        await HealthKitManager.shared.saveExercise(
+            exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
+        )
     }
 
     // MARK: - History
@@ -375,14 +391,14 @@ class AuthenticationManager: ObservableObject {
         }
 
         var result: [DayExercises] = []
-        for i in 1..<days {
+        for i in 0..<days {
             let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: Date())) ?? Date()
             let key = formatter.string(from: date)
             let exs = byDay[key] ?? []
             if !exs.isEmpty {
                 let month = calendar.component(.month, from: date)
                 let day   = calendar.component(.day, from: date)
-                let label = i == 1 ? "昨日" : "\(month)/\(day)"
+                let label = i == 0 ? "今日" : i == 1 ? "昨日" : "\(month)/\(day)"
                 result.append(DayExercises(date: key, label: label, exercises: exs,
                                            totalReps: exs.reduce(0) { $0 + $1.reps },
                                            totalPoints: exs.reduce(0) { $0 + $1.points }))

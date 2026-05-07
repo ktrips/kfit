@@ -40,7 +40,7 @@ struct HistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 14) {
                             ForEach(history) { day in
                                 dayCard(day)
                             }
@@ -61,8 +61,8 @@ struct HistoryView: View {
 
     // MARK: - 日別カード
     private func dayCard(_ day: DayExercises) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // ヘッダー
+        VStack(alignment: .leading, spacing: 12) {
+            // 日別ヘッダー
             HStack {
                 Text(day.label)
                     .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
@@ -83,33 +83,10 @@ struct HistoryView: View {
 
             Divider()
 
-            // 種目一覧
-            VStack(spacing: 6) {
-                ForEach(day.exercises) { ex in
-                    HStack {
-                        Text(emoji(for: ex.exerciseName))
-                            .font(.title3)
-                            .frame(width: 32, height: 32)
-                            .background(Color.duoGreen.opacity(0.1))
-                            .clipShape(Circle())
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(ex.exerciseName)
-                                .font(.subheadline).fontWeight(.semibold)
-                                .foregroundColor(Color.duoDark)
-                            Text("\(ex.reps) rep")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
-                        }
-
-                        Spacer()
-
-                        Text("+\(ex.points) XP")
-                            .font(.caption).fontWeight(.bold)
-                            .foregroundColor(Color.duoGold)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.duoYellow.opacity(0.22))
-                            .cornerRadius(6)
-                    }
+            // セット一覧
+            VStack(spacing: 10) {
+                ForEach(day.sets) { set in
+                    setCard(set)
                 }
             }
         }
@@ -117,6 +94,69 @@ struct HistoryView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+    }
+
+    // MARK: - セットカード
+    private func setCard(_ set: ExerciseSet) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // セットヘッダー
+            HStack {
+                Text("\(set.period) セット\(set.setNumber)")
+                    .font(.subheadline).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark.opacity(0.8))
+                Text(timeString(set.startTime))
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                HStack(spacing: 8) {
+                    Text("\(set.totalReps) rep")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(Color.duoGreen)
+                    Text("+\(set.totalPoints) XP")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(Color.duoGold)
+                }
+            }
+
+            // 種目一覧
+            VStack(spacing: 5) {
+                ForEach(set.exercises) { ex in
+                    HStack {
+                        Text(emoji(for: ex.exerciseName))
+                            .font(.body)
+                            .frame(width: 28, height: 28)
+                            .background(Color.duoGreen.opacity(0.08))
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(ex.exerciseName)
+                                .font(.caption).fontWeight(.semibold)
+                                .foregroundColor(Color.duoDark)
+                            Text("\(ex.reps) rep")
+                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }
+
+                        Spacer()
+
+                        Text("+\(ex.points)")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color.duoGold)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.duoYellow.opacity(0.18))
+                            .cornerRadius(4)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.duoGreen.opacity(0.04))
+        .cornerRadius(10)
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 
     // MARK: - ヘルパー

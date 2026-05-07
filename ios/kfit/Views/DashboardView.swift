@@ -36,11 +36,11 @@ struct DashboardView: View {
                             healthSummaryCard
                             challengeCard
                             quickMenu
-                            Spacer(minLength: 100)
+                            Spacer(minLength: 80)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 20)
-                        .padding(.bottom, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -158,11 +158,11 @@ struct DashboardView: View {
                     HStack(spacing: 4) {
                         Image("mascot")
                             .resizable().scaledToFill()
-                            .frame(width: 16, height: 16)
+                            .frame(width: 14, height: 14)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
                         Text("DuoFit")
-                            .font(.system(size: 11, design: .rounded))
+                            .font(.system(size: 10, design: .rounded))
                             .fontWeight(.black)
                             .foregroundColor(.white)
                     }
@@ -170,7 +170,7 @@ struct DashboardView: View {
                     Spacer()
 
                     // ── 統計 3項目（横1列）───
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
                         repCalStat(reps: totalReps, kcal: totalCalories)
                         miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
@@ -181,33 +181,33 @@ struct DashboardView: View {
                     // ── ログアウト ────────────
                     Button { authManager.signOut() } label: {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 10).weight(.bold))
+                            .font(.system(size: 9).weight(.bold))
                             .foregroundColor(Color.white.opacity(0.85))
-                            .padding(5)
+                            .padding(4)
                             .background(Color.white.opacity(0.16))
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, geometry.safeAreaInsets.top + 4)
-                .padding(.bottom, 5)
+                .padding(.horizontal, 10)
+                .padding(.top, geometry.safeAreaInsets.top + 2)
+                .padding(.bottom, 3)
             }
         }
-        .frame(height: 33 + (UIApplication.shared.connectedScenes
+        .frame(height: 16 + (UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first?.windows.first?.safeAreaInsets.top ?? 44))
     }
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 1) {
-            HStack(spacing: 2) {
-                Text(icon).font(.system(size: 10))
+        VStack(spacing: 0) {
+            HStack(spacing: 1) {
+                Text(icon).font(.system(size: 8))
                 Text(value)
-                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text(label)
-                .font(.system(size: 8))
+                .font(.system(size: 7))
                 .foregroundColor(Color.white.opacity(0.82))
         }
     }
@@ -215,15 +215,15 @@ struct DashboardView: View {
     /// 回数＋カロリーを2行で表示するヘッダー統計アイテム
     @ViewBuilder
     private func repCalStat(reps: Int, kcal: Int) -> some View {
-        VStack(spacing: 1) {
-            HStack(spacing: 2) {
-                Text("⚡").font(.system(size: 10))
+        VStack(spacing: 0) {
+            HStack(spacing: 1) {
+                Text("⚡").font(.system(size: 8))
                 Text("\(reps)回")
-                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text("\(kcal)kcal")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 7, weight: .bold))
                 .foregroundColor(Color.white.opacity(0.82))
         }
     }

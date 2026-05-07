@@ -399,12 +399,74 @@ class AuthenticationManager: ObservableObject {
                 let month = calendar.component(.month, from: date)
                 let day   = calendar.component(.day, from: date)
                 let label = i == 0 ? "今日" : i == 1 ? "昨日" : "\(month)/\(day)"
-                result.append(DayExercises(date: key, label: label, exercises: exs,
-                                           totalReps: exs.reduce(0) { $0 + $1.reps },
-                                           totalPoints: exs.reduce(0) { $0 + $1.points }))
+
+                // セット分割（30分間隔でセッションを判定）
+                let sets = buildSetsFromExercises(exs)
+
+                result.append(DayExercises(
+                    date: key,
+                    label: label,
+                    sets: sets,
+                    totalReps: exs.reduce(0) { $0 + $1.reps },
+                    totalPoints: exs.reduce(0) { $0 + $1.points }
+                ))
             }
         }
         return result
+    }
+
+    private func buildSetsFromExercises(_ exercises: [CompletedExercise]) -> [ExerciseSet] {
+        let sorted = exercises.sorted { $0.timestamp < $1.timestamp }
+        var sessions: [[CompletedExercise]] = []
+        var currentSession: [CompletedExercise] = []
+        var lastTime: Date? = nil
+
+        for ex in sorted {
+            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
+                // 30分以内 → 同じセッション
+                currentSession.append(ex)
+            } else {
+                // 新しいセッション開始
+                if !currentSession.isEmpty {
+                    sessions.append(currentSession)
+                }
+                currentSession = [ex]
+            }
+            lastTime = ex.timestamp
+        }
+        if !currentSession.isEmpty {
+            sessions.append(currentSession)
+        }
+
+        let calendar = Calendar.current
+        var amCount = 0
+        var pmCount = 0
+
+        return sessions.map { session in
+            guard let firstTime = session.first?.timestamp else {
+                return ExerciseSet(startTime: Date(), period: "午後", setNumber: 1, exercises: [], totalReps: 0, totalPoints: 0)
+            }
+
+            let hour = calendar.component(.hour, from: firstTime)
+            let isAM = hour < 12
+            let period = isAM ? "午前" : "午後"
+
+            if isAM {
+                amCount += 1
+            } else {
+                pmCount += 1
+            }
+            let setNumber = isAM ? amCount : pmCount
+
+            return ExerciseSet(
+                startTime: firstTime,
+                period: period,
+                setNumber: setNumber,
+                exercises: session,
+                totalReps: session.reduce(0) { $0 + $1.reps },
+                totalPoints: session.reduce(0) { $0 + $1.points }
+            )
+        }
     }
 
     // MARK: - Daily Sets
@@ -594,6 +656,16 @@ struct DayExercises: Identifiable {
     var id: String { date }
     var date: String
     var label: String
+    var sets: [ExerciseSet]
+    var totalReps: Int
+    var totalPoints: Int
+}
+
+struct ExerciseSet: Identifiable {
+    var id: String { "\(startTime.timeIntervalSince1970)" }
+    var startTime: Date
+    var period: String  // "午前" or "午後"
+    var setNumber: Int  // その時間帯での連番（1, 2, 3...）
     var exercises: [CompletedExercise]
     var totalReps: Int
     var totalPoints: Int

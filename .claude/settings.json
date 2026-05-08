@@ -17,7 +17,24 @@
       "Bash(read line *)",
       "Bash(:)",
       "Bash(swift -e ' *)",
-      "Bash(xcodebuild -version)"
+      "Bash(xcodebuild -version)",
+      "Bash(git -C /Users/kmacmini/Git/kfit add ios/kfit/Views/DashboardView.swift)",
+      "Bash(git -C /Users/kmacmini/Git/kfit rebase --continue)",
+      "Bash(GIT_EDITOR=true git -C /Users/kmacmini/Git/kfit rebase --continue)",
+      "Bash(git -C /Users/kmacmini/Git/kfit status)",
+      "Bash(git -C /Users/kmacmini/Git/kfit -c core.editor=true rebase --continue)",
+      "Bash(git -C /Users/kmacmini/Git/kfit push)",
+      "Bash(git -C /Users/kmacmini/Git/kfit diff --cached --name-only)",
+      "Bash(git -C /Users/kmacmini/Git/kfit rebase --skip)",
+      "Bash(git -C /Users/kmacmini/Git/kfit commit -m ' *)",
+      "Bash(git -C /Users/kmacmini/Git/kfit log --oneline HEAD..origin/main)",
+      "Bash(git -C /Users/kmacmini/Git/kfit stash)",
+      "Bash(git -C /Users/kmacmini/Git/kfit pull --ff-only)",
+      "Bash(git -C /Users/kmacmini/Git/kfit stash drop)",
+      "Bash(sed -n '/private func loadData/,/^    }/p' /Users/kmacmini/Git/kfit/ios/kfit/Views/DashboardView.swift | head -40)"
+    ],
+    "additionalDirectories": [
+      "/Users/kmacmini/Git/kfit/ios/kfit/Views"
     ]
   },
   "hooks": {

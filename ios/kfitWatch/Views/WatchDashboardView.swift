@@ -17,6 +17,7 @@ private func exerciseEmoji(_ id: String) -> String {
 
 struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
+    @StateObject private var healthKit = WatchHealthKitManager.shared
     @State private var showFlow = false
 
     var body: some View {
@@ -43,9 +44,12 @@ struct WatchDashboardView: View {
                 connectivity.shouldAutoStartWorkout = false
             }
         }
-        // 起動時に最新 stats を iOS に問い合わせる
+        // 起動時に最新 stats を iOS に問い合わせる & HealthKit データ取得
         .onAppear {
             connectivity.requestStatsFromiOS()
+            Task {
+                await healthKit.requestAuthorization()
+            }
         }
     }
 
@@ -116,6 +120,33 @@ struct WatchDashboardView: View {
                 .padding(8)
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(12)
+
+                // ── 今日の健康データ ──────────────────
+                if healthKit.isAuthorized {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("💚")
+                                .font(.system(size: 11))
+                            Text("今日の健康データ")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            Spacer()
+                        }
+
+                        HStack(spacing: 4) {
+                            healthDataItem(icon: "👟", value: "\(healthKit.todaySteps)", unit: "歩")
+                            healthDataItem(icon: "❤️", value: "\(healthKit.averageHeartRate)", unit: "bpm")
+                        }
+
+                        HStack(spacing: 4) {
+                            healthDataItem(icon: "🔥", value: "\(healthKit.todayCalories)", unit: "kcal")
+                            healthDataItem(icon: "😴", value: String(format: "%.1f", healthKit.sleepHours), unit: "時間")
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(12)
+                }
 
                 // ── スタートボタン ────────────────────
                 Button { showFlow = true } label: {
@@ -195,4 +226,23 @@ struct WatchStatItem: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
+
+// ── 健康データアイテム ────────────────────────────────
+private func healthDataItem(icon: String, value: String, unit: String) -> some View {
+    VStack(spacing: 2) {
+        Text(icon).font(.system(size: 12))
+        HStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 14, weight: .black))
+                .foregroundColor(.white)
+            Text(unit)
+                .font(.system(size: 8))
+                .foregroundColor(.white.opacity(0.6))
+        }
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 6)
+    .background(Color.white.opacity(0.05))
+    .cornerRadius(8)
 }

@@ -11,6 +11,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
+    @Published var todaySets: Int = 0
     @Published var recentWorkouts: [String] = []
     @Published var todayExercises: [CompletedExerciseWatch] = []
 
@@ -119,6 +120,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
+        if let sets  = message["todaySets"] as? Int { self.todaySets = sets }
 
         // 今日の運動記録を受信
         if let exercisesData = message["todayExercises"] as? Data {

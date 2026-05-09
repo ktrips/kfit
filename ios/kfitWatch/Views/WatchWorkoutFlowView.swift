@@ -361,6 +361,7 @@ struct WatchWorkoutFlowView: View {
                 timestamp: Date()
             )
             WatchConnectivityManager.shared.sendCompletedSet(setData)
+            WatchConnectivityManager.shared.todaySets += 1
             done = true
         } else {
             stepIdx += 1

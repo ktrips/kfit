@@ -73,6 +73,8 @@ struct WatchDashboardView: View {
                     WatchStatItem(icon: "⭐", value: "\(connectivity.todayXP)", label: "XP")
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
                     WatchStatItem(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
+                    WatchStatItem(icon: "✅", value: "\(connectivity.todaySets)", label: "セット")
                 }
                 .padding(.vertical, 8)
                 .background(Color.white.opacity(0.08))

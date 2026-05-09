@@ -3,6 +3,7 @@ import { recordExercise, getUserProfile } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface ExerciseTrackerProps {
   onSuccess?: () => void;
+  onBack?: () => void;
 }
 
 interface ExerciseCfg {
@@ -30,7 +31,7 @@ function getCfg(name: string): ExerciseCfg {
   return EXERCISE_CFG.default;
 }
 
-export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess }) => {
+export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess, onBack }) => {
   const user = useAppStore((state) => state.user);
   const exercises = useAppStore((state) => state.exercises);
   const updateUserPoints = useAppStore((state) => state.updateUserPoints);
@@ -49,6 +50,25 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
 
   const addRep = () => setReps((r) => r + 1);
   const removeRep = () => { if (reps > 0) setReps((r) => r - 1); };
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (e.key === '+' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        addRep();
+      } else if (e.key === '-' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        removeRep();
+      } else if (e.key === 'Enter' && reps > 0) {
+        e.preventDefault();
+        handleSubmit();
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [selectedId, reps]);
 
   const handleSubmit = async () => {
     if (!user || !selectedId || reps === 0) {
@@ -106,8 +126,17 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-white border-2 border-duo-border hover:bg-gray-50 transition-colors"
+              aria-label="戻る"
+            >
+              <span className="text-duo-gray font-black text-lg">←</span>
+            </button>
+          )}
           <img src="/mascot.png" alt="mascot" className="w-14 h-14 rounded-full object-cover shrink-0" />
-          <div>
+          <div className="flex-1">
             <h2 className="text-2xl font-black text-duo-dark">トレーニング記録</h2>
             <p className="text-duo-gray font-bold text-sm">種目を選んでレップ数を入力！</p>
           </div>
@@ -151,9 +180,18 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
           >
             <p className="text-duo-gray font-extrabold text-xs uppercase tracking-wider mb-1">レップ数</p>
 
-            <div className="text-8xl font-black mb-5 leading-none" style={{ color: cfg.border }}>
-              {reps}
-            </div>
+            <input
+              type="number"
+              value={reps}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 0) setReps(val);
+              }}
+              className="text-8xl font-black mb-5 leading-none text-center w-full bg-transparent border-none outline-none"
+              style={{ color: cfg.border }}
+              min="0"
+              step="1"
+            />
 
             <div className="flex gap-6 justify-center mb-5">
               {/* Minus */}
@@ -205,6 +243,15 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess 
         >
           {isSubmitting ? '記録中...' : '✓ トレーニングを記録！'}
         </button>
+
+        {/* Keyboard hints */}
+        {selectedId && reps > 0 && (
+          <div className="text-center">
+            <p className="text-duo-gray text-xs font-bold">
+              💡 キーボード: <span className="font-black">↑/+ 増やす</span> · <span className="font-black">↓/- 減らす</span> · <span className="font-black">Enter 記録</span>
+            </p>
+          </div>
+        )}
 
       </div>
     </div>

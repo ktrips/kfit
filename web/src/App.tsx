@@ -197,7 +197,10 @@ function App() {
           <DailyWorkoutFlow onFinish={() => navigate('dashboard')} />
         )}
         {currentView === 'tracker' && user && (
-          <ExerciseTrackerView onSuccess={() => navigate('dashboard')} />
+          <ExerciseTrackerView
+            onSuccess={() => navigate('dashboard')}
+            onBack={() => navigate('dashboard')}
+          />
         )}
         {currentView === 'weekly' && user && (
           <WeeklyGoalView />

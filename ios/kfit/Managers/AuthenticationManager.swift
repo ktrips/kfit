@@ -665,6 +665,20 @@ class AuthenticationManager: ObservableObject {
             .setData(["targetCalories": targetCalories, "updatedAt": Date()])
     }
 
+    // MARK: - Helper: Week ID
+    private func getCurrentWeekId() -> String {
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)
+        let daysToMonday = weekday == 1 ? -6 : 2 - weekday
+        guard let monday = calendar.date(byAdding: .day, value: daysToMonday, to: today) else {
+            return ISO8601DateFormatter().string(from: today).prefix(10).description
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        return formatter.string(from: monday)
+    }
+
     // MARK: - Weekly Set Progress (Web互換)
     func getWeeklySetProgress() async -> WeeklySetProgress {
         guard let userId = Auth.auth().currentUser?.uid else {

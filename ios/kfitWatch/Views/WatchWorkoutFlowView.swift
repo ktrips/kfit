@@ -31,6 +31,8 @@ struct WatchWorkoutFlowView: View {
     /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
     @State private var allResults: [WatchSetExercise] = []
     @State private var showGoalReached = false
+    @State private var plankSeconds = 0
+    @State private var plankTimer: Timer?
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
@@ -50,7 +52,10 @@ struct WatchWorkoutFlowView: View {
                 if useMotionSensor && !isPlank { checkGoalReached(count) }
             }
             .onChange(of: reps) { count in
-                if !useMotionSensor || isPlank { checkGoalReached(count) }
+                if !useMotionSensor && !isPlank { checkGoalReached(count) }
+            }
+            .onChange(of: plankSeconds) { secs in
+                if isPlank && secs >= current.target && !showGoalReached { checkGoalReached(secs) }
             }
         }
     }
@@ -133,7 +138,7 @@ struct WatchWorkoutFlowView: View {
                     Text("\(displayReps)")
                         .font(.system(size: 44, weight: .black, design: .rounded))
                         .foregroundColor(.white)
-                    Text("/ \(current.target)")
+                    Text("/ \(current.target)\(isPlank ? "秒" : "回")")
                         .font(.caption2)
                         .foregroundColor(Color.white.opacity(0.5))
                 }
@@ -155,9 +160,28 @@ struct WatchWorkoutFlowView: View {
                     }
                 }
 
-                // 手動カウントボタン（プランク時または手動モード時）
-                // モーションセンサーモード時も+1ボタンを表示（テスト・補助用）
-                if isPlank || !useMotionSensor {
+                // プランク: タイマー開始/停止ボタン
+                if isPlank {
+                    Button {
+                        if plankTimer == nil {
+                            startPlankTimer()
+                            WKInterfaceDevice.current().play(.click)
+                        } else {
+                            stopPlankTimer()
+                            WKInterfaceDevice.current().play(.click)
+                        }
+                    } label: {
+                        Text(plankTimer == nil ? "▶ 開始" : "⏸ 停止")
+                            .font(.system(.headline, design: .rounded))
+                            .fontWeight(.black)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(plankTimer == nil ? duoGreen : Color.orange)
+                            .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                } else if !useMotionSensor {
                     Button {
                         reps += 1
                         WKInterfaceDevice.current().play(.click)
@@ -210,14 +234,14 @@ struct WatchWorkoutFlowView: View {
         }
         .onDisappear {
             motionManager.stopDetection()
+            stopPlankTimer()
         }
     }
 
-    // 表示用のreps（モーションセンサー使用時はmotionManagerから取得）
+    // 表示用カウント（プランクは秒数、モーションONは検出値、それ以外は手動）
     private var displayReps: Int {
-        if useMotionSensor && !isPlank {
-            return motionManager.repCount
-        }
+        if isPlank { return plankSeconds }
+        if useMotionSensor { return motionManager.repCount }
         return reps
     }
 
@@ -242,6 +266,18 @@ struct WatchWorkoutFlowView: View {
 
         print("🟢 WatchFlow: Starting motion detection for \(current.name)")
         motionManager.startDetection(for: exerciseType)
+    }
+
+    // MARK: - プランクタイマー
+    private func startPlankTimer() {
+        plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in plankSeconds += 1 }
+        }
+    }
+
+    private func stopPlankTimer() {
+        plankTimer?.invalidate()
+        plankTimer = nil
     }
 
     // MARK: - 完了画面
@@ -278,8 +314,15 @@ struct WatchWorkoutFlowView: View {
 
     // MARK: - 次の種目へ
     private func advance() {
-        // モーションセンサー使用時はmotionManagerのrepCountを使用
-        let actualReps = useMotionSensor && !isPlank ? motionManager.repCount : reps
+        stopPlankTimer()
+        let actualReps: Int
+        if isPlank {
+            actualReps = plankSeconds
+        } else if useMotionSensor {
+            actualReps = motionManager.repCount
+        } else {
+            actualReps = reps
+        }
         let xp = actualReps * current.xp
         totalXP += xp
 
@@ -322,6 +365,7 @@ struct WatchWorkoutFlowView: View {
         } else {
             stepIdx += 1
             reps = 0
+            plankSeconds = 0
 
             // 次の種目でモーション検出を開始
             if useMotionSensor && !isPlank {

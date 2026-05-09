@@ -114,25 +114,36 @@ final class HealthKitManager: ObservableObject {
     // MARK: - 権限リクエスト
 
     func requestAuthorization() async {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            print("[HealthKit] HealthKit not available on this device")
+            return
+        }
         do {
             try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
             isAuthorized = true
+            print("[HealthKit] ✅ Authorization granted")
             await fetchAll()
         } catch {
-            print("[HealthKit] 権限エラー: \(error)")
+            print("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
         }
     }
 
     // MARK: - ワークアウト書き込み
 
-    private static let caloriesPerRep: [String: Double] = [
+    static let caloriesPerRep: [String: Double] = [
         "pushup": 0.32, "squat": 0.32, "situp": 0.15,
         "lunge": 0.40,  "burpee": 1.00, "plank": 0.08,
     ]
 
     func saveExercise(exerciseId: String, reps: Int, startDate: Date, endDate: Date) async {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            print("[HealthKit] ⚠️ HealthKit not available")
+            return
+        }
+        guard isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping save")
+            return
+        }
         let kcal = (Self.caloriesPerRep[exerciseId.lowercased()] ?? 0.25) * Double(reps)
         guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
         let energySample = HKQuantitySample(
@@ -150,17 +161,26 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.save(energySample)
             try await store.save(workout)
+            print("[HealthKit] ✅ Saved: \(exerciseId) \(reps)rep (\(String(format: "%.1f", kcal))kcal)")
         } catch {
-            print("[HealthKit] ❌ 書き込みエラー: \(error)")
+            print("[HealthKit] ❌ 書き込みエラー: \(error.localizedDescription)")
         }
     }
 
     func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)], startDate: Date) async {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            print("[HealthKit] ⚠️ HealthKit not available")
+            return
+        }
+        guard isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping set save")
+            return
+        }
         let endDate = Date()
         let totalKcal = exercises.reduce(0.0) {
             $0 + (Self.caloriesPerRep[$1.id.lowercased()] ?? 0.25) * Double($1.reps)
         }
+        let totalReps = exercises.reduce(0) { $0 + $1.reps }
         guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
         let energySample = HKQuantitySample(
             type: energyType,
@@ -177,8 +197,9 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.save(energySample)
             try await store.save(workout)
+            print("[HealthKit] ✅ Set saved: \(totalReps)rep (\(String(format: "%.1f", totalKcal))kcal)")
         } catch {
-            print("[HealthKit] ❌ セット書き込みエラー: \(error)")
+            print("[HealthKit] ❌ セット書き込みエラー: \(error.localizedDescription)")
         }
     }
 
@@ -207,7 +228,16 @@ final class HealthKitManager: ObservableObject {
     // MARK: - 全データ取得
 
     func fetchAll() async {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            print("[HealthKit] HealthKit not available - skipping fetch")
+            return
+        }
+        guard isAuthorized else {
+            print("[HealthKit] Not authorized - skipping fetch")
+            return
+        }
+
+        print("[HealthKit] 🔄 Fetching all health data...")
         isLoading = true
         defer { isLoading = false }
 
@@ -227,6 +257,8 @@ final class HealthKitManager: ObservableObject {
         lastNightTotalHours = sleepResult.total
         lastNightDeepHours  = sleepResult.deep
         sleepSegments       = sleepResult.segments
+
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h")
     }
 
     // MARK: - 歩数

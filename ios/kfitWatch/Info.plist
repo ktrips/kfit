@@ -24,5 +24,9 @@
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.kfitappduo.app</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>kfit reads heart rate, steps, and calories from Apple Health to show your fitness summary on Apple Watch.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>kfit writes workout data to Apple Health.</string>
 </dict>
 </plist>

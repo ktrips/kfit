@@ -185,10 +185,22 @@ class AuthenticationManager: ObservableObject {
             // トレーニング記録 → 今日不要な通知をキャンセル + Watch通知 + Apple Health
             NotificationManager.shared.handleWorkoutRecorded()
             iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
-            await HealthKitManager.shared.saveExercise(
-                exerciseId: exercise.id ?? exercise.name.lowercased(),
-                reps: reps, startDate: now, endDate: now
-            )
+
+            // Apple Health書き込み（権限確認）
+            if HealthKitManager.shared.isAvailable {
+                if !HealthKitManager.shared.isAuthorized {
+                    await HealthKitManager.shared.requestAuthorization()
+                }
+                if HealthKitManager.shared.isAuthorized {
+                    await HealthKitManager.shared.saveExercise(
+                        exerciseId: exercise.id ?? exercise.name.lowercased(),
+                        reps: reps, startDate: now, endDate: now
+                    )
+                    print("✅ HealthKit: Exercise saved - \(exercise.name) \(reps)rep")
+                } else {
+                    print("⚠️ HealthKit: Authorization denied")
+                }
+            }
         } catch {
             errorMessage = "Failed to record exercise: \(error.localizedDescription)"
         }
@@ -322,12 +334,22 @@ class AuthenticationManager: ObservableObject {
         // ストリーク・ポイントをまとめて更新
         await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
 
-        // Apple Health にセット全体を記録
-        let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
-        await HealthKitManager.shared.saveCompletedSet(
-            exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
-            startDate: setStart
-        )
+        // Apple Health にセット全体を記録（権限確認）
+        if HealthKitManager.shared.isAvailable {
+            if !HealthKitManager.shared.isAuthorized {
+                await HealthKitManager.shared.requestAuthorization()
+            }
+            if HealthKitManager.shared.isAuthorized {
+                let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
+                await HealthKitManager.shared.saveCompletedSet(
+                    exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
+                    startDate: setStart
+                )
+                print("✅ HealthKit: Completed set saved - \(set.totalReps)rep / \(set.totalXP)XP")
+            } else {
+                print("⚠️ HealthKit: Authorization denied for set save")
+            }
+        }
 
         // 更新後のプロフィールを取得して返す（Watch への逆同期用）
         let snap = try? await db.collection("users").document(userId).getDocument()
@@ -363,9 +385,19 @@ class AuthenticationManager: ObservableObject {
         await updateStreakAndPoints(userId: userId, points: points, now: now)
         NotificationManager.shared.handleWorkoutRecorded()
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
-        await HealthKitManager.shared.saveExercise(
-            exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
-        )
+
+        // Apple Health書き込み（権限確認）
+        if HealthKitManager.shared.isAvailable {
+            if !HealthKitManager.shared.isAuthorized {
+                await HealthKitManager.shared.requestAuthorization()
+            }
+            if HealthKitManager.shared.isAuthorized {
+                await HealthKitManager.shared.saveExercise(
+                    exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
+                )
+                print("✅ HealthKit: Direct exercise saved - \(exerciseName) \(reps)rep")
+            }
+        }
     }
 
     // MARK: - History
@@ -567,6 +599,80 @@ class AuthenticationManager: ObservableObject {
             .collection("weekly-goals").document(weekId).setData(["weekId": weekId, "goals": arr])
     }
 
+    // MARK: - Daily Calorie Goal
+    func getDailyCalorieGoal() async -> DailyCalorieGoal {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return DailyCalorieGoal()
+        }
+
+        // 目標カロリーを取得
+        let goalDoc = try? await db.collection("users").document(userId)
+            .collection("settings").document("calorie-goal").getDocument()
+        let targetCalories = goalDoc?.data()?["targetCalories"] as? Int ?? 500
+
+        // 今日の消費カロリーを集計（completed-exercises + HealthKit）
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+
+        let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments()
+
+        // 運動による消費カロリー（completed-exercises）
+        var exerciseCalories = 0
+        if let docs = snapshot?.documents {
+            for doc in docs {
+                if let reps = doc.data()["reps"] as? Int,
+                   let exerciseId = doc.data()["exerciseId"] as? String {
+                    let rate = HealthKitManager.caloriesPerRep[exerciseId.lowercased()] ?? 0.25
+                    exerciseCalories += Int(Double(reps) * rate)
+                }
+            }
+        }
+
+        // HealthKitからの消費カロリーも追加
+        let healthCalories = Int(HealthKitManager.shared.todayCalories)
+        let totalConsumed = exerciseCalories + healthCalories
+
+        return DailyCalorieGoal(target: targetCalories, consumed: totalConsumed)
+    }
+
+    func saveDailyCalorieGoal(targetCalories: Int) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("calorie-goal")
+            .setData(["targetCalories": targetCalories, "updatedAt": Date()])
+    }
+
+    // MARK: - Weekly Set Progress (Web互換)
+    func getWeeklySetProgress() async -> WeeklySetProgress {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return WeeklySetProgress(completedSets: 0, dailyGoal: 2)
+        }
+        let calendar = Calendar.current
+        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
+
+        // 今週のセット数を取得
+        let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-sets")
+            .whereField("timestamp", isGreaterThanOrEqualTo: weekStart)
+            .whereField("timestamp", isLessThan: weekEnd)
+            .getDocuments()
+
+        let completedSets = snapshot?.documents.count ?? 0
+
+        // 1日の目標セット数を取得
+        let goalDoc = try? await db.collection("users").document(userId)
+            .collection("settings").document("weekly-goal").getDocument()
+        let dailyGoal = goalDoc?.data()?["dailySets"] as? Int ?? 2
+
+        return WeeklySetProgress(completedSets: completedSets, dailyGoal: dailyGoal)
+    }
+
     func getWeeklyProgress() async -> [String: Int] {
         guard let userId = Auth.auth().currentUser?.uid else { return [:] }
         let calendar = Calendar.current
@@ -642,6 +748,23 @@ struct MotionProfile: Codable {
     var primaryAxis: String
     var detectionMethod: String
     var threshold: Double
+}
+
+struct WeeklySetProgress {
+    var completedSets: Int
+    var dailyGoal: Int
+}
+
+struct DailyCalorieGoal {
+    var targetCalories: Int
+    var consumedCalories: Int
+    var percentAchieved: Int
+
+    init(target: Int = 500, consumed: Int = 0) {
+        self.targetCalories = target
+        self.consumedCalories = consumed
+        self.percentAchieved = target > 0 ? min(Int(Double(consumed) / Double(target) * 100), 100) : 0
+    }
 }
 
 struct WeeklyGoal: Codable, Identifiable {

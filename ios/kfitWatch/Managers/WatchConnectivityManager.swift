@@ -14,6 +14,11 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var recentWorkouts: [String] = []
     @Published var todayExercises: [CompletedExerciseWatch] = []
 
+    // 目標カロリー
+    @Published var calorieTarget: Int = 500
+    @Published var calorieConsumed: Int = 0
+    @Published var caloriePercent: Int = 0
+
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
 
@@ -119,6 +124,11 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
+
+        // 目標カロリー受信
+        if let target = message["calorieTarget"] as? Int { self.calorieTarget = target }
+        if let consumed = message["calorieConsumed"] as? Int { self.calorieConsumed = consumed }
+        if let percent = message["caloriePercent"] as? Int { self.caloriePercent = percent }
 
         // 今日の運動記録を受信
         if let exercisesData = message["todayExercises"] as? Data {

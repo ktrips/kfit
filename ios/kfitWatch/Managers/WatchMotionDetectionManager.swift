@@ -14,8 +14,8 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
     private let pedometer = CMPedometer()
     private var previousAcceleration: Double = 1.0  // 前回の加速度
     private var lastRepTime: Date = Date.distantPast  // 前回のrep時刻（連続検出防止）
-    private let minRepInterval: TimeInterval = 0.25  // 最小rep間隔（秒）
-    private let changeThreshold: Double = 0.07  // 加速度変化の閾値（感度高め）
+    private let minRepInterval: TimeInterval = 0.15  // 最小rep間隔（秒）← さらに短縮
+    private let changeThreshold: Double = 0.03  // 加速度変化の閾値（超高感度）← 0.05から更に下げる
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable && motionManager.isGyroAvailable else {
@@ -31,7 +31,7 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         lastRepTime = Date.distantPast
         print("🔵 WatchMotion: Reset detection state")
 
-        motionManager.accelerometerUpdateInterval = 0.033 // 30 Hz
+        motionManager.accelerometerUpdateInterval = 0.02 // 50 Hz（最高頻度）
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
             guard let self = self, let data = data else {
                 if let error = error {
@@ -53,7 +53,7 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         print("✅ WatchMotion: Accelerometer updates started")
 
         // Also start gyro for form quality
-        motionManager.gyroUpdateInterval = 0.033
+        motionManager.gyroUpdateInterval = 0.02
         motionManager.startGyroUpdates(to: .main) { [weak self] data, error in
             guard let self = self, let data = data else {
                 if let error = error {

@@ -78,6 +78,45 @@ struct WatchDashboardView: View {
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(12)
 
+                // ── 目標カロリー ──────────────────────
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("🔥")
+                            .font(.system(size: 11))
+                        Text("今日の目標カロリー")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                        Spacer()
+                        Text("\(connectivity.caloriePercent)%")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundColor(connectivity.caloriePercent >= 100 ? duoGreen : Color.orange)
+                    }
+
+                    HStack(alignment: .bottom, spacing: 4) {
+                        Text("\(connectivity.calorieConsumed)")
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundColor(.white)
+                        Text("/ \(connectivity.calorieTarget) kcal")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.6))
+                        Spacer()
+                    }
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.white.opacity(0.2)).frame(height: 6)
+                            Capsule().fill(
+                                connectivity.caloriePercent >= 100 ? duoGreen : Color.orange
+                            )
+                            .frame(width: max(6, geo.size.width * CGFloat(connectivity.caloriePercent) / 100), height: 6)
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(12)
+
                 // ── スタートボタン ────────────────────
                 Button { showFlow = true } label: {
                     VStack(spacing: 3) {

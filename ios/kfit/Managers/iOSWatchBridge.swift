@@ -165,26 +165,34 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             "todayXP":   todayXP,
         ]
 
-        // 今日の運動記録を含める
-        if !todayExercises.isEmpty {
-            let watchExercises = todayExercises.map { ex in
-                CompletedExerciseForWatch(
-                    exerciseId: ex.exerciseId,
-                    exerciseName: ex.exerciseName,
-                    reps: ex.reps,
-                    points: ex.points,
-                    timestamp: ex.timestamp
-                )
-            }
-            if let data = try? JSONEncoder().encode(watchExercises) {
-                payload["todayExercises"] = data
-            }
-        }
+        // 目標カロリー情報を取得して送信
+        Task {
+            let calorieGoal = await AuthenticationManager.shared.getDailyCalorieGoal()
+            payload["calorieTarget"] = calorieGoal.targetCalories
+            payload["calorieConsumed"] = calorieGoal.consumedCalories
+            payload["caloriePercent"] = calorieGoal.percentAchieved
 
-        if session.isReachable {
-            session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
-        } else {
-            try? session.updateApplicationContext(payload)
+            // 今日の運動記録を含める
+            if !todayExercises.isEmpty {
+                let watchExercises = todayExercises.map { ex in
+                    CompletedExerciseForWatch(
+                        exerciseId: ex.exerciseId,
+                        exerciseName: ex.exerciseName,
+                        reps: ex.reps,
+                        points: ex.points,
+                        timestamp: ex.timestamp
+                    )
+                }
+                if let data = try? JSONEncoder().encode(watchExercises) {
+                    payload["todayExercises"] = data
+                }
+            }
+
+            if session.isReachable {
+                session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+            } else {
+                try? session.updateApplicationContext(payload)
+            }
         }
     }
 }

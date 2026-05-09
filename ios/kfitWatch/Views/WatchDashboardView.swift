@@ -82,6 +82,23 @@ struct WatchDashboardView: View {
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(12)
 
+                // ── スタートボタン ────────────────────
+                Button { showFlow = true } label: {
+                    VStack(spacing: 3) {
+                        Text("🏋️").font(.title3)
+                        Text("今日のメニュー").font(.caption).fontWeight(.bold)
+                        Text("タップして開始").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
                 // ── 目標カロリー ──────────────────────
                 VStack(spacing: 4) {
                     HStack {
@@ -147,23 +164,6 @@ struct WatchDashboardView: View {
                     .background(Color.white.opacity(0.08))
                     .cornerRadius(12)
                 }
-
-                // ── スタートボタン ────────────────────
-                Button { showFlow = true } label: {
-                    VStack(spacing: 3) {
-                        Text("🏋️").font(.title3)
-                        Text("今日のメニュー").font(.caption).fontWeight(.bold)
-                        Text("タップして開始").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(.plain)
 
                 // ── 今日の記録 ────────────────────────
                 if !connectivity.todayExercises.isEmpty {

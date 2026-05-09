@@ -10,6 +10,10 @@ import Foundation
 final class iOSWatchBridge: NSObject, WCSessionDelegate {
     static let shared = iOSWatchBridge()
 
+    // パフォーマンス最適化: デバウンス
+    private var lastStatsSendTime: Date?
+    private let statsDebounceInterval: TimeInterval = 2.0 // 2秒以内の重複送信を防ぐ
+
     private override init() {
         super.init()
         activate()
@@ -158,6 +162,13 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
+
+        // デバウンス: 2秒以内の重複送信を防ぐ
+        if let lastSend = lastStatsSendTime, Date().timeIntervalSince(lastSend) < statsDebounceInterval {
+            print("[iOSWatchBridge] Stats送信スキップ（デバウンス）")
+            return
+        }
+        lastStatsSendTime = Date()
 
         var payload: [String: Any] = [
             "streak":    streak,

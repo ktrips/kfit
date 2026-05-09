@@ -33,6 +33,44 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Firestoreキャッシュ設定（パフォーマンス最適化）
+import { enableIndexedDbPersistence } from 'firebase/firestore';
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('Firestore persistence: Multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    console.warn('Firestore persistence: Not supported in this browser');
+  }
+});
+
+// キャッシュマネージャー
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 30000; // 30秒
+
+function getCachedData<T>(key: string): T | null {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data as T;
+  }
+  return null;
+}
+
+function setCachedData<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+function invalidateCache(pattern?: string): void {
+  if (pattern) {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
+      }
+    }
+  } else {
+    cache.clear();
+  }
+}
+
 const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
@@ -151,6 +189,10 @@ export const setDailyGoals = async (userId: string, date: string, goals: any[]) 
 // (Cloud Functions will override if deployed)
 export const recordExercise = async (userId: string, exerciseData: any) => {
   try {
+    // キャッシュ無効化
+    invalidateCache(`todayExercises:${userId}`);
+    invalidateCache(`weeklyProgress:${userId}`);
+
     const now = new Date();
     const docRef = await addDoc(
       collection(db, 'users', userId, 'completed-exercises'),
@@ -209,6 +251,12 @@ interface CompletedExercise {
 
 // Get completed exercises for today
 export const getTodayExercises = async (userId: string): Promise<CompletedExercise[]> => {
+  const cacheKey = `todayExercises:${userId}`;
+  const cached = getCachedData<CompletedExercise[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -220,10 +268,13 @@ export const getTodayExercises = async (userId: string): Promise<CompletedExerci
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(d => ({
+  const exercises = querySnapshot.docs.map(d => ({
     id: d.id,
     ...(d.data() as Omit<CompletedExercise, 'id'>),
   }));
+
+  setCachedData(cacheKey, exercises);
+  return exercises;
 };
 
 export interface DayExercises {

@@ -16,8 +16,17 @@ class AuthenticationManager: ObservableObject {
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private var profileListener: ListenerRegistration?
 
+    // パフォーマンス最適化: キャッシュ
+    private var cachedTodayExercises: [CompletedExercise] = []
+    private var lastTodayExercisesFetch: Date?
+    private let cacheExpiry: TimeInterval = 30 // 30秒キャッシュ
+
     init() {
         setupAuthStateListener()
+        // Firestoreキャッシュ設定
+        let settings = FirestoreSettings()
+        settings.cacheSettings = PersistentCacheSettings()
+        db.settings = settings
     }
 
     private func setupAuthStateListener() {
@@ -266,6 +275,14 @@ class AuthenticationManager: ObservableObject {
             print("❌ getTodayExercises: userId is nil")
             return []
         }
+
+        // キャッシュチェック
+        if let lastFetch = lastTodayExercisesFetch,
+           Date().timeIntervalSince(lastFetch) < cacheExpiry {
+            print("⚡ getTodayExercises: returning cached data (\(cachedTodayExercises.count) items)")
+            return cachedTodayExercises
+        }
+
         print("🔵 getTodayExercises: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
         do {
@@ -273,13 +290,25 @@ class AuthenticationManager: ObservableObject {
                 .collection("completed-exercises")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
-                .getDocuments(source: .server)
-            print("✅ getTodayExercises: \(snapshot.documents.count) docs from server")
-            return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
+                .getDocuments(source: .default) // キャッシュ優先、必要時のみサーバー
+            print("✅ getTodayExercises: \(snapshot.documents.count) docs")
+            let exercises = snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
+
+            // キャッシュ更新
+            cachedTodayExercises = exercises
+            lastTodayExercisesFetch = Date()
+
+            return exercises
         } catch {
             print("❌ getTodayExercises error: \(error)")
-            return []
+            return cachedTodayExercises // エラー時はキャッシュを返す
         }
+    }
+
+    // キャッシュを無効化（新規記録時に呼び出す）
+    func invalidateTodayExercisesCache() {
+        lastTodayExercisesFetch = nil
+        cachedTodayExercises = []
     }
 
     private func todayRange() -> (start: Date, end: Date) {
@@ -292,6 +321,10 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Apple Watch からのワークアウトを Firestore に記録（種目ごと通知キャンセル用）
     func recordWatchWorkout(_ workout: WatchWorkoutData) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
+
+        // キャッシュ無効化
+        invalidateTodayExercisesCache()
+
         let data: [String: Any] = [
             "exerciseId":   workout.exerciseId,      // "watch" ではなく実際の ID を使用
             "exerciseName": workout.exerciseName,

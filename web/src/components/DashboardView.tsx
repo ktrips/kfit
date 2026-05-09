@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   getTodayExercises, getUserProfile,
-  getWeeklyGoals, getWeeklyProgress,
+  getWeeklyGoals,
   getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getTodaySetLog,
   getWeekLabel, getActiveDaysElapsed,
   getDailyCalorieGoal, setCalorieTarget,
@@ -45,18 +45,16 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
-  const setStoreWeeklyProgress = useAppStore((s) => s.setWeeklyProgress);
 
   const [totalReps, setTotalReps] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
   const [totalCalories, setTotalCalories] = useState(0);
   const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
-  const [weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
@@ -71,11 +69,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress, sp, ds, tsc, tsl, cg] = await Promise.all([
+        const [profile, exercises, goals, sp, ds, tsc, tsl, cg] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
-          getWeeklyProgress(user.uid),
           getWeeklySetProgress(user.uid),
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
@@ -89,9 +86,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           exercises.reduce((s: number, e: any) => s + estimateKcal(e.exerciseId ?? '', e.reps || 0), 0)
         ));
         setWeeklyGoals(goals);
-        setWeeklyProgress(progress);
         setStoreWeeklyGoals(goals);
-        setStoreWeeklyProgress(progress);
         setSetProgress(sp);
         setDailySets(ds);
         setTodaySetCount(tsc);
@@ -104,7 +99,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
       }
     };
     loadData();
-  }, [user, setUserProfile, setStoreWeeklyGoals, setStoreWeeklyProgress]);
+  }, [user, setUserProfile, setStoreWeeklyGoals]);
 
   if (isLoading) {
     return (

@@ -274,14 +274,116 @@ export const getRecentExercises = async (userId: string, days: number = 7): Prom
   return result;
 };
 
+// ── Achievements ─────────────────────────────────────────────────────────────
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
+  earnedDate?: Date;
+  progress?: number;
+  target?: number;
+}
+
+export const ACHIEVEMENT_DEFINITIONS: Record<string, Omit<Achievement, 'id' | 'earnedDate'>> = {
+  'early-bird-10': {
+    name: 'Early Bird',
+    description: '朝9時前に10回トレーニング',
+    emoji: '🌅',
+    tier: 'bronze',
+    target: 10,
+  },
+  'early-bird-50': {
+    name: 'Morning Champion',
+    description: '朝9時前に50回トレーニング',
+    emoji: '🌄',
+    tier: 'silver',
+    target: 50,
+  },
+  'form-master-50': {
+    name: 'Form Master',
+    description: '完璧なフォームで50回',
+    emoji: '💎',
+    tier: 'silver',
+    target: 50,
+  },
+  'iron-will-30': {
+    name: 'Iron Will',
+    description: '30日連続トレーニング',
+    emoji: '🔥',
+    tier: 'gold',
+    target: 30,
+  },
+  'iron-will-90': {
+    name: 'Legend',
+    description: '90日連続トレーニング',
+    emoji: '👑',
+    tier: 'platinum',
+    target: 90,
+  },
+  'century-club': {
+    name: 'Century Club',
+    description: '1日で100回以上',
+    emoji: '💯',
+    tier: 'gold',
+    target: 100,
+  },
+  'leaderboard-king': {
+    name: 'Leaderboard King',
+    description: '週間ランキング1位獲得',
+    emoji: '🏆',
+    tier: 'platinum',
+    target: 1,
+  },
+  'first-workout': {
+    name: 'First Step',
+    description: '最初のトレーニング完了',
+    emoji: '🎯',
+    tier: 'bronze',
+    target: 1,
+  },
+  'workout-10': {
+    name: 'Consistent',
+    description: '10回トレーニング完了',
+    emoji: '💪',
+    tier: 'bronze',
+    target: 10,
+  },
+  'workout-100': {
+    name: 'Dedicated',
+    description: '100回トレーニング完了',
+    emoji: '⚡',
+    tier: 'silver',
+    target: 100,
+  },
+  'workout-500': {
+    name: 'Elite',
+    description: '500回トレーニング完了',
+    emoji: '🌟',
+    tier: 'gold',
+    target: 500,
+  },
+};
+
 // Get achievements
-export const getAchievements = async (userId: string) => {
+export const getAchievements = async (userId: string): Promise<Achievement[]> => {
   const q = collection(db, 'users', userId, 'achievements');
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+  return querySnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name,
+      description: data.description,
+      emoji: data.emoji,
+      tier: data.tier,
+      earnedDate: data.earnedDate?.toDate?.() ?? data.earnedDate,
+      progress: data.progress,
+      target: data.target,
+    };
+  });
 };
 
 // ── Weekly goals ─────────────────────────────────────────────────────────────
@@ -502,8 +604,20 @@ export const saveDailySetGoal = async (userId: string, dailySets: number): Promi
   );
 };
 
+// ── Leaderboard ──────────────────────────────────────────────────────────────
+
+export interface LeaderboardEntry {
+  id: string;
+  userId: string;
+  username: string;
+  rank: number;
+  points: number;
+  workouts: number;
+  streak: number;
+}
+
 // Get leaderboard
-export const getLeaderboard = async (_period: string = 'week') => {
+export const getLeaderboard = async (_period: string = 'week'): Promise<LeaderboardEntry[]> => {
   const now = new Date();
   const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 / 7);
   const year = now.getFullYear();
@@ -514,9 +628,14 @@ export const getLeaderboard = async (_period: string = 'week') => {
   return querySnapshot.docs
     .map(doc => ({
       id: doc.id,
-      ...doc.data()
+      userId: doc.data().userId,
+      username: doc.data().username,
+      rank: doc.data().rank,
+      points: doc.data().points,
+      workouts: doc.data().workouts ?? 0,
+      streak: doc.data().streak ?? 0,
     }))
-    .sort((a: any, b: any) => a.rank - b.rank)
+    .sort((a, b) => a.rank - b.rank)
     .slice(0, 100);
 };
 
@@ -540,10 +659,40 @@ const CALORIES_PER_REP: Record<string, number> = {
   'plank': 0.1,
 };
 
+/** カロリー目標を取得（カスタム設定またはデフォルト） */
+export const getCalorieTarget = async (userId: string): Promise<number> => {
+  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
+  const settingsSnap = await getDoc(settingsRef);
+
+  if (settingsSnap.exists() && settingsSnap.data().target) {
+    return settingsSnap.data().target;
+  }
+
+  // デフォルト: 週間目標から計算
+  const weeklyGoals = await getWeeklyGoals(userId);
+  if (weeklyGoals.length > 0) {
+    const dailyTotalReps = weeklyGoals.reduce((sum, g) => sum + ((g as any).dailyReps ?? 10), 0);
+    // 平均的な種目のカロリー消費率 0.5 kcal/rep で計算
+    return Math.round(dailyTotalReps * 0.5);
+  }
+
+  // フォールバック: 500kcal
+  return 500;
+};
+
+/** カロリー目標をカスタム設定 */
+export const setCalorieTarget = async (userId: string, targetCalories: number): Promise<void> => {
+  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
+  await setDoc(settingsRef, {
+    target: targetCalories,
+    updatedAt: Timestamp.now(),
+  });
+};
+
 /** 今日の目標カロリーと消費カロリーを取得 */
 export const getDailyCalorieGoal = async (userId: string): Promise<DailyCalorieGoal> => {
-  // デフォルト目標: 500kcal
-  const targetCalories = 500;
+  // カスタム目標または計算された目標を取得
+  const targetCalories = await getCalorieTarget(userId);
 
   // 今日の運動記録からカロリー計算
   const todayExercises = await getTodayExercises(userId);

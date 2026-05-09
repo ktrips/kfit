@@ -4,7 +4,7 @@ import {
   getWeeklyGoals, getWeeklyProgress,
   getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getTodaySetLog,
   getWeekLabel, getActiveDaysElapsed,
-  getDailyCalorieGoal,
+  getDailyCalorieGoal, setCalorieTarget,
   type WeeklySetProgress,
   type DailyCalorieGoal,
   type CompletedSetRecord,
@@ -63,6 +63,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [calorieGoal, setCalorieGoal] = useState<DailyCalorieGoal>({ targetCalories: 500, consumedCalories: 0, percentAchieved: 0 });
+  const [editingCalorieTarget, setEditingCalorieTarget] = useState(false);
+  const [tempCalorieTarget, setTempCalorieTarget] = useState(500);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -118,6 +120,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const streak = userProfile?.streak || 0;
   const goalProgress = Math.min((streak / 90) * 100, 100);
 
+  const handleUpdateCalorieTarget = async () => {
+    if (!user || tempCalorieTarget <= 0) return;
+    try {
+      await setCalorieTarget(user.uid, tempCalorieTarget);
+      setCalorieGoal(prev => ({ ...prev, targetCalories: tempCalorieTarget }));
+      setEditingCalorieTarget(false);
+    } catch (err) {
+      console.error('Error updating calorie target:', err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
       <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
@@ -170,36 +183,100 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
               <span className="text-lg">🔥</span>
               <h2 className="text-base font-black text-duo-dark">今日の目標カロリー</h2>
             </div>
-            <span
-              className="text-base font-black"
-              style={{ color: calorieGoal.percentAchieved >= 100 ? '#46A302' : '#FF9600' }}
-            >
-              {calorieGoal.percentAchieved}%
-            </span>
+            {!editingCalorieTarget ? (
+              <button
+                onClick={() => {
+                  setTempCalorieTarget(calorieGoal.targetCalories);
+                  setEditingCalorieTarget(true);
+                }}
+                className="text-duo-gray hover:text-duo-dark text-xs font-bold underline"
+              >
+                目標変更
+              </button>
+            ) : (
+              <button
+                onClick={() => setEditingCalorieTarget(false)}
+                className="text-duo-gray hover:text-duo-dark text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          <div className="flex items-end gap-2 mb-2">
-            <span className="text-3xl font-black text-duo-dark leading-none">
-              {calorieGoal.consumedCalories}
-            </span>
-            <span className="text-duo-gray font-bold text-base mb-0.5">
-              / {calorieGoal.targetCalories} kcal
-            </span>
-          </div>
-          <div className="duo-progress-bar" style={{ height: '8px' }}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min(calorieGoal.percentAchieved, 100)}%`,
-                background: calorieGoal.percentAchieved >= 100
-                  ? 'linear-gradient(90deg, #58CC02, #91E62A)'
-                  : 'linear-gradient(90deg, #FF9600, #FFD900)',
-              }}
-            />
-          </div>
-          {calorieGoal.percentAchieved >= 100 && (
-            <p className="text-duo-green font-extrabold text-sm mt-2">
-              🎉 今日の目標達成！
-            </p>
+
+          {editingCalorieTarget ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setTempCalorieTarget(t => Math.max(100, t - 50))}
+                  className="w-10 h-10 rounded-xl font-black text-lg flex items-center justify-center"
+                  style={{ background: '#FFEAEA', border: '2px solid #FF4B4B', color: '#FF4B4B' }}
+                >
+                  −
+                </button>
+                <div className="flex-1 text-center">
+                  <input
+                    type="number"
+                    value={tempCalorieTarget}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val) && val > 0) setTempCalorieTarget(val);
+                    }}
+                    className="text-4xl font-black text-center w-full bg-transparent border-none outline-none text-duo-dark"
+                    min="100"
+                    step="50"
+                  />
+                  <p className="text-duo-gray font-bold text-sm">kcal</p>
+                </div>
+                <button
+                  onClick={() => setTempCalorieTarget(t => t + 50)}
+                  className="w-10 h-10 rounded-xl font-black text-lg flex items-center justify-center"
+                  style={{ background: '#D7FFB8', border: '2px solid #58CC02', color: '#46A302' }}
+                >
+                  ＋
+                </button>
+              </div>
+              <button
+                onClick={handleUpdateCalorieTarget}
+                className="duo-btn-primary w-full text-sm py-2"
+              >
+                ✓ 目標を設定
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-end gap-2">
+                  <span className="text-3xl font-black text-duo-dark leading-none">
+                    {calorieGoal.consumedCalories}
+                  </span>
+                  <span className="text-duo-gray font-bold text-base mb-0.5">
+                    / {calorieGoal.targetCalories} kcal
+                  </span>
+                </div>
+                <span
+                  className="text-base font-black"
+                  style={{ color: calorieGoal.percentAchieved >= 100 ? '#46A302' : '#FF9600' }}
+                >
+                  {calorieGoal.percentAchieved}%
+                </span>
+              </div>
+              <div className="duo-progress-bar" style={{ height: '8px' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(calorieGoal.percentAchieved, 100)}%`,
+                    background: calorieGoal.percentAchieved >= 100
+                      ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                      : 'linear-gradient(90deg, #FF9600, #FFD900)',
+                  }}
+                />
+              </div>
+              {calorieGoal.percentAchieved >= 100 && (
+                <p className="text-duo-green font-extrabold text-sm mt-2">
+                  🎉 今日の目標達成！
+                </p>
+              )}
+            </>
           )}
         </div>
 

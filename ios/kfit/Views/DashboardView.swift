@@ -20,6 +20,8 @@ struct DashboardView: View {
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
     @State private var expandedSetId: UUID? = nil  // 展開中のセットID
+    @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
+    @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
 
     var body: some View {
         ZStack {
@@ -71,6 +73,9 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showHabits) {
             NavigationView { HabitStackView() }
+        }
+        .sheet(isPresented: $showCalorieGoalEdit) {
+            calorieGoalEditSheet
         }
         .onAppear {
             withAnimation { mascotBounce = true }
@@ -526,7 +531,8 @@ struct DashboardView: View {
                 Text("今日の目標カロリー").fontWeight(.black)
                 Spacer()
                 Button {
-                    // TODO: 目標設定画面へ遷移
+                    tempCalorieTarget = calorieGoal.targetCalories
+                    showCalorieGoalEdit = true
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.caption)
@@ -574,6 +580,96 @@ struct DashboardView: View {
         .background(Color.white)
         .cornerRadius(12)
         .shadow(color: (isAchieved ? Color.duoGreen : Color.duoOrange).opacity(0.15), radius: 4, y: 2)
+    }
+
+    // MARK: - カロリー目標編集シート
+    private var calorieGoalEditSheet: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                Text("1日の目標消費カロリーを設定")
+                    .font(.headline)
+                    .foregroundColor(Color.duoDark)
+                    .padding(.top, 20)
+
+                VStack(spacing: 16) {
+                    HStack {
+                        Button {
+                            if tempCalorieTarget > 100 {
+                                tempCalorieTarget -= 50
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(Color.duoOrange)
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 4) {
+                            Text("\(tempCalorieTarget)")
+                                .font(.system(size: 56, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoGreen)
+                            Text("kcal")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            tempCalorieTarget += 50
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 32)
+
+                    Text("週間目標に基づいたデフォルト値から調整できます")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+
+                Button {
+                    Task {
+                        await authManager.saveDailyCalorieGoal(targetCalories: tempCalorieTarget)
+                        await loadData()
+                        showCalorieGoalEdit = false
+                    }
+                } label: {
+                    Text("目標を設定")
+                        .font(.headline)
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(
+                                colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(16)
+                }
+                .padding(.horizontal, 32)
+
+                Spacer()
+            }
+            .navigationTitle("目標カロリー設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") {
+                        showCalorieGoalEdit = false
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - 90日チャレンジ

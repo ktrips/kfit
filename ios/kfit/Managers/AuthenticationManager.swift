@@ -605,10 +605,28 @@ class AuthenticationManager: ObservableObject {
             return DailyCalorieGoal()
         }
 
-        // 目標カロリーを取得
+        // 目標カロリーを取得（カスタム設定 → 週間目標から計算 → デフォルト500）
         let goalDoc = try? await db.collection("users").document(userId)
             .collection("settings").document("calorie-goal").getDocument()
-        let targetCalories = goalDoc?.data()?["targetCalories"] as? Int ?? 500
+
+        var targetCalories = goalDoc?.data()?["targetCalories"] as? Int
+
+        // カスタム設定がない場合は週間目標から計算
+        if targetCalories == nil {
+            let weekId = getCurrentWeekId()
+            let weeklyDoc = try? await db.collection("users").document(userId)
+                .collection("weekly-goals").document(weekId).getDocument()
+            if let goals = weeklyDoc?.data()?["goals"] as? [[String: Any]] {
+                let dailyTotalReps = goals.reduce(0) { sum, goal in
+                    sum + (goal["dailyReps"] as? Int ?? 10)
+                }
+                // 平均的なカロリー消費率 0.5 kcal/rep
+                targetCalories = Int(Double(dailyTotalReps) * 0.5)
+            }
+        }
+
+        // フォールバック
+        let finalTarget = targetCalories ?? 500
 
         // 今日の消費カロリーを集計（completed-exercises + HealthKit）
         let calendar = Calendar.current
@@ -637,7 +655,7 @@ class AuthenticationManager: ObservableObject {
         let healthCalories = Int(HealthKitManager.shared.todayCalories)
         let totalConsumed = exerciseCalories + healthCalories
 
-        return DailyCalorieGoal(target: targetCalories, consumed: totalConsumed)
+        return DailyCalorieGoal(target: finalTarget, consumed: totalConsumed)
     }
 
     func saveDailyCalorieGoal(targetCalories: Int) async {

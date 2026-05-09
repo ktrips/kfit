@@ -169,14 +169,14 @@ struct DashboardView: View {
                 )
                 HStack(spacing: 0) {
                     // ── ロゴ ──────────────────
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Image("mascot")
                             .resizable().scaledToFill()
-                            .frame(width: 13, height: 13)
+                            .frame(width: 18, height: 18)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.4))
+                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
                         Text("DuoFit")
-                            .font(.system(size: 11, design: .rounded))
+                            .font(.system(size: 15, design: .rounded))
                             .fontWeight(.black)
                             .foregroundColor(.white)
                     }

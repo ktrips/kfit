@@ -4,7 +4,9 @@ import {
   getWeeklyGoals, getWeeklyProgress,
   getWeeklySetProgress, getDailySetGoal, getTodaySetCount,
   getWeekLabel, getActiveDaysElapsed,
+  getDailyCalorieGoal,
   type WeeklySetProgress,
+  type DailyCalorieGoal,
 } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
@@ -57,13 +59,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
+  const [calorieGoal, setCalorieGoal] = useState<DailyCalorieGoal>({ targetCalories: 500, consumedCalories: 0, percentAchieved: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress, sp, ds, tsc] = await Promise.all([
+        const [profile, exercises, goals, progress, sp, ds, tsc, cg] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
@@ -71,6 +74,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           getWeeklySetProgress(user.uid),
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
+          getDailyCalorieGoal(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
@@ -85,6 +89,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setSetProgress(sp);
         setDailySets(ds);
         setTodaySetCount(tsc);
+        setCalorieGoal(cg);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -151,6 +156,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <p className="text-3xl font-black" style={{ color: '#CE9700' }}>{totalPoints}</p>
             <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CE9700' }}>今日のXP</p>
           </div>
+        </div>
+
+        {/* Daily Calorie Goal */}
+        <div className="duo-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🔥</span>
+              <h2 className="text-base font-black text-duo-dark">今日の目標カロリー</h2>
+            </div>
+            <span
+              className="text-base font-black"
+              style={{ color: calorieGoal.percentAchieved >= 100 ? '#46A302' : '#FF9600' }}
+            >
+              {calorieGoal.percentAchieved}%
+            </span>
+          </div>
+          <div className="flex items-end gap-2 mb-2">
+            <span className="text-3xl font-black text-duo-dark leading-none">
+              {calorieGoal.consumedCalories}
+            </span>
+            <span className="text-duo-gray font-bold text-base mb-0.5">
+              / {calorieGoal.targetCalories} kcal
+            </span>
+          </div>
+          <div className="duo-progress-bar" style={{ height: '8px' }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.min(calorieGoal.percentAchieved, 100)}%`,
+                background: calorieGoal.percentAchieved >= 100
+                  ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                  : 'linear-gradient(90deg, #FF9600, #FFD900)',
+              }}
+            />
+          </div>
+          {calorieGoal.percentAchieved >= 100 && (
+            <p className="text-duo-green font-extrabold text-sm mt-2">
+              🎉 今日の目標達成！
+            </p>
+          )}
         </div>
 
         {/* Today's set status — count-based */}

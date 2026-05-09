@@ -492,3 +492,49 @@ export const getLeaderboard = async (_period: string = 'week') => {
     .sort((a: any, b: any) => a.rank - b.rank)
     .slice(0, 100);
 };
+
+// ── Daily Calorie Goal ────────────────────────────────────────────────────────
+
+export interface DailyCalorieGoal {
+  targetCalories: number;
+  consumedCalories: number;
+  percentAchieved: number;
+}
+
+/** 種目ごとのカロリー消費量（kcal/rep） */
+const CALORIES_PER_REP: Record<string, number> = {
+  'pushup': 0.5,
+  'push-up': 0.5,
+  'squat': 0.6,
+  'situp': 0.3,
+  'sit-up': 0.3,
+  'lunge': 0.5,
+  'burpee': 1.0,
+  'plank': 0.1,
+};
+
+/** 今日の目標カロリーと消費カロリーを取得 */
+export const getDailyCalorieGoal = async (userId: string): Promise<DailyCalorieGoal> => {
+  // デフォルト目標: 500kcal
+  const targetCalories = 500;
+
+  // 今日の運動記録からカロリー計算
+  const todayExercises = await getTodayExercises(userId);
+  const consumedCalories = Math.round(
+    todayExercises.reduce((total, ex) => {
+      const exerciseId = (ex as any).exerciseId?.toLowerCase() ?? '';
+      const calorieRate = CALORIES_PER_REP[exerciseId] ?? 0.4;
+      return total + (ex.reps ?? 0) * calorieRate;
+    }, 0)
+  );
+
+  const percentAchieved = targetCalories > 0
+    ? Math.round((consumedCalories / targetCalories) * 100)
+    : 0;
+
+  return {
+    targetCalories,
+    consumedCalories,
+    percentAchieved,
+  };
+};

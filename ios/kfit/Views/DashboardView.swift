@@ -17,6 +17,7 @@ struct DashboardView: View {
     @State private var showTracker  = false
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
+    @State private var expandedSetId: String?  // タップで展開中のセットID
 
     var body: some View {
         ZStack {
@@ -498,7 +499,7 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
     }
 
-    // MARK: - 今日の記録サマリー（ボタンは下部FABに集約）
+    // MARK: - 今日の記録サマリー（セット単位で表示、タップで展開）
     @ViewBuilder
     private var todaySummaryCard: some View {
         if !todayExercises.isEmpty {
@@ -508,7 +509,7 @@ struct DashboardView: View {
                         .foregroundColor(Color.duoGreen)
                     Text("今日の記録").fontWeight(.black)
                     Spacer()
-                    Text("\(totalReps)回 / \(totalCalories)kcal · \(totalXP) XP")
+                    Text("\(totalReps)回 · \(totalXP) XP")
                         .font(.caption).fontWeight(.bold)
                         .foregroundColor(Color.duoGold)
                         .padding(.horizontal, 8).padding(.vertical, 3)
@@ -518,32 +519,9 @@ struct DashboardView: View {
                 .font(.subheadline)
                 .foregroundColor(Color.duoDark)
 
-                VStack(spacing: 6) {
-                    ForEach(todayExercises) { ex in
-                        HStack(spacing: 10) {
-                            Text(emojiFor(ex.exerciseName))
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .background(Color.duoGreen.opacity(0.1))
-                                .cornerRadius(10)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(ex.exerciseName)
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(Color.duoDark)
-                                Text("\(ex.reps) rep")
-                                    .font(.caption2).foregroundColor(Color.duoSubtitle)
-                            }
-                            Spacer()
-                            Text("+\(ex.points) XP")
-                                .font(.caption).fontWeight(.black)
-                                .foregroundColor(Color.duoGold)
-                                .padding(.horizontal, 7).padding(.vertical, 3)
-                                .background(Color.duoYellow.opacity(0.22))
-                                .cornerRadius(8)
-                        }
-                        .padding(10)
-                        .background(Color.duoBg)
-                        .cornerRadius(12)
+                VStack(spacing: 8) {
+                    ForEach(todaySets) { set in
+                        todaySetCard(set)
                     }
                 }
             }
@@ -552,6 +530,120 @@ struct DashboardView: View {
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
+    }
+
+    private func todaySetCard(_ set: ExerciseSet) -> some View {
+        let isExpanded = expandedSetId == set.id
+        return VStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    expandedSetId = isExpanded ? nil : set.id
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(set.period == "午前" ? "🌅" : "🌆")
+                        .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(set.period) セット\(set.setNumber)")
+                            .font(.caption).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text(timeString(set.startTime))
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Text("\(set.totalReps)回")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                    Text("+\(set.totalPoints) XP")
+                        .font(.caption2).fontWeight(.black)
+                        .foregroundColor(Color.duoGold)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.duoYellow.opacity(0.18))
+                        .cornerRadius(5)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color.duoBg)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(set.exercises) { ex in
+                        HStack(spacing: 10) {
+                            Text(emojiFor(ex.exerciseName))
+                                .font(.body)
+                                .frame(width: 28, height: 28)
+                                .background(Color.duoGreen.opacity(0.08))
+                                .clipShape(Circle())
+                            Text(ex.exerciseName)
+                                .font(.caption).fontWeight(.semibold)
+                                .foregroundColor(Color.duoDark)
+                            Spacer()
+                            Text("\(ex.reps) rep")
+                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                            Text("+\(ex.points)")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(Color.duoGold)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.duoYellow.opacity(0.15))
+                                .cornerRadius(4)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        if ex.id != set.exercises.last?.id {
+                            Divider().padding(.leading, 50)
+                        }
+                    }
+                }
+                .background(Color.duoBg.opacity(0.6))
+                .cornerRadius(10)
+                .padding(.top, 3)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    // MARK: - セット分割ヘルパー（30分間隔）
+    private var todaySets: [ExerciseSet] {
+        let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
+        var sessions: [[CompletedExercise]] = []
+        var current: [CompletedExercise] = []
+        var lastTime: Date? = nil
+        for ex in sorted {
+            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
+                current.append(ex)
+            } else {
+                if !current.isEmpty { sessions.append(current) }
+                current = [ex]
+            }
+            lastTime = ex.timestamp
+        }
+        if !current.isEmpty { sessions.append(current) }
+
+        let cal = Calendar.current
+        var amCount = 0, pmCount = 0
+        return sessions.map { session in
+            let first = session.first!.timestamp
+            let isAM = cal.component(.hour, from: first) < 12
+            if isAM { amCount += 1 } else { pmCount += 1 }
+            return ExerciseSet(
+                startTime: first,
+                period: isAM ? "午前" : "午後",
+                setNumber: isAM ? amCount : pmCount,
+                exercises: session,
+                totalReps: session.reduce(0) { $0 + $1.reps },
+                totalPoints: session.reduce(0) { $0 + $1.points }
+            )
+        }
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
     }
 
     // MARK: - クイックメニュー

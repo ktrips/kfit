@@ -460,6 +460,33 @@ export const getTodaySetCount = async (userId: string): Promise<number> => {
   return snapshot.size;
 };
 
+/** 今日完了したセット一覧を新しい順で取得 */
+export const getTodaySetLog = async (userId: string): Promise<CompletedSetRecord[]> => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const q = query(
+    collection(db, 'users', userId, 'completed-sets'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end),
+    orderBy('timestamp', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    const ts = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp);
+    return {
+      id: d.id,
+      timestamp: ts,
+      exercises: data.exercises ?? [],
+      totalXP: data.totalXP ?? 0,
+      totalReps: data.totalReps ?? 0,
+    };
+  });
+};
+
 export const getDailySetGoal = async (userId: string): Promise<number> => {
   const weekId = getCurrentWeekId();
   const snap = await getDoc(doc(db, 'users', userId, 'weekly-goals', weekId));

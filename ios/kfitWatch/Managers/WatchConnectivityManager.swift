@@ -7,12 +7,20 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
     @Published var lastWorkout: WorkoutData?
 
-    // Watch側でリアルタイム表示するデータ
+    // Watch側でリアルタイム表示するデータ（統一指標）
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
     @Published var recentWorkouts: [String] = []
     @Published var todayExercises: [CompletedExerciseWatch] = []
+
+    // 統一指標用
+    @Published var todaySetCount: Int = 0
+    @Published var dailySetGoal: Int = 2
+    @Published var caloriePercentage: Int = 0
+
+    // モーション感度設定
+    @Published var motionSensitivity: [String: (threshold: Double, minInterval: Double)] = [:]
 
     // 目標カロリー
     @Published var calorieTarget: Int = 500
@@ -124,6 +132,27 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
+
+        // 統一指標用データ受信
+        if let setCount = message["todaySetCount"] as? Int { self.todaySetCount = setCount }
+        if let setGoal = message["dailySetGoal"] as? Int { self.dailySetGoal = setGoal }
+        if let calPercent = message["caloriePercentage"] as? Int { self.caloriePercentage = calPercent }
+
+        // モーション感度設定を受信
+        if let sensitivityData = message["motionSensitivity"] as? Data {
+            if let sensitivityArray = try? JSONSerialization.jsonObject(with: sensitivityData) as? [[String: Any]] {
+                var newSensitivity: [String: (threshold: Double, minInterval: Double)] = [:]
+                for item in sensitivityArray {
+                    if let exerciseId = item["exerciseId"] as? String,
+                       let threshold = item["threshold"] as? Double,
+                       let minInterval = item["minInterval"] as? Double {
+                        newSensitivity[exerciseId] = (threshold, minInterval)
+                    }
+                }
+                self.motionSensitivity = newSensitivity
+                print("🔵 WatchConnectivity: Received motion sensitivity for \(newSensitivity.keys.joined(separator: ", "))")
+            }
+        }
 
         // 目標カロリー受信
         if let target = message["calorieTarget"] as? Int { self.calorieTarget = target }

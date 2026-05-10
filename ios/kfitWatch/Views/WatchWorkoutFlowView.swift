@@ -52,26 +52,50 @@ struct WatchWorkoutFlowView: View {
             .onChange(of: reps) { count in
                 if !useMotionSensor || isPlank { checkGoalReached(count) }
             }
+            .onChange(of: stepIdx) { _ in
+                // プランクの画面に移ったら自動的にタイマー開始
+                if isPlank {
+                    print("🔵 WatchFlow: Plank screen detected - auto-starting timer")
+                    startMotionDetection()
+                }
+            }
         }
     }
 
     // MARK: - 目標達成オーバーレイ
     private var goalReachedOverlay: some View {
         ZStack {
-            Color.black.opacity(0.65).ignoresSafeArea()
-            VStack(spacing: 8) {
-                Text("🎯").font(.system(size: 36))
-                Text("Good job!")
-                    .font(.system(.title3, design: .rounded))
+            Color.black.opacity(0.75).ignoresSafeArea()
+            VStack(spacing: 10) {
+                Text("🎉")
+                    .font(.system(size: 48))
+                    .scaleEffect(showGoalReached ? 1.2 : 0.5)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.5).delay(0.1), value: showGoalReached)
+
+                Text("Good Job!")
+                    .font(.system(.title2, design: .rounded))
                     .fontWeight(.black)
                     .foregroundColor(duoGreen)
-                Text("目標達成！続けてOK")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.85))
+                    .scaleEffect(showGoalReached ? 1.0 : 0.8)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.2), value: showGoalReached)
+
+                Text("目標達成！")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white.opacity(0.9))
+                    .scaleEffect(showGoalReached ? 1.0 : 0.8)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.3), value: showGoalReached)
             }
-            .padding(16)
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(16)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.black.opacity(0.85))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(duoGreen, lineWidth: 2)
+                    )
+            )
+            .scaleEffect(showGoalReached ? 1.0 : 0.5)
         }
         .transition(.scale.combined(with: .opacity))
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: showGoalReached)
@@ -80,8 +104,18 @@ struct WatchWorkoutFlowView: View {
     private func checkGoalReached(_ count: Int) {
         if count == current.target && !showGoalReached {
             showGoalReached = true
+
+            // 強力なハプティックフィードバック（3回連続）
             WKInterfaceDevice.current().play(.success)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                WKInterfaceDevice.current().play(.success)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                WKInterfaceDevice.current().play(.success)
+            }
+
+            // オーバーレイを3秒間表示
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 showGoalReached = false
             }
         }
@@ -129,13 +163,39 @@ struct WatchWorkoutFlowView: View {
                     }
                 }
 
-                VStack(spacing: 0) {
-                    Text("\(displayReps)")
-                        .font(.system(size: 44, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("/ \(current.target)")
-                        .font(.caption2)
-                        .foregroundColor(Color.white.opacity(0.5))
+                // プランクの場合：タイマー表示
+                if isPlank {
+                    VStack(spacing: 2) {
+                        Text("\(motionManager.plankElapsedSeconds)")
+                            .font(.system(size: 52, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("秒")
+                            .font(.caption)
+                            .foregroundColor(Color.white.opacity(0.7))
+
+                        if motionManager.plankCompleted {
+                            Text("🎉 Good Job!")
+                                .font(.system(.headline, design: .rounded))
+                                .fontWeight(.black)
+                                .foregroundColor(duoGreen)
+                                .padding(.top, 4)
+                        } else {
+                            Text("目標: 45秒")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color.white.opacity(0.5))
+                                .padding(.top, 2)
+                        }
+                    }
+                } else {
+                    // 通常の種目：回数表示
+                    VStack(spacing: 0) {
+                        Text("\(displayReps)")
+                            .font(.system(size: 44, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("/ \(current.target)")
+                            .font(.caption2)
+                            .foregroundColor(Color.white.opacity(0.5))
+                    }
                 }
 
                 // モーション検出中の表示
@@ -155,39 +215,42 @@ struct WatchWorkoutFlowView: View {
                     }
                 }
 
-                // 手動カウントボタン（プランク時または手動モード時）
+                // プランクの場合：ボタンなし（タイマーのみ）
+                // 手動カウントボタン（プランク時以外の手動モード時）
                 // モーションセンサーモード時も+1ボタンを表示（テスト・補助用）
-                if isPlank || !useMotionSensor {
-                    Button {
-                        reps += 1
-                        WKInterfaceDevice.current().play(.click)
-                    } label: {
-                        Text("＋1")
-                            .font(.system(.headline, design: .rounded))
-                            .fontWeight(.black)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(duoGreen)
-                            .cornerRadius(12)
+                if !isPlank {
+                    if !useMotionSensor {
+                        Button {
+                            reps += 1
+                            WKInterfaceDevice.current().play(.click)
+                        } label: {
+                            Text("＋1")
+                                .font(.system(.headline, design: .rounded))
+                                .fontWeight(.black)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .background(duoGreen)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        // モーション検出モード時：補助的な+1ボタン（薄く表示）
+                        Button {
+                            reps += 1
+                            WKInterfaceDevice.current().play(.click)
+                        } label: {
+                            Text("手動+1")
+                                .font(.system(size: 9))
+                                .fontWeight(.bold)
+                                .foregroundColor(duoGreen)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                                .background(duoGreen.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                } else if useMotionSensor && !isPlank {
-                    // モーション検出モード時：補助的な+1ボタン（薄く表示）
-                    Button {
-                        reps += 1
-                        WKInterfaceDevice.current().play(.click)
-                    } label: {
-                        Text("手動+1")
-                            .font(.system(size: 9))
-                            .fontWeight(.bold)
-                            .foregroundColor(duoGreen)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background(duoGreen.opacity(0.1))
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 Button { advance() } label: {
@@ -204,7 +267,12 @@ struct WatchWorkoutFlowView: View {
             .padding(.horizontal, 8)
         }
         .onAppear {
-            if useMotionSensor && !isPlank {
+            // プランクの場合は自動的にタイマー開始
+            if isPlank {
+                print("🔵 WatchFlow: Plank onAppear - auto-starting timer")
+                startMotionDetection()
+            } else if useMotionSensor {
+                // 通常の種目でモーションセンサー有効時
                 startMotionDetection()
             }
         }
@@ -223,11 +291,6 @@ struct WatchWorkoutFlowView: View {
 
     // モーション検出開始
     private func startMotionDetection() {
-        guard !isPlank else {
-            print("⚠️ WatchFlow: Skipping motion detection for plank")
-            return
-        }
-
         let exerciseType: ExerciseType
         switch current.exerciseId {
         case "pushup": exerciseType = .pushup
@@ -235,6 +298,7 @@ struct WatchWorkoutFlowView: View {
         case "situp": exerciseType = .situp
         case "lunge": exerciseType = .lunge
         case "burpee": exerciseType = .burpee
+        case "plank": exerciseType = .plank  // プランクを追加
         default:
             print("⚠️ WatchFlow: Unknown exercise type: \(current.exerciseId)")
             return
@@ -278,9 +342,16 @@ struct WatchWorkoutFlowView: View {
 
     // MARK: - 次の種目へ
     private func advance() {
+        // プランクの場合：秒数を回数として記録（1秒=1rep扱い）
         // モーションセンサー使用時はmotionManagerのrepCountを使用
-        let actualReps = useMotionSensor && !isPlank ? motionManager.repCount : reps
-        let xp = actualReps * current.xp
+        let actualReps: Int
+        if isPlank {
+            actualReps = motionManager.plankElapsedSeconds  // プランクは秒数
+        } else {
+            actualReps = useMotionSensor ? motionManager.repCount : reps
+        }
+
+        let xp = isPlank ? (motionManager.plankCompleted ? 5 : 0) : (actualReps * current.xp)
         totalXP += xp
 
         // 通知キャンセル用に種目ごとに即送信

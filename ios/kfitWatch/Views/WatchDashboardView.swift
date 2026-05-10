@@ -15,6 +15,12 @@ private func exerciseEmoji(_ id: String) -> String {
     return "🏃"
 }
 
+private func timeString(from date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm"
+    return formatter.string(from: date)
+}
+
 struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @StateObject private var healthKit = WatchHealthKitManager.shared
@@ -70,13 +76,13 @@ struct WatchDashboardView: View {
                         .foregroundColor(duoGreen)
                 }
 
-                // ── ステータス ────────────────────────
+                // ── ステータス（統一指標）────────────────────────
                 HStack(spacing: 0) {
                     WatchStatItem(icon: "🔥", value: "\(connectivity.streak)", label: "連続")
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "⭐", value: "\(connectivity.todayXP)", label: "XP")
+                    WatchStatItem(icon: "📊", value: "\(connectivity.todaySetCount)/\(connectivity.dailySetGoal)", label: "セット")
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "💪", value: "\(connectivity.todayReps)", label: "rep")
+                    WatchStatItem(icon: "🔥", value: "\(connectivity.caloriePercentage)%", label: "Cal")
                 }
                 .padding(.vertical, 8)
                 .background(Color.white.opacity(0.08))
@@ -165,32 +171,56 @@ struct WatchDashboardView: View {
                     .cornerRadius(12)
                 }
 
-                // ── 今日の記録 ────────────────────────
+                // ── 今日の記録（詳細版：個別セット表示）────────────────────────
                 if !connectivity.todayExercises.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("今日の記録")
-                            .font(.system(size: 9)).foregroundColor(.gray)
-                        ForEach(connectivity.todayExercises) { ex in
-                            HStack(spacing: 4) {
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("📝")
+                                .font(.system(size: 11))
+                            Text("今日の記録")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            Spacer()
+                            Text("\(connectivity.todaySetCount)セット")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+
+                        // 各セットを時刻と回数で表示
+                        ForEach(Array(connectivity.todayExercises.enumerated()), id: \.element.id) { index, ex in
+                            HStack(spacing: 6) {
+                                // 時刻
+                                Text(timeString(from: ex.timestamp))
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 40, alignment: .leading)
+
+                                // 絵文字
                                 Text(exerciseEmoji(ex.exerciseId))
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 12))
+
+                                // 種目名
                                 Text(ex.exerciseName)
                                     .font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.75))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(1)
+
                                 Spacer()
-                                Text("\(ex.reps)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.9))
-                                Text("+\(ex.points)")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(duoYellow.opacity(0.9))
+
+                                // 回数
+                                Text("\(ex.reps)回")
+                                    .font(.system(size: 10, weight: .black))
+                                    .foregroundColor(.white)
                             }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(8)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
-                    .background(Color.white.opacity(0.07))
-                    .cornerRadius(10)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(12)
                 } else if !connectivity.recentWorkouts.isEmpty {
                     // フォールバック：古い形式の表示
                     VStack(alignment: .leading, spacing: 3) {

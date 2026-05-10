@@ -37,6 +37,11 @@ struct SettingsView: View {
     @State private var showHabitStack = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
+    @State private var dailySetGoal = 2  // 1日の目標セット数
+    @State private var setConfiguration = SetConfiguration.defaultSet  // 1セットのメニュー構成
+    @State private var motionSensitivity: [String: MotionSensitivity] = MotionSensitivity.defaultSettings  // モーション感度
+    @State private var showSetEditor = false
+    @State private var showSensitivityEditor = false
 
     var body: some View {
         ZStack {
@@ -45,6 +50,9 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     headerSection
                     permissionBanner
+                    dailyGoalSection
+                    setConfigurationSection
+                    motionSensitivitySection
                     reminderSection
                     watchSection
                     habitStackSection
@@ -59,9 +67,21 @@ struct SettingsView: View {
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await refreshPermStatus() }
+        .task {
+            await refreshPermStatus()
+            // 設定をロード
+            dailySetGoal = await AuthenticationManager.shared.getDailySetGoal()
+            setConfiguration = await AuthenticationManager.shared.getSetConfiguration()
+            motionSensitivity = await AuthenticationManager.shared.getAllMotionSensitivity()
+        }
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
+        .sheet(isPresented: $showSetEditor) {
+            SetConfigurationEditorView(configuration: $setConfiguration)
+        }
+        .sheet(isPresented: $showSensitivityEditor) {
+            MotionSensitivityEditorView(sensitivity: $motionSensitivity)
+        }
     }
 
     // MARK: - Header
@@ -82,6 +102,136 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(.top, 4)
+    }
+
+    // MARK: - 1日の目標セット数
+
+    private var dailyGoalSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "target", title: "1日の目標",
+                          subtitle: "トレーニングセット数")
+
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "target")
+                        .font(.title3)
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("1日の目標セット数")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("デフォルトは2セット（朝・夜）")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        if dailySetGoal > 1 {
+                            dailySetGoal -= 1
+                        }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(dailySetGoal > 1 ? Color.duoGreen : Color.gray.opacity(0.3))
+                    }
+                    .disabled(dailySetGoal <= 1)
+
+                    VStack(spacing: 2) {
+                        Text("\(dailySetGoal)")
+                            .font(.system(size: 48, weight: .black, design: .rounded))
+                            .foregroundColor(Color.duoGreen)
+                        Text("セット")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        if dailySetGoal < 5 {
+                            dailySetGoal += 1
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(dailySetGoal < 5 ? Color.duoGreen : Color.gray.opacity(0.3))
+                    }
+                    .disabled(dailySetGoal >= 5)
+                }
+                .padding(.vertical, 8)
+            }
+            .padding(14)
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+    }
+
+    // MARK: - セット構成設定
+
+    private var setConfigurationSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "list.bullet", title: "1セットのメニュー",
+                          subtitle: "種目と回数をカスタマイズ")
+
+            Button {
+                showSetEditor = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "list.bullet")
+                        .font(.title3)
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("メニューを編集")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("\(setConfiguration.exercises.count)種目 登録済み")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+            }
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+    }
+
+    // MARK: - モーション感度設定
+
+    private var motionSensitivitySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "sensor.fill", title: "モーション感度",
+                          subtitle: "各種目の検出精度を調整")
+
+            Button {
+                showSensitivityEditor = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "sensor.fill")
+                        .font(.title3)
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("感度を編集")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("iPhone・Apple Watch共通")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+            }
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
     }
 
     // MARK: - 通知権限バナー
@@ -301,6 +451,16 @@ struct SettingsView: View {
         Button {
             notif.savePrefs()
             iOSWatchBridge.isWatchAutoLaunchEnabled = watchAutoLaunch
+
+            // 設定を保存
+            Task {
+                await AuthenticationManager.shared.saveDailySetGoal(dailySetGoal)
+                await AuthenticationManager.shared.saveSetConfiguration(setConfiguration)
+                for (_, sensitivity) in motionSensitivity {
+                    await AuthenticationManager.shared.saveMotionSensitivity(sensitivity)
+                }
+            }
+
             if permStatus == .authorized { notif.scheduleAllDaily() }
             withAnimation { savedBanner = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -468,6 +628,140 @@ private struct ShortcutsGuideView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - SetConfigurationEditorView
+
+struct SetConfigurationEditorView: View {
+    @Binding var configuration: SetConfiguration
+    @Environment(\.dismiss) private var dismiss
+    @State private var editingExercises: [ExerciseInSet]
+
+    init(configuration: Binding<SetConfiguration>) {
+        self._configuration = configuration
+        self._editingExercises = State(initialValue: configuration.wrappedValue.exercises.sorted { $0.order < $1.order })
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.duoBg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 16) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle.fill").font(.caption).foregroundColor(Color(hex: "#1CB0F6"))
+                            Text("1セットで行う種目と回数を設定します。順番はドラッグで変更できます。").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
+                        }.padding(12).background(Color(hex: "#E5F8FF")).cornerRadius(12)
+                        VStack(spacing: 12) {
+                            ForEach(Array(editingExercises.enumerated()), id: \.element.id) { index, exercise in
+                                ExerciseRowEditor(exercise: $editingExercises[index], onDelete: { editingExercises.remove(at: index) })
+                            }
+                            .onMove { from, to in editingExercises.move(fromOffsets: from, toOffset: to); updateOrder() }
+                        }
+                        Button { addExercise() } label: {
+                            HStack(spacing: 8) { Image(systemName: "plus.circle.fill"); Text("種目を追加").fontWeight(.bold) }
+                                .foregroundColor(Color.duoGreen).frame(maxWidth: .infinity).padding(.vertical, 14)
+                                .background(Color.duoGreen.opacity(0.1)).cornerRadius(12)
+                        }.buttonStyle(.plain)
+                        Spacer(minLength: 20)
+                    }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 20)
+                }
+            }
+            .navigationTitle("メニュー編集").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("完了") { configuration.exercises = editingExercises; dismiss() }.fontWeight(.bold) }
+            }
+        }
+    }
+    private func updateOrder() { for (index, _) in editingExercises.enumerated() { editingExercises[index].order = index } }
+    private func addExercise() { editingExercises.append(ExerciseInSet(exerciseId: "pushup", exerciseName: "腕立て伏せ", targetReps: 10, order: editingExercises.count)) }
+}
+
+struct ExerciseRowEditor: View {
+    @Binding var exercise: ExerciseInSet
+    let onDelete: () -> Void
+    private let availableExercises = [("pushup","腕立て伏せ","💪"),("squat","スクワット","🏋️"),("situp","腹筋","🔥"),("lunge","ランジ","🦵"),("burpee","バーピー","⚡"),("plank","プランク","🧘")]
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "line.3.horizontal").font(.caption).foregroundColor(Color.duoSubtitle)
+                Menu { ForEach(availableExercises, id: \.0) { id, name, emoji in Button { exercise.exerciseId = id; exercise.exerciseName = name } label: { Label("\(emoji) \(name)", systemImage: exercise.exerciseId == id ? "checkmark" : "") } } } label: {
+                    HStack(spacing: 6) { if let ex = availableExercises.first(where: { $0.0 == exercise.exerciseId }) { Text(ex.2).font(.title3); Text(ex.1).font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark) }; Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundColor(Color.duoSubtitle) }
+                }
+                Spacer()
+                HStack(spacing: 8) {
+                    Button { if exercise.targetReps > 5 { exercise.targetReps -= 5 } } label: { Image(systemName: "minus.circle.fill").font(.title3).foregroundColor(exercise.targetReps > 5 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(exercise.targetReps <= 5)
+                    Text("\(exercise.targetReps)").font(.title3).fontWeight(.black).foregroundColor(Color.duoDark).frame(width: 40)
+                    Button { if exercise.targetReps < 50 { exercise.targetReps += 5 } } label: { Image(systemName: "plus.circle.fill").font(.title3).foregroundColor(exercise.targetReps < 50 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(exercise.targetReps >= 50)
+                }
+                Button { onDelete() } label: { Image(systemName: "trash").font(.caption).foregroundColor(Color.red.opacity(0.7)) }
+            }.padding(14)
+        }.background(Color.white).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+}
+
+// MARK: - MotionSensitivityEditorView
+
+struct MotionSensitivityEditorView: View {
+    @Binding var sensitivity: [String: MotionSensitivity]
+    @Environment(\.dismiss) private var dismiss
+    @State private var editingSensitivity: [String: MotionSensitivity]
+    private let exercises = [("pushup","腕立て伏せ","💪"),("squat","スクワット","🏋️"),("situp","腹筋","🔥"),("lunge","ランジ","🦵"),("burpee","バーピー","⚡")]
+    init(sensitivity: Binding<[String: MotionSensitivity]>) { self._sensitivity = sensitivity; self._editingSensitivity = State(initialValue: sensitivity.wrappedValue) }
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.duoBg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 16) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle.fill").font(.caption).foregroundColor(Color(hex: "#1CB0F6"))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("モーションセンサーの感度を調整します。").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
+                                Text("• 感度：低い=大きな動きのみ検出、高い=小さな動きも検出").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
+                                Text("• 間隔：短い=速い動きも検出、長い=ゆっくりした動きのみ").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
+                            }
+                        }.padding(12).background(Color(hex: "#E5F8FF")).cornerRadius(12)
+                        ForEach(exercises, id: \.0) { id, name, emoji in if let sens = editingSensitivity[id] { SensitivityRowEditor(exerciseName: "\(emoji) \(name)", sensitivity: Binding(get: { sens }, set: { editingSensitivity[id] = $0 })) } }
+                        Button { editingSensitivity = MotionSensitivity.defaultSettings } label: {
+                            HStack(spacing: 8) { Image(systemName: "arrow.counterclockwise"); Text("デフォルトに戻す").fontWeight(.bold) }
+                                .foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity).padding(.vertical, 14).background(Color.white).cornerRadius(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.duoSubtitle.opacity(0.3), lineWidth: 1))
+                        }.buttonStyle(.plain)
+                        Spacer(minLength: 20)
+                    }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 20)
+                }
+            }
+            .navigationTitle("感度設定").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("完了") { sensitivity = editingSensitivity; dismiss() }.fontWeight(.bold) }
+            }
+        }
+    }
+}
+
+struct SensitivityRowEditor: View {
+    let exerciseName: String
+    @Binding var sensitivity: MotionSensitivity
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(exerciseName).font(.headline).fontWeight(.bold).foregroundColor(Color.duoDark)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack { Text("感度").font(.subheadline).foregroundColor(Color.duoSubtitle); Spacer(); Text(sensitivityLabel(sensitivity.threshold)).font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen) }
+                HStack(spacing: 8) { Text("低").font(.caption2).foregroundColor(Color.duoSubtitle); Slider(value: $sensitivity.threshold, in: 0.02...0.20, step: 0.02).tint(Color.duoGreen); Text("高").font(.caption2).foregroundColor(Color.duoSubtitle) }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack { Text("最小間隔").font(.subheadline).foregroundColor(Color.duoSubtitle); Spacer(); Text(String(format: "%.1f秒", sensitivity.minInterval)).font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen) }
+                HStack(spacing: 8) { Text("短").font(.caption2).foregroundColor(Color.duoSubtitle); Slider(value: $sensitivity.minInterval, in: 0.3...2.0, step: 0.1).tint(Color.duoGreen); Text("長").font(.caption2).foregroundColor(Color.duoSubtitle) }
+            }
+        }.padding(14).background(Color.white).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+    private func sensitivityLabel(_ threshold: Double) -> String {
+        switch threshold { case 0...0.05: return "最高"; case 0.05...0.08: return "高"; case 0.08...0.12: return "中"; case 0.12...0.16: return "低"; default: return "最低" }
     }
 }
 

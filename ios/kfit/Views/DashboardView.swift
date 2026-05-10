@@ -11,7 +11,9 @@ struct DashboardView: View {
     @State private var totalReps     = 0
     @State private var totalCalories = 0
     @State private var totalXP      = 0
-    @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)
+    @State private var todaySetCount = 0  // 今日完了したセット数
+    @State private var dailySetGoal  = 2  // 1日の目標セット数
+    @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)  // 元の型を保持
     @State private var weeklySetProgress = WeeklySetProgress(completedSets: 0, dailyGoal: 2)
     @State private var calorieGoal = DailyCalorieGoal()
     @State private var isLoading    = false  // 初期値をfalseに変更
@@ -19,45 +21,77 @@ struct DashboardView: View {
     @State private var showTracker  = false
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
-    @State private var expandedSetId: UUID? = nil  // 展開中のセットID
+    @State private var expandedSetId: String? = nil  // 展開中のセットID
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
+    @State private var showTodayRecords = false  // 今日の記録を表示するか
+    @State private var showMenu = false  // ハンバーガーメニューの表示状態
 
     var body: some View {
-        ZStack {
-            Color.duoBg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                heroSection
-                if isLoading {
-                    Spacer()
-                    ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
-                    Spacer()
-                } else {
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            dailySetsCard
-                            weeklyGoalCard
-                            calorieGoalCard
-                            habitStackCard
-                            todaySummaryCard
-                            healthSummaryCard
-                            challengeCard
-                            quickMenu
-                            Spacer(minLength: 5)
+        GeometryReader { geometry in
+            ZStack {
+                Color.duoBg.ignoresSafeArea()
+
+                // メインコンテンツ
+                VStack(spacing: 0) {
+                    if isLoading {
+                        Spacer()
+                        ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
+                        Spacer()
+                    } else {
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 10) {
+                                dailySetsAndWeeklyGoalCard
+                                calorieAndWeightCard
+                                habitStackCard
+                                healthSummaryCard
+                                challengeCard
+                                quickMenu
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.top, 0)
+                            .padding(.bottom, 60)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.top, 0)
-                        .padding(.bottom, 0)
+                        .padding(.top, geometry.safeAreaInsets.top + 8)
                     }
                 }
+
+                // 固定ヘッダー（最上部）
+                VStack(spacing: 0) {
+                    heroSection
+                    Spacer()
+                }
+                .zIndex(1)
+
+                // 固定CTAボタン（最下部）
+                VStack(spacing: 0) {
+                    Spacer()
+                    if !isLoading {
+                        startTrainingButton
+                            .padding(.bottom, 0)
+                    }
+                }
+
+                // ハンバーガーメニュー（オーバーレイ）
+                if showMenu {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showMenu = false
+                            }
+                        }
+
+                    VStack {
+                        Spacer()
+                        floatingMenuPanel
+                    }
+                    .transition(.move(edge: .bottom))
+                }
             }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea(edges: [.top, .bottom])
         .navigationBarHidden(true)
-        // 画面下部に固定のCTAボタン（タブバーの上）
-        .safeAreaInset(edge: .bottom) {
-            if !isLoading { startTrainingButton }
-        }
         .fullScreenCover(isPresented: $showTracker) {
             ExerciseTrackerView()
                 .environmentObject(authManager)
@@ -97,66 +131,67 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - 常時表示CTAボタン（タブバー上に固定）
+    // MARK: - 常時表示CTAボタン（画面最下部に固定）
     private var startTrainingButton: some View {
-        Button { showTracker = true } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.22))
-                        .frame(width: 40, height: 40)
-                        .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.12 : 1.0)
-                        .animation(
-                            todayExercises.isEmpty
-                                ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                : .default,
-                            value: mascotBounce
-                        )
-                    Text(todayExercises.isEmpty ? "💪" : "➕")
-                        .font(.title3)
+        GeometryReader { geometry in
+            Button { showTracker = true } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.22))
+                            .frame(width: 30, height: 30)
+                            .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.1 : 1.0)
+                            .animation(
+                                todayExercises.isEmpty
+                                    ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                    : .default,
+                                value: mascotBounce
+                            )
+                        Text(todayExercises.isEmpty ? "💪" : "➕")
+                            .font(.callout)
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(todayExercises.isEmpty
+                             ? "今日のトレーニングを始めよう！"
+                             : "さらに記録する")
+                            .font(.caption).fontWeight(.black)
+                            .foregroundColor(.white)
+                        Text(todayExercises.isEmpty
+                             ? "タップして開始"
+                             : "\(todayExercises.count) 種目 · \(totalXP) XP")
+                            .font(.caption2)
+                            .foregroundColor(Color.white.opacity(0.85))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.callout)
+                        .foregroundColor(Color.white.opacity(0.8))
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(todayExercises.isEmpty
-                         ? "今日のトレーニングを始めよう！"
-                         : "さらに記録する")
-                        .font(.callout).fontWeight(.black)
-                        .foregroundColor(.white)
-                    Text(todayExercises.isEmpty
-                         ? "タップして開始"
-                         : "\(todayExercises.count) 種目 · \(totalXP) XP")
-                        .font(.caption)
-                        .foregroundColor(Color.white.opacity(0.88))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(Color.white.opacity(0.85))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                LinearGradient(
-                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
-                    startPoint: .leading, endPoint: .trailing
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    LinearGradient(
+                        colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .shadow(color: Color.duoGreen.opacity(0.3), radius: 6, y: 2)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(color: Color.duoGreen.opacity(
-                    todayExercises.isEmpty ? 0.5 : 0.3
-                ), radius: todayExercises.isEmpty ? 10 : 6, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.bottom, geometry.safeAreaInsets.bottom > 0 ? 0 : 8)
+            .padding(.top, 2)
+            .background(
+                Color.duoBg
+                    .shadow(color: Color.black.opacity(0.05), radius: 3, y: -1)
+                    .ignoresSafeArea(edges: .bottom)
             )
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .padding(.top, 1)
-        .padding(.bottom, 0)
-        .background(
-            Color.duoBg
-                .shadow(color: Color.black.opacity(0.08), radius: 6, y: -3)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .frame(height: 55)
     }
 
     // MARK: - ヒーロー（極小1行バー）
@@ -169,60 +204,62 @@ struct DashboardView: View {
                 )
                 HStack(spacing: 0) {
                     // ── ロゴ ──────────────────
-                    HStack(spacing: 4) {
+                    HStack(spacing: 2) {
                         Image("mascot")
                             .resizable().scaledToFill()
-                            .frame(width: 18, height: 18)
+                            .frame(width: 14, height: 14)
                             .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 0.5))
+                            .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
                         Text("DuoFit")
-                            .font(.system(size: 15, design: .rounded))
+                            .font(.system(size: 12, design: .rounded))
                             .fontWeight(.black)
                             .foregroundColor(.white)
                     }
 
                     Spacer()
 
-                    // ── 統計 3項目（横1列）───
-                    HStack(spacing: 6) {
+                    // ── 統計 3項目（横1列）- 統一指標 ───
+                    HStack(spacing: 3) {
                         miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "連続")
-                        repCalStat(reps: totalReps, kcal: totalCalories)
-                        miniStat("⭐", "\(authManager.userProfile?.totalPoints ?? 0)", "XP")
+                        miniStat("📊", "\(todaySetCount)/\(dailySetGoal)", "セット")
+                        miniStat("🔥", "\(calorieGoal.percentAchieved)%", "Cal")
                     }
 
                     Spacer()
 
-                    // ── ログアウト ────────────
-                    Button { authManager.signOut() } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 8).weight(.bold))
-                            .foregroundColor(Color.white.opacity(0.85))
+                    // ── ハンバーガーメニュー ────────────
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showMenu.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showMenu ? "xmark" : "line.3.horizontal")
+                            .font(.system(size: 9).weight(.bold))
+                            .foregroundColor(.white)
                             .padding(3)
-                            .background(Color.white.opacity(0.16))
+                            .background(Color.white.opacity(0.2))
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.top, max(0, geometry.safeAreaInsets.top - 22))
+                .padding(.horizontal, 4)
+                .padding(.top, geometry.safeAreaInsets.top)
                 .padding(.bottom, 0)
             }
         }
-        .frame(height: 2 + (UIApplication.shared.connectedScenes
+        .frame(height: (UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.top ?? 44))
+            .first?.windows.first?.safeAreaInsets.top ?? 44) + 8)
     }
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 1) {
-                Text(icon).font(.system(size: 10))
-                Text(value)
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
-            }
+        HStack(spacing: 1) {
+            Text(icon).font(.system(size: 11))
+            Text(value)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundColor(.white)
             Text(label)
                 .font(.system(size: 9))
-                .foregroundColor(Color.white.opacity(0.82))
+                .foregroundColor(Color.white.opacity(0.7))
         }
     }
 
@@ -230,98 +267,324 @@ struct DashboardView: View {
     @ViewBuilder
     private func repCalStat(reps: Int, kcal: Int) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 1) {
-                Text("⚡").font(.system(size: 10))
+            HStack(spacing: 0) {
+                Text("⚡").font(.system(size: 9))
                 Text("\(reps)回")
-                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text("\(kcal)kcal")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(Color.white.opacity(0.82))
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.white.opacity(0.8))
         }
     }
 
-    // MARK: - 今日のセット状況カード
-    private var dailySetsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // タイトル行
-            HStack(spacing: 6) {
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.seal.fill")
-                    Text("今日のセット状況").fontWeight(.black)
+    // MARK: - 今日のセット状況 & 週間目標カード（統合）
+    private var dailySetsAndWeeklyGoalCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ヘッダー（タップで展開）
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showTodayRecords.toggle()
                 }
-                .font(.headline)
-                .foregroundColor(Color.duoDark)
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    // タイトル行
+                    HStack(spacing: 6) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.seal.fill")
+                            Text("今日のセット状況").fontWeight(.black)
+                        }
+                        .font(.headline)
+                        .foregroundColor(Color.duoDark)
 
-                Spacer()
+                        Spacer()
 
-                if dailySets.isGoalMet {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("達成！")
-                            .font(.caption).fontWeight(.black)
+                        if dailySets.isGoalMet {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                Text("達成！")
+                                    .font(.caption).fontWeight(.black)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.duoGreen)
+                            .cornerRadius(20)
+                        } else {
+                            Text("あと \(dailySets.pmSetsNeeded) セット")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoOrange)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color.duoOrange.opacity(0.12))
+                                .cornerRadius(20)
+                        }
+
+                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(Color.duoGreen)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.duoGreen)
-                    .cornerRadius(20)
-                } else {
-                    Text("あと \(dailySets.pmSetsNeeded) セット")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoOrange)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.duoOrange.opacity(0.12))
-                        .cornerRadius(20)
+
+                    Divider()
+
+                    // AM / PM 行
+                    VStack(spacing: 8) {
+                        setRow(
+                            icon: "🌅",
+                            label: "午前（〜12時）",
+                            count: dailySets.amSets,
+                            needed: 1,
+                            isFlexible: true
+                        )
+                        setRow(
+                            icon: "🌆",
+                            label: dailySets.amSets == 0 ? "午後（12時〜）※2セット必要" : "午後（12時〜）",
+                            count: dailySets.pmSets,
+                            needed: dailySets.amSets == 0 ? 2 : 1,
+                            isFlexible: false
+                        )
+                    }
+
+                    // 達成メッセージ
+                    if dailySets.isGoalMet {
+                        HStack(spacing: 6) {
+                            Image("mascot")
+                                .resizable().scaledToFill()
+                                .frame(width: 22, height: 22).clipShape(Circle())
+                            Text(dailySets.amSets == 0
+                                 ? "午後2セットで目標クリア！すごい💪"
+                                 : "午前・午後バッチリ！最高の一日🎉")
+                                .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
+                        }
+                        .padding(.top, 2)
+                    } else if dailySets.amSets + dailySets.pmSets == 0 {
+                        Text("今日はまだトレーニングしていません。始めましょう！")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .padding(.top, 2)
+                    } else if dailySets.amSets == 0 && dailySets.pmSets == 1 {
+                        Text("午後あと1セット、または午前1セットで達成！")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .padding(.top, 2)
+                    }
                 }
+                .padding(16)
+            }
+            .buttonStyle(.plain)
+
+            // 週間目標セクション（小さく表示）
+            VStack(spacing: 0) {
+                Divider()
+                    .padding(.horizontal, 16)
+
+                weeklyGoalSection
             }
 
-            Divider()
+            // 今日の記録（展開時のみ表示）
+            if showTodayRecords && !todayExercises.isEmpty {
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.horizontal, 16)
 
-            // AM / PM 行
-            VStack(spacing: 8) {
-                setRow(
-                    icon: "🌅",
-                    label: "午前（〜12時）",
-                    count: dailySets.amSets,
-                    needed: 1,
-                    isFlexible: true
-                )
-                setRow(
-                    icon: "🌆",
-                    label: dailySets.amSets == 0 ? "午後（12時〜）※2セット必要" : "午後（12時〜）",
-                    count: dailySets.pmSets,
-                    needed: dailySets.amSets == 0 ? 2 : 1,
-                    isFlexible: false
-                )
-            }
-
-            // 達成メッセージ
-            if dailySets.isGoalMet {
-                HStack(spacing: 6) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 22, height: 22).clipShape(Circle())
-                    Text(dailySets.amSets == 0
-                         ? "午後2セットで目標クリア！すごい💪"
-                         : "午前・午後バッチリ！最高の一日🎉")
-                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
+                    todayRecordsSection
                 }
-                .padding(.top, 2)
-            } else if dailySets.amSets + dailySets.pmSets == 0 {
-                Text("今日はまだトレーニングしていません。始めましょう！")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
-                    .padding(.top, 2)
-            } else if dailySets.amSets == 0 && dailySets.pmSets == 1 {
-                Text("午後あと1セット、または午前1セットで達成！")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
-                    .padding(.top, 2)
             }
         }
-        .padding(16)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    // MARK: - 週間目標セクション（コンパクト）
+    private var weeklyGoalSection: some View {
+        let activeDays = 5
+        let weeklyTarget = weeklySetProgress.dailyGoal * activeDays
+        let today = Calendar.current.dateComponents([.weekday], from: Date()).weekday ?? 1
+        // 月曜日=2, 火曜日=3, ..., 金曜日=6, 土日=1として、月〜金の経過日数を計算
+        let activeDaysElapsed = today == 1 ? 0 : max(0, min(today - 2, activeDays))
+        let expectedNow = weeklySetProgress.dailyGoal * activeDaysElapsed
+        let weekPct = weeklyTarget > 0 ? min(Double(weeklySetProgress.completedSets) / Double(weeklyTarget) * 100, 100) : 0
+        let isOnTrack = expectedNow > 0 ? weeklySetProgress.completedSets >= expectedNow : true
+
+        return VStack(alignment: .leading, spacing: 6) {
+            // ヘッダー
+            HStack(spacing: 4) {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.caption)
+                    .foregroundColor(Color.duoGreen)
+                Text("週間目標").fontWeight(.bold)
+                    .font(.caption)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("1日\(weeklySetProgress.dailyGoal)セット × \(activeDays)日")
+                    .font(.caption2).fontWeight(.bold)
+                    .foregroundColor(Color.duoGreen)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.duoGreen.opacity(0.12))
+                    .cornerRadius(5)
+            }
+
+            // 進捗表示
+            HStack(alignment: .bottom, spacing: 6) {
+                Text("\(weeklySetProgress.completedSets)")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoOrange)
+                Text("/ \(weeklyTarget) セット")
+                    .font(.caption2).fontWeight(.bold)
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(.bottom, 2)
+                Spacer()
+                Text("\(Int(weekPct))%")
+                    .font(.callout).fontWeight(.black)
+                    .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoOrange)
+            }
+
+            // プログレスバー
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(.systemGray5)).frame(height: 8)
+                    Capsule().fill(
+                        LinearGradient(
+                            colors: isOnTrack ? [Color.duoGreen, Color(red: 0.57, green: 0.9, blue: 0.16)] : [Color.duoYellow, Color.duoOrange],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(8, geo.size.width * CGFloat(weekPct / 100)), height: 8)
+                }
+            }
+            .frame(height: 8)
+
+            Text(isOnTrack ? "🎉 ペース通り！" : "今日まで目標 \(expectedNow) セット（\(activeDaysElapsed)日経過）")
+                .font(.caption2).fontWeight(.semibold)
+                .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoSubtitle)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - 今日の記録セクション（セット一覧）
+    private var todayRecordsSection: some View {
+        let sets = buildTodaySets(todayExercises)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            // ヘッダー
+            HStack(spacing: 5) {
+                Image(systemName: "list.bullet.circle.fill")
+                    .foregroundColor(Color.duoGold)
+                Text("今日の記録").fontWeight(.bold)
+                Spacer()
+                Text("\(sets.count)セット · \(totalReps)回 · \(totalXP) XP")
+                    .font(.caption2).fontWeight(.bold)
+                    .foregroundColor(Color.duoGold)
+            }
+            .font(.subheadline)
+            .foregroundColor(Color.duoDark)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            // セット一覧
+            VStack(spacing: 6) {
+                ForEach(sets) { set in
+                    todaySetButton(set)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+    }
+
+    // MARK: - セットボタン（展開式）
+    private func todaySetButton(_ set: TodaySet) -> some View {
+        let isExpanded = expandedSetId == set.id
+
+        return VStack(spacing: 0) {
+            // セットサマリー
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    expandedSetId = isExpanded ? nil : set.id
+                }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(set.period) セット\(set.setNumber)")
+                            .font(.caption).fontWeight(.bold)
+                            .foregroundColor(Color.duoDark)
+                        Text(timeString(set.startTime))
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Text("\(set.exercises.count)種目")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("\(set.totalReps)回")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color.duoGreen)
+                        Text("+\(set.totalPoints)")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color.duoGold)
+                    }
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(Color.duoGreen)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(isExpanded ? Color.duoGreen.opacity(0.08) : Color.duoBg)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+
+            // 詳細（展開時のみ表示）
+            if isExpanded {
+                VStack(spacing: 4) {
+                    ForEach(set.exercises) { ex in
+                        HStack(spacing: 8) {
+                            Text(emojiFor(ex.exerciseName))
+                                .font(.callout)
+                                .frame(width: 28, height: 28)
+                                .background(Color.duoGreen.opacity(0.12))
+                                .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(ex.exerciseName)
+                                    .font(.caption).fontWeight(.bold)
+                                    .foregroundColor(Color.duoDark)
+                                if ex.exerciseId.lowercased().contains("plank") {
+                                    Text("\(ex.reps) 秒")
+                                        .font(.caption2).fontWeight(.semibold)
+                                        .foregroundColor(Color.duoSubtitle)
+                                } else {
+                                    Text("\(ex.reps) 回")
+                                        .font(.caption2).fontWeight(.semibold)
+                                        .foregroundColor(Color.duoSubtitle)
+                                }
+                            }
+
+                            Spacer()
+
+                            Text("+\(ex.points) XP")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(Color.duoGold)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.duoYellow.opacity(0.22))
+                                .cornerRadius(5)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 10)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                    }
+                }
+                .padding(.top, 4)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+                .background(Color.duoGreen.opacity(0.05))
+                .cornerRadius(10)
+            }
+        }
     }
 
     private func setRow(icon: String, label: String, count: Int, needed: Int, isFlexible: Bool) -> some View {
@@ -450,76 +713,25 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
     }
 
-    // MARK: - 週間目標カード (Web互換デザイン)
-    private var weeklyGoalCard: some View {
-        let activeDays = 5
-        let weeklyTarget = weeklySetProgress.dailyGoal * activeDays
-        let today = Calendar.current.dateComponents([.weekday], from: Date()).weekday ?? 1
-        let activeDaysElapsed = max(0, min(today - 1, activeDays)) // 月曜=1, 日曜=0として計算
-        let expectedNow = weeklySetProgress.dailyGoal * activeDaysElapsed
-        let pct = expectedNow > 0 ? min(Double(weeklySetProgress.completedSets) / Double(expectedNow) * 100, 100) : 0
-        let weekPct = weeklyTarget > 0 ? min(Double(weeklySetProgress.completedSets) / Double(weeklyTarget) * 100, 100) : 0
-        let isOnTrack = pct >= 100
 
-        return VStack(alignment: .leading, spacing: 10) {
-            // ヘッダー
-            HStack(spacing: 5) {
-                Image(systemName: "calendar.badge.checkmark")
-                    .foregroundColor(Color.duoGreen)
-                Text("週間目標").fontWeight(.black)
-                Spacer()
-                Text("1日\(weeklySetProgress.dailyGoal)セット × \(activeDays)日")
-                    .font(.caption2).fontWeight(.bold)
-                    .foregroundColor(Color.duoGreen)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Color.duoGreen.opacity(0.12))
-                    .cornerRadius(6)
-            }
-            .font(.subheadline)
-            .foregroundColor(Color.duoDark)
+    // MARK: - カロリー目標 & 体重測定カード
+    private var calorieAndWeightCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // カロリー目標セクション
+            calorieGoalSection
 
-            // 進捗表示
-            HStack(alignment: .bottom, spacing: 8) {
-                Text("\(weeklySetProgress.completedSets)")
-                    .font(.system(size: 36, weight: .black, design: .rounded))
-                    .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoOrange)
-                Text("/ \(weeklyTarget) セット")
-                    .font(.subheadline).fontWeight(.bold)
-                    .foregroundColor(Color.duoSubtitle)
-                    .padding(.bottom, 4)
-                Spacer()
-                Text("\(Int(weekPct))%")
-                    .font(.title3).fontWeight(.black)
-                    .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoOrange)
-            }
+            Divider()
 
-            // プログレスバー
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5)).frame(height: 14)
-                    Capsule().fill(
-                        LinearGradient(
-                            colors: isOnTrack ? [Color.duoGreen, Color(red: 0.57, green: 0.9, blue: 0.16)] : [Color.duoYellow, Color.duoOrange],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                    )
-                    .frame(width: max(14, geo.size.width * CGFloat(weekPct / 100)), height: 14)
-                }
-            }
-            .frame(height: 14)
-
-            Text(isOnTrack ? "🎉 ペース通り！" : "今日まで目標 \(expectedNow) セット（\(activeDaysElapsed)日経過）")
-                .font(.caption).fontWeight(.semibold)
-                .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoSubtitle)
+            // 体重・体脂肪測定セクション
+            weightMeasurementSection
         }
         .padding(12)
         .background(Color.white)
         .cornerRadius(12)
-        .shadow(color: (isOnTrack ? Color.duoGreen : Color.duoYellow).opacity(0.15), radius: 4, y: 2)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
     }
 
-    // MARK: - 目標カロリーカード
-    private var calorieGoalCard: some View {
+    private var calorieGoalSection: some View {
         let percent = calorieGoal.percentAchieved
         let isAchieved = percent >= 100
 
@@ -545,12 +757,12 @@ struct DashboardView: View {
             // 進捗表示
             HStack(alignment: .bottom, spacing: 8) {
                 Text("\(calorieGoal.consumedCalories)")
-                    .font(.system(size: 36, weight: .black, design: .rounded))
+                    .font(.system(size: 32, weight: .black, design: .rounded))
                     .foregroundColor(isAchieved ? Color.duoGreen : Color.duoOrange)
                 Text("/ \(calorieGoal.targetCalories) kcal")
-                    .font(.subheadline).fontWeight(.bold)
+                    .font(.caption).fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 2)
                 Spacer()
                 Text("\(percent)%")
                     .font(.title3).fontWeight(.black)
@@ -560,26 +772,93 @@ struct DashboardView: View {
             // プログレスバー
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5)).frame(height: 12)
+                    Capsule().fill(Color(.systemGray5)).frame(height: 10)
                     Capsule().fill(
                         LinearGradient(
                             colors: isAchieved ? [Color.duoGreen, Color(red: 0.57, green: 0.9, blue: 0.16)] : [Color.duoOrange, Color.duoRed],
                             startPoint: .leading, endPoint: .trailing
                         )
                     )
-                    .frame(width: max(12, geo.size.width * CGFloat(percent) / 100), height: 12)
+                    .frame(width: max(10, geo.size.width * CGFloat(percent) / 100), height: 10)
                 }
             }
-            .frame(height: 12)
+            .frame(height: 10)
 
             Text(isAchieved ? "🎉 目標達成！" : "運動とApple Healthから自動集計")
-                .font(.caption).fontWeight(.semibold)
+                .font(.caption2).fontWeight(.semibold)
                 .foregroundColor(isAchieved ? Color.duoGreen : Color.duoSubtitle)
         }
-        .padding(12)
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: (isAchieved ? Color.duoGreen : Color.duoOrange).opacity(0.15), radius: 4, y: 2)
+    }
+
+    private var weightMeasurementSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // ヘッダー
+            HStack(spacing: 5) {
+                Image(systemName: "scalemass.fill")
+                    .foregroundColor(Color.duoBlue)
+                Text("今日の体重測定").fontWeight(.black)
+                    .font(.subheadline)
+                Spacer()
+                Text("\(healthKit.todayBodyMassMeasurements)/2")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(healthKit.todayBodyMassMeasurements >= 2 ? Color.duoGreen : Color.duoOrange)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background((healthKit.todayBodyMassMeasurements >= 2 ? Color.duoGreen : Color.duoOrange).opacity(0.12))
+                    .cornerRadius(8)
+            }
+            .foregroundColor(Color.duoDark)
+
+            // 測定結果
+            HStack(spacing: 12) {
+                // 体重
+                HStack(spacing: 4) {
+                    Image(systemName: "scalemass")
+                        .font(.caption)
+                        .foregroundColor(Color.duoBlue)
+                    if healthKit.latestBodyMass > 0 {
+                        Text(String(format: "%.1f kg", healthKit.latestBodyMass))
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color.duoDark)
+                    } else {
+                        Text("未測定")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color(red: 0.878, green: 0.941, blue: 1.0))
+                .cornerRadius(8)
+
+                // 体脂肪
+                HStack(spacing: 4) {
+                    Image(systemName: "percent")
+                        .font(.caption)
+                        .foregroundColor(Color.duoOrange)
+                    if healthKit.latestBodyFatPercentage > 0 {
+                        Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color.duoDark)
+                    } else {
+                        Text("未測定")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color(red: 1.0, green: 0.925, blue: 0.878))
+                .cornerRadius(8)
+            }
+
+            if healthKit.todayBodyMassMeasurements < 2 {
+                Text(healthKit.todayBodyMassMeasurements == 0
+                     ? "⚖️ 朝と夜の2回測定しましょう"
+                     : "⚖️ あと1回測定しましょう")
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundColor(Color.duoSubtitle)
+            } else {
+                Text("✅ 今日の測定完了！")
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundColor(Color.duoGreen)
+            }
+        }
     }
 
     // MARK: - カロリー目標編集シート
@@ -712,63 +991,93 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
     }
 
-    // MARK: - 今日の記録サマリー（セット別表示）
-    @ViewBuilder
-    private var todaySummaryCard: some View {
-        if !todayExercises.isEmpty {
-            let sets = buildTodaySets(todayExercises)
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Color.duoGreen)
-                    Text("今日の記録").fontWeight(.black)
-                    Spacer()
-                    Text("\(sets.count)セット · \(totalReps)回 · \(totalXP) XP")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoGold)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.duoYellow.opacity(0.18))
-                        .cornerRadius(8)
-                }
-                .font(.subheadline)
-                .foregroundColor(Color.duoDark)
 
-                VStack(spacing: 6) {
-                    ForEach(sets) { set in
-                        todaySetSummaryButton(set)
+    // MARK: - フローティングメニューパネル
+    private var floatingMenuPanel: some View {
+        VStack(spacing: 0) {
+            // メニュータイトル
+            HStack {
+                Text("メニュー")
+                    .font(.headline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        showMenu = false
                     }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(Color.duoSubtitle)
                 }
             }
-            .padding(14)
-            .background(Color.white)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            // メニュー項目
+            VStack(spacing: 0) {
+                NavigationLink(destination: WeeklyGoalView().environmentObject(authManager)) {
+                    menuRow(icon: "🎯", label: "週間目標", color: Color.duoGreen)
+                }
+
+                Divider().padding(.leading, 60)
+
+                NavigationLink(destination: HistoryView().environmentObject(authManager)) {
+                    menuRow(icon: "📅", label: "履歴", color: Color.duoBlue)
+                }
+
+                Divider().padding(.leading, 60)
+
+                NavigationLink(destination: HelpView()) {
+                    menuRow(icon: "❓", label: "ヘルプ", color: Color.duoOrange)
+                }
+
+                Divider().padding(.leading, 60)
+
+                Button {
+                    authManager.signOut()
+                    showMenu = false
+                } label: {
+                    menuRow(icon: "🚪", label: "ログアウト", color: Color.duoRed)
+                }
+            }
+            .padding(.vertical, 8)
         }
+        .background(Color.white)
+        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .shadow(color: Color.black.opacity(0.2), radius: 20, y: -5)
+        .ignoresSafeArea(edges: .bottom)
     }
 
-    // MARK: - クイックメニュー
-    private var quickMenu: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("メニュー")
-                .font(.subheadline).fontWeight(.black)
+    private func menuRow(icon: String, label: String, color: Color) -> some View {
+        HStack(spacing: 16) {
+            Text(icon)
+                .font(.title2)
+                .frame(width: 40, height: 40)
+                .background(color.opacity(0.12))
+                .cornerRadius(10)
+
+            Text(label)
+                .font(.body).fontWeight(.semibold)
                 .foregroundColor(Color.duoDark)
 
-            HStack(spacing: 10) {
-                NavigationLink(destination: WeeklyGoalView().environmentObject(authManager)) {
-                    quickMenuItem(icon: "🎯", label: "週間目標", color: Color.duoGreen)
-                }
-                NavigationLink(destination: HistoryView().environmentObject(authManager)) {
-                    quickMenuItem(icon: "📅", label: "履歴", color: Color.duoBlue)
-                }
-                NavigationLink(destination: HelpView()) {
-                    quickMenuItem(icon: "❓", label: "ヘルプ", color: Color.duoOrange)
-                }
-            }
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(Color.duoSubtitle)
         }
-        .padding(12)
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - クイックメニュー（非表示）
+    private var quickMenu: some View {
+        EmptyView()
     }
 
     private func quickMenuItem(icon: String, label: String, color: Color) -> some View {
@@ -795,7 +1104,7 @@ struct DashboardView: View {
 
     // MARK: - 今日のセット構築
     private struct TodaySet: Identifiable {
-        let id = UUID()
+        let id: String  // "am1", "pm2" などの固定ID
         let period: String
         let setNumber: Int
         let startTime: Date
@@ -832,7 +1141,15 @@ struct DashboardView: View {
 
         return sessions.map { session in
             guard let firstTime = session.first?.timestamp else {
-                return TodaySet(period: "午後", setNumber: 1, startTime: Date(), exercises: [], totalReps: 0, totalPoints: 0)
+                return TodaySet(
+                    id: "empty",
+                    period: "午後",
+                    setNumber: 1,
+                    startTime: Date(),
+                    exercises: [],
+                    totalReps: 0,
+                    totalPoints: 0
+                )
             }
 
             let hour = calendar.component(.hour, from: firstTime)
@@ -846,7 +1163,11 @@ struct DashboardView: View {
             }
             let setNumber = isAM ? amCount : pmCount
 
+            // 固定IDを生成（例: "am1", "pm2"）
+            let setId = "\(isAM ? "am" : "pm")\(setNumber)"
+
             return TodaySet(
+                id: setId,
                 period: period,
                 setNumber: setNumber,
                 startTime: firstTime,
@@ -858,95 +1179,6 @@ struct DashboardView: View {
     }
 
     // MARK: - セットサマリーボタン（折りたたみ可能）
-    private func todaySetSummaryButton(_ set: TodaySet) -> some View {
-        let isExpanded = expandedSetId == set.id
-
-        return VStack(spacing: 0) {
-            // セットサマリー（常に表示）
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    expandedSetId = isExpanded ? nil : set.id
-                }
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(set.period) セット\(set.setNumber)")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(Color.duoDark)
-                        HStack(spacing: 8) {
-                            Text(timeString(set.startTime))
-                                .font(.caption2)
-                                .foregroundColor(Color.duoSubtitle)
-                            Text("\(set.exercises.count)種目")
-                                .font(.caption2)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        Text("\(set.totalReps)回")
-                            .font(.caption).fontWeight(.bold)
-                            .foregroundColor(Color.duoGreen)
-                        Text("+\(set.totalPoints)")
-                            .font(.caption).fontWeight(.bold)
-                            .foregroundColor(Color.duoGold)
-                    }
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(Color.duoGreen)
-                }
-                .padding(12)
-                .background(isExpanded ? Color.duoGreen.opacity(0.08) : Color.duoBg)
-                .cornerRadius(10)
-            }
-            .buttonStyle(.plain)
-
-            // 詳細（展開時のみ表示）
-            if isExpanded {
-                VStack(spacing: 6) {
-                    ForEach(set.exercises) { ex in
-                        HStack(spacing: 8) {
-                            Text(emojiFor(ex.exerciseName))
-                                .font(.body)
-                                .frame(width: 28, height: 28)
-                                .background(Color.duoGreen.opacity(0.12))
-                                .cornerRadius(8)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(ex.exerciseName)
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(Color.duoDark)
-                                Text("\(ex.reps) 回")
-                                    .font(.caption2).fontWeight(.semibold)
-                                    .foregroundColor(Color.duoSubtitle)
-                            }
-
-                            Spacer()
-
-                            Text("+\(ex.points) XP")
-                                .font(.caption2).fontWeight(.bold)
-                                .foregroundColor(Color.duoGold)
-                                .padding(.horizontal, 7).padding(.vertical, 3)
-                                .background(Color.duoYellow.opacity(0.22))
-                                .cornerRadius(5)
-                        }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 10)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                    }
-                }
-                .padding(.top, 6)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-                .background(Color.duoGreen.opacity(0.05))
-                .cornerRadius(10)
-            }
-        }
-    }
 
     private func timeString(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -1098,11 +1330,15 @@ struct DashboardView: View {
             async let freshSets = authManager.getDailySets()
             async let weeklyProgress = authManager.getWeeklySetProgress()
             async let calGoal = authManager.getDailyCalorieGoal()
-            let (ex, sets, weekProg, calorie) = await (freshEx, freshSets, weeklyProgress, calGoal)
+            async let setCount = authManager.getTodaySetCount()
+            async let setGoal = authManager.getDailySetGoal()
+            let (ex, sets, weekProg, calorie, count, goal) = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal)
             todayExercises = ex
             dailySets      = sets
             weeklySetProgress = weekProg
             calorieGoal = calorie
+            todaySetCount = count
+            dailySetGoal = goal
             recalcTotals()
         }
     }
@@ -1114,6 +1350,27 @@ struct DashboardView: View {
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
             return acc + Double(ex.reps) * rate
         })
+    }
+}
+
+// MARK: - View Extensions
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
     }
 }
 

@@ -11,8 +11,8 @@ class MotionDetectionManager: NSObject, ObservableObject {
     private let motionManager = CMMotionManager()
     private var baselineAcceleration: Double = 0.0
     private var accelerationPeaks: [Double] = []
-    private let peakThreshold: Double = 1.5
-    private let repThreshold: Double = 0.5
+    private let peakThreshold: Double = 1.15  // 1.5から大幅に下げて高感度化
+    private let repThreshold: Double = 0.3    // 0.5から下げて小さな動きも検出
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable else { return }
@@ -69,12 +69,12 @@ class MotionDetectionManager: NSObject, ObservableObject {
     private func detectRep(acceleration: Double, exerciseType: ExerciseType) {
         currentAcceleration = acceleration
 
-        // Detect if acceleration exceeds threshold
-        let threshold = baselineAcceleration + (peakThreshold * 0.5)
+        // Detect if acceleration exceeds threshold（より低い閾値で検出）
+        let threshold = baselineAcceleration + (peakThreshold * 0.35)  // 0.5から0.35に下げる
 
         if acceleration > threshold {
             accelerationPeaks.append(acceleration)
-        } else if !accelerationPeaks.isEmpty && acceleration < baselineAcceleration + 0.3 {
+        } else if !accelerationPeaks.isEmpty && acceleration < baselineAcceleration + 0.2 {  // 0.3から0.2に
             // Peak detected and acceleration returned to baseline
             detectRepCompletion()
         }
@@ -86,11 +86,12 @@ class MotionDetectionManager: NSObject, ObservableObject {
         let peak = accelerationPeaks.max() ?? 0
         let consistency = calculateConsistency()
 
-        if peak > peakThreshold {
+        // より低い閾値でもカウント
+        if peak > peakThreshold * 0.8 {  // 完全な閾値でなく80%でもOK
             repCount += 1
 
-            // Calculate form score based on consistency
-            formScore = min(100.0, consistency * 100)
+            // Calculate form score based on consistency（緩めに評価）
+            formScore = max(70.0, min(100.0, consistency * 100))
 
             // Reset for next rep
             accelerationPeaks = []

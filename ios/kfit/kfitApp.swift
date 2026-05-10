@@ -130,12 +130,34 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler([.banner, .sound, .badge])
     }
 
-    // 通知タップ時のハンドリング（将来的に特定画面へ遷移可能）
+    // 通知タップ時のハンドリング
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let userInfo = response.notification.request.content.userInfo
+
+        // アクションボタンがタップされた場合
+        if response.actionIdentifier == NotificationManager.Action.startWorkout {
+            print("[AppDelegate] 🏋️ Start Workout action tapped - sending signal to Watch")
+            // Watchアプリを自動起動
+            iOSWatchBridge.shared.sendStartWorkoutSignal()
+        } else if response.actionIdentifier == NotificationManager.Action.recordWeight {
+            print("[AppDelegate] ⚖️ Record Weight action tapped")
+            // 体重記録画面への遷移（将来実装）
+        }
+        // 通知本体がタップされた場合（デフォルトアクション）
+        else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            if let action = userInfo["action"] as? String {
+                if action == "startWorkout" {
+                    print("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
+                    // Watchアプリを自動起動
+                    iOSWatchBridge.shared.sendStartWorkoutSignal()
+                }
+            }
+        }
+
         completionHandler()
     }
 }

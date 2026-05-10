@@ -2,26 +2,26 @@
 
 ## カロリー消費率（kcal/rep）
 
-| Exercise ID | kcal/rep | 実装場所 |
-|-------------|----------|----------|
-| pushup, push-up | 0.5 | iOS: HealthKitManager.swift, Web: firebase.ts, Watch: 同期 |
-| squat | 0.6 | 同上 |
-| situp, sit-up | 0.3 | 同上 |
-| lunge | 0.5 | 同上 |
-| burpee | 1.0 | 同上 |
-| plank | 0.1 | 同上 |
-| default | 0.4 | 同上 |
+| Exercise ID | kcal/rep | 単位 | 実装場所 |
+|-------------|----------|------|----------|
+| pushup, push-up | 0.5 | 回 | iOS: HealthKitManager.swift, Web: firebase.ts, Watch: 同期 |
+| squat | 0.6 | 回 | 同上 |
+| situp, sit-up | 0.3 | 回 | 同上 |
+| lunge | 0.5 | 回 | 同上 |
+| burpee | 1.0 | 回 | 同上 |
+| plank | 0.1 | 秒（45秒=1セット） | 同上 |
+| default | 0.4 | 回 | 同上 |
 
 ## ポイント計算（XP/rep）
 
-| Exercise ID | basePoints | 実装場所 |
-|-------------|------------|----------|
-| pushup, push-up | 2 | iOS: Firestore, Web: firebase.ts |
-| squat | 2 | 同上 |
-| situp, sit-up | 1 | 同上 |
-| lunge | 2 | 同上 |
-| burpee | 5 | 同上 |
-| plank | 1 | 同上 |
+| Exercise ID | basePoints | 単位 | 実装場所 |
+|-------------|------------|------|----------|
+| pushup, push-up | 2 | 回 | iOS: Firestore, Web: firebase.ts |
+| squat | 2 | 回 | 同上 |
+| situp, sit-up | 1 | 回 | 同上 |
+| lunge | 2 | 回 | 同上 |
+| burpee | 5 | 回 | 同上 |
+| plank | 1 | 秒 | 同上 |
 
 ## デフォルト目標
 

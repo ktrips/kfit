@@ -409,12 +409,31 @@ class AuthenticationManager: ObservableObject {
     func recordExerciseDirect(exerciseId: String, exerciseName: String, reps: Int, points: Int) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         let now = Date()
+
+        // completed-exercises に個別記録
         let data: [String: Any] = [
             "exerciseId": exerciseId, "exerciseName": exerciseName,
             "reps": reps, "points": points, "formScore": 85.0, "timestamp": now
         ]
         try? await db.collection("users").document(userId)
             .collection("completed-exercises").addDocument(data: data)
+
+        // completed-sets にも記録（Web互換・セット同期用）
+        let setDoc: [String: Any] = [
+            "timestamp": now,
+            "exercises": [[
+                "exerciseId": exerciseId,
+                "exerciseName": exerciseName,
+                "reps": reps,
+                "points": points
+            ]],
+            "totalXP": points,
+            "totalReps": reps,
+            "source": "ios-direct"
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-sets").addDocument(data: setDoc)
+
         await updateStreakAndPoints(userId: userId, points: points, now: now)
         NotificationManager.shared.handleWorkoutRecorded()
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
@@ -431,6 +450,9 @@ class AuthenticationManager: ObservableObject {
                 print("✅ HealthKit: Direct exercise saved - \(exerciseName) \(reps)rep")
             }
         }
+
+        // キャッシュ無効化
+        invalidateTodayExercisesCache()
     }
 
     // MARK: - History
@@ -545,7 +567,7 @@ class AuthenticationManager: ObservableObject {
         let (startOfDay, endOfDay) = todayRange()
         do {
             let snapshot = try await db.collection("users").document(userId)
-                .collection("completed-exercises")
+                .collection("completed-sets")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .cache)
@@ -568,10 +590,10 @@ class AuthenticationManager: ObservableObject {
 
         do {
             let snapshot = try await db.collection("users").document(userId)
-                .collection("completed-exercises")
+                .collection("completed-sets")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
-                .getDocuments(source: .server)
+                .getDocuments(source: .default)
             let sets = buildDailySets(from: snapshot)
             print("✅ getDailySets: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
             return sets
@@ -582,26 +604,16 @@ class AuthenticationManager: ObservableObject {
     }
 
     private func buildDailySets(from snapshot: QuerySnapshot) -> DailySets {
+        // completed-sets から直接セット情報を取得（Web互換）
         let timestamps: [Date] = snapshot.documents
-            .compactMap { try? $0.data(as: CompletedExercise.self) }
-            .map { $0.timestamp }
+            .compactMap { $0.data()["timestamp"] as? Timestamp }
+            .map { $0.dateValue() }
             .sorted()
-
-        var sessions: [Date] = []
-        var lastTime: Date? = nil
-        for ts in timestamps {
-            if let last = lastTime, ts.timeIntervalSince(last) <= 30 * 60 {
-                // 同セッション内 — スキップ
-            } else {
-                sessions.append(ts)
-            }
-            lastTime = ts
-        }
 
         let cal    = Calendar.current
         let noon   = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
-        let amSets = sessions.filter { $0 < noon }.count
-        let pmSets = sessions.filter { $0 >= noon }.count
+        let amSets = timestamps.filter { $0 < noon }.count
+        let pmSets = timestamps.filter { $0 >= noon }.count
         return DailySets(amSets: amSets, pmSets: pmSets)
     }
 
@@ -696,6 +708,144 @@ class AuthenticationManager: ObservableObject {
         try? await db.collection("users").document(userId)
             .collection("settings").document("calorie-goal")
             .setData(["targetCalories": targetCalories, "updatedAt": Date()])
+    }
+
+    /// 今日完了したセット数を取得
+    func getTodaySetCount() async -> Int {
+        guard let userId = Auth.auth().currentUser?.uid else { return 0 }
+
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+
+        let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-sets")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments()
+
+        return snapshot?.documents.count ?? 0
+    }
+
+    /// 1日の目標セット数を取得
+    func getDailySetGoal() async -> Int {
+        guard let userId = Auth.auth().currentUser?.uid else { return 2 }
+
+        let doc = try? await db.collection("users").document(userId)
+            .collection("settings").document("daily-set-goal").getDocument()
+
+        return doc?.data()?["dailySets"] as? Int ?? 2
+    }
+
+    /// 1日の目標セット数を保存
+    func saveDailySetGoal(_ goal: Int) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("daily-set-goal")
+            .setData(["dailySets": goal, "updatedAt": Date()])
+    }
+
+    // MARK: - セット構成設定
+
+    /// 1セットのメニュー構成を取得
+    func getSetConfiguration() async -> SetConfiguration {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return SetConfiguration.defaultSet
+        }
+
+        let doc = try? await db.collection("users").document(userId)
+            .collection("settings").document("set-configuration").getDocument()
+
+        guard let data = doc?.data(),
+              let exercisesData = try? JSONSerialization.data(withJSONObject: data["exercises"] ?? []),
+              let config = try? JSONDecoder().decode(SetConfiguration.self, from: exercisesData)
+        else {
+            return SetConfiguration.defaultSet
+        }
+
+        return config
+    }
+
+    /// 1セットのメニュー構成を保存
+    func saveSetConfiguration(_ config: SetConfiguration) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+
+        let exercisesArray = config.exercises.map { ex in
+            [
+                "exerciseId": ex.exerciseId,
+                "exerciseName": ex.exerciseName,
+                "targetReps": ex.targetReps,
+                "order": ex.order
+            ] as [String: Any]
+        }
+
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("set-configuration")
+            .setData([
+                "exercises": exercisesArray,
+                "updatedAt": Date()
+            ])
+    }
+
+    // MARK: - モーションセンサー感度設定
+
+    /// モーションセンサー感度を取得
+    func getMotionSensitivity(for exerciseId: String) async -> MotionSensitivity {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return MotionSensitivity.defaultSettings[exerciseId] ?? MotionSensitivity(exerciseId: exerciseId, threshold: 0.08, minInterval: 0.8)
+        }
+
+        let doc = try? await db.collection("users").document(userId)
+            .collection("settings").document("motion-sensitivity-\(exerciseId)").getDocument()
+
+        guard let data = doc?.data() else {
+            return MotionSensitivity.defaultSettings[exerciseId] ?? MotionSensitivity(exerciseId: exerciseId, threshold: 0.08, minInterval: 0.8)
+        }
+
+        return MotionSensitivity(
+            exerciseId: exerciseId,
+            threshold: data["threshold"] as? Double ?? 0.08,
+            minInterval: data["minInterval"] as? Double ?? 0.8
+        )
+    }
+
+    /// 全種目のモーションセンサー感度を取得
+    func getAllMotionSensitivity() async -> [String: MotionSensitivity] {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return MotionSensitivity.defaultSettings
+        }
+
+        var result: [String: MotionSensitivity] = [:]
+
+        for (exerciseId, defaultSetting) in MotionSensitivity.defaultSettings {
+            let doc = try? await db.collection("users").document(userId)
+                .collection("settings").document("motion-sensitivity-\(exerciseId)").getDocument()
+
+            if let data = doc?.data() {
+                result[exerciseId] = MotionSensitivity(
+                    exerciseId: exerciseId,
+                    threshold: data["threshold"] as? Double ?? defaultSetting.threshold,
+                    minInterval: data["minInterval"] as? Double ?? defaultSetting.minInterval
+                )
+            } else {
+                result[exerciseId] = defaultSetting
+            }
+        }
+
+        return result
+    }
+
+    /// モーションセンサー感度を保存
+    func saveMotionSensitivity(_ sensitivity: MotionSensitivity) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("motion-sensitivity-\(sensitivity.exerciseId)")
+            .setData([
+                "threshold": sensitivity.threshold,
+                "minInterval": sensitivity.minInterval,
+                "updatedAt": Date()
+            ])
     }
 
     // MARK: - Helper: Week ID
@@ -828,7 +978,8 @@ struct DailyCalorieGoal {
     init(target: Int = 500, consumed: Int = 0) {
         self.targetCalories = target
         self.consumedCalories = consumed
-        self.percentAchieved = target > 0 ? min(Int(Double(consumed) / Double(target) * 100), 100) : 0
+        // 100%を超えても計算し続ける（minを削除）
+        self.percentAchieved = target > 0 ? Int(Double(consumed) / Double(target) * 100) : 0
     }
 }
 
@@ -838,6 +989,44 @@ struct WeeklyGoal: Codable, Identifiable {
     var exerciseName: String
     var dailyReps: Int
     var targetReps: Int
+}
+
+// MARK: - セット構成設定
+
+/// 1セットのメニュー構成
+struct SetConfiguration: Codable {
+    var exercises: [ExerciseInSet]
+
+    static let defaultSet = SetConfiguration(exercises: [
+        ExerciseInSet(exerciseId: "pushup", exerciseName: "腕立て伏せ", targetReps: 10, order: 0),
+        ExerciseInSet(exerciseId: "squat", exerciseName: "スクワット", targetReps: 15, order: 1),
+        ExerciseInSet(exerciseId: "situp", exerciseName: "腹筋", targetReps: 10, order: 2)
+    ])
+}
+
+/// セット内の1種目
+struct ExerciseInSet: Codable, Identifiable {
+    var id: String { exerciseId }
+    var exerciseId: String
+    var exerciseName: String
+    var targetReps: Int
+    var order: Int
+}
+
+/// モーションセンサー感度設定
+struct MotionSensitivity: Codable {
+    var exerciseId: String
+    var threshold: Double       // 変化閾値（デフォルト: 0.08）
+    var minInterval: Double     // 最小rep間隔（デフォルト: 0.8秒）
+
+    static let defaultSettings: [String: MotionSensitivity] = [
+        "pushup": MotionSensitivity(exerciseId: "pushup", threshold: 0.06, minInterval: 0.6),
+        "squat": MotionSensitivity(exerciseId: "squat", threshold: 0.08, minInterval: 0.7),
+        "situp": MotionSensitivity(exerciseId: "situp", threshold: 0.10, minInterval: 0.8),
+        "lunge": MotionSensitivity(exerciseId: "lunge", threshold: 0.15, minInterval: 1.2),
+        "burpee": MotionSensitivity(exerciseId: "burpee", threshold: 0.20, minInterval: 2.0),
+        "plank": MotionSensitivity(exerciseId: "plank", threshold: 0.0, minInterval: 0.0)
+    ]
 }
 
 struct DayExercises: Identifiable {

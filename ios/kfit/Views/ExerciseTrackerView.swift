@@ -124,6 +124,10 @@ struct ExerciseTrackerView: View {
             guard isManualMode && !isPlankSelected else { return }
             if count == current.target && !showGoalReached { triggerGoalReached() }
         }
+        .onChange(of: plankSeconds) { seconds in
+            guard isPlankSelected else { return }
+            if seconds == current.target && !showGoalReached { triggerGoalReached() }
+        }
     }
 
     // MARK: - 進捗ドット
@@ -145,8 +149,13 @@ struct ExerciseTrackerView: View {
             Text(current.name)
                 .font(.title2).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
-            Text("目標: \(current.target) 回")
-                .font(.caption).foregroundColor(Color.duoSubtitle)
+            if isPlankSelected {
+                Text("目標: \(current.target) 秒")
+                    .font(.caption).foregroundColor(Color.duoSubtitle)
+            } else {
+                Text("目標: \(current.target) 回")
+                    .font(.caption).foregroundColor(Color.duoSubtitle)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
@@ -375,7 +384,11 @@ struct ExerciseTrackerView: View {
                     Text(item.emoji).font(.callout)
                     Text(item.name).font(.caption).fontWeight(.medium)
                     Spacer()
-                    Text("\(item.reps)").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    if item.name.lowercased().contains("プランク") {
+                        Text("\(item.reps)秒").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    } else {
+                        Text("\(item.reps)回").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
                     Text("+\(item.points)").font(.caption2).fontWeight(.bold).foregroundColor(Color.duoGold)
                 }
                 .padding(.vertical, 6)
@@ -396,9 +409,15 @@ struct ExerciseTrackerView: View {
                 Text("Good job!")
                     .font(.system(size: 38, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoGreen)
-                Text("目標 \(current.target) 回 達成！")
-                    .font(.headline).fontWeight(.bold)
-                    .foregroundColor(.white)
+                if isPlankSelected {
+                    Text("目標 \(current.target) 秒 達成！")
+                        .font(.headline).fontWeight(.bold)
+                        .foregroundColor(.white)
+                } else {
+                    Text("目標 \(current.target) 回 達成！")
+                        .font(.headline).fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
                 Text("続けても記録できます 💪")
                     .font(.subheadline).foregroundColor(.white.opacity(0.75))
             }

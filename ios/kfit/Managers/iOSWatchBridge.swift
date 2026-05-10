@@ -176,12 +176,33 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             "todayXP":   todayXP,
         ]
 
-        // 目標カロリー情報を取得して送信
+        // 目標カロリー情報 & 統一指標を取得して送信
         Task {
             let calorieGoal = await AuthenticationManager.shared.getDailyCalorieGoal()
             payload["calorieTarget"] = calorieGoal.targetCalories
             payload["calorieConsumed"] = calorieGoal.consumedCalories
             payload["caloriePercent"] = calorieGoal.percentAchieved
+
+            // 統一指標: セット数とカロリー%
+            let todaySetCount = await AuthenticationManager.shared.getTodaySetCount()
+            let dailySetGoal = await AuthenticationManager.shared.getDailySetGoal()
+            payload["todaySetCount"] = todaySetCount
+            payload["dailySetGoal"] = dailySetGoal
+            payload["caloriePercentage"] = calorieGoal.percentAchieved
+
+            // モーション感度設定をWatchに送信
+            let motionSensitivity = await AuthenticationManager.shared.getAllMotionSensitivity()
+            var sensitivityData: [[String: Any]] = []
+            for (exerciseId, sens) in motionSensitivity {
+                sensitivityData.append([
+                    "exerciseId": exerciseId,
+                    "threshold": sens.threshold,
+                    "minInterval": sens.minInterval
+                ])
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: sensitivityData) {
+                payload["motionSensitivity"] = data
+            }
 
             // 今日の運動記録を含める
             if !todayExercises.isEmpty {

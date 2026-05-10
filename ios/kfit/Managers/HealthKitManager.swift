@@ -83,6 +83,11 @@ final class HealthKitManager: ObservableObject {
     @Published var lastNightDeepHours:  Double         = 0
     @Published var sleepSegments:       [SleepSegment] = []
 
+    // 体重・体脂肪
+    @Published var latestBodyMass: Double = 0           // kg
+    @Published var latestBodyFatPercentage: Double = 0  // %
+    @Published var todayBodyMassMeasurements: Int = 0   // 今日の測定回数
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
@@ -92,6 +97,8 @@ final class HealthKitManager: ObservableObject {
             .restingHeartRate,
             .stepCount,
             .activeEnergyBurned,
+            .bodyMass,              // 体重
+            .bodyFatPercentage,     // 体脂肪率
         ]
         for id in quantityIds {
             if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
@@ -247,6 +254,9 @@ final class HealthKitManager: ObservableObject {
         async let restHR   = fetchRestingHeartRate()
         async let hrList   = fetchTodayHRSamples()
         async let sleep    = fetchLastNightSleep()
+        async let bodyMass = fetchLatestBodyMass()
+        async let bodyFat  = fetchLatestBodyFatPercentage()
+        async let bodyMassCount = fetchTodayBodyMassMeasurements()
 
         todaySteps          = await steps
         todayCalories       = await calories
@@ -257,8 +267,11 @@ final class HealthKitManager: ObservableObject {
         lastNightTotalHours = sleepResult.total
         lastNightDeepHours  = sleepResult.deep
         sleepSegments       = sleepResult.segments
+        latestBodyMass      = await bodyMass
+        latestBodyFatPercentage = await bodyFat
+        todayBodyMassMeasurements = await bodyMassCount
 
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h")
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%")
     }
 
     // MARK: - 歩数
@@ -416,6 +429,59 @@ final class HealthKitManager: ObservableObject {
                 cont.resume(returning: val)
             }
             store.execute(q)
+        }
+    }
+
+    // MARK: - 体重・体脂肪の取得
+
+    private func fetchLatestBodyMass() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return 0 }
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sort]) { _, samples, _ in
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+                let kg = sample.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                Task { @MainActor in self.latestBodyMass = kg }
+                continuation.resume(returning: kg)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func fetchLatestBodyFatPercentage() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else { return 0 }
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sort]) { _, samples, _ in
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+                let pct = sample.quantity.doubleValue(for: .percent()) * 100
+                Task { @MainActor in self.latestBodyFatPercentage = pct }
+                continuation.resume(returning: pct)
+            }
+            store.execute(query)
+        }
+    }
+
+    func fetchTodayBodyMassMeasurements() async -> Int {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return 0 }
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: endOfDay, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                continuation.resume(returning: samples?.count ?? 0)
+            }
+            store.execute(query)
         }
     }
 }

@@ -149,7 +149,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats - 統一指標 */}
         <div className="grid grid-cols-3 gap-3">
           <div className="duo-stat-card" style={{ backgroundColor: '#FFF3E0', borderColor: '#FF9600', boxShadow: '0 3px 0 #CC7000' }}>
             <span className="text-3xl">🔥</span>
@@ -157,17 +157,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CC7000' }}>日連続</p>
           </div>
           <div className="duo-stat-card" style={{ backgroundColor: '#E8F5E9', borderColor: '#58CC02', boxShadow: '0 3px 0 #46A302' }}>
-            <span className="text-3xl">⚡</span>
-            <p className="text-2xl font-black text-duo-green leading-tight">{totalReps}回</p>
-            <p className="text-sm font-extrabold leading-none" style={{ color: '#46A302' }}>
-              {totalCalories}kcal
-            </p>
-            <p className="text-xs font-extrabold text-duo-green-dark uppercase tracking-wide mt-0.5">今日</p>
+            <span className="text-3xl">📊</span>
+            <p className="text-2xl font-black text-duo-green leading-tight">{todaySetCount}/{dailySets}</p>
+            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#46A302' }}>セット</p>
           </div>
           <div className="duo-stat-card" style={{ backgroundColor: '#FFF8E1', borderColor: '#FFD900', boxShadow: '0 3px 0 #CE9700' }}>
-            <span className="text-3xl">⭐</span>
-            <p className="text-3xl font-black" style={{ color: '#CE9700' }}>{totalPoints}</p>
-            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CE9700' }}>今日のXP</p>
+            <span className="text-3xl">🔥</span>
+            <p className="text-3xl font-black" style={{ color: '#CE9700' }}>{calorieGoal.percentAchieved}%</p>
+            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CE9700' }}>カロリー</p>
           </div>
         </div>
 
@@ -453,38 +450,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* Health Data Card (placeholder for web) */}
-        <div className="duo-card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">💚</span>
-            <h2 className="text-base font-black text-duo-dark">今日の健康データ</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <div className="text-2xl mb-1">👟</div>
-              <p className="text-duo-gray text-xs font-bold mb-1">歩数</p>
-              <p className="text-duo-dark text-lg font-black">---</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <div className="text-2xl mb-1">❤️</div>
-              <p className="text-duo-gray text-xs font-bold mb-1">心拍数</p>
-              <p className="text-duo-dark text-lg font-black">--- bpm</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <div className="text-2xl mb-1">🔥</div>
-              <p className="text-duo-gray text-xs font-bold mb-1">消費カロリー</p>
-              <p className="text-duo-dark text-lg font-black">--- kcal</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <div className="text-2xl mb-1">😴</div>
-              <p className="text-duo-gray text-xs font-bold mb-1">睡眠時間</p>
-              <p className="text-duo-dark text-lg font-black">--- h</p>
-            </div>
-          </div>
-          <p className="text-duo-gray text-xs font-bold mt-3 text-center">
-            💡 健康データはiOSアプリで表示されます
-          </p>
-        </div>
+        {/* Health Data Card - hidden on web, iOS only */}
 
         {/* 90-day goal */}
         <div className="duo-card p-5">

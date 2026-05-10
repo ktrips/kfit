@@ -47,7 +47,7 @@ struct ExerciseTrackerView: View {
     @State private var pulseAnimation = false
 
     /// セット内の記録済み種目
-    @State private var completedExercises: [(name: String, emoji: String, reps: Int, points: Int)] = []
+    @State private var completedExercises: [(id: String, name: String, emoji: String, reps: Int, points: Int)] = []
 
     private var current: (emoji: String, name: String, target: Int, id: String, xp: Int) {
         flowSteps[stepIdx]
@@ -533,11 +533,11 @@ struct ExerciseTrackerView: View {
 
         let xp = currentReps * current.xp
         earnedXP += xp
-        completedExercises.append((current.name, current.emoji, currentReps, xp))
+        completedExercises.append((current.id, current.name, current.emoji, currentReps, xp))
 
-        // 記録を保存
+        // 個別の種目をcompleted-exercisesに記録（種目ごと）
         Task {
-            await authManager.recordExerciseDirect(
+            await authManager.recordExerciseOnly(
                 exerciseId: current.id,
                 exerciseName: current.name,
                 reps: currentReps,
@@ -546,9 +546,15 @@ struct ExerciseTrackerView: View {
         }
 
         if isLast {
-            // 全種目完了
+            // 全種目完了 → 1セットとして記録
             isSubmitting = true
             Task {
+                // 全種目のデータを1セットとして記録
+                let setExercises = completedExercises.map { ex in
+                    (exerciseId: ex.id, exerciseName: ex.name, reps: ex.reps, points: ex.points)
+                }
+                await authManager.recordCompletedSet(exercises: setExercises)
+
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 await MainActor.run {
                     isSubmitting = false

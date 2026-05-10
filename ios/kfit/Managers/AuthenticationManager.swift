@@ -455,6 +455,61 @@ class AuthenticationManager: ObservableObject {
         invalidateTodayExercisesCache()
     }
 
+    /// 種目のみを記録（セットは記録しない）
+    func recordExerciseOnly(exerciseId: String, exerciseName: String, reps: Int, points: Int) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        // completed-exercises に個別記録
+        let data: [String: Any] = [
+            "exerciseId": exerciseId, "exerciseName": exerciseName,
+            "reps": reps, "points": points, "formScore": 85.0, "timestamp": now
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-exercises").addDocument(data: data)
+
+        // Apple Health書き込み
+        if HealthKitManager.shared.isAvailable && HealthKitManager.shared.isAuthorized {
+            await HealthKitManager.shared.saveExercise(
+                exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
+            )
+        }
+    }
+
+    /// 完了したセットを1件として記録
+    func recordCompletedSet(exercises: [(exerciseId: String, exerciseName: String, reps: Int, points: Int)]) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        let totalXP = exercises.reduce(0) { $0 + $1.points }
+        let totalReps = exercises.reduce(0) { $0 + $1.reps }
+
+        // completed-sets に1セットとして記録
+        let setDoc: [String: Any] = [
+            "timestamp": now,
+            "exercises": exercises.map { ex in
+                [
+                    "exerciseId": ex.exerciseId,
+                    "exerciseName": ex.exerciseName,
+                    "reps": ex.reps,
+                    "points": ex.points
+                ]
+            },
+            "totalXP": totalXP,
+            "totalReps": totalReps,
+            "source": "ios-set"
+        ]
+        try? await db.collection("users").document(userId)
+            .collection("completed-sets").addDocument(data: setDoc)
+
+        await updateStreakAndPoints(userId: userId, points: totalXP, now: now)
+        NotificationManager.shared.handleWorkoutRecorded()
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+
+        // キャッシュ無効化
+        invalidateTodayExercisesCache()
+    }
+
     // MARK: - History
     func getRecentExercises(days: Int = 14) async -> [DayExercises] {
         guard let userId = Auth.auth().currentUser?.uid else { return [] }

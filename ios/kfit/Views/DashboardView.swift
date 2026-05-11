@@ -26,6 +26,10 @@ struct DashboardView: View {
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
     @State private var showTodayRecords = false  // 今日の記録を表示するか
     @State private var showMenu = false  // ハンバーガーメニューの表示状態
+    @State private var showHealthGoalEdit = false  // 健康目標編集モーダル
+    @State private var tempSleepGoal = 7.0  // 一時的な睡眠目標
+    @State private var tempStepsGoal = 10000  // 一時的な歩数目標
+    @State private var tempCaloriesGoal = 500  // 一時的な消費カロリー目標
 
     var body: some View {
         GeometryReader { geometry in
@@ -44,7 +48,6 @@ struct DashboardView: View {
                                 dailySetsAndWeeklyGoalCard
                                 calorieAndWeightCard
                                 habitStackCard
-                                healthSummaryCard
                                 challengeCard
                                 quickMenu
                             }
@@ -63,14 +66,6 @@ struct DashboardView: View {
                 }
                 .zIndex(1)
 
-                // 固定CTAボタン（最下部）
-                VStack(spacing: 0) {
-                    Spacer()
-                    if !isLoading {
-                        startTrainingButton
-                            .padding(.bottom, 0)
-                    }
-                }
 
                 // ハンバーガーメニュー（オーバーレイ）
                 if showMenu {
@@ -110,6 +105,9 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showCalorieGoalEdit) {
             calorieGoalEditSheet
+        }
+        .sheet(isPresented: $showHealthGoalEdit) {
+            healthGoalEditSheet
         }
         .onAppear {
             withAnimation { mascotBounce = true }
@@ -369,6 +367,63 @@ struct DashboardView: View {
                 .padding(16)
             }
             .buttonStyle(.plain)
+
+            // トレーニング開始ボタン
+            VStack(spacing: 0) {
+                Divider()
+                    .padding(.horizontal, 16)
+
+                Button { showTracker = true } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.22))
+                                .frame(width: 30, height: 30)
+                                .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.1 : 1.0)
+                                .animation(
+                                    todayExercises.isEmpty
+                                        ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                        : .default,
+                                    value: mascotBounce
+                                )
+                            Text(todayExercises.isEmpty ? "💪" : "➕")
+                                .font(.callout)
+                        }
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(todayExercises.isEmpty
+                                 ? "今日のトレーニングを始めよう！"
+                                 : "さらに記録する")
+                                .font(.caption).fontWeight(.black)
+                                .foregroundColor(.white)
+                            Text(todayExercises.isEmpty
+                                 ? "タップして開始"
+                                 : "\(todayExercises.count) 種目 · \(totalXP) XP")
+                                .font(.caption2)
+                                .foregroundColor(Color.white.opacity(0.85))
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.callout)
+                            .foregroundColor(Color.white.opacity(0.8))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: Color.duoGreen.opacity(0.3), radius: 6, y: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
 
             // 週間目標セクション（小さく表示）
             VStack(spacing: 0) {
@@ -714,16 +769,104 @@ struct DashboardView: View {
     }
 
 
-    // MARK: - カロリー目標 & 体重測定カード
+    // MARK: - Apple Healthデータカード
     private var calorieAndWeightCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // カロリー目標セクション
-            calorieGoalSection
+            // ヘッダー
+            HStack(spacing: 5) {
+                Image(systemName: "heart.text.square.fill")
+                    .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
+                Text("今日のApple Healthデータ").fontWeight(.black)
+                Spacer()
+                if healthKit.isAvailable && healthKit.isAuthorized {
+                    Button {
+                        tempSleepGoal = 7.0
+                        tempStepsGoal = 10000
+                        tempCaloriesGoal = calorieGoal.targetCalories
+                        showHealthGoalEdit = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.caption)
+                            .foregroundColor(Color.duoGreen)
+                    }
+                }
+            }
+            .font(.subheadline)
+            .foregroundColor(Color.duoDark)
 
-            Divider()
+            if !healthKit.isAvailable || !healthKit.isAuthorized {
+                // 未連携時のプレースホルダー
+                Button {
+                    Task {
+                        await healthKit.requestAuthorization()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "heart.text.square")
+                            .font(.title3)
+                            .foregroundColor(Color.duoSubtitle)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Apple Healthと連動する")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoDark)
+                            Text("睡眠・体重・歩数・カロリーを自動取得")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // 4つのメトリック表示
+                VStack(spacing: 10) {
+                    // 睡眠時間
+                    healthGoalRow(
+                        icon: "bed.double.fill",
+                        iconColor: Color(red: 0.451, green: 0.369, blue: 0.937),
+                        label: "睡眠時間",
+                        value: healthKit.lastNightTotalHours,
+                        goal: 7.0,
+                        unit: "時間",
+                        formatValue: { String(format: "%.1f", $0) }
+                    )
 
-            // 体重・体脂肪測定セクション
-            weightMeasurementSection
+                    Divider()
+
+                    // 体重・体脂肪
+                    healthWeightRow()
+
+                    Divider()
+
+                    // 歩数
+                    healthGoalRow(
+                        icon: "figure.walk",
+                        iconColor: Color.duoGreen,
+                        label: "歩数",
+                        value: Double(healthKit.todaySteps),
+                        goal: 10000.0,
+                        unit: "歩",
+                        formatValue: { "\(Int($0))" }
+                    )
+
+                    Divider()
+
+                    // 消費カロリー
+                    healthGoalRow(
+                        icon: "flame.fill",
+                        iconColor: Color.duoOrange,
+                        label: "消費カロリー",
+                        value: healthKit.todayCalories,
+                        goal: Double(calorieGoal.targetCalories),
+                        unit: "kcal",
+                        formatValue: { "\(Int($0))" }
+                    )
+                }
+            }
         }
         .padding(12)
         .background(Color.white)
@@ -731,132 +874,327 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
     }
 
-    private var calorieGoalSection: some View {
-        let percent = calorieGoal.percentAchieved
-        let isAchieved = percent >= 100
+    // MARK: - 健康メトリック行（目標付き）
+    private func healthGoalRow(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        value: Double,
+        goal: Double,
+        unit: String,
+        formatValue: (Double) -> String
+    ) -> some View {
+        let percent = goal > 0 ? min(Int((value / goal) * 100), 100) : 0
+        let isAchieved = value >= goal
 
-        return VStack(alignment: .leading, spacing: 10) {
-            // ヘッダー
-            HStack(spacing: 5) {
-                Image(systemName: "flame.fill")
-                    .foregroundColor(Color.duoOrange)
-                Text("今日の目標カロリー").fontWeight(.black)
-                Spacer()
-                Button {
-                    tempCalorieTarget = calorieGoal.targetCalories
-                    showCalorieGoalEdit = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.caption)
-                        .foregroundColor(Color.duoGreen)
-                }
-            }
-            .font(.subheadline)
-            .foregroundColor(Color.duoDark)
-
-            // 進捗表示
-            HStack(alignment: .bottom, spacing: 8) {
-                Text("\(calorieGoal.consumedCalories)")
-                    .font(.system(size: 32, weight: .black, design: .rounded))
-                    .foregroundColor(isAchieved ? Color.duoGreen : Color.duoOrange)
-                Text("/ \(calorieGoal.targetCalories) kcal")
+        return VStack(alignment: .leading, spacing: 6) {
+            // ヘッダー行
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundColor(iconColor)
+                Text(label)
                     .font(.caption).fontWeight(.bold)
-                    .foregroundColor(Color.duoSubtitle)
-                    .padding(.bottom, 2)
+                    .foregroundColor(Color.duoDark)
                 Spacer()
                 Text("\(percent)%")
-                    .font(.title3).fontWeight(.black)
+                    .font(.caption2).fontWeight(.bold)
                     .foregroundColor(isAchieved ? Color.duoGreen : Color.duoOrange)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background((isAchieved ? Color.duoGreen : Color.duoOrange).opacity(0.12))
+                    .cornerRadius(5)
+            }
+
+            // 値表示 & プログレスバー
+            HStack(alignment: .bottom, spacing: 6) {
+                Text(value > 0 ? formatValue(value) : "—")
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundColor(isAchieved ? Color.duoGreen : Color.duoDark)
+                Text("/ \(formatValue(goal)) \(unit)")
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(.bottom, 2)
             }
 
             // プログレスバー
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5)).frame(height: 10)
+                    Capsule().fill(Color(.systemGray5)).frame(height: 6)
                     Capsule().fill(
                         LinearGradient(
-                            colors: isAchieved ? [Color.duoGreen, Color(red: 0.57, green: 0.9, blue: 0.16)] : [Color.duoOrange, Color.duoRed],
+                            colors: isAchieved ? [Color.duoGreen, Color(red: 0.57, green: 0.9, blue: 0.16)] : [iconColor.opacity(0.7), iconColor],
                             startPoint: .leading, endPoint: .trailing
                         )
                     )
-                    .frame(width: max(10, geo.size.width * CGFloat(percent) / 100), height: 10)
+                    .frame(width: max(6, geo.size.width * CGFloat(percent) / 100), height: 6)
                 }
             }
-            .frame(height: 10)
-
-            Text(isAchieved ? "🎉 目標達成！" : "運動とApple Healthから自動集計")
-                .font(.caption2).fontWeight(.semibold)
-                .foregroundColor(isAchieved ? Color.duoGreen : Color.duoSubtitle)
+            .frame(height: 6)
         }
     }
 
-    private var weightMeasurementSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // ヘッダー
-            HStack(spacing: 5) {
-                Image(systemName: "scalemass.fill")
-                    .foregroundColor(Color.duoBlue)
-                Text("今日の体重測定").fontWeight(.black)
-                    .font(.subheadline)
-                Spacer()
-                Text("\(healthKit.todayBodyMassMeasurements)/2")
-                    .font(.caption).fontWeight(.bold)
-                    .foregroundColor(healthKit.todayBodyMassMeasurements >= 2 ? Color.duoGreen : Color.duoOrange)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background((healthKit.todayBodyMassMeasurements >= 2 ? Color.duoGreen : Color.duoOrange).opacity(0.12))
-                    .cornerRadius(8)
-            }
-            .foregroundColor(Color.duoDark)
+    // MARK: - 体重・体脂肪行（測定回数目標付き）
+    private func healthWeightRow() -> some View {
+        let measurementGoal = 2
+        let measurements = healthKit.todayBodyMassMeasurements
+        let isComplete = measurements >= measurementGoal
 
-            // 測定結果
-            HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 6) {
+            // ヘッダー行
+            HStack(spacing: 6) {
+                Image(systemName: "scalemass.fill")
+                    .font(.caption)
+                    .foregroundColor(Color.duoBlue)
+                Text("体重・体脂肪")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("\(measurements)/\(measurementGoal) 回")
+                    .font(.caption2).fontWeight(.bold)
+                    .foregroundColor(isComplete ? Color.duoGreen : Color.duoOrange)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background((isComplete ? Color.duoGreen : Color.duoOrange).opacity(0.12))
+                    .cornerRadius(5)
+            }
+
+            // 値表示
+            HStack(spacing: 10) {
                 // 体重
                 HStack(spacing: 4) {
                     Image(systemName: "scalemass")
-                        .font(.caption)
+                        .font(.system(size: 10))
                         .foregroundColor(Color.duoBlue)
                     if healthKit.latestBodyMass > 0 {
                         Text(String(format: "%.1f kg", healthKit.latestBodyMass))
-                            .font(.subheadline).fontWeight(.bold)
+                            .font(.caption).fontWeight(.bold)
                             .foregroundColor(Color.duoDark)
                     } else {
                         Text("未測定")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6)
+                .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color(red: 0.878, green: 0.941, blue: 1.0))
-                .cornerRadius(8)
+                .cornerRadius(6)
 
                 // 体脂肪
                 HStack(spacing: 4) {
                     Image(systemName: "percent")
-                        .font(.caption)
+                        .font(.system(size: 10))
                         .foregroundColor(Color.duoOrange)
                     if healthKit.latestBodyFatPercentage > 0 {
                         Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                            .font(.subheadline).fontWeight(.bold)
+                            .font(.caption).fontWeight(.bold)
                             .foregroundColor(Color.duoDark)
                     } else {
                         Text("未測定")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6)
+                .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color(red: 1.0, green: 0.925, blue: 0.878))
-                .cornerRadius(8)
+                .cornerRadius(6)
             }
 
-            if healthKit.todayBodyMassMeasurements < 2 {
-                Text(healthKit.todayBodyMassMeasurements == 0
-                     ? "⚖️ 朝と夜の2回測定しましょう"
-                     : "⚖️ あと1回測定しましょう")
-                    .font(.caption2).fontWeight(.semibold)
+            // メッセージ
+            if measurements < measurementGoal {
+                Text(measurements == 0 ? "⚖️ 朝と夜の2回測定しましょう" : "⚖️ あと1回測定しましょう")
+                    .font(.system(size: 10)).fontWeight(.semibold)
                     .foregroundColor(Color.duoSubtitle)
             } else {
                 Text("✅ 今日の測定完了！")
-                    .font(.caption2).fontWeight(.semibold)
+                    .font(.system(size: 10)).fontWeight(.semibold)
                     .foregroundColor(Color.duoGreen)
+            }
+        }
+    }
+
+    // MARK: - 健康目標編集シート
+    private var healthGoalEditSheet: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Apple Health目標を設定")
+                    .font(.headline)
+                    .foregroundColor(Color.duoDark)
+                    .padding(.top, 20)
+
+                // 睡眠時間
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "bed.double.fill")
+                            .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
+                        Text("睡眠時間")
+                            .font(.subheadline).fontWeight(.bold)
+                        Spacer()
+                    }
+                    HStack {
+                        Button {
+                            if tempSleepGoal > 1.0 {
+                                tempSleepGoal -= 0.5
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoOrange)
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 2) {
+                            Text(String(format: "%.1f", tempSleepGoal))
+                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoGreen)
+                            Text("時間")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            tempSleepGoal += 0.5
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding()
+                .background(Color(red: 0.918, green: 0.902, blue: 1.0))
+                .cornerRadius(12)
+
+                // 歩数
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "figure.walk")
+                            .foregroundColor(Color.duoGreen)
+                        Text("歩数")
+                            .font(.subheadline).fontWeight(.bold)
+                        Spacer()
+                    }
+                    HStack {
+                        Button {
+                            if tempStepsGoal > 1000 {
+                                tempStepsGoal -= 1000
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoOrange)
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 2) {
+                            Text("\(tempStepsGoal)")
+                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoGreen)
+                            Text("歩")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            tempStepsGoal += 1000
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding()
+                .background(Color(red: 0.843, green: 1.0, blue: 0.722))
+                .cornerRadius(12)
+
+                // 消費カロリー
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "flame.fill")
+                            .foregroundColor(Color.duoOrange)
+                        Text("消費カロリー")
+                            .font(.subheadline).fontWeight(.bold)
+                        Spacer()
+                    }
+                    HStack {
+                        Button {
+                            if tempCaloriesGoal > 100 {
+                                tempCaloriesGoal -= 50
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoOrange)
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 2) {
+                            Text("\(tempCaloriesGoal)")
+                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoGreen)
+                            Text("kcal")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            tempCaloriesGoal += 50
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding()
+                .background(Color(red: 1.0, green: 0.953, blue: 0.878))
+                .cornerRadius(12)
+
+                Button {
+                    // 目標を保存（現在はローカルのみ、将来的にFirestoreに保存）
+                    // TODO: Firestoreに保存する処理を追加
+                    showHealthGoalEdit = false
+                } label: {
+                    Text("目標を設定")
+                        .font(.headline)
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            LinearGradient(
+                                colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(16)
+                }
+                .padding(.horizontal, 20)
+
+                Spacer()
+            }
+            .padding(.horizontal)
+            .navigationTitle("健康目標設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") {
+                        showHealthGoalEdit = false
+                    }
+                }
             }
         }
     }

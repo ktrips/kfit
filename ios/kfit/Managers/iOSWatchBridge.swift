@@ -239,14 +239,16 @@ struct WatchWorkoutData: Codable {
 }
 
 /// Watch 側の WatchSetData と共通のシリアライズ構造（iOS 側ミラー）
+/// Watchセット内の個別種目
+struct WatchSetExercise: Codable {
+    let exerciseId: String
+    let exerciseName: String
+    let reps: Int
+    let points: Int
+}
+
 struct WatchSetData: Codable {
-    struct Exercise: Codable {
-        let exerciseId: String
-        let exerciseName: String
-        let reps: Int
-        let points: Int
-    }
-    let exercises: [Exercise]
+    let exercises: [WatchSetExercise]
     let totalXP: Int
     let totalReps: Int
     let timestamp: Date

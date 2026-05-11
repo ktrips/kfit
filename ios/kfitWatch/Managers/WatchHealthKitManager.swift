@@ -16,6 +16,8 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayCalories: Int = 0
     @Published var averageHeartRate: Int = 0
     @Published var sleepHours: Double = 0.0
+    @Published var latestBodyMass: Double = 0.0  // 体重 (kg)
+    @Published var latestBodyFatPercentage: Double = 0.0  // 体脂肪率 (%)
 
     private init() {}
 
@@ -32,6 +34,8 @@ class WatchHealthKitManager: ObservableObject {
             HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
             HKObjectType.quantityType(forIdentifier: .heartRate)!,
             HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!,
+            HKObjectType.quantityType(forIdentifier: .bodyMass)!,
+            HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
         ]
 
         do {
@@ -53,6 +57,8 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchTodayCalories() }
             group.addTask { await self.fetchAverageHeartRate() }
             group.addTask { await self.fetchSleepHours() }
+            group.addTask { await self.fetchLatestBodyMass() }
+            group.addTask { await self.fetchLatestBodyFatPercentage() }
         }
     }
 
@@ -165,6 +171,58 @@ class WatchHealthKitManager: ObservableObject {
                 let hours = totalSeconds / 3600.0
                 self?.sleepHours = hours
                 print("[WatchHealthKit] 😴 Sleep: \(String(format: "%.1f", hours)) hours")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Body Mass
+
+    func fetchLatestBodyMass() async {
+        guard let bodyMassType = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return }
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        let query = HKSampleQuery(
+            sampleType: bodyMassType,
+            predicate: nil,
+            limit: 1,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error {
+                    print("[WatchHealthKit] Body mass query error: \(error)")
+                    return
+                }
+                guard let sample = samples?.first as? HKQuantitySample else { return }
+                let kg = sample.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                self?.latestBodyMass = kg
+                print("[WatchHealthKit] ⚖️ Body mass: \(String(format: "%.1f", kg)) kg")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Body Fat Percentage
+
+    func fetchLatestBodyFatPercentage() async {
+        guard let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else { return }
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        let query = HKSampleQuery(
+            sampleType: bodyFatType,
+            predicate: nil,
+            limit: 1,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error {
+                    print("[WatchHealthKit] Body fat query error: \(error)")
+                    return
+                }
+                guard let sample = samples?.first as? HKQuantitySample else { return }
+                let pct = sample.quantity.doubleValue(for: .percent()) * 100
+                self?.latestBodyFatPercentage = pct
+                print("[WatchHealthKit] 📊 Body fat: \(String(format: "%.1f", pct))%")
             }
         }
         healthStore.execute(query)

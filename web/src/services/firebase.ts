@@ -527,17 +527,65 @@ export interface WeeklySetProgress {
   exercises: Record<string, { reps: number; sets: number; exerciseName: string }>;
 }
 
+// セット構成の取得（iOS互換）
+interface SetConfigExercise {
+  exerciseId: string;
+  exerciseName: string;
+  targetReps: number;
+}
+
+const getSetConfiguration = async (userId: string): Promise<SetConfigExercise[]> => {
+  const docRef = doc(db, 'users', userId, 'settings', 'set-configuration');
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    return (data.exercises ?? []) as SetConfigExercise[];
+  }
+
+  // デフォルト構成
+  return [
+    { exerciseId: 'pushup', exerciseName: '腕立て伏せ', targetReps: 10 },
+    { exerciseId: 'squat', exerciseName: 'スクワット', targetReps: 15 },
+    { exerciseId: 'situp', exerciseName: '腹筋', targetReps: 10 },
+  ];
+};
+
+// セットが有効か検証（各メニューが目標回数以上達成されているか）
+const validateSetCompletion = (exercises: SetExercise[], config: SetConfigExercise[]): boolean => {
+  for (const target of config) {
+    const completed = exercises.find(e => e.exerciseId === target.exerciseId);
+    if (!completed || completed.reps < target.targetReps) {
+      console.warn(`⚠️ ${target.exerciseName}: ${completed?.reps ?? 0}/${target.targetReps} - 目標未達`);
+      return false;
+    }
+  }
+  return true;
+};
+
 export const recordCompletedSet = async (
   userId: string,
   exercises: SetExercise[]
 ): Promise<void> => {
   const now = new Date();
-  await addDoc(collection(db, 'users', userId, 'completed-sets'), {
-    timestamp: now,
-    exercises,
-    totalXP: exercises.reduce((s, e) => s + e.points, 0),
-    totalReps: exercises.reduce((s, e) => s + e.reps, 0),
-  });
+
+  // セット構成を取得して目標達成を確認
+  const config = await getSetConfiguration(userId);
+  const isValidSet = validateSetCompletion(exercises, config);
+
+  // セットとしてカウントする場合のみ記録
+  if (isValidSet) {
+    await addDoc(collection(db, 'users', userId, 'completed-sets'), {
+      timestamp: now,
+      exercises,
+      totalXP: exercises.reduce((s, e) => s + e.points, 0),
+      totalReps: exercises.reduce((s, e) => s + e.reps, 0),
+      isValidSet: true,
+    });
+    console.log('✅ Valid set recorded: All exercises met target reps');
+  } else {
+    console.warn('⚠️ Set not counted: Some exercises did not meet target reps');
+  }
 };
 
 export const getWeeklySetProgress = async (userId: string): Promise<WeeklySetProgress> => {

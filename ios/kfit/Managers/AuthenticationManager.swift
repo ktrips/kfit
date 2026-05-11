@@ -347,22 +347,32 @@ class AuthenticationManager: ObservableObject {
         guard let userId = Auth.auth().currentUser?.uid else { return (0, 0, 0) }
         let now = set.timestamp
 
-        // completed-sets に記録（Web の recordCompletedSet と同一スキーマ）
-        let exercisesData: [[String: Any]] = set.exercises.map { [
-            "exerciseId":   $0.exerciseId,
-            "exerciseName": $0.exerciseName,
-            "reps":         $0.reps,
-            "points":       $0.points,
-        ] }
-        let setDoc: [String: Any] = [
-            "timestamp":  now,
-            "exercises":  exercisesData,
-            "totalXP":    set.totalXP,
-            "totalReps":  set.totalReps,
-            "source":     "watch"
-        ]
-        try? await db.collection("users").document(userId)
-            .collection("completed-sets").addDocument(data: setDoc)
+        // セット構成を取得して目標達成を確認
+        let setConfig = await getSetConfiguration()
+        let isValidSet = validateSetCompletion(exercises: set.exercises, config: setConfig)
+
+        // セットとしてカウントする場合のみ completed-sets に記録
+        if isValidSet {
+            let exercisesData: [[String: Any]] = set.exercises.map { [
+                "exerciseId":   $0.exerciseId,
+                "exerciseName": $0.exerciseName,
+                "reps":         $0.reps,
+                "points":       $0.points,
+            ] }
+            let setDoc: [String: Any] = [
+                "timestamp":  now,
+                "exercises":  exercisesData,
+                "totalXP":    set.totalXP,
+                "totalReps":  set.totalReps,
+                "source":     "watch",
+                "isValidSet": true
+            ]
+            try? await db.collection("users").document(userId)
+                .collection("completed-sets").addDocument(data: setDoc)
+            print("✅ Valid set recorded: All exercises met target reps")
+        } else {
+            print("⚠️ Set not counted: Some exercises did not meet target reps")
+        }
 
         // ストリーク・ポイントをまとめて更新
         await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
@@ -484,23 +494,33 @@ class AuthenticationManager: ObservableObject {
         let totalXP = exercises.reduce(0) { $0 + $1.points }
         let totalReps = exercises.reduce(0) { $0 + $1.reps }
 
-        // completed-sets に1セットとして記録
-        let setDoc: [String: Any] = [
-            "timestamp": now,
-            "exercises": exercises.map { ex in
-                [
-                    "exerciseId": ex.exerciseId,
-                    "exerciseName": ex.exerciseName,
-                    "reps": ex.reps,
-                    "points": ex.points
-                ]
-            },
-            "totalXP": totalXP,
-            "totalReps": totalReps,
-            "source": "ios-set"
-        ]
-        try? await db.collection("users").document(userId)
-            .collection("completed-sets").addDocument(data: setDoc)
+        // セット構成を取得して目標達成を確認
+        let setConfig = await getSetConfiguration()
+        let isValidSet = validateSetCompletion(exercises: exercises, config: setConfig)
+
+        // セットとしてカウントする場合のみ completed-sets に記録
+        if isValidSet {
+            let setDoc: [String: Any] = [
+                "timestamp": now,
+                "exercises": exercises.map { ex in
+                    [
+                        "exerciseId": ex.exerciseId,
+                        "exerciseName": ex.exerciseName,
+                        "reps": ex.reps,
+                        "points": ex.points
+                    ]
+                },
+                "totalXP": totalXP,
+                "totalReps": totalReps,
+                "source": "ios-set",
+                "isValidSet": true
+            ]
+            try? await db.collection("users").document(userId)
+                .collection("completed-sets").addDocument(data: setDoc)
+            print("✅ Valid set recorded: All exercises met target reps")
+        } else {
+            print("⚠️ Set not counted: Some exercises did not meet target reps")
+        }
 
         await updateStreakAndPoints(userId: userId, points: totalXP, now: now)
         NotificationManager.shared.handleWorkoutRecorded()
@@ -798,6 +818,48 @@ class AuthenticationManager: ObservableObject {
         try? await db.collection("users").document(userId)
             .collection("settings").document("daily-set-goal")
             .setData(["dailySets": goal, "updatedAt": Date()])
+    }
+
+    // MARK: - セット検証
+
+    /// セットが有効か検証（各メニューが目標回数以上達成されているか）- WatchSetExercise版
+    private func validateSetCompletion(exercises: [WatchSetExercise], config: SetConfiguration) -> Bool {
+        // 各目標種目が達成されているかチェック
+        for targetExercise in config.exercises {
+            // 実施した種目から該当する種目を探す
+            if let completedExercise = exercises.first(where: { $0.exerciseId == targetExercise.exerciseId }) {
+                // 目標回数未達の場合は無効
+                if completedExercise.reps < targetExercise.targetReps {
+                    print("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
+                    return false
+                }
+            } else {
+                // 目標種目が実施されていない場合は無効
+                print("⚠️ \(targetExercise.exerciseName): 未実施")
+                return false
+            }
+        }
+        return true
+    }
+
+    /// セットが有効か検証（各メニューが目標回数以上達成されているか）- Tuple版
+    private func validateSetCompletion(exercises: [(exerciseId: String, exerciseName: String, reps: Int, points: Int)], config: SetConfiguration) -> Bool {
+        // 各目標種目が達成されているかチェック
+        for targetExercise in config.exercises {
+            // 実施した種目から該当する種目を探す
+            if let completedExercise = exercises.first(where: { $0.exerciseId == targetExercise.exerciseId }) {
+                // 目標回数未達の場合は無効
+                if completedExercise.reps < targetExercise.targetReps {
+                    print("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
+                    return false
+                }
+            } else {
+                // 目標種目が実施されていない場合は無効
+                print("⚠️ \(targetExercise.exerciseName): 未実施")
+                return false
+            }
+        }
+        return true
     }
 
     // MARK: - セット構成設定

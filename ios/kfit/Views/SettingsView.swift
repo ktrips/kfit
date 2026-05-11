@@ -42,6 +42,8 @@ struct SettingsView: View {
     @State private var motionSensitivity: [String: MotionSensitivity] = MotionSensitivity.defaultSettings  // モーション感度
     @State private var showSetEditor = false
     @State private var showSensitivityEditor = false
+    @State private var showIntakeSettings = false
+    @State private var showDailyIntake = false
 
     var body: some View {
         ZStack {
@@ -53,6 +55,7 @@ struct SettingsView: View {
                     dailyGoalSection
                     setConfigurationSection
                     motionSensitivitySection
+                    intakeSection
                     reminderSection
                     watchSection
                     habitStackSection
@@ -81,6 +84,12 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showSensitivityEditor) {
             MotionSensitivityEditorView(sensitivity: $motionSensitivity)
+        }
+        .sheet(isPresented: $showIntakeSettings) {
+            IntakeSettingsView()
+        }
+        .sheet(isPresented: $showDailyIntake) {
+            DailyIntakeView()
         }
     }
 
@@ -194,6 +203,64 @@ struct SettingsView: View {
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 .padding(14)
+            }
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+    }
+
+    // MARK: - 摂取記録設定
+
+    private var intakeSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "fork.knife", title: "摂取記録",
+                          subtitle: "食事・水分・コーヒー・アルコール")
+
+            VStack(spacing: 8) {
+                Button {
+                    showDailyIntake = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "fork.knife")
+                            .font(.title3)
+                            .foregroundColor(Color.duoOrange)
+                            .frame(width: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("今日の摂取を記録")
+                                .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                            Text("食事・水・コーヒー・アルコール")
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(14)
+                }
+
+                Divider().padding(.leading, 56)
+
+                Button {
+                    showIntakeSettings = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "gearshape")
+                            .font(.title3)
+                            .foregroundColor(Color.duoGreen)
+                            .frame(width: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("デフォルト設定")
+                                .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                            Text("カロリー量やアルコール種類など")
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(14)
+                }
             }
             .background(Color.white)
             .cornerRadius(14)

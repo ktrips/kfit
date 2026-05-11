@@ -28,9 +28,9 @@ private let flowSteps: [(emoji: String, name: String, target: Int, id: String, x
 ]
 
 struct ExerciseTrackerView: View {
+    @Binding var isPresented: Bool
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var motionManager = MotionDetectionManager()
-    @Environment(\.dismiss) var dismiss
 
     // フロー管理
     @State private var stepIdx = 0
@@ -180,7 +180,11 @@ struct ExerciseTrackerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button { dismiss() } label: {
+                Button {
+                    motionManager.stopDetection()
+                    plankTimer?.invalidate()
+                    isPresented = false
+                } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(Color.duoSubtitle)
@@ -469,7 +473,9 @@ struct ExerciseTrackerView: View {
 
                 Spacer()
 
-                Button { dismiss() } label: {
+                Button {
+                    isPresented = false
+                } label: {
                     Text("ダッシュボードへ戻る")
                         .font(.headline).fontWeight(.black)
                         .foregroundColor(.white)
@@ -590,6 +596,7 @@ private struct CountButton: View {
 }
 
 #Preview {
-    ExerciseTrackerView()
+    @Previewable @State var isPresented = true
+    ExerciseTrackerView(isPresented: $isPresented)
         .environmentObject(AuthenticationManager.shared)
 }

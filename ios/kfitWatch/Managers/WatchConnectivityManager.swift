@@ -27,6 +27,16 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var calorieConsumed: Int = 0
     @Published var caloriePercent: Int = 0
 
+    // 摂取データ
+    @Published var intakeCalories: Int = 0
+    @Published var intakeCaloriesGoal: Int = 1800
+    @Published var intakeWater: Int = 0
+    @Published var intakeWaterGoal: Int = 1000
+    @Published var intakeCaffeine: Int = 0
+    @Published var intakeCaffeineLimit: Int = 400
+    @Published var intakeAlcohol: Int = 0
+    @Published var intakeAlcoholLimit: Int = 20000
+
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
 
@@ -78,6 +88,22 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
         } else {
             try? session?.updateApplicationContext(["pendingCompletedSet": data])
+        }
+    }
+
+    // MARK: - Watch → iOS: 摂取記録
+    func sendIntakeRecord(type: String, subtype: String? = nil) {
+        guard let session = session else { return }
+        var message: [String: Any] = ["action": "record_intake", "type": type]
+        if let subtype = subtype {
+            message["subtype"] = subtype
+        }
+        if session.isReachable {
+            session.sendMessage(message, replyHandler: nil) { error in
+                print("WatchConnectivity sendIntakeRecord error: \(error)")
+            }
+        } else {
+            try? session.updateApplicationContext(message)
         }
     }
 
@@ -173,6 +199,16 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 print("⚠️ todayExercises decode error: \(error)")
             }
         }
+
+        // 摂取データを受信
+        if let val = message["intakeCalories"] as? Int { self.intakeCalories = val }
+        if let val = message["intakeCaloriesGoal"] as? Int { self.intakeCaloriesGoal = val }
+        if let val = message["intakeWater"] as? Int { self.intakeWater = val }
+        if let val = message["intakeWaterGoal"] as? Int { self.intakeWaterGoal = val }
+        if let val = message["intakeCaffeine"] as? Int { self.intakeCaffeine = val }
+        if let val = message["intakeCaffeineLimit"] as? Int { self.intakeCaffeineLimit = val }
+        if let val = message["intakeAlcohol"] as? Int { self.intakeAlcohol = val }
+        if let val = message["intakeAlcoholLimit"] as? Int { self.intakeAlcoholLimit = val }
 
         // データ受信完了
         isLoading = false

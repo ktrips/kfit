@@ -88,6 +88,12 @@ final class HealthKitManager: ObservableObject {
     @Published var latestBodyFatPercentage: Double = 0  // %
     @Published var todayBodyMassMeasurements: Int = 0   // 今日の測定回数
 
+    // 摂取データ（Apple Healthから読み取り）
+    @Published var todayIntakeCalories: Double = 0      // kcal
+    @Published var todayIntakeWater: Double = 0         // ml
+    @Published var todayIntakeCaffeine: Double = 0      // mg
+    @Published var todayIntakeAlcohol: Double = 0       // g（純アルコール）
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
@@ -99,6 +105,9 @@ final class HealthKitManager: ObservableObject {
             .activeEnergyBurned,
             .bodyMass,              // 体重
             .bodyFatPercentage,     // 体脂肪率
+            .dietaryEnergyConsumed, // 摂取カロリー
+            .dietaryWater,          // 水分
+            .dietaryCaffeine,       // カフェイン
         ]
         for id in quantityIds {
             if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
@@ -111,8 +120,14 @@ final class HealthKitManager: ObservableObject {
 
     private var writeTypes: Set<HKSampleType> {
         var set = Set<HKSampleType>()
-        if let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
-            set.insert(energy)
+        let writeIds: [HKQuantityTypeIdentifier] = [
+            .activeEnergyBurned,
+            .dietaryEnergyConsumed,
+            .dietaryWater,
+            .dietaryCaffeine,
+        ]
+        for id in writeIds {
+            if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
         }
         set.insert(HKWorkoutType.workoutType())
         return set
@@ -257,6 +272,10 @@ final class HealthKitManager: ObservableObject {
         async let bodyMass = fetchLatestBodyMass()
         async let bodyFat  = fetchLatestBodyFatPercentage()
         async let bodyMassCount = fetchTodayBodyMassMeasurements()
+        async let intakeCal = fetchTodayIntakeCalories()
+        async let intakeWater = fetchTodayIntakeWater()
+        async let intakeCaffeine = fetchTodayIntakeCaffeine()
+        async let intakeAlcohol = fetchTodayIntakeAlcohol()
 
         todaySteps          = await steps
         todayCalories       = await calories
@@ -270,8 +289,12 @@ final class HealthKitManager: ObservableObject {
         latestBodyMass      = await bodyMass
         latestBodyFatPercentage = await bodyFat
         todayBodyMassMeasurements = await bodyMassCount
+        todayIntakeCalories = await intakeCal
+        todayIntakeWater    = await intakeWater
+        todayIntakeCaffeine = await intakeCaffeine
+        todayIntakeAlcohol  = await intakeAlcohol
 
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%")
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g")
     }
 
     // MARK: - 歩数
@@ -480,6 +503,182 @@ final class HealthKitManager: ObservableObject {
         return await withCheckedContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
                 continuation.resume(returning: samples?.count ?? 0)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - 摂取記録の書き込み
+
+    /// 食事カロリーを Apple Health に記録
+    func saveDietaryEnergy(calories: Double, timestamp: Date) async {
+        guard isAvailable, isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping dietary energy save")
+            return
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: calories)
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
+        do {
+            try await store.save(sample)
+            print("[HealthKit] ✅ Saved dietary energy: \(calories)kcal")
+        } catch {
+            print("[HealthKit] ❌ 食事記録エラー: \(error.localizedDescription)")
+        }
+    }
+
+    /// 水分摂取を Apple Health に記録
+    func saveWaterIntake(amountMl: Double, timestamp: Date) async {
+        guard isAvailable, isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping water save")
+            return
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
+        let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
+        do {
+            try await store.save(sample)
+            print("[HealthKit] ✅ Saved water: \(amountMl)ml")
+        } catch {
+            print("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
+        }
+    }
+
+    /// カフェイン摂取を Apple Health に記録
+    func saveCaffeineIntake(caffeineMg: Double, timestamp: Date) async {
+        guard isAvailable, isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping caffeine save")
+            return
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return }
+        let quantity = HKQuantity(unit: .gramUnit(with: .milli), doubleValue: caffeineMg)
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
+        do {
+            try await store.save(sample)
+            print("[HealthKit] ✅ Saved caffeine: \(caffeineMg)mg")
+        } catch {
+            print("[HealthKit] ❌ カフェイン記録エラー: \(error.localizedDescription)")
+        }
+    }
+
+    /// アルコール摂取を Apple Health に記録
+    /// NOTE: HealthKit にはアルコール専用の型がないため、dietaryEnergyConsumed にメタデータとして保存
+    func saveAlcoholIntake(amountMl: Double, alcoholMg: Double, timestamp: Date) async {
+        guard isAvailable, isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping alcohol save")
+            return
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        // 純アルコール量(g)からカロリーを計算（アルコール1g = 約7kcal）
+        let alcoholGrams = alcoholMg / 1000.0
+        let estimatedCalories = alcoholGrams * 7.0
+        let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: estimatedCalories)
+        let metadata: [String: Any] = [
+            "intake_type": "alcohol",
+            "amount_ml": amountMl,
+            "alcohol_mg": alcoholMg,
+            "alcohol_grams": alcoholGrams
+        ]
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
+        do {
+            try await store.save(sample)
+            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml (\(alcoholGrams)g純アルコール, \(Int(estimatedCalories))kcal)")
+        } catch {
+            print("[HealthKit] ❌ アルコール記録エラー: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - 摂取データ読み取り
+
+    /// 今日の摂取カロリーを取得
+    private func fetchTodayIntakeCalories() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let kcal = sum.doubleValue(for: .kilocalorie())
+                    continuation.resume(returning: kcal)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今日の水分摂取量を取得（ml）
+    private func fetchTodayIntakeWater() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let ml = sum.doubleValue(for: .literUnit(with: .milli))
+                    continuation.resume(returning: ml)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今日のカフェイン摂取量を取得（mg）
+    private func fetchTodayIntakeCaffeine() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let mg = sum.doubleValue(for: .gramUnit(with: .milli))
+                    continuation.resume(returning: mg)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今日のアルコール摂取量を取得（純アルコールg）
+    /// メタデータからalcohol_mgを読み取る
+    private func fetchTodayIntakeAlcohol() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+                guard let samples = samples as? [HKQuantitySample] else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+
+                var totalAlcoholGrams: Double = 0
+                for sample in samples {
+                    if let metadata = sample.metadata,
+                       let intakeType = metadata["intake_type"] as? String,
+                       intakeType == "alcohol",
+                       let alcoholGrams = metadata["alcohol_grams"] as? Double {
+                        totalAlcoholGrams += alcoholGrams
+                    }
+                }
+                continuation.resume(returning: totalAlcoholGrams)
             }
             store.execute(query)
         }

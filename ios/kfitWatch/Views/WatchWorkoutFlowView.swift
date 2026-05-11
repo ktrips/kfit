@@ -105,13 +105,19 @@ struct WatchWorkoutFlowView: View {
         if count == current.target && !showGoalReached {
             showGoalReached = true
 
-            // 強力なハプティックフィードバック（3回連続）
-            WKInterfaceDevice.current().play(.success)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                WKInterfaceDevice.current().play(.success)
+            // より強力なハプティックフィードバック（notificationを5回連続）
+            WKInterfaceDevice.current().play(.notification)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                WKInterfaceDevice.current().play(.notification)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                WKInterfaceDevice.current().play(.success)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) {
+                WKInterfaceDevice.current().play(.notification)
             }
 
             // オーバーレイを3秒間表示
@@ -337,6 +343,28 @@ struct WatchWorkoutFlowView: View {
             .buttonStyle(.plain)
         }
         .padding(10)
+        .onAppear {
+            // セット全体完了時の強力な振動（7回連続）
+            WKInterfaceDevice.current().play(.notification)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                WKInterfaceDevice.current().play(.notification)
+            }
+        }
     }
 
     // MARK: - 次の種目へ
@@ -377,7 +405,11 @@ struct WatchWorkoutFlowView: View {
         // モーション検出を停止
         motionManager.stopDetection()
 
-        WKInterfaceDevice.current().play(.success)
+        // 各種目完了時の振動（強めに）
+        WKInterfaceDevice.current().play(.notification)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            WKInterfaceDevice.current().play(.notification)
+        }
 
         if isLast {
             // 全種目完了 → まとめてセット記録を送信

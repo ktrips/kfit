@@ -1,3 +1,4 @@
+import Foundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -1029,6 +1030,224 @@ class AuthenticationManager: ObservableObject {
         return progress
     }
 
+    // MARK: - Daily Intake Settings (摂取記録設定)
+
+    /// 摂取記録の設定を取得
+    func getIntakeSettings() async -> IntakeSettings {
+        guard let userId = Auth.auth().currentUser?.uid else { return IntakeSettings.defaultSettings }
+
+        let docRef = db.collection("users").document(userId)
+            .collection("settings").document("intake-settings")
+
+        guard let doc = try? await docRef.getDocument(),
+              let data = doc.data(),
+              let jsonData = try? JSONSerialization.data(withJSONObject: data),
+              let settings = try? JSONDecoder().decode(IntakeSettings.self, from: jsonData)
+        else {
+            return IntakeSettings.defaultSettings
+        }
+
+        return settings
+    }
+
+    /// 摂取記録の設定を保存
+    func saveIntakeSettings(_ settings: IntakeSettings) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+
+        guard let jsonData = try? JSONEncoder().encode(settings),
+              let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { return }
+
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("intake-settings")
+            .setData(dict)
+    }
+
+    // MARK: - Daily Intake (食事・水分・コーヒー・アルコール記録)
+
+    /// 食事を記録
+    func recordMeal(mealType: MealType, calories: Int? = nil) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        // 設定からデフォルトカロリーを取得
+        let settings = await getIntakeSettings()
+        let actualCalories = calories ?? settings.caloriesFor(mealType: mealType)
+
+        let data: [String: Any] = [
+            "mealType": mealType.rawValue,
+            "calories": actualCalories,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("meals")
+            .collection("logs").addDocument(data: data)
+
+        // Apple Healthに記録
+        await HealthKitManager.shared.saveDietaryEnergy(calories: Double(actualCalories), timestamp: now)
+    }
+
+    /// 水を記録
+    func recordWater(cups: Int = 1) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        // 設定から1杯の量を取得
+        let settings = await getIntakeSettings()
+        let amountMl = cups * settings.waterPerCup
+
+        let data: [String: Any] = [
+            "amountMl": amountMl,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("water")
+            .collection("logs").addDocument(data: data)
+
+        // Apple Healthに記録
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+    }
+
+    /// コーヒーを記録
+    func recordCoffee(cups: Int = 1) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        // 設定から1杯の量を取得
+        let settings = await getIntakeSettings()
+        let amountMl = cups * settings.coffeePerCup
+        let caffeineMg = cups * settings.caffeinePerCup
+
+        let data: [String: Any] = [
+            "amountMl": amountMl,
+            "caffeineMg": caffeineMg,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("coffee")
+            .collection("logs").addDocument(data: data)
+
+        // Apple Healthにカフェイン記録
+        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+    }
+
+    /// アルコールを記録
+    func recordAlcohol(alcoholType: AlcoholType, servings: Int = 1) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        // 設定からアルコール量を取得
+        let settings = await getIntakeSettings()
+        let alcoholSetting = settings.settingFor(alcoholType: alcoholType)
+        let amountMl = (alcoholSetting?.amountMl ?? alcoholType.amountMl) * servings
+        let alcoholMg = (alcoholSetting?.alcoholMg ?? alcoholType.alcoholMg) * servings
+
+        let data: [String: Any] = [
+            "alcoholType": alcoholType.rawValue,
+            "amountMl": amountMl,
+            "alcoholMg": alcoholMg,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("alcohol")
+            .collection("logs").addDocument(data: data)
+
+        // Apple Healthにアルコール記録（純アルコール量も渡す）
+        await HealthKitManager.shared.saveAlcoholIntake(amountMl: Double(amountMl), alcoholMg: Double(alcoholMg), timestamp: now)
+    }
+
+    /// 今日の摂取記録を取得
+    func getTodayIntakeSummary() async -> TodayIntakeSummary {
+        guard let userId = Auth.auth().currentUser?.uid else { return TodayIntakeSummary() }
+
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
+
+        var summary = TodayIntakeSummary()
+
+        // 食事
+        if let mealSnapshot = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("meals").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments() {
+            for doc in mealSnapshot.documents {
+                let data = doc.data()
+                if let mealTypeStr = data["mealType"] as? String,
+                   let mealType = MealType(rawValue: mealTypeStr),
+                   let calories = data["calories"] as? Int,
+                   let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() {
+                    summary.meals.append(MealLog(mealType: mealType, calories: calories, timestamp: timestamp))
+                    summary.totalCalories += calories
+                }
+            }
+        }
+
+        // 水
+        if let waterSnapshot = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("water").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments() {
+            for doc in waterSnapshot.documents {
+                let data = doc.data()
+                if let amountMl = data["amountMl"] as? Int,
+                   let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() {
+                    summary.waterLogs.append(WaterLog(amountMl: amountMl, timestamp: timestamp))
+                    summary.totalWaterMl += amountMl
+                }
+            }
+        }
+
+        // コーヒー
+        if let coffeeSnapshot = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("coffee").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments() {
+            for doc in coffeeSnapshot.documents {
+                let data = doc.data()
+                if let amountMl = data["amountMl"] as? Int,
+                   let caffeineMg = data["caffeineMg"] as? Int,
+                   let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() {
+                    summary.coffeeLogs.append(CoffeeLog(amountMl: amountMl, caffeineMg: caffeineMg, timestamp: timestamp))
+                    summary.totalCaffeineMg += caffeineMg
+                }
+            }
+        }
+
+        // アルコール
+        if let alcoholSnapshot = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("alcohol").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+            .whereField("timestamp", isLessThan: endOfDay)
+            .getDocuments() {
+            for doc in alcoholSnapshot.documents {
+                let data = doc.data()
+                if let alcoholTypeStr = data["alcoholType"] as? String,
+                   let alcoholType = AlcoholType(rawValue: alcoholTypeStr),
+                   let amountMl = data["amountMl"] as? Int,
+                   let alcoholMg = data["alcoholMg"] as? Int,
+                   let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() {
+                    summary.alcoholLogs.append(AlcoholLog(alcoholType: alcoholType, amountMl: amountMl, alcoholMg: alcoholMg, timestamp: timestamp))
+                    summary.totalAlcoholMg += alcoholMg
+                }
+            }
+        }
+
+        // ログコンプリートボーナスをチェック・付与
+        if summary.isLogComplete {
+            await checkAndAwardLogCompleteBonus(userId: userId, date: startOfDay)
+        }
+
+        return summary
+    }
+
     private func currentWeekId() -> String {
         let calendar = Calendar.current
         let today = Date()
@@ -1187,5 +1406,53 @@ struct DailySets {
     /// 午後に必要な追加セット数（午前なし時は2、午前あり時は1）
     var pmSetsNeeded: Int {
         amSets >= 1 ? max(0, 1 - pmSets) : max(0, 2 - pmSets)
+    }
+}
+
+// MARK: - ログコンプリート（完全記録ボーナス）
+
+extension AuthenticationManager {
+    /// ログコンプリートボーナスをチェックして付与
+    /// すでに今日付与済みの場合はスキップ
+    private func checkAndAwardLogCompleteBonus(userId: String, date: Date) async {
+        let calendar = Calendar.current
+        let dateKey = calendar.startOfDay(for: date)
+
+        // 今日すでにボーナスを付与済みかチェック
+        let bonusDoc = db.collection("users").document(userId)
+            .collection("log-complete-bonuses").document(dateFormatter.string(from: dateKey))
+
+        if let doc = try? await bonusDoc.getDocument(), doc.exists {
+            // すでに付与済み
+            return
+        }
+
+        // ボーナス付与: 100 XP
+        let bonusXP = 100
+        try? await bonusDoc.setData([
+            "date": dateKey,
+            "bonusXP": bonusXP,
+            "timestamp": FieldValue.serverTimestamp()
+        ])
+
+        // プロフィールの totalPoints に加算
+        if let profile = userProfile {
+            let newTotal = profile.totalPoints + bonusXP
+            try? await db.collection("users").document(userId).updateData([
+                "totalPoints": newTotal
+            ])
+            // ローカル更新
+            await MainActor.run {
+                self.userProfile?.totalPoints = newTotal
+            }
+        }
+
+        print("[LogComplete] ✅ ログコンプリートボーナス付与: +\(bonusXP) XP")
+    }
+
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
     }
 }

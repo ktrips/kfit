@@ -31,6 +31,7 @@ struct HealthView: View {
                             activityCard
                             heartRateCard
                             sleepCard
+                            intakeCard
                             if !hk.hrSamples.isEmpty { hrHistoryCard }
                             openHealthButton
                         }
@@ -489,6 +490,140 @@ struct HealthView: View {
     private func formatHours(_ h: Double) -> String {
         let total = Int(h * 60)
         return "\(total / 60)h \(total % 60)m"
+    }
+
+    // MARK: - 摂取データカード
+
+    private var intakeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "fork.knife")
+                    .foregroundColor(Color.duoOrange)
+                Text("摂取データ").fontWeight(.black)
+            }
+            .font(.headline)
+            .foregroundColor(Color.duoDark)
+
+            VStack(spacing: 10) {
+                // 摂取カロリー
+                intakeRow(
+                    icon: "flame.fill",
+                    iconColor: Color.duoOrange,
+                    label: "摂取カロリー",
+                    value: hk.todayIntakeCalories,
+                    unit: "kcal",
+                    limit: 2500,
+                    isReverse: false
+                )
+
+                Divider()
+
+                // 水分
+                intakeRow(
+                    icon: "drop.fill",
+                    iconColor: Color.duoBlue,
+                    label: "水分",
+                    value: hk.todayIntakeWater,
+                    unit: "ml",
+                    limit: 2000,
+                    isReverse: false
+                )
+
+                Divider()
+
+                // カフェイン
+                intakeRow(
+                    icon: "cup.and.saucer.fill",
+                    iconColor: Color.duoBrown,
+                    label: "カフェイン",
+                    value: hk.todayIntakeCaffeine,
+                    unit: "mg",
+                    limit: 400,
+                    isReverse: true
+                )
+
+                Divider()
+
+                // アルコール
+                intakeRow(
+                    icon: "wineglass.fill",
+                    iconColor: Color.duoPurple,
+                    label: "アルコール",
+                    value: hk.todayIntakeAlcohol,
+                    unit: "g",
+                    limit: 20,
+                    isReverse: true
+                )
+            }
+        }
+        .padding(16)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    private func intakeRow(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        value: Double,
+        unit: String,
+        limit: Double,
+        isReverse: Bool
+    ) -> some View {
+        let percent = limit > 0 ? Int((value / limit) * 100) : 0
+        let isOver = value > limit
+        let isGood = isReverse ? !isOver : (value >= limit * 0.5)
+
+        return HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(iconColor)
+                .frame(width: 32, height: 32)
+                .background(iconColor.opacity(0.15))
+                .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundColor(Color.duoDark)
+
+                if value > 0 {
+                    HStack(spacing: 4) {
+                        Text(String(format: "%.0f", value))
+                            .font(.title3).fontWeight(.black)
+                            .foregroundColor(isOver && isReverse ? Color.red : (isGood ? Color.duoGreen : Color.duoDark))
+                        Text(unit)
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                } else {
+                    Text("未記録")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+            }
+
+            Spacer()
+
+            // パーセンテージ表示
+            if value > 0 {
+                VStack(spacing: 2) {
+                    Text("\(percent)%")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(isOver && isReverse ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange))
+
+                    if isOver && isReverse {
+                        Text("過剰")
+                            .font(.system(size: 9)).fontWeight(.bold)
+                            .foregroundColor(Color.red)
+                    }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background((isOver && isReverse ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange)).opacity(0.12))
+                .cornerRadius(6)
+            }
+        }
     }
 }
 

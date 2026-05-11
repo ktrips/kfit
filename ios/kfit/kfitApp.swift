@@ -42,7 +42,7 @@ struct kfitApp: App {
 struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var selectedTab = 0
-    @State private var showTracker = false
+    @State private var showRecordMenu = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -81,12 +81,12 @@ struct MainTabView: View {
         .accentColor(Color.duoGreen)
         .onChange(of: selectedTab) { oldTab, newTab in
             if newTab == 2 {
-                showTracker = true
+                showRecordMenu = true
                 selectedTab = 0
             }
         }
-        .fullScreenCover(isPresented: $showTracker) {
-            ExerciseTrackerView()
+        .fullScreenCover(isPresented: $showRecordMenu) {
+            RecordMenuView(isPresented: $showRecordMenu)
                 .environmentObject(authManager)
         }
     }

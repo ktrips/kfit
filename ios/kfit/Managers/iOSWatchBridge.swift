@@ -118,6 +118,37 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 }
                 return
             }
+
+            // ④ 摂取記録（Watch からの記録）
+            if (message["action"] as? String) == "record_intake" {
+                let type = message["type"] as? String ?? ""
+                let subtype = message["subtype"] as? String
+
+                Task {
+                    switch type {
+                    case "meal":
+                        if let mealTypeStr = subtype {
+                            if let mealType = MealType(rawValue: mealTypeStr) {
+                                await AuthenticationManager.shared.recordMeal(mealType: mealType)
+                            }
+                        }
+                    case "water":
+                        await AuthenticationManager.shared.recordWater()
+                    case "coffee":
+                        await AuthenticationManager.shared.recordCoffee()
+                    case "alcohol":
+                        if let alcoholTypeStr = subtype {
+                            if let alcoholType = AlcoholType(rawValue: alcoholTypeStr) {
+                                await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
+                            }
+                        }
+                    default:
+                        break
+                    }
+                    print("[iOSWatchBridge] 摂取記録: \(type) \(subtype ?? "")")
+                }
+                return
+            }
         }
     }
 
@@ -219,6 +250,18 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     payload["todayExercises"] = data
                 }
             }
+
+            // 摂取データを含める
+            let intakeData = await AuthenticationManager.shared.getTodayIntakeSummary()
+            let intakeGoals = await AuthenticationManager.shared.getIntakeSettings()
+            payload["intakeCalories"] = intakeData.totalCalories
+            payload["intakeCaloriesGoal"] = intakeGoals.dailyCalorieGoal
+            payload["intakeWater"] = intakeData.totalWaterMl
+            payload["intakeWaterGoal"] = intakeGoals.dailyWaterGoal
+            payload["intakeCaffeine"] = intakeData.totalCaffeineMg
+            payload["intakeCaffeineLimit"] = intakeGoals.dailyCaffeineLimit
+            payload["intakeAlcohol"] = intakeData.totalAlcoholMg
+            payload["intakeAlcoholLimit"] = intakeGoals.dailyAlcoholLimit
 
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)

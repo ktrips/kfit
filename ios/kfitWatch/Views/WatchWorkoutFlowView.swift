@@ -143,11 +143,11 @@ struct WatchWorkoutFlowView: View {
             }
             .padding(.top, 2)
 
-            Text(current.emoji).font(.system(size: 28))
+            Text(current.emoji).font(.system(size: 36))
 
             HStack(spacing: 3) {
                 Text(current.name)
-                    .font(.system(size: 11))
+                    .font(.system(size: 14))
                     .fontWeight(.black)
                     .foregroundColor(duoGreen)
 
@@ -173,10 +173,10 @@ struct WatchWorkoutFlowView: View {
             if isPlank {
                 VStack(spacing: 1) {
                     Text("\(motionManager.plankElapsedSeconds)")
-                        .font(.system(size: 44, weight: .black, design: .rounded))
+                        .font(.system(size: 52, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("秒")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.7))
 
                     if motionManager.plankCompleted {
@@ -196,10 +196,10 @@ struct WatchWorkoutFlowView: View {
                 // 通常の種目：回数表示
                 VStack(spacing: 0) {
                     Text("\(displayReps)")
-                        .font(.system(size: 38, weight: .black, design: .rounded))
+                        .font(.system(size: 48, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("/ \(current.target)")
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundColor(Color.white.opacity(0.5))
                 }
             }

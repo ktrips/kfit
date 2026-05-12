@@ -16,17 +16,17 @@ struct IntakeSettings: Codable {
 
     // アルコールのカスタム設定
     var alcoholSettings: [CustomAlcoholSetting] = [
-        CustomAlcoholSetting(type: .beer, amountMl: 350, alcoholMg: 14000, displayName: "ビール（缶350ml）"),
-        CustomAlcoholSetting(type: .wine, amountMl: 120, alcoholMg: 11500, displayName: "ワイン（グラス）"),
-        CustomAlcoholSetting(type: .chuhai, amountMl: 350, alcoholMg: 19600, displayName: "酎ハイ（缶350ml）"),
-        CustomAlcoholSetting(type: .nonAlcoholic, amountMl: 0, alcoholMg: 0, displayName: "ノンアルコール")
+        CustomAlcoholSetting(type: .beer, amountMl: 350, alcoholG: 14.0, displayName: "ビール（缶350ml）"),
+        CustomAlcoholSetting(type: .wine, amountMl: 120, alcoholG: 11.5, displayName: "ワイン（グラス）"),
+        CustomAlcoholSetting(type: .chuhai, amountMl: 350, alcoholG: 19.6, displayName: "酎ハイ（缶350ml）"),
+        CustomAlcoholSetting(type: .nonAlcoholic, amountMl: 0, alcoholG: 0.0, displayName: "ノンアルコール")
     ]
 
     // 1日の目標値
     var dailyCalorieGoal: Int = 1800     // kcal
     var dailyWaterGoal: Int = 1000       // ml
     var dailyCaffeineLimit: Int = 400    // mg
-    var dailyAlcoholLimit: Int = 20000   // mg (20g = 20000mg)
+    var dailyAlcoholLimit: Double = 20.0 // g
 
     static let defaultSettings = IntakeSettings()
 
@@ -50,6 +50,6 @@ struct CustomAlcoholSetting: Codable, Identifiable {
     var id: String { type.rawValue }
     let type: AlcoholType
     var amountMl: Int
-    var alcoholMg: Int
+    var alcoholG: Double
     var displayName: String
 }

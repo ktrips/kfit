@@ -71,7 +71,10 @@ final class HealthKitManager: ObservableObject {
 
     // 今日のアクティビティ
     @Published var todaySteps:    Int    = 0
-    @Published var todayCalories: Double = 0
+    @Published var todayCalories: Double = 0  // アクティブカロリー（後方互換性のため残す）
+    @Published var todayActiveCalories: Double = 0   // アクティブカロリー
+    @Published var todayRestingCalories: Double = 0  // 安静時カロリー（基礎代謝）
+    @Published var todayTotalCalories: Double = 0    // 総消費カロリー（安静時＋アクティブ）
 
     // 心拍数
     @Published var latestHeartRate:  Double     = 0
@@ -94,6 +97,11 @@ final class HealthKitManager: ObservableObject {
     @Published var todayIntakeCaffeine: Double = 0      // mg
     @Published var todayIntakeAlcohol: Double = 0       // g（純アルコール）
 
+    // マインドフルネス
+    @Published var todayMindfulnessMinutes: Double = 0  // 今日のマインドフルネス時間（分）
+    @Published var todayMindfulnessSessions: Int = 0    // 今日のマインドフルネスセッション数
+    private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
@@ -103,6 +111,7 @@ final class HealthKitManager: ObservableObject {
             .restingHeartRate,
             .stepCount,
             .activeEnergyBurned,
+            .basalEnergyBurned,     // 安静時カロリー（基礎代謝）
             .bodyMass,              // 体重
             .bodyFatPercentage,     // 体脂肪率
             .dietaryEnergyConsumed, // 摂取カロリー
@@ -114,6 +123,9 @@ final class HealthKitManager: ObservableObject {
         }
         if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) {
             set.insert(sleep)
+        }
+        if let mindfulness = HKCategoryType.categoryType(forIdentifier: .mindfulSession) {
+            set.insert(mindfulness)
         }
         return set
     }
@@ -264,7 +276,8 @@ final class HealthKitManager: ObservableObject {
         defer { isLoading = false }
 
         async let steps    = fetchTodaySteps()
-        async let calories = fetchTodayCalories()
+        async let activeCalories = fetchTodayActiveCalories()
+        async let restingCalories = fetchTodayRestingCalories()
         async let latHR    = fetchLatestHeartRate()
         async let restHR   = fetchRestingHeartRate()
         async let hrList   = fetchTodayHRSamples()
@@ -276,9 +289,13 @@ final class HealthKitManager: ObservableObject {
         async let intakeWater = fetchTodayIntakeWater()
         async let intakeCaffeine = fetchTodayIntakeCaffeine()
         async let intakeAlcohol = fetchTodayIntakeAlcohol()
+        async let mindfulness = fetchTodayMindfulness()
 
         todaySteps          = await steps
-        todayCalories       = await calories
+        todayActiveCalories = await activeCalories
+        todayRestingCalories = await restingCalories
+        todayTotalCalories  = todayActiveCalories + todayRestingCalories
+        todayCalories       = todayActiveCalories  // 後方互換性
         latestHeartRate     = await latHR
         restingHeartRate    = await restHR
         hrSamples           = await hrList
@@ -293,8 +310,32 @@ final class HealthKitManager: ObservableObject {
         todayIntakeWater    = await intakeWater
         todayIntakeCaffeine = await intakeCaffeine
         todayIntakeAlcohol  = await intakeAlcohol
+        let mindfulnessResult = await mindfulness
+        todayMindfulnessMinutes = mindfulnessResult.minutes
+        let newSessions = mindfulnessResult.sessions
 
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), cal=\(Int(todayCalories)), hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g")
+        // セッション数が増えていたら時間帯の進捗を更新
+        if newSessions > previousMindfulnessSessions && previousMindfulnessSessions > 0 {
+            let now = Date()
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: now)
+            let timeSlot: TimeSlot
+            if hour >= 6 && hour < 10 { timeSlot = .morning }
+            else if hour >= 10 && hour < 14 { timeSlot = .noon }
+            else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+            else { timeSlot = .evening }
+
+            let diff = newSessions - previousMindfulnessSessions
+            for _ in 0..<diff {
+                await TimeSlotManager.shared.recordMindfulnessCompleted(at: timeSlot)
+            }
+            print("[HealthKit] 🧘 Mindfulness sessions increased by \(diff), updated time slot: \(timeSlot.displayName)")
+        }
+
+        todayMindfulnessSessions = newSessions
+        previousMindfulnessSessions = newSessions
+
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
 
     // MARK: - 歩数
@@ -308,11 +349,25 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - 消費カロリー
 
-    private func fetchTodayCalories() async -> Double {
+    /// アクティブカロリー（活動による消費カロリー）
+    private func fetchTodayActiveCalories() async -> Double {
         guard let type = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return 0 }
         let start = Calendar.current.startOfDay(for: Date())
         let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
         return await fetchCumulativeSum(type: type, predicate: pred, unit: .kilocalorie())
+    }
+
+    /// 安静時カロリー（基礎代謝）
+    private func fetchTodayRestingCalories() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned) else { return 0 }
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        return await fetchCumulativeSum(type: type, predicate: pred, unit: .kilocalorie())
+    }
+
+    /// 後方互換性のため
+    private func fetchTodayCalories() async -> Double {
+        return await fetchTodayActiveCalories()
     }
 
     // MARK: - 心拍数（最新）
@@ -563,26 +618,24 @@ final class HealthKitManager: ObservableObject {
 
     /// アルコール摂取を Apple Health に記録
     /// NOTE: HealthKit にはアルコール専用の型がないため、dietaryEnergyConsumed にメタデータとして保存
-    func saveAlcoholIntake(amountMl: Double, alcoholMg: Double, timestamp: Date) async {
+    func saveAlcoholIntake(amountMl: Double, alcoholG: Double, timestamp: Date) async {
         guard isAvailable, isAuthorized else {
             print("[HealthKit] ⚠️ Not authorized - skipping alcohol save")
             return
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
         // 純アルコール量(g)からカロリーを計算（アルコール1g = 約7kcal）
-        let alcoholGrams = alcoholMg / 1000.0
-        let estimatedCalories = alcoholGrams * 7.0
+        let estimatedCalories = alcoholG * 7.0
         let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: estimatedCalories)
         let metadata: [String: Any] = [
             "intake_type": "alcohol",
             "amount_ml": amountMl,
-            "alcohol_mg": alcoholMg,
-            "alcohol_grams": alcoholGrams
+            "alcohol_grams": alcoholG
         ]
         let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
         do {
             try await store.save(sample)
-            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml (\(alcoholGrams)g純アルコール, \(Int(estimatedCalories))kcal)")
+            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml (\(alcoholG)g純アルコール, \(Int(estimatedCalories))kcal)")
         } catch {
             print("[HealthKit] ❌ アルコール記録エラー: \(error.localizedDescription)")
         }
@@ -679,6 +732,38 @@ final class HealthKitManager: ObservableObject {
                     }
                 }
                 continuation.resume(returning: totalAlcoholGrams)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - マインドフルネス
+
+    /// 今日のマインドフルネスセッションを取得
+    private func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int) {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
+            return (0, 0)
+        }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+                guard let samples = samples as? [HKCategorySample] else {
+                    continuation.resume(returning: (0, 0))
+                    return
+                }
+
+                var totalMinutes: Double = 0
+                for sample in samples {
+                    let duration = sample.endDate.timeIntervalSince(sample.startDate)
+                    totalMinutes += duration / 60.0  // 秒から分に変換
+                }
+
+                continuation.resume(returning: (totalMinutes, samples.count))
             }
             store.execute(query)
         }

@@ -34,8 +34,11 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var intakeWaterGoal: Int = 1000
     @Published var intakeCaffeine: Int = 0
     @Published var intakeCaffeineLimit: Int = 400
-    @Published var intakeAlcohol: Int = 0
-    @Published var intakeAlcoholLimit: Int = 20000
+    @Published var intakeAlcohol: Double = 0.0
+    @Published var intakeAlcoholLimit: Double = 20.0
+
+    // ログ入力状態
+    @Published var todayMealLogged: Bool = false
 
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
@@ -207,8 +210,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["intakeWaterGoal"] as? Int { self.intakeWaterGoal = val }
         if let val = message["intakeCaffeine"] as? Int { self.intakeCaffeine = val }
         if let val = message["intakeCaffeineLimit"] as? Int { self.intakeCaffeineLimit = val }
-        if let val = message["intakeAlcohol"] as? Int { self.intakeAlcohol = val }
-        if let val = message["intakeAlcoholLimit"] as? Int { self.intakeAlcoholLimit = val }
+        if let val = message["intakeAlcohol"] as? Double { self.intakeAlcohol = val }
+        if let val = message["intakeAlcoholLimit"] as? Double { self.intakeAlcoholLimit = val }
+        if let val = message["todayMealLogged"] as? Bool { self.todayMealLogged = val }
 
         // データ受信完了
         isLoading = false

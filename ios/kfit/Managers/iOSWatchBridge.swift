@@ -125,27 +125,39 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 let subtype = message["subtype"] as? String
 
                 Task {
+                    let timestamp = Date()
+                    let calendar = Calendar.current
+                    let hour = calendar.component(.hour, from: timestamp)
+                    let timeSlot: TimeSlot
+
+                    if hour >= 6 && hour < 10 { timeSlot = .morning }
+                    else if hour >= 10 && hour < 14 { timeSlot = .noon }
+                    else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+                    else { timeSlot = .evening }
+
                     switch type {
                     case "meal":
                         if let mealTypeStr = subtype {
                             if let mealType = MealType(rawValue: mealTypeStr) {
                                 await AuthenticationManager.shared.recordMeal(mealType: mealType)
+                                await TimeSlotManager.shared.recordMealLog(at: timeSlot)
                             }
                         }
-                    case "water":
-                        await AuthenticationManager.shared.recordWater()
-                    case "coffee":
-                        await AuthenticationManager.shared.recordCoffee()
-                    case "alcohol":
-                        if let alcoholTypeStr = subtype {
+                    case "water", "coffee", "alcohol":
+                        if type == "water" {
+                            await AuthenticationManager.shared.recordWater()
+                        } else if type == "coffee" {
+                            await AuthenticationManager.shared.recordCoffee()
+                        } else if let alcoholTypeStr = subtype {
                             if let alcoholType = AlcoholType(rawValue: alcoholTypeStr) {
                                 await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
                             }
                         }
+                        await TimeSlotManager.shared.recordDrinkLog(at: timeSlot)
                     default:
                         break
                     }
-                    print("[iOSWatchBridge] 摂取記録: \(type) \(subtype ?? "")")
+                    print("[iOSWatchBridge] 摂取記録: \(type) \(subtype ?? "") at \(timeSlot.displayName)")
                 }
                 return
             }
@@ -260,8 +272,11 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["intakeWaterGoal"] = intakeGoals.dailyWaterGoal
             payload["intakeCaffeine"] = intakeData.totalCaffeineMg
             payload["intakeCaffeineLimit"] = intakeGoals.dailyCaffeineLimit
-            payload["intakeAlcohol"] = intakeData.totalAlcoholMg
+            payload["intakeAlcohol"] = intakeData.totalAlcoholG
             payload["intakeAlcoholLimit"] = intakeGoals.dailyAlcoholLimit
+
+            // ログ入力状態を含める
+            payload["todayMealLogged"] = !intakeData.meals.isEmpty
 
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)

@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import GoogleSignIn
+import WidgetKit
 
 @MainActor
 class AuthenticationManager: ObservableObject {
@@ -196,6 +197,19 @@ class AuthenticationManager: ObservableObject {
             NotificationManager.shared.handleWorkoutRecorded()
             iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 
+            // 時間帯の進捗を更新
+            let calendar = Calendar.current
+            let hour = calendar.component(.hour, from: now)
+            let timeSlot: TimeSlot
+            if hour >= 6 && hour < 10 { timeSlot = .morning }
+            else if hour >= 10 && hour < 14 { timeSlot = .noon }
+            else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+            else { timeSlot = .evening }
+            await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
+
+            // Widget更新
+            WidgetCenter.shared.reloadAllTimelines()
+
             // Apple Health書き込み（権限確認）
             if HealthKitManager.shared.isAvailable {
                 if !HealthKitManager.shared.isAuthorized {
@@ -378,13 +392,23 @@ class AuthenticationManager: ObservableObject {
         // ストリーク・ポイントをまとめて更新
         await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
 
+        // 時間帯の進捗を更新
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        let timeSlot: TimeSlot
+        if hour >= 6 && hour < 10 { timeSlot = .morning }
+        else if hour >= 10 && hour < 14 { timeSlot = .noon }
+        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+        else { timeSlot = .evening }
+        await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
+
         // Apple Health にセット全体を記録（権限確認）
         if HealthKitManager.shared.isAvailable {
             if !HealthKitManager.shared.isAuthorized {
                 await HealthKitManager.shared.requestAuthorization()
             }
             if HealthKitManager.shared.isAuthorized {
-                let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
+                let setStart = calendar.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
                 await HealthKitManager.shared.saveCompletedSet(
                     exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
                     startDate: setStart
@@ -401,7 +425,6 @@ class AuthenticationManager: ObservableObject {
         let totalXP = snap?.data()?["totalPoints"] as? Int ?? (userProfile?.totalPoints ?? 0)
 
         // 今日の rep 合計を completed-exercises から集計
-        let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: now)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? now
         let todaySnap = try? await db.collection("users").document(userId)
@@ -449,6 +472,16 @@ class AuthenticationManager: ObservableObject {
         NotificationManager.shared.handleWorkoutRecorded()
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 
+        // 時間帯の進捗を更新
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        let timeSlot: TimeSlot
+        if hour >= 6 && hour < 10 { timeSlot = .morning }
+        else if hour >= 10 && hour < 14 { timeSlot = .noon }
+        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+        else { timeSlot = .evening }
+        await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
+
         // Apple Health書き込み（権限確認）
         if HealthKitManager.shared.isAvailable {
             if !HealthKitManager.shared.isAuthorized {
@@ -464,6 +497,9 @@ class AuthenticationManager: ObservableObject {
 
         // キャッシュ無効化
         invalidateTodayExercisesCache()
+
+        // Widget更新
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// 種目のみを記録（セットは記録しない）
@@ -479,12 +515,25 @@ class AuthenticationManager: ObservableObject {
         try? await db.collection("users").document(userId)
             .collection("completed-exercises").addDocument(data: data)
 
+        // 時間帯の進捗を更新
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        let timeSlot: TimeSlot
+        if hour >= 6 && hour < 10 { timeSlot = .morning }
+        else if hour >= 10 && hour < 14 { timeSlot = .noon }
+        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+        else { timeSlot = .evening }
+        await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
+
         // Apple Health書き込み
         if HealthKitManager.shared.isAvailable && HealthKitManager.shared.isAuthorized {
             await HealthKitManager.shared.saveExercise(
                 exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
             )
         }
+
+        // Widget更新
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// 完了したセットを1件として記録
@@ -1143,12 +1192,12 @@ class AuthenticationManager: ObservableObject {
         let settings = await getIntakeSettings()
         let alcoholSetting = settings.settingFor(alcoholType: alcoholType)
         let amountMl = (alcoholSetting?.amountMl ?? alcoholType.amountMl) * servings
-        let alcoholMg = (alcoholSetting?.alcoholMg ?? alcoholType.alcoholMg) * servings
+        let alcoholG = (alcoholSetting?.alcoholG ?? alcoholType.alcoholG) * Double(servings)
 
         let data: [String: Any] = [
             "alcoholType": alcoholType.rawValue,
             "amountMl": amountMl,
-            "alcoholMg": alcoholMg,
+            "alcoholG": alcoholG,
             "timestamp": now
         ]
 
@@ -1157,7 +1206,7 @@ class AuthenticationManager: ObservableObject {
             .collection("logs").addDocument(data: data)
 
         // Apple Healthにアルコール記録（純アルコール量も渡す）
-        await HealthKitManager.shared.saveAlcoholIntake(amountMl: Double(amountMl), alcoholMg: Double(alcoholMg), timestamp: now)
+        await HealthKitManager.shared.saveAlcoholIntake(amountMl: Double(amountMl), alcoholG: alcoholG, timestamp: now)
     }
 
     /// 今日の摂取記録を取得
@@ -1232,10 +1281,18 @@ class AuthenticationManager: ObservableObject {
                 if let alcoholTypeStr = data["alcoholType"] as? String,
                    let alcoholType = AlcoholType(rawValue: alcoholTypeStr),
                    let amountMl = data["amountMl"] as? Int,
-                   let alcoholMg = data["alcoholMg"] as? Int,
                    let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() {
-                    summary.alcoholLogs.append(AlcoholLog(alcoholType: alcoholType, amountMl: amountMl, alcoholMg: alcoholMg, timestamp: timestamp))
-                    summary.totalAlcoholMg += alcoholMg
+                    // alcoholGを取得（古いデータはalcoholMgの場合があるので互換性を保つ）
+                    let alcoholG: Double
+                    if let g = data["alcoholG"] as? Double {
+                        alcoholG = g
+                    } else if let mg = data["alcoholMg"] as? Int {
+                        alcoholG = Double(mg) / 1000.0  // mgからgに変換
+                    } else {
+                        alcoholG = alcoholType.alcoholG  // デフォルト値
+                    }
+                    summary.alcoholLogs.append(AlcoholLog(alcoholType: alcoholType, amountMl: amountMl, alcoholG: alcoholG, timestamp: timestamp))
+                    summary.totalAlcoholG += alcoholG
                 }
             }
         }

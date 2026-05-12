@@ -92,7 +92,7 @@ struct DailyIntakeView: View {
             HStack(spacing: 20) {
                 summaryItem(title: "カフェイン", value: "\(todaySummary.totalCaffeineMg)", unit: "mg", color: .duoBrown)
                 Divider()
-                summaryItem(title: "アルコール", value: "\(todaySummary.totalAlcoholMg)", unit: "mg", color: .duoPurple)
+                summaryItem(title: "アルコール", value: String(format: "%.1f", todaySummary.totalAlcoholG), unit: "g", color: .duoPurple)
             }
             .frame(height: 60)
         }

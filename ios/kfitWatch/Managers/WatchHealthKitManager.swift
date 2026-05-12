@@ -18,6 +18,7 @@ class WatchHealthKitManager: ObservableObject {
     @Published var sleepHours: Double = 0.0
     @Published var latestBodyMass: Double = 0.0  // 体重 (kg)
     @Published var latestBodyFatPercentage: Double = 0.0  // 体脂肪率 (%)
+    @Published var todayMindfulnessSessions: Int = 0  // 今日のマインドフルネスセッション数
 
     private init() {}
 
@@ -36,10 +37,15 @@ class WatchHealthKitManager: ObservableObject {
             HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!,
             HKObjectType.quantityType(forIdentifier: .bodyMass)!,
             HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
+            HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
+        ]
+
+        let typesToWrite: Set<HKSampleType> = [
+            HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
         ]
 
         do {
-            try await healthStore.requestAuthorization(toShare: [], read: typesToRead)
+            try await healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead)
             isAuthorized = true
             print("[WatchHealthKit] ✅ Authorization granted")
             await fetchAllTodayData()
@@ -59,6 +65,7 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchSleepHours() }
             group.addTask { await self.fetchLatestBodyMass() }
             group.addTask { await self.fetchLatestBodyFatPercentage() }
+            group.addTask { await self.fetchTodayMindfulness() }
         }
     }
 
@@ -226,6 +233,58 @@ class WatchHealthKitManager: ObservableObject {
             }
         }
         healthStore.execute(query)
+    }
+
+    // MARK: - Mindfulness
+
+    func fetchTodayMindfulness() async {
+        guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else { return }
+
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+
+        let query = HKSampleQuery(
+            sampleType: mindfulType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error {
+                    print("[WatchHealthKit] Mindfulness query error: \(error)")
+                    return
+                }
+                let count = samples?.count ?? 0
+                self?.todayMindfulnessSessions = count
+                print("[WatchHealthKit] 🧘 Mindfulness sessions: \(count)")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    func saveMindfulnessSession(durationMinutes: Int) async {
+        guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
+            print("[WatchHealthKit] ⚠️ Mindfulness type not available")
+            return
+        }
+
+        let now = Date()
+        let startDate = now.addingTimeInterval(-Double(durationMinutes * 60))
+
+        let sample = HKCategorySample(
+            type: mindfulType,
+            value: HKCategoryValue.notApplicable.rawValue,
+            start: startDate,
+            end: now
+        )
+
+        do {
+            try await healthStore.save(sample)
+            print("[WatchHealthKit] ✅ Mindfulness session saved: \(durationMinutes) min")
+        } catch {
+            print("[WatchHealthKit] ⚠️ Failed to save mindfulness: \(error)")
+        }
     }
 
     // MARK: - Helpers

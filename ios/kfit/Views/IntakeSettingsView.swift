@@ -140,11 +140,8 @@ struct IntakeSettingsView: View {
                         Text("🍺 アルコール上限")
                             .font(.subheadline).fontWeight(.bold)
                         Spacer()
-                        TextField("", value: Binding(
-                            get: { settings.dailyAlcoholLimit / 1000 },
-                            set: { settings.dailyAlcoholLimit = $0 * 1000 }
-                        ), format: .number)
-                            .keyboardType(.numberPad)
+                        TextField("", value: $settings.dailyAlcoholLimit, format: .number)
+                            .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
                         Text("g")
@@ -180,11 +177,11 @@ struct IntakeSettingsView: View {
                                 Text("アルコール")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)
                                 Spacer()
-                                TextField("", value: $alcoholSetting.alcoholMg, format: .number)
-                                    .keyboardType(.numberPad)
+                                TextField("", value: $alcoholSetting.alcoholG, format: .number)
+                                    .keyboardType(.decimalPad)
                                     .multilineTextAlignment(.trailing)
                                     .frame(width: 60)
-                                Text("mg")
+                                Text("g")
                                     .font(.caption2).foregroundColor(Color.duoSubtitle)
                             }
                         }

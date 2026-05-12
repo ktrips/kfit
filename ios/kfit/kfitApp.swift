@@ -46,41 +46,34 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            // ホーム
             NavigationView { DashboardView() }
                 .tabItem { Label("ホーム", systemImage: "house.fill") }
                 .tag(0)
 
-            NavigationView { WorkoutPlanView() }
-                .tabItem { Label("プラン", systemImage: "list.bullet") }
-                .tag(1)
-
+            // 記録（中央ボタン）
             Color.clear
                 .tabItem { Label("記録", systemImage: "plus.circle.fill") }
-                .tag(2)
+                .tag(1)
 
-            NavigationView { WeeklyGoalView() }
-                .tabItem { Label("週間", systemImage: "flag.fill") }
-                .tag(3)
-
-            NavigationView { HistoryView() }
-                .tabItem { Label("履歴", systemImage: "calendar") }
-                .tag(4)
-
-            NavigationView { HelpView() }
-                .tabItem { Label("ヘルプ", systemImage: "questionmark.circle.fill") }
-                .tag(5)
-
-            NavigationView { HealthView() }
-                .tabItem { Label("健康", systemImage: "heart.fill") }
-                .tag(6)
-
+            // 設定（時間帯別目標を含む）
             NavigationView { SettingsView() }
                 .tabItem { Label("設定", systemImage: "gearshape.fill") }
-                .tag(7)
+                .tag(2)
+
+            // プラン
+            NavigationView { WorkoutPlanView() }
+                .tabItem { Label("プラン", systemImage: "list.bullet") }
+                .tag(3)
+
+            // その他（More）
+            MoreView()
+                .tabItem { Label("その他", systemImage: "ellipsis.circle.fill") }
+                .tag(4)
         }
         .accentColor(Color.duoGreen)
         .onChange(of: selectedTab) { oldTab, newTab in
-            if newTab == 2 {
+            if newTab == 1 {
                 showRecordMenu = true
                 selectedTab = 0
             }

@@ -44,6 +44,7 @@ struct SettingsView: View {
     @State private var showSensitivityEditor = false
     @State private var showIntakeSettings = false
     @State private var showDailyIntake = false
+    @State private var showTimeSlotGoals = false
 
     var body: some View {
         ZStack {
@@ -52,6 +53,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     headerSection
                     permissionBanner
+                    timeSlotGoalsSection
                     dailyGoalSection
                     setConfigurationSection
                     motionSensitivitySection
@@ -91,6 +93,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showDailyIntake) {
             DailyIntakeView()
         }
+        .sheet(isPresented: $showTimeSlotGoals) {
+            NavigationView { TimeSlotGoalsView() }
+        }
     }
 
     // MARK: - Header
@@ -111,6 +116,39 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(.top, 4)
+    }
+
+    // MARK: - 時間帯別目標
+
+    private var timeSlotGoalsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "clock.fill", title: "時間帯別の目標",
+                          subtitle: "朝・昼・午後・夜ごとに設定")
+
+            Button {
+                showTimeSlotGoals = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "clock.fill")
+                        .font(.title3)
+                        .foregroundColor(Color.duoPurple)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("時間帯別目標を設定")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("各時間帯のトレーニング・マインドフルネス・ログ")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+            }
+            .background(Color.white)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
     }
 
     // MARK: - 1日の目標セット数

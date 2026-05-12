@@ -28,6 +28,7 @@ struct HealthView: View {
                         } else if hk.isLoading {
                             loadingCard
                         } else {
+                            refreshButton
                             activityCard
                             heartRateCard
                             sleepCard
@@ -157,6 +158,29 @@ struct HealthView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
+    }
+
+    // MARK: - リフレッシュボタン（目立たない）
+
+    private var refreshButton: some View {
+        Button {
+            Task { await hk.fetchAll() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+                Text("データを更新")
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.6))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     // MARK: - ローディング

@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 private let duoGreen  = Color(red: 0.345, green: 0.800, blue: 0.008)
 private let duoYellow = Color(red: 1.0,   green: 0.851, blue: 0.0)
@@ -25,6 +26,12 @@ struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @StateObject private var healthKit = WatchHealthKitManager.shared
     @State private var showFlow = false
+    @State private var selectedTab = 1  // 初期表示は真ん中（今日のメニュー）
+    @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
+    @State private var pendingIntakeType: String = ""  // 保留中の摂取タイプ
+    @State private var pendingIntakeSubtype: String? = nil  // 保留中の摂取サブタイプ
+    @State private var intakeConfirmMessage = ""  // 確認メッセージ
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ZStack {
@@ -40,7 +47,7 @@ struct WatchDashboardView: View {
                 }
             } else {
                 // メインコンテンツ（タブページング）
-                TabView {
+                TabView(selection: $selectedTab) {
                     intakeInputPage
                         .tag(0)
 
@@ -55,6 +62,12 @@ struct WatchDashboardView: View {
         }
         .fullScreenCover(isPresented: $showFlow) {
             WatchWorkoutFlowView(isPresented: $showFlow)
+        }
+        .alert(intakeConfirmMessage, isPresented: $showIntakeConfirm) {
+            Button("キャンセル", role: .cancel) { }
+            Button("記録する") {
+                connectivity.sendIntakeRecord(type: pendingIntakeType, subtype: pendingIntakeSubtype)
+            }
         }
         // iOS アプリ起動シグナルを受信したら自動でワークアウトを開始する
         .onChange(of: connectivity.shouldAutoStartWorkout) { triggered in
@@ -79,9 +92,9 @@ struct WatchDashboardView: View {
                 // ── ロゴ ──────────────────────────────
                 HStack(spacing: 6) {
                     Text("🍽️")
-                        .font(.system(size: 28))
+                        .font(.system(size: 34))
                     Text("摂取記録")
-                        .font(.system(size: 18, design: .rounded))
+                        .font(.system(size: 20, design: .rounded))
                         .fontWeight(.black)
                         .foregroundColor(duoGreen)
                 }
@@ -90,13 +103,13 @@ struct WatchDashboardView: View {
                 // ── 食事 ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "🌅", label: "朝食") {
-                        connectivity.sendIntakeRecord(type: "meal", subtype: "breakfast")
+                        confirmIntake(type: "meal", subtype: "breakfast", message: "朝食を記録しますか？")
                     }
                     watchIntakeButton(emoji: "🍱", label: "昼食") {
-                        connectivity.sendIntakeRecord(type: "meal", subtype: "lunch")
+                        confirmIntake(type: "meal", subtype: "lunch", message: "昼食を記録しますか？")
                     }
                     watchIntakeButton(emoji: "🍽️", label: "夕食") {
-                        connectivity.sendIntakeRecord(type: "meal", subtype: "dinner")
+                        confirmIntake(type: "meal", subtype: "dinner", message: "夕食を記録しますか？")
                     }
                 }
                 .padding(8)
@@ -106,10 +119,10 @@ struct WatchDashboardView: View {
                 // ── 水分・コーヒー ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "💧", label: "水") {
-                        connectivity.sendIntakeRecord(type: "water")
+                        confirmIntake(type: "water", subtype: nil, message: "水を記録しますか？")
                     }
                     watchIntakeButton(emoji: "☕", label: "コーヒー") {
-                        connectivity.sendIntakeRecord(type: "coffee")
+                        confirmIntake(type: "coffee", subtype: nil, message: "コーヒーを記録しますか？")
                     }
                 }
                 .padding(8)
@@ -119,13 +132,13 @@ struct WatchDashboardView: View {
                 // ── アルコール ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "🍺", label: "ビール") {
-                        connectivity.sendIntakeRecord(type: "alcohol", subtype: "beer")
+                        confirmIntake(type: "alcohol", subtype: "beer", message: "ビールを記録しますか？")
                     }
                     watchIntakeButton(emoji: "🍷", label: "ワイン") {
-                        connectivity.sendIntakeRecord(type: "alcohol", subtype: "wine")
+                        confirmIntake(type: "alcohol", subtype: "wine", message: "ワインを記録しますか？")
                     }
                     watchIntakeButton(emoji: "🥃", label: "酎ハイ") {
-                        connectivity.sendIntakeRecord(type: "alcohol", subtype: "chuhai")
+                        confirmIntake(type: "alcohol", subtype: "chuhai", message: "酎ハイを記録しますか？")
                     }
                 }
                 .padding(8)
@@ -146,13 +159,13 @@ struct WatchDashboardView: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(emoji)
-                    .font(.system(size: 20))
+                    .font(.system(size: 26))
                 Text(label)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
                 Spacer()
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: 20))
                     .foregroundColor(duoGreen)
             }
             .padding(.horizontal, 10)
@@ -168,27 +181,13 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
-                // ── ロゴ ──────────────────────────────
-                HStack(spacing: 6) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(duoGreen, lineWidth: 2))
-                    Text("DuoFit")
-                        .font(.system(size: 18, design: .rounded))
-                        .fontWeight(.black)
-                        .foregroundColor(duoGreen)
-                }
-                .padding(.top, 4)
-
                 // ── ステータス（統一指標）────────────────────────
                 HStack(spacing: 0) {
-                    WatchStatItem(icon: "🔥", value: "\(connectivity.streak)", label: "連続")
+                    WatchStatItem(icon: "💪", value: "\(connectivity.todaySetCount)/\(connectivity.dailySetGoal)", label: "トレーニング")
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "📊", value: "\(connectivity.todaySetCount)/\(connectivity.dailySetGoal)", label: "セット")
+                    WatchStatItem(icon: "🧘", value: healthKit.todayMindfulnessSessions > 0 ? "✓" : "−", label: "マインドフル")
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "💪", value: "\(connectivity.todayReps)", label: "回数")
+                    WatchStatItem(icon: "🍽️", value: connectivity.todayMealLogged ? "✓" : "−", label: "ログ入力")
                 }
                 .padding(.vertical, 6)
                 .background(Color.white.opacity(0.08))
@@ -196,15 +195,53 @@ struct WatchDashboardView: View {
 
                     // ── スタートボタン ────────────────────
                     Button { showFlow = true } label: {
-                        VStack(spacing: 3) {
-                            Text("🏋️").font(.system(size: 32))
-                            Text("今日のメニュー").font(.system(size: 13)).fontWeight(.bold)
-                            Text("タップして開始").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
+                        VStack(spacing: 4) {
+                            // マスコット
+                            Image("mascot")
+                                .resizable().scaledToFill()
+                                .frame(width: 42, height: 42)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 2))
+
+                            // メッセージ（回数に応じて変化）
+                            if connectivity.todaySetCount == 0 {
+                                Text("今日のDuofitトレーニング")
+                                    .font(.system(size: 15)).fontWeight(.bold)
+                                Text("タップして開始")
+                                    .font(.system(size: 11)).foregroundColor(.white.opacity(0.7))
+                            } else {
+                                Text("今日\(connectivity.todaySetCount + 1)回目")
+                                    .font(.system(size: 15)).fontWeight(.bold)
+                                Text("トレーニングしよう！")
+                                    .font(.system(size: 13)).fontWeight(.semibold)
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 12)
                         .background(
                             LinearGradient(colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+
+                    // ── マインドフルネスボタン ────────────────────
+                    Button {
+                        Task {
+                            await recordMindfulness()
+                        }
+                    } label: {
+                        VStack(spacing: 3) {
+                            Text("🧘").font(.system(size: 32))
+                            Text("マインドフルネス").font(.system(size: 13)).fontWeight(.bold)
+                            Text("1分呼吸セッション").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            LinearGradient(colors: [Color(red: 0.808, green: 0.51, blue: 1.0), Color(red: 0.58, green: 0.32, blue: 0.76)],
                                            startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
                         .cornerRadius(12)
@@ -294,6 +331,25 @@ struct WatchDashboardView: View {
         }
     }
 
+    // MARK: - 摂取記録確認
+    private func confirmIntake(type: String, subtype: String?, message: String) {
+        pendingIntakeType = type
+        pendingIntakeSubtype = subtype
+        intakeConfirmMessage = message
+        showIntakeConfirm = true
+    }
+
+    // MARK: - マインドフルネス記録
+    private func recordMindfulness() async {
+        // HealthKitに1分間のマインドフルネスセッションを記録
+        await healthKit.saveMindfulnessSession(durationMinutes: 1)
+
+        // HealthKitデータを再取得して最新のセッション数を反映
+        await healthKit.fetchTodayMindfulness()
+
+        print("[Watch] 🧘 Mindfulness session recorded")
+    }
+
     // MARK: - 健康データページ（2ページ目）
     private var healthDataPage: some View {
         ScrollView(showsIndicators: false) {
@@ -303,100 +359,93 @@ struct WatchDashboardView: View {
                 HStack(spacing: 6) {
                     Image("mascot")
                         .resizable().scaledToFill()
-                        .frame(width: 28, height: 28)
+                        .frame(width: 34, height: 34)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(duoGreen, lineWidth: 2))
                     Text("DuoFit")
-                        .font(.system(size: 18, design: .rounded))
+                        .font(.system(size: 22, design: .rounded))
                         .fontWeight(.black)
                         .foregroundColor(duoGreen)
                 }
-                .padding(.top, 4)
+                .padding(.top, 0)
+                .padding(.bottom, 4)
 
                 // ── 今日のApple Health ──────────────────────
                 if healthKit.isAuthorized {
                     VStack(spacing: 6) {
                         HStack {
                             Text("💚")
-                                .font(.system(size: 14))
-                            Text("今日のApple Health")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 18))
+                            Text("今日のHealth")
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white.opacity(0.9))
                             Spacer()
+                            // 更新ボタン
+                            Button {
+                                Task {
+                                    await healthKit.fetchAllTodayData()
+                                }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(duoGreen)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.bottom, 2)
+                        .padding(.bottom, 4)
 
-                        // 2列グリッド
-                        VStack(spacing: 5) {
-                            // 行1: 睡眠 | 体重
-                            HStack(spacing: 5) {
-                                watchCompactHealthItem(
-                                    icon: "😴", label: "睡眠",
-                                    value: healthKit.sleepHours, goal: 7.0, unit: "h",
-                                    formatValue: { String(format: "%.1f", $0) }
-                                )
-                                watchCompactHealthItem(
-                                    icon: "⚖️", label: "体重",
-                                    value: healthKit.latestBodyMass, goal: nil, unit: "kg",
-                                    formatValue: { String(format: "%.1f", $0) }
-                                )
-                            }
-
-                            // 行2: 体脂肪 | 歩数
-                            HStack(spacing: 5) {
-                                watchCompactHealthItem(
-                                    icon: "📊", label: "体脂肪",
-                                    value: healthKit.latestBodyFatPercentage, goal: nil, unit: "%",
-                                    formatValue: { String(format: "%.1f", $0) }
-                                )
-                                watchCompactHealthItem(
-                                    icon: "👟", label: "歩数",
-                                    value: Double(healthKit.todaySteps), goal: 10000.0, unit: "歩",
-                                    formatValue: { "\(Int($0))" }
-                                )
-                            }
-
-                            // 行3: 心拍数 | 消費Cal
-                            HStack(spacing: 5) {
-                                watchCompactHealthItem(
-                                    icon: "❤️", label: "心拍数",
-                                    value: Double(healthKit.averageHeartRate), goal: nil, unit: "bpm",
-                                    formatValue: { "\(Int($0))" }
-                                )
-                                watchCompactHealthItem(
-                                    icon: "🔥", label: "消費Cal",
-                                    value: Double(healthKit.todayCalories), goal: Double(connectivity.calorieTarget), unit: "kcal",
-                                    formatValue: { "\(Int($0))" }
-                                )
-                            }
-
-                            // 行4: 摂取Cal | 水分
-                            HStack(spacing: 5) {
-                                watchCompactHealthItem(
-                                    icon: "🍽️", label: "摂取Cal",
-                                    value: Double(connectivity.intakeCalories), goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
-                                    formatValue: { "\(Int($0))" }
-                                )
-                                watchCompactHealthItem(
-                                    icon: "💧", label: "水分",
-                                    value: Double(connectivity.intakeWater), goal: Double(connectivity.intakeWaterGoal), unit: "ml",
-                                    formatValue: { "\(Int($0))" }
-                                )
-                            }
-
-                            // 行5: カフェイン | アルコール
-                            HStack(spacing: 5) {
-                                watchCompactHealthItem(
-                                    icon: "☕", label: "カフェイン",
-                                    value: Double(connectivity.intakeCaffeine), goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
-                                    formatValue: { "\(Int($0))" }, isReverse: true
-                                )
-                                watchCompactHealthItem(
-                                    icon: "🍺", label: "アルコール",
-                                    value: Double(connectivity.intakeAlcohol) / 1000.0, goal: Double(connectivity.intakeAlcoholLimit) / 1000.0, unit: "g",
-                                    formatValue: { String(format: "%.1f", $0) }, isReverse: true
-                                )
-                            }
+                        // 1列レイアウト
+                        VStack(spacing: 7) {
+                            watchLargeHealthItem(
+                                icon: "😴", label: "睡眠",
+                                value: healthKit.sleepHours, goal: 7.0, unit: "h",
+                                formatValue: { String(format: "%.1f", $0) }
+                            )
+                            watchLargeHealthItem(
+                                icon: "⚖️", label: "体重",
+                                value: healthKit.latestBodyMass, goal: nil, unit: "kg",
+                                formatValue: { String(format: "%.1f", $0) }
+                            )
+                            watchLargeHealthItem(
+                                icon: "📊", label: "体脂肪",
+                                value: healthKit.latestBodyFatPercentage, goal: nil, unit: "%",
+                                formatValue: { String(format: "%.1f", $0) }
+                            )
+                            watchLargeHealthItem(
+                                icon: "👟", label: "歩数",
+                                value: Double(healthKit.todaySteps), goal: 10000.0, unit: "歩",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "❤️", label: "心拍数",
+                                value: Double(healthKit.averageHeartRate), goal: nil, unit: "bpm",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "🔥", label: "消費Cal",
+                                value: Double(healthKit.todayCalories), goal: Double(connectivity.calorieTarget), unit: "kcal",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "🍽️", label: "摂取Cal",
+                                value: Double(connectivity.intakeCalories), goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "💧", label: "水分",
+                                value: Double(connectivity.intakeWater), goal: Double(connectivity.intakeWaterGoal), unit: "ml",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "☕", label: "カフェイン",
+                                value: Double(connectivity.intakeCaffeine), goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
+                                formatValue: { "\(Int($0))" }, isReverse: true
+                            )
+                            watchLargeHealthItem(
+                                icon: "🍺", label: "アルコール",
+                                value: connectivity.intakeAlcohol, goal: connectivity.intakeAlcoholLimit, unit: "g",
+                                formatValue: { String(format: "%.1f", $0) }, isReverse: true
+                            )
                         }
                     }
 
@@ -569,4 +618,69 @@ private func watchCompactHealthItem(
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.white.opacity(0.05))
     .cornerRadius(7)
+}
+
+// ── Watch用大きめのヘルスアイテム（1列レイアウト）────────────────────────────────
+private func watchLargeHealthItem(
+    icon: String,
+    label: String,
+    value: Double,
+    goal: Double?,
+    unit: String,
+    formatValue: (Double) -> String,
+    isReverse: Bool = false
+) -> some View {
+    let percent = goal != nil && goal! > 0 ? min(Int((value / goal!) * 100), 100) : 0
+    let isGood = goal == nil ? (value > 0) : (isReverse ? (value <= goal!) : (value >= goal!))
+    let isOver = goal != nil && isReverse && value > goal!
+
+    return VStack(alignment: .leading, spacing: 4) {
+        // アイコン + ラベル
+        HStack(spacing: 4) {
+            Text(icon).font(.system(size: 16))
+            Text(label)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white.opacity(0.9))
+            Spacer()
+            // パーセンテージ表示（目標がある場合のみ）
+            if let _ = goal {
+                Text("\(percent)%")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(isOver ? Color.red : (isGood ? duoGreen : Color.orange))
+            }
+        }
+
+        // 値表示
+        HStack(alignment: .bottom, spacing: 3) {
+            Text(value > 0 ? formatValue(value) : "—")
+                .font(.system(size: 18, weight: .black))
+                .foregroundColor(isOver ? Color.red : (isGood ? duoGreen : .white))
+            Text(unit)
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.6))
+                .padding(.bottom, 1)
+            if isOver {
+                Text("過剰")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.red)
+                    .padding(.bottom, 1)
+            }
+        }
+
+        // プログレスバー（目標がある場合のみ）
+        if let _ = goal {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.2)).frame(height: 3)
+                    Capsule().fill(isOver ? Color.red : (isGood ? duoGreen : Color.orange))
+                        .frame(width: max(3, geo.size.width * CGFloat(percent) / 100), height: 3)
+                }
+            }
+            .frame(height: 3)
+        }
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.white.opacity(0.08))
+    .cornerRadius(10)
 }

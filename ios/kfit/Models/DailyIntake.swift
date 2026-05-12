@@ -91,22 +91,22 @@ enum AlcoholType: String, Codable, CaseIterable {
         }
     }
 
-    /// 純アルコール量（mg単位）
-    /// 計算式: 容量(ml) × アルコール度数(%) × 0.8(アルコール比重) × 1000
-    var alcoholMg: Int {
+    /// 純アルコール量（g単位）
+    /// 計算式: 容量(ml) × アルコール度数(%) × 0.8(アルコール比重)
+    var alcoholG: Double {
         switch self {
         case .beer:
-            // ビール350ml × 5% × 0.8 = 14g = 14000mg
-            return 14000
+            // ビール350ml × 5% × 0.8 = 14g
+            return 14.0
         case .wine:
-            // ワイン120ml × 12% × 0.8 = 11.52g ≈ 11500mg
-            return 11500
+            // ワイン120ml × 12% × 0.8 = 11.52g
+            return 11.5
         case .chuhai:
-            // 酎ハイ350ml × 7% × 0.8 = 19.6g ≈ 19600mg
-            return 19600
+            // 酎ハイ350ml × 7% × 0.8 = 19.6g
+            return 19.6
         case .nonAlcoholic:
             // ノンアルコール = 0g
-            return 0
+            return 0.0
         }
     }
 }
@@ -115,7 +115,7 @@ struct AlcoholLog: Codable, Identifiable {
     var id = UUID()
     let alcoholType: AlcoholType
     let amountMl: Int
-    let alcoholMg: Int
+    let alcoholG: Double
     let timestamp: Date
 }
 
@@ -125,7 +125,7 @@ struct TodayIntakeSummary {
     var totalCalories: Int = 0
     var totalWaterMl: Int = 0
     var totalCaffeineMg: Int = 0
-    var totalAlcoholMg: Int = 0
+    var totalAlcoholG: Double = 0.0
 
     var meals: [MealLog] = []
     var waterLogs: [WaterLog] = []

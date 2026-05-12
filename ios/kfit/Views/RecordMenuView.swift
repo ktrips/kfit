@@ -5,6 +5,9 @@ struct RecordMenuView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var showWorkoutTracker = false
     @State private var todayIntake = TodayIntakeSummary()
+    @State private var showConfirmAlert = false
+    @State private var pendingRecordAction: (() async -> Void)?
+    @State private var confirmMessage = ""
 
     var body: some View {
         NavigationView {
@@ -46,22 +49,25 @@ struct RecordMenuView: View {
 
                             HStack(spacing: 12) {
                                 quickRecordButton(emoji: "🌅", label: "朝食", color: Color.duoOrange) {
-                                    Task {
+                                    confirmMessage = "朝食 400kcal を記録しますか？"
+                                    pendingRecordAction = {
                                         await authManager.recordMeal(mealType: .breakfast)
-                                        todayIntake = await authManager.getTodayIntakeSummary()
                                     }
+                                    showConfirmAlert = true
                                 }
                                 quickRecordButton(emoji: "🍱", label: "昼食", color: Color.duoOrange) {
-                                    Task {
+                                    confirmMessage = "昼食 600kcal を記録しますか？"
+                                    pendingRecordAction = {
                                         await authManager.recordMeal(mealType: .lunch)
-                                        todayIntake = await authManager.getTodayIntakeSummary()
                                     }
+                                    showConfirmAlert = true
                                 }
                                 quickRecordButton(emoji: "🍽️", label: "夕食", color: Color.duoOrange) {
-                                    Task {
+                                    confirmMessage = "夕食 800kcal を記録しますか？"
+                                    pendingRecordAction = {
                                         await authManager.recordMeal(mealType: .dinner)
-                                        todayIntake = await authManager.getTodayIntakeSummary()
                                     }
+                                    showConfirmAlert = true
                                 }
                             }
                         }
@@ -79,41 +85,47 @@ struct RecordMenuView: View {
 
                             VStack(spacing: 10) {
                                 quickRecordRow(emoji: "💧", label: "水", color: Color.duoBlue) {
-                                    Task {
+                                    confirmMessage = "水 200ml を記録しますか？"
+                                    pendingRecordAction = {
                                         await authManager.recordWater()
-                                        todayIntake = await authManager.getTodayIntakeSummary()
                                     }
+                                    showConfirmAlert = true
                                 }
                                 quickRecordRow(emoji: "☕", label: "コーヒー", color: Color.duoBrown) {
-                                    Task {
+                                    confirmMessage = "コーヒー 150ml (カフェイン90mg) を記録しますか？"
+                                    pendingRecordAction = {
                                         await authManager.recordCoffee()
-                                        todayIntake = await authManager.getTodayIntakeSummary()
                                     }
+                                    showConfirmAlert = true
                                 }
                                 Menu {
                                     Button("🍺 ビール") {
-                                        Task {
+                                        confirmMessage = "ビール 350ml (アルコール14g) を記録しますか？"
+                                        pendingRecordAction = {
                                             await authManager.recordAlcohol(alcoholType: .beer)
-                                            todayIntake = await authManager.getTodayIntakeSummary()
                                         }
+                                        showConfirmAlert = true
                                     }
                                     Button("🍷 ワイン") {
-                                        Task {
+                                        confirmMessage = "ワイン 120ml (アルコール11.5g) を記録しますか？"
+                                        pendingRecordAction = {
                                             await authManager.recordAlcohol(alcoholType: .wine)
-                                            todayIntake = await authManager.getTodayIntakeSummary()
                                         }
+                                        showConfirmAlert = true
                                     }
                                     Button("🥃 酎ハイ") {
-                                        Task {
+                                        confirmMessage = "酎ハイ 350ml (アルコール19.6g) を記録しますか？"
+                                        pendingRecordAction = {
                                             await authManager.recordAlcohol(alcoholType: .chuhai)
-                                            todayIntake = await authManager.getTodayIntakeSummary()
                                         }
+                                        showConfirmAlert = true
                                     }
                                     Button("🚫 ノンアル") {
-                                        Task {
+                                        confirmMessage = "ノンアルコール 0g を記録しますか？"
+                                        pendingRecordAction = {
                                             await authManager.recordAlcohol(alcoholType: .nonAlcoholic)
-                                            todayIntake = await authManager.getTodayIntakeSummary()
                                         }
+                                        showConfirmAlert = true
                                     }
                                 } label: {
                                     HStack {
@@ -162,6 +174,16 @@ struct RecordMenuView: View {
         .onAppear {
             Task {
                 todayIntake = await authManager.getTodayIntakeSummary()
+            }
+        }
+        .alert(confirmMessage, isPresented: $showConfirmAlert) {
+            Button("キャンセル", role: .cancel) { }
+            Button("記録する") {
+                Task {
+                    await pendingRecordAction?()
+                    todayIntake = await authManager.getTodayIntakeSummary()
+                    pendingRecordAction = nil
+                }
             }
         }
     }

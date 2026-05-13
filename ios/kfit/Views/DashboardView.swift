@@ -377,26 +377,15 @@ struct DashboardView: View {
                             .foregroundColor(.white)
                     }
 
-                    // カロリー収支
+                    // カロリー収支（プラスは赤字、マイナスは白抜き）
                     HStack(spacing: 2) {
                         Image(systemName: "flame.fill")
                             .font(.system(size: 10))
-                            .foregroundColor(.red)
-                        Text("\(calorieBalance)cal")
+                            .foregroundColor(calorieBalance >= 0 ? .red : .white)
+                        Text(calorieBalance >= 0 ? "+\(calorieBalance)cal" : "\(calorieBalance)cal")
                             .font(.system(size: 10, design: .rounded))
                             .fontWeight(.semibold)
-                            .foregroundColor(calorieBalance >= 0 ? .white : .red.opacity(0.8))
-                    }
-
-                    // ポイント
-                    HStack(spacing: 2) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.yellow)
-                        Text("\(totalXP)")
-                            .font(.system(size: 10, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundColor(calorieBalance >= 0 ? .red : .white)
                     }
                 }
             }
@@ -820,6 +809,39 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoGreen)
                     }
 
+                    // 今日のトレーニング情報
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            Text("今日のトレーニング:")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                            Text("\(totalTraining)回")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoDark)
+                        }
+
+                        HStack(spacing: 4) {
+                            Text("獲得:")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                            Text("\(totalXP) XP")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoGreen)
+                        }
+
+                        HStack(spacing: 4) {
+                            Text("総:")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                            Text("\(authManager.userProfile?.totalPoints ?? 0) XP")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color.duoOrange)
+                        }
+                    }
+
                     // トータル進捗（罫線なし）
                     HStack(spacing: 8) {
                         HStack(spacing: 4) {
@@ -942,12 +964,12 @@ struct DashboardView: View {
                             Text(todayExercises.isEmpty
                                  ? "今日のDuoFitスタート！"
                                  : "\(todaySetCount + 1)回目のDuoFit記録")
-                                .font(.caption).fontWeight(.black)
+                                .font(.subheadline).fontWeight(.black)
                                 .foregroundColor(.white)
                             Text(todayExercises.isEmpty
                                  ? "タップして開始"
                                  : "\(todayExercises.count) 種目 · \(totalXP) XP")
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundColor(Color.white.opacity(0.85))
                         }
 

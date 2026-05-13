@@ -14,6 +14,10 @@ struct ReminderConfig: Codable {
 struct NotificationPrefs: Codable {
     var amReminder:  ReminderConfig
     var amFollowup:  ReminderConfig
+    var noonReminder: ReminderConfig
+    var noonFollowup: ReminderConfig
+    var afternoonReminder: ReminderConfig
+    var afternoonFollowup: ReminderConfig
     var pmReminder:  ReminderConfig
     var pmFollowup:  ReminderConfig
     var streakAlert: ReminderConfig
@@ -22,9 +26,13 @@ struct NotificationPrefs: Codable {
 
     static let defaultPrefs = NotificationPrefs(
         amReminder:  ReminderConfig(enabled: true, hour: 6,  minute: 0),
-        amFollowup:  ReminderConfig(enabled: true, hour: 8,  minute: 0),
+        amFollowup:  ReminderConfig(enabled: true, hour: 9,  minute: 0),
+        noonReminder: ReminderConfig(enabled: true, hour: 10, minute: 0),
+        noonFollowup: ReminderConfig(enabled: true, hour: 13, minute: 0),
+        afternoonReminder: ReminderConfig(enabled: true, hour: 14, minute: 0),
+        afternoonFollowup: ReminderConfig(enabled: true, hour: 17, minute: 0),
         pmReminder:  ReminderConfig(enabled: true, hour: 18, minute: 0),
-        pmFollowup:  ReminderConfig(enabled: true, hour: 20, minute: 0),
+        pmFollowup:  ReminderConfig(enabled: true, hour: 21, minute: 0),
         streakAlert: ReminderConfig(enabled: true, hour: 22, minute: 0),
         weightMorning: ReminderConfig(enabled: true, hour: 7, minute: 0),
         weightEvening: ReminderConfig(enabled: true, hour: 21, minute: 0)
@@ -36,6 +44,10 @@ struct NotificationPrefs: Codable {
             switch id {
             case NotificationManager.ID.amReminder:  return amReminder
             case NotificationManager.ID.amFollowup:  return amFollowup
+            case NotificationManager.ID.noonReminder: return noonReminder
+            case NotificationManager.ID.noonFollowup: return noonFollowup
+            case NotificationManager.ID.afternoonReminder: return afternoonReminder
+            case NotificationManager.ID.afternoonFollowup: return afternoonFollowup
             case NotificationManager.ID.pmReminder:  return pmReminder
             case NotificationManager.ID.pmFollowup:  return pmFollowup
             case NotificationManager.ID.streakAlert: return streakAlert
@@ -48,6 +60,10 @@ struct NotificationPrefs: Codable {
             switch id {
             case NotificationManager.ID.amReminder:  amReminder  = newValue
             case NotificationManager.ID.amFollowup:  amFollowup  = newValue
+            case NotificationManager.ID.noonReminder: noonReminder = newValue
+            case NotificationManager.ID.noonFollowup: noonFollowup = newValue
+            case NotificationManager.ID.afternoonReminder: afternoonReminder = newValue
+            case NotificationManager.ID.afternoonFollowup: afternoonFollowup = newValue
             case NotificationManager.ID.pmReminder:  pmReminder  = newValue
             case NotificationManager.ID.pmFollowup:  pmFollowup  = newValue
             case NotificationManager.ID.streakAlert: streakAlert = newValue
@@ -78,16 +94,20 @@ final class NotificationManager: ObservableObject {
     enum ID {
         static let amReminder  = "duofit.am.reminder"
         static let amFollowup  = "duofit.am.followup"
+        static let noonReminder = "duofit.noon.reminder"
+        static let noonFollowup = "duofit.noon.followup"
+        static let afternoonReminder = "duofit.afternoon.reminder"
+        static let afternoonFollowup = "duofit.afternoon.followup"
         static let pmReminder  = "duofit.pm.reminder"
         static let pmFollowup  = "duofit.pm.followup"
         static let streakAlert = "duofit.streak.alert"
         static let weightMorning = "duofit.weight.morning"
         static let weightEvening = "duofit.weight.evening"
         static var all: [String] {
-            [amReminder, amFollowup, pmReminder, pmFollowup, streakAlert, weightMorning, weightEvening]
+            [amReminder, amFollowup, noonReminder, noonFollowup, afternoonReminder, afternoonFollowup, pmReminder, pmFollowup, streakAlert, weightMorning, weightEvening]
         }
         static var workoutReminders: [String] {
-            [amReminder, amFollowup, pmReminder, pmFollowup, streakAlert]
+            [amReminder, amFollowup, noonReminder, noonFollowup, afternoonReminder, afternoonFollowup, pmReminder, pmFollowup, streakAlert]
         }
     }
 
@@ -107,10 +127,14 @@ final class NotificationManager: ObservableObject {
 
     static let messages: [String: (title: String, body: String)] = [
         ID.amReminder:  ("💪 おはよう！朝トレの時間",       "今日も一緒に始めよう。ストリーク継続中！"),
-        ID.amFollowup:  ("🔥 まだ間に合う！朝トレしよう",   "数分でOK。ストリークを守ろう💪"),
-        ID.pmReminder:  ("🌆 夕方トレーニングの時間",       "今日の2セット目を記録しよう！"),
-        ID.pmFollowup:  ("⚡ 夜トレまだ間に合う！",         "22時までに記録してストリークを守ろう🔥"),
-        ID.streakAlert: ("🚨 ストリークが途絶えそう！",     "今日はまだトレーニングしていません。今すぐ記録しよう！"),
+        ID.amFollowup:  ("🔥 朝トレまだ間に合う！",         "朝のトレーニングを完了してストリークを守ろう💪"),
+        ID.noonReminder: ("☀️ 昼のトレーニング時間",        "お昼の時間帯も記録しよう！"),
+        ID.noonFollowup: ("💡 昼トレを完了しよう",          "昼のトレーニングで目標達成！"),
+        ID.afternoonReminder: ("🌤️ 午後のトレーニング時間", "午後の時間帯も頑張ろう！"),
+        ID.afternoonFollowup: ("⚡ 午後トレまだ間に合う！",  "午後のトレーニングを完了しよう💪"),
+        ID.pmReminder:  ("🌆 夜のトレーニング時間",         "今日の最後の時間帯を記録しよう！"),
+        ID.pmFollowup:  ("🌙 夜トレまだ間に合う！",         "夜のトレーニングでストリークを守ろう🔥"),
+        ID.streakAlert: ("🚨 ストリークが途絶えそう！",     "今日はまだトレーニングしていません。連続記録が途絶えちゃうよ！"),
         ID.weightMorning: ("⚖️ 朝の体重測定",             "起床後の体重を記録しよう！習慣化が大切💪"),
         ID.weightEvening: ("⚖️ 夜の体重測定",             "就寝前の体重を記録しよう！1日2回で変化を追跡📊"),
     ]

@@ -740,7 +740,7 @@ struct DashboardView: View {
             return false
         }.count
 
-        // トータル進捗を計算（経過した時間帯の合計）
+        // トータル進捗を計算（今日1日分の全時間帯）
         var totalTraining = 0
         var totalTrainingGoal = 0
         var totalMindfulness = 0
@@ -750,13 +750,16 @@ struct DashboardView: View {
         var totalDrinkLogged = 0
         var totalDrinkGoal = 0
 
-        for slot in visibleSlots {
+        // 今日1日分の全時間帯をカウント（表示用）
+        for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
                 // 実際のセット数をカウント（その時間帯に実行された運動記録の数）
                 let setsInSlot = countSetsInTimeSlot(slot)
                 totalTraining += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
+
+                // HealthKitのマインドフルネスセッション数を使用
                 totalMindfulness += progress.mindfulnessCompleted
                 totalMindfulnessGoal += goal.mindfulnessGoal
 
@@ -788,15 +791,11 @@ struct DashboardView: View {
                     // タイトル行: 日付 + ステータス
                     HStack(spacing: 6) {
                         HStack(spacing: 3) {
-                            Text("今日")
-                                .font(.headline)
-                                .fontWeight(.black)
-                                .foregroundColor(Color.duoDark)
                             Text(formatDate(Date()))
                                 .font(.headline)
                                 .fontWeight(.black)
                                 .foregroundColor(Color.duoGreen)
-                            Text("の状況")
+                            Text("のDuoFit")
                                 .font(.headline)
                                 .fontWeight(.black)
                                 .foregroundColor(Color.duoDark)

@@ -10,8 +10,6 @@ struct TimeSlotGoalEditView: View {
     @State private var mealRequired: Bool = true
     @State private var drinkRequired: Bool = true
     @State private var mindInputRequired: Bool = false
-    @State private var reminderEnabled: Bool = false
-    @State private var reminderTime: Date = Date()
 
     var body: some View {
         ZStack {
@@ -24,7 +22,6 @@ struct TimeSlotGoalEditView: View {
                     trainingSection
                     mindfulnessSection
                     logSection
-                    reminderSection
 
                     saveButton
 
@@ -208,32 +205,6 @@ struct TimeSlotGoalEditView: View {
 
     // MARK: - Reminder Section
 
-    private var reminderSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "🔔", title: "リマインダー")
-
-            Toggle(isOn: $reminderEnabled) {
-                Text("リマインダーを有効化")
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundColor(Color.duoDark)
-            }
-            .tint(Color.duoGreen)
-
-            if reminderEnabled {
-                DatePicker("通知時刻", selection: $reminderTime, displayedComponents: .hourAndMinute)
-                    .font(.subheadline)
-                    .foregroundColor(Color.duoDark)
-            }
-
-            Text("この時間帯に目標達成を促す通知を受け取ります")
-                .font(.caption)
-                .foregroundColor(Color.duoSubtitle)
-        }
-        .padding(16)
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
 
     // MARK: - Save Button
 
@@ -274,10 +245,6 @@ struct TimeSlotGoalEditView: View {
             mealRequired = goal.logGoal.mealRequired
             drinkRequired = goal.logGoal.drinkRequired
             mindInputRequired = goal.logGoal.mindInputRequired
-            reminderEnabled = goal.reminderEnabled
-            if let time = goal.reminderTime {
-                reminderTime = time
-            }
         }
     }
 
@@ -288,8 +255,6 @@ struct TimeSlotGoalEditView: View {
         goal.logGoal.mealRequired = mealRequired
         goal.logGoal.drinkRequired = drinkRequired
         goal.logGoal.mindInputRequired = mindInputRequired
-        goal.reminderEnabled = reminderEnabled
-        goal.reminderTime = reminderEnabled ? reminderTime : nil
 
         timeSlotManager.settings.updateGoal(goal)
 

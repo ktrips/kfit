@@ -804,22 +804,21 @@ struct DashboardView: View {
                             .cornerRadius(20)
                         }
 
-                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                            .foregroundColor(Color.duoGreen)
-                    }
-
-                    // 今日のトレーニング情報
-                    HStack(spacing: 12) {
+                        // トレーニング回数表示を移動
                         HStack(spacing: 4) {
-                            Text("今日のトレーニング:")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                            Text("\(totalTraining)回")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(Color.duoDark)
+                            Text("💪").font(.caption)
+                            Text("\(totalTraining)/\(totalTrainingGoal)")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
                         }
+                        HStack(spacing: 4) {
+                            Text("🧘").font(.caption)
+                            Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
+                        }
+
+                        Spacer()
 
                         HStack(spacing: 4) {
                             Text("獲得:")
@@ -840,50 +839,40 @@ struct DashboardView: View {
                                 .fontWeight(.bold)
                                 .foregroundColor(Color.duoOrange)
                         }
+
+                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(Color.duoGreen)
                     }
 
-                    // トータル進捗（罫線なし）
-                    HStack(spacing: 8) {
-                        HStack(spacing: 4) {
-                            Text("💪").font(.caption)
-                            Text("\(totalTraining)/\(totalTrainingGoal)")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
-                        }
-                        HStack(spacing: 4) {
-                            Text("🧘").font(.caption)
-                            Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
-                        }
-
-                        // 1日全体の目標（有効な場合のみ表示）
-                        if timeSlotManager.settings.globalGoals.workoutEnabled && timeSlotManager.progress.globalProgress.workoutMinutes > 0 {
-                            HStack(spacing: 4) {
-                                Text("🏃").font(.caption)
-                                Text("\(timeSlotManager.progress.globalProgress.workoutMinutes)分")
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(
-                                        timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes
-                                        ? Color.duoGreen : Color.duoDark
-                                    )
-                            }
-                        }
-                        if timeSlotManager.settings.globalGoals.standEnabled && timeSlotManager.progress.globalProgress.standHours > 0 {
-                            HStack(spacing: 4) {
-                                Text("🕐").font(.caption)
-                                Text("\(timeSlotManager.progress.globalProgress.standHours)h")
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(
-                                        timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours
-                                        ? Color.duoGreen : Color.duoDark
-                                    )
-                            }
-                        }
-
-                        Spacer()
-
+                    // 1日全体の目標と食事・水分（有効な場合のみ表示）
+                    if timeSlotManager.settings.globalGoals.workoutEnabled || timeSlotManager.settings.globalGoals.standEnabled || totalMealGoal > 0 || totalDrinkGoal > 0 {
                         HStack(spacing: 8) {
+                            if timeSlotManager.settings.globalGoals.workoutEnabled && timeSlotManager.progress.globalProgress.workoutMinutes > 0 {
+                                HStack(spacing: 4) {
+                                    Text("🏃").font(.caption)
+                                    Text("\(timeSlotManager.progress.globalProgress.workoutMinutes)分")
+                                        .font(.caption).fontWeight(.bold)
+                                        .foregroundColor(
+                                            timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes
+                                            ? Color.duoGreen : Color.duoDark
+                                        )
+                                }
+                            }
+                            if timeSlotManager.settings.globalGoals.standEnabled && timeSlotManager.progress.globalProgress.standHours > 0 {
+                                HStack(spacing: 4) {
+                                    Text("🕐").font(.caption)
+                                    Text("\(timeSlotManager.progress.globalProgress.standHours)h")
+                                        .font(.caption).fontWeight(.bold)
+                                        .foregroundColor(
+                                            timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours
+                                            ? Color.duoGreen : Color.duoDark
+                                        )
+                                }
+                            }
+
+                            Spacer()
+
                             if totalMealGoal > 0 && totalMealLogged > 0 {
                                 HStack(spacing: 2) {
                                     Text("🍽️").font(.caption)

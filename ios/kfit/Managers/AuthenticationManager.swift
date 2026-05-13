@@ -1112,6 +1112,44 @@ class AuthenticationManager: ObservableObject {
             .setData(dict)
     }
 
+    // MARK: - LLM Settings
+
+    /// LLM設定を取得
+    func getLLMSettings() async -> LLMSettings {
+        guard let userId = Auth.auth().currentUser?.uid else {
+            return LLMSettings.defaultSettings
+        }
+
+        do {
+            let doc = try await db.collection("users").document(userId)
+                .collection("settings").document("llm-settings")
+                .getDocument()
+
+            if let data = doc.data(),
+               let jsonData = try? JSONSerialization.data(withJSONObject: data),
+               let settings = try? JSONDecoder().decode(LLMSettings.self, from: jsonData) {
+                return settings
+            }
+        } catch {
+            print("❌ Failed to load LLM settings: \(error)")
+        }
+
+        return LLMSettings.defaultSettings
+    }
+
+    /// LLM設定を保存
+    func saveLLMSettings(_ settings: LLMSettings) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+
+        guard let jsonData = try? JSONEncoder().encode(settings),
+              let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { return }
+
+        try? await db.collection("users").document(userId)
+            .collection("settings").document("llm-settings")
+            .setData(dict)
+    }
+
     // MARK: - Daily Intake (食事・水分・コーヒー・アルコール記録)
 
     /// 食事を記録

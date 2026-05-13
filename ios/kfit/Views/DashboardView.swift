@@ -1656,7 +1656,35 @@ struct DashboardView: View {
         let percent = goal != nil && goal! > 0 ? Int((value / goal!) * 100) : 0
         let isOver = goal != nil && value > goal!
         let isGood = goal == nil ? (value > 0) : (isReverse ? (value <= goal!) : (value >= goal!))
-        let displayColor = (isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange)
+
+        // 達成度に応じた色を計算
+        let displayColor: Color
+        if label == "水分" {
+            // 水分: 多いほど緑（0-100%でグラデーション）
+            if percent >= 100 {
+                displayColor = Color.duoGreen
+            } else if percent >= 70 {
+                displayColor = Color.duoGreen.opacity(0.7)
+            } else if percent >= 40 {
+                displayColor = Color.duoOrange
+            } else {
+                displayColor = Color.duoDark
+            }
+        } else if label == "カフェイン" || label == "アルコール" {
+            // カフェインとアルコール: 多いほど赤
+            if isOver || percent >= 100 {
+                displayColor = Color.red
+            } else if percent >= 70 {
+                displayColor = Color.duoOrange
+            } else if percent >= 40 {
+                displayColor = Color.duoGreen.opacity(0.7)
+            } else {
+                displayColor = Color.duoGreen
+            }
+        } else {
+            // その他: 既存のロジック
+            displayColor = (isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange)
+        }
 
         let content = VStack(alignment: .center, spacing: 3) {
             // アイコン

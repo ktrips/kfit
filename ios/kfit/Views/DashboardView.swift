@@ -3303,13 +3303,7 @@ struct DashboardView: View {
             sharedDefaults.set(1, forKey: "timeSlotGoal")
         }
 
-        // 到達度情報を追加（現在時刻までの時間帯の合計）
-        var completedSlots: [TimeSlot] = []
-        if currentHour >= 6 { completedSlots.append(.morning) }
-        if currentHour >= 10 { completedSlots.append(.noon) }
-        if currentHour >= 14 { completedSlots.append(.afternoon) }
-        if currentHour >= 18 { completedSlots.append(.evening) }
-
+        // 到達度情報を追加（今日1日分の全時間帯）
         var totalTrainingCompleted = 0
         var totalTrainingGoal = 0
         var totalMindfulnessCompleted = 0
@@ -3319,10 +3313,13 @@ struct DashboardView: View {
         var totalDrinkLogged = 0
         var totalDrinkGoal = 0
 
-        for slot in completedSlots {
+        // 今日1日分の全時間帯をカウント（ウィジェット表示用）
+        for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                totalTrainingCompleted += progress.trainingCompleted
+                // 実際のセット数をカウント
+                let setsInSlot = countSetsInTimeSlot(slot)
+                totalTrainingCompleted += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
                 totalMindfulnessCompleted += progress.mindfulnessCompleted
                 totalMindfulnessGoal += goal.mindfulnessGoal

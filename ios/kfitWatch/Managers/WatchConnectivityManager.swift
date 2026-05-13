@@ -60,6 +60,18 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     // ログ入力状態
     @Published var todayMealLogged: Bool = false
 
+    // HealthKitデータ
+    @Published var todaySteps: Int = 0
+    @Published var todayActiveCalories: Int = 0
+    @Published var todayRestingCalories: Int = 0
+    @Published var todayTotalCalories: Int = 0
+    @Published var latestHeartRate: Int = 0
+    @Published var lastNightTotalHours: Double = 0.0
+    @Published var latestBodyMass: Double = 0.0
+    @Published var latestBodyFatPercentage: Double = 0.0
+    @Published var todayMindfulnessSessions: Int = 0
+    @Published var todayMindfulnessMinutes: Double = 0.0
+
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
 
@@ -265,6 +277,18 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["beerAlcoholG"] as? Double { self.beerAlcoholG = val }
         if let val = message["wineAlcoholG"] as? Double { self.wineAlcoholG = val }
         if let val = message["chuhaiAlcoholG"] as? Double { self.chuhaiAlcoholG = val }
+
+        // HealthKitデータを受信
+        if let val = message["todaySteps"] as? Int { self.todaySteps = val }
+        if let val = message["todayActiveCalories"] as? Int { self.todayActiveCalories = val }
+        if let val = message["todayRestingCalories"] as? Int { self.todayRestingCalories = val }
+        if let val = message["todayTotalCalories"] as? Int { self.todayTotalCalories = val }
+        if let val = message["latestHeartRate"] as? Int { self.latestHeartRate = val }
+        if let val = message["lastNightTotalHours"] as? Double { self.lastNightTotalHours = val }
+        if let val = message["latestBodyMass"] as? Double { self.latestBodyMass = val }
+        if let val = message["latestBodyFatPercentage"] as? Double { self.latestBodyFatPercentage = val }
+        if let val = message["todayMindfulnessSessions"] as? Int { self.todayMindfulnessSessions = val }
+        if let val = message["todayMindfulnessMinutes"] as? Double { self.todayMindfulnessMinutes = val }
 
         // データ受信完了
         isLoading = false

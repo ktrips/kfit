@@ -219,23 +219,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
-    // 時間帯別の進捗を計算
+    // 時間帯別の進捗を計算（今日1日分の全時間帯）
     private func calculateTimeSlotProgress() async -> TimeSlotProgressData {
-        let currentHour = Calendar.current.component(.hour, from: Date())
-        var visibleSlots: [TimeSlot]
-
-        if currentHour < 6 {
-            visibleSlots = TimeSlot.allCases
-        } else if currentHour < 10 {
-            visibleSlots = [.morning]
-        } else if currentHour < 14 {
-            visibleSlots = [.morning, .noon]
-        } else if currentHour < 18 {
-            visibleSlots = [.morning, .noon, .afternoon]
-        } else {
-            visibleSlots = TimeSlot.allCases
-        }
-
         var totalTraining = 0
         var totalTrainingGoal = 0
         var totalMindfulness = 0
@@ -252,7 +237,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         let todayExercises = await AuthenticationManager.shared.getTodayExercises()
         let calendar = Calendar.current
 
-        for slot in visibleSlots {
+        // 今日1日分の全時間帯をカウント（Watch表示用）
+        for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
                 // トレーニングは実際のセット数をカウント（iOS側と同じロジック）
@@ -263,6 +249,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 totalTraining += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
 
+                // HealthKitのマインドフルネスセッション数を使用
                 totalMindfulness += progress.mindfulnessCompleted
                 totalMindfulnessGoal += goal.mindfulnessGoal
 
@@ -395,6 +382,21 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
             // ログ入力状態を含める
             payload["todayMealLogged"] = !intakeData.meals.isEmpty
+
+            // HealthKitデータを含める
+            let healthKit = HealthKitManager.shared
+            payload["todaySteps"] = Int(healthKit.todaySteps)
+            payload["todayActiveCalories"] = Int(healthKit.todayActiveCalories)
+            payload["todayRestingCalories"] = Int(healthKit.todayRestingCalories)
+            payload["todayTotalCalories"] = Int(healthKit.todayTotalCalories)
+            payload["latestHeartRate"] = Int(healthKit.latestHeartRate)
+            payload["lastNightTotalHours"] = healthKit.lastNightTotalHours
+            payload["latestBodyMass"] = healthKit.latestBodyMass
+            payload["latestBodyFatPercentage"] = healthKit.latestBodyFatPercentage
+            payload["todayMindfulnessSessions"] = healthKit.todayMindfulnessSessions
+            payload["todayMindfulnessMinutes"] = healthKit.todayMindfulnessMinutes
+
+            print("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), mindfulness=\(healthKit.todayMindfulnessSessions)")
 
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)

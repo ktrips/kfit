@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// 摂取記録のデフォルト設定
 struct IntakeSettings: Codable {
@@ -119,4 +120,91 @@ struct CustomAlcoholSetting: Codable, Identifiable {
     var amountMl: Int
     var alcoholG: Double
     var displayName: String
+}
+
+// MARK: - LLM Settings
+
+/// LLM設定
+struct LLMSettings: Codable {
+    var provider: LLMProvider = .openAI
+    var apiKey: String = ""
+    var model: String = ""
+
+    static let defaultSettings = LLMSettings()
+
+    /// プロバイダーごとのデフォルトモデル（リーズナブルなプラン）
+    var defaultModel: String {
+        switch provider {
+        case .openAI:
+            return "gpt-4o-mini"  // 最もリーズナブル
+        case .anthropic:
+            return "claude-3-haiku-20240307"  // 最もリーズナブル
+        case .google:
+            return "gemini-1.5-flash"  // 最もリーズナブル
+        }
+    }
+
+    /// 使用するモデル（設定されていない場合はデフォルト）
+    var effectiveModel: String {
+        return model.isEmpty ? defaultModel : model
+    }
+}
+
+/// LLMプロバイダー
+enum LLMProvider: String, Codable, CaseIterable {
+    case openAI = "OpenAI"
+    case anthropic = "Anthropic"
+    case google = "Google"
+
+    var displayName: String {
+        switch self {
+        case .openAI: return "OpenAI (GPT)"
+        case .anthropic: return "Anthropic (Claude)"
+        case .google: return "Google (Gemini)"
+        }
+    }
+
+    var endpoint: String {
+        switch self {
+        case .openAI:
+            return "https://api.openai.com/v1/chat/completions"
+        case .anthropic:
+            return "https://api.anthropic.com/v1/messages"
+        case .google:
+            return "https://generativelanguage.googleapis.com/v1beta/models"
+        }
+    }
+}
+
+// MARK: - Photo Log
+
+/// フォトログエントリ
+struct PhotoLogEntry: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var timestamp: Date = Date()
+    var imageData: Data?  // 写真データ
+    var comment: String = ""  // ユーザーコメント
+    var mealType: MealType?  // 食事タイプ（朝食、昼食、夕食）
+    var analyzedNutrition: AnalyzedNutrition?  // LLM分析結果
+
+    var image: UIImage? {
+        guard let data = imageData else { return nil }
+        return UIImage(data: data)
+    }
+}
+
+/// LLMが分析した栄養情報
+struct AnalyzedNutrition: Codable {
+    var description: String = ""  // 食品の説明
+    var calories: Int = 0
+    var protein: Double = 0.0
+    var fat: Double = 0.0
+    var carbs: Double = 0.0
+    var sugar: Double = 0.0
+    var fiber: Double = 0.0
+    var sodium: Double = 0.0
+    var water: Int = 0  // 水分量（ml）
+    var caffeine: Int = 0  // カフェイン量（mg）
+    var alcohol: Double = 0.0  // アルコール量（g）
+    var confidence: Double = 1.0  // 推定の確度（0.0-1.0）
 }

@@ -55,6 +55,7 @@ struct SettingsView: View {
     @State private var showSensitivityEditor = false
     @State private var showIntakeSettings = false
     @State private var showTimeSlotGoals = false
+    @State private var showLLMSettings = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -68,6 +69,7 @@ struct SettingsView: View {
                     setConfigurationSection
                     motionSensitivitySection
                     intakeSection
+                    llmSection
                     reminderSection
                     watchSection
                     habitStackSection
@@ -101,6 +103,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showTimeSlotGoals) {
             NavigationView { TimeSlotGoalsView() }
+        }
+        .sheet(isPresented: $showLLMSettings) {
+            NavigationView { LLMSettingsView() }
         }
     }
 
@@ -333,6 +338,36 @@ struct SettingsView: View {
                 .background(Color(hex: "#D7FFB8"))
                 .cornerRadius(14)
             }
+        }
+    }
+
+    // MARK: - LLMセクション
+
+    private var llmSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "brain.head.profile", title: "フォトログAI",
+                          subtitle: "写真から栄養素を分析")
+
+            Button { showLLMSettings = true } label: {
+                HStack(spacing: 12) {
+                    Text("🤖").font(.title3).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("LLM設定")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("OpenAI, Anthropic, Google")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color.white)
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
         }
     }
 

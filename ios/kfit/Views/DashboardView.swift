@@ -38,6 +38,7 @@ struct DashboardView: View {
     @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
     @State private var pendingIntakeAction: (() -> Void)?  // 保留中の記録アクション
     @State private var confirmMessage = ""  // 確認メッセージ
+    @State private var showPhotoLog = false  // フォトログモーダル
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -57,6 +58,7 @@ struct DashboardView: View {
                         VStack(spacing: 10) {
                             headerInfoCard
                             dailySetsCard
+                            photoLogButton
                             quickMenu
                             calorieAndWeightCard
                             weeklyGoalCard
@@ -113,6 +115,9 @@ struct DashboardView: View {
         .sheet(isPresented: $showIntakeGoalEdit) {
             IntakeSettingsView()
                 .environmentObject(authManager)
+        }
+        .fullScreenCover(isPresented: $showPhotoLog) {
+            PhotoLogView()
         }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("キャンセル", role: .cancel) { }
@@ -2751,6 +2756,52 @@ struct DashboardView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - フォトログボタン
+    private var photoLogButton: some View {
+        Button {
+            showPhotoLog = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.blue, Color.purple],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "camera.fill")
+                        .font(.title3)
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("📸 フォトログ")
+                        .font(.subheadline).fontWeight(.black)
+                        .foregroundColor(Color.duoDark)
+                    Text("AIが写真から栄養素を分析")
+                        .font(.caption2)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.1), Color.purple.opacity(0.1)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - クイックメニュー

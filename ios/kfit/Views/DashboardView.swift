@@ -993,7 +993,49 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 8)
+
+                // マインドフルネスボタン
+                Button {
+                    openMindfulnessApp()
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.duoPurple.opacity(0.2))
+                                .frame(width: 30, height: 30)
+                            Text("🧘")
+                                .font(.callout)
+                        }
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("マインドフルネス")
+                                .font(.subheadline).fontWeight(.black)
+                                .foregroundColor(Color.duoPurple)
+                            Text("Watchアプリを起動")
+                                .font(.caption)
+                                .foregroundColor(Color.duoPurple.opacity(0.7))
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.callout)
+                            .foregroundColor(Color.duoPurple.opacity(0.6))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.duoPurple.opacity(0.15), Color.duoPurple.opacity(0.08)],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
 
             // 今日の記録（展開時のみ表示）- 緑ボタンの下
@@ -3206,6 +3248,21 @@ struct DashboardView: View {
     private func openHealthApp(category: String) {
         if let url = URL(string: "x-apple-health://\(category)") {
             UIApplication.shared.open(url)
+        }
+    }
+
+    private func openMindfulnessApp() {
+        // Apple Watchのマインドフルネス（旧Breathe）アプリを起動
+        // URLスキーム: com.apple.NanoMindfulness.watchkitapp://
+        if let url = URL(string: "com.apple.NanoMindfulness.watchkitapp://") {
+            UIApplication.shared.open(url) { success in
+                if !success {
+                    // Watch側のアプリが見つからない場合はiOS側のヘルスケアを開く
+                    if let healthURL = URL(string: "x-apple-health://mindfulness") {
+                        UIApplication.shared.open(healthURL)
+                    }
+                }
+            }
         }
     }
 

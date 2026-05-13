@@ -809,13 +809,22 @@ struct DashboardView: View {
                             .cornerRadius(20)
                         }
 
-                        // トレーニング回数表示を移動
+                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(Color.duoGreen)
+                    }
+
+                    // トレーニング・ポイント表示行
+                    HStack(spacing: 8) {
+                        // トレーニング回数
                         HStack(spacing: 4) {
                             Text("💪").font(.caption)
                             Text("\(totalTraining)/\(totalTrainingGoal)")
                                 .font(.caption).fontWeight(.bold)
                                 .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
                         }
+
+                        // マインドフルネス
                         HStack(spacing: 4) {
                             Text("🧘").font(.caption)
                             Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
@@ -825,6 +834,7 @@ struct DashboardView: View {
 
                         Spacer()
 
+                        // 獲得XP
                         HStack(spacing: 4) {
                             Text("獲得:")
                                 .font(.caption)
@@ -835,6 +845,7 @@ struct DashboardView: View {
                                 .foregroundColor(Color.duoGreen)
                         }
 
+                        // 総XP
                         HStack(spacing: 4) {
                             Text("総:")
                                 .font(.caption)
@@ -844,10 +855,6 @@ struct DashboardView: View {
                                 .fontWeight(.bold)
                                 .foregroundColor(Color.duoOrange)
                         }
-
-                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                            .foregroundColor(Color.duoGreen)
                     }
 
                     // 1日全体の目標と食事・水分（有効な場合のみ表示）

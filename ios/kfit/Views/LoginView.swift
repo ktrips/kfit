@@ -17,8 +17,8 @@ struct LoginView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.duoGreen.opacity(0.18), Color.duoBg],
-                startPoint: .top, endPoint: .center
+                colors: [Color.duoGreen.opacity(0.3), Color.duoBg],
+                startPoint: .top, endPoint: .bottom
             ).ignoresSafeArea()
 
             ScrollView {
@@ -44,7 +44,7 @@ struct LoginView: View {
 
                         Text("毎日の運動をゲームにしよう！")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.duoDark)
                             .multilineTextAlignment(.center)
                     }
 
@@ -61,7 +61,7 @@ struct LoginView: View {
                                 Text(feature.text)
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(Color.duoDark)
 
                                 Spacer()
                             }

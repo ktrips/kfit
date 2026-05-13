@@ -36,6 +36,28 @@ struct Provider: TimelineProvider {
         stats.timeSlotCompleted = sharedDefaults.integer(forKey: "timeSlotCompleted")
         stats.timeSlotGoal = sharedDefaults.integer(forKey: "timeSlotGoal")
 
+        // 到達度情報を読み込み
+        stats.trainingCompleted = sharedDefaults.integer(forKey: "trainingCompleted")
+        stats.trainingGoal = sharedDefaults.integer(forKey: "trainingGoal")
+        stats.mindfulnessCompleted = sharedDefaults.integer(forKey: "mindfulnessCompleted")
+        stats.mindfulnessGoal = sharedDefaults.integer(forKey: "mindfulnessGoal")
+        stats.mealLogged = sharedDefaults.integer(forKey: "mealLogged")
+        stats.mealGoal = sharedDefaults.integer(forKey: "mealGoal")
+        stats.drinkLogged = sharedDefaults.integer(forKey: "drinkLogged")
+        stats.drinkGoal = sharedDefaults.integer(forKey: "drinkGoal")
+
+        // カロリー収支情報を読み込み
+        stats.calorieBalance = sharedDefaults.integer(forKey: "calorieBalance")
+
+        // 総ポイントを読み込み
+        stats.totalPoints = sharedDefaults.integer(forKey: "totalPoints")
+
+        // ワークアウトとスタンド時間を読み込み
+        stats.workoutMinutes = sharedDefaults.integer(forKey: "workoutMinutes")
+        stats.workoutGoal = sharedDefaults.integer(forKey: "workoutGoal")
+        stats.standHours = sharedDefaults.integer(forKey: "standHours")
+        stats.standGoal = sharedDefaults.integer(forKey: "standGoal")
+
         return stats
     }
 }
@@ -54,6 +76,81 @@ struct WidgetStats {
     var currentTimeSlot: String = "朝"
     var timeSlotCompleted: Int = 0
     var timeSlotGoal: Int = 1
+
+    // 到達度情報
+    var trainingCompleted: Int = 0
+    var trainingGoal: Int = 0
+    var mindfulnessCompleted: Int = 0
+    var mindfulnessGoal: Int = 0
+    var mealLogged: Int = 0
+    var mealGoal: Int = 0
+    var drinkLogged: Int = 0
+    var drinkGoal: Int = 0
+
+    // カロリー収支
+    var calorieBalance: Int = 0
+
+    // 総ポイント
+    var totalPoints: Int = 0
+
+    // ワークアウトとスタンド時間
+    var workoutMinutes: Int = 0
+    var workoutGoal: Int = 15
+    var standHours: Int = 0
+    var standGoal: Int = 12
+
+    // 進捗率の計算（0.0 - 1.0）
+    var progressRate: Double {
+        var totalGoals = 0
+        var completed = 0
+
+        if trainingGoal > 0 {
+            totalGoals += 1
+            if trainingCompleted >= trainingGoal { completed += 1 }
+        }
+        if mindfulnessGoal > 0 {
+            totalGoals += 1
+            if mindfulnessCompleted >= mindfulnessGoal { completed += 1 }
+        }
+        if mealGoal > 0 {
+            totalGoals += 1
+            if mealLogged >= mealGoal { completed += 1 }
+        }
+        if drinkGoal > 0 {
+            totalGoals += 1
+            if drinkLogged >= drinkGoal { completed += 1 }
+        }
+        if workoutGoal > 0 {
+            totalGoals += 1
+            if workoutMinutes >= workoutGoal { completed += 1 }
+        }
+        if standGoal > 0 {
+            totalGoals += 1
+            if standHours >= standGoal { completed += 1 }
+        }
+
+        return totalGoals > 0 ? Double(completed) / Double(totalGoals) : 0.0
+    }
+
+    // 進捗％の計算
+    var progressPercent: Int {
+        return Int(progressRate * 100)
+    }
+
+    // 進捗に基づく背景色
+    var backgroundColor: Color {
+        if progressRate >= 1.0 {
+            return Color(hex: "#58CC02")  // 完璧: 緑
+        } else if progressRate >= 0.75 {
+            return Color(hex: "#7ED321")  // 良好: 明るい緑
+        } else if progressRate >= 0.5 {
+            return Color(hex: "#F5A623")  // 普通: オレンジ
+        } else if progressRate >= 0.25 {
+            return Color(hex: "#FF6B6B")  // 悪い: 薄い赤
+        } else {
+            return Color(hex: "#D0021B")  // 非常に悪い: 真っ赤
+        }
+    }
 }
 
 struct kfitWidgetEntryView : View {
@@ -98,51 +195,59 @@ struct SmallWidgetView: View {
 
     var body: some View {
         ZStack {
-            // 全面緑の背景
+            // Duolingo緑で統一
             Color(hex: "#58CC02")
                 .ignoresSafeArea()
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 // 連続記録
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Text("🔥")
-                        .font(.system(size: 20))
+                        .font(.system(size: 14))
                     Text("\(stats.streak)")
-                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundColor(.white)
-                    Text("日連続")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
                 }
 
                 Divider()
                     .background(Color.white.opacity(0.3))
+                    .padding(.horizontal, 8)
 
-                // 今日のセット状況（直近の時間帯）
-                VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Text(stats.currentTimeSlot)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                        Text("のセット")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    HStack(spacing: 4) {
-                        Text("\(stats.timeSlotCompleted)")
-                            .font(.system(size: 32, weight: .black, design: .rounded))
+                // 進捗％
+                HStack(spacing: 3) {
+                    Text("📊")
+                        .font(.system(size: 14))
+                    Text("\(stats.progressPercent)%")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    if stats.progressPercent == 100 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
                             .foregroundColor(.white)
-                        Text("/")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
-                        Text("\(stats.timeSlotGoal)")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.9))
                     }
                 }
+
+                Divider()
+                    .background(Color.white.opacity(0.3))
+                    .padding(.horizontal, 8)
+
+                // カロリー収支
+                HStack(spacing: 2) {
+                    Text(stats.calorieBalance >= 0 ? "📈" : "📉")
+                        .font(.system(size: 14))
+                    if stats.calorieBalance >= 0 {
+                        Text("+")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    Text("\(abs(stats.calorieBalance))")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
             }
-            .padding()
+            .padding(10)
         }
+        .containerBackground(Color(hex: "#58CC02"), for: .widget)
     }
 }
 
@@ -152,7 +257,7 @@ struct MediumWidgetView: View {
 
     var body: some View {
         ZStack {
-            // 全面緑の背景
+            // Duolingo緑で統一
             Color(hex: "#58CC02")
                 .ignoresSafeArea()
 
@@ -160,12 +265,12 @@ struct MediumWidgetView: View {
                 // 左側: 連続記録
                 VStack(spacing: 6) {
                     Text("🔥")
-                        .font(.system(size: 40))
+                        .font(.system(size: 36))
                     Text("\(stats.streak)")
-                        .font(.system(size: 36, weight: .black, design: .rounded))
+                        .font(.system(size: 32, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("日連続")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white.opacity(0.9))
                 }
                 .frame(maxWidth: .infinity)
@@ -174,37 +279,52 @@ struct MediumWidgetView: View {
                     .background(Color.white.opacity(0.3))
                     .frame(height: 80)
 
-                // 右側: 今日のセット状況（直近の時間帯）
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("📊")
-                            .font(.system(size: 20))
-                        Text("\(stats.currentTimeSlot)のセット")
-                            .font(.system(size: 15, weight: .bold))
+                // 中央: 進捗％
+                VStack(spacing: 6) {
+                    Text("📊")
+                        .font(.system(size: 36))
+                    Text("\(stats.progressPercent)%")
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    if stats.progressPercent == 100 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
                             .foregroundColor(.white)
-                    }
-
-                    HStack(alignment: .bottom, spacing: 6) {
-                        Text("\(stats.timeSlotCompleted)")
-                            .font(.system(size: 48, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("/")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.bottom, 4)
-                        Text("\(stats.timeSlotGoal)")
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                    } else {
+                        Text("進捗")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white.opacity(0.9))
                     }
+                }
+                .frame(maxWidth: .infinity)
 
-                    Text("完了")
+                Divider()
+                    .background(Color.white.opacity(0.3))
+                    .frame(height: 80)
+
+                // 右側: カロリー収支
+                VStack(spacing: 6) {
+                    Text(stats.calorieBalance >= 0 ? "📈" : "📉")
+                        .font(.system(size: 36))
+                    HStack(spacing: 2) {
+                        if stats.calorieBalance >= 0 {
+                            Text("+")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        Text("\(abs(stats.calorieBalance))")
+                            .font(.system(size: 32, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    Text("kcal")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white.opacity(0.9))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
             .padding()
         }
+        .containerBackground(Color(hex: "#58CC02"), for: .widget)
     }
 }
 
@@ -214,79 +334,88 @@ struct LargeWidgetView: View {
 
     var body: some View {
         ZStack {
-            // 全面緑の背景
+            // Duolingo緑で統一
             Color(hex: "#58CC02")
                 .ignoresSafeArea()
 
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 // ヘッダー
                 HStack {
                     Text("💪")
-                        .font(.system(size: 40))
+                        .font(.system(size: 36))
                     Text("DuoFit")
-                        .font(.system(size: 24, weight: .black))
+                        .font(.system(size: 22, weight: .black))
                         .foregroundColor(.white)
                     Spacer()
                 }
 
                 // 連続記録（大きく表示）
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     HStack(spacing: 8) {
                         Text("🔥")
-                            .font(.system(size: 50))
+                            .font(.system(size: 44))
                         Text("\(stats.streak)")
-                            .font(.system(size: 60, weight: .black, design: .rounded))
+                            .font(.system(size: 52, weight: .black, design: .rounded))
                             .foregroundColor(.white)
                         Text("日連続")
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
-                            .padding(.bottom, 8)
+                            .padding(.bottom, 6)
                     }
                 }
-                .padding(.vertical, 16)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
                 .background(Color.white.opacity(0.15))
-                .cornerRadius(16)
+                .cornerRadius(14)
 
                 Divider()
                     .background(Color.white.opacity(0.3))
 
-                // 今日のセット状況（直近の時間帯）
-                VStack(spacing: 12) {
-                    HStack(spacing: 6) {
-                        Text("📊")
-                            .font(.system(size: 24))
-                        Text("\(stats.currentTimeSlot)のセット状況")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.white)
+                // 到達度表示（詳細）
+                VStack(spacing: 10) {
+                    if stats.trainingGoal > 0 {
+                        largeProgressRow(icon: "💪", label: "トレーニング", completed: stats.trainingCompleted, goal: stats.trainingGoal)
                     }
-
-                    HStack(alignment: .bottom, spacing: 8) {
-                        Text("\(stats.timeSlotCompleted)")
-                            .font(.system(size: 72, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("/")
-                            .font(.system(size: 40, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.bottom, 10)
-                        Text("\(stats.timeSlotGoal)")
-                            .font(.system(size: 56, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.9))
+                    if stats.mindfulnessGoal > 0 {
+                        largeProgressRow(icon: "🧘", label: "マインドフルネス", completed: stats.mindfulnessCompleted, goal: stats.mindfulnessGoal)
                     }
-
-                    Text("完了")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.9))
+                    if stats.mealGoal > 0 {
+                        largeProgressRow(icon: "🍽️", label: "食事記録", completed: stats.mealLogged, goal: stats.mealGoal)
+                    }
+                    if stats.drinkGoal > 0 {
+                        largeProgressRow(icon: "💧", label: "ドリンク記録", completed: stats.drinkLogged, goal: stats.drinkGoal)
+                    }
                 }
-                .padding(.vertical, 16)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .background(Color.white.opacity(0.15))
-                .cornerRadius(16)
+                .cornerRadius(14)
 
                 Spacer()
             }
             .padding()
         }
+        .containerBackground(Color(hex: "#58CC02"), for: .widget)
+    }
+
+    private func largeProgressRow(icon: String, label: String, completed: Int, goal: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(icon)
+                .font(.system(size: 24))
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white)
+            Spacer()
+            Text("\(completed)/\(goal)")
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+            if completed >= goal {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(.horizontal, 12)
     }
 }
 

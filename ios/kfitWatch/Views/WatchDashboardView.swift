@@ -31,6 +31,7 @@ struct WatchDashboardView: View {
     @State private var pendingIntakeType: String = ""  // 保留中の摂取タイプ
     @State private var pendingIntakeSubtype: String? = nil  // 保留中の摂取サブタイプ
     @State private var intakeConfirmMessage = ""  // 確認メッセージ
+    @State private var doubleTapCount = 0  // ダブルタップカウント（デバッグ用）
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -67,6 +68,10 @@ struct WatchDashboardView: View {
             Button("キャンセル", role: .cancel) { }
             Button("記録する") {
                 connectivity.sendIntakeRecord(type: pendingIntakeType, subtype: pendingIntakeSubtype)
+                // 記録後、少し待ってから最新データを取得
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    connectivity.requestStatsFromiOS()
+                }
             }
         }
         // iOS アプリ起動シグナルを受信したら自動でワークアウトを開始する
@@ -78,9 +83,37 @@ struct WatchDashboardView: View {
         }
         // 起動時に最新 stats を iOS に問い合わせる & HealthKit データ取得
         .onAppear {
+            // 最新のApplicationContextを確認（iOSアプリが起動していない場合用）
+            connectivity.checkLatestApplicationContext()
+            // iOSアプリが起動している場合はリアルタイムでリクエスト
             connectivity.requestStatsFromiOS()
             Task {
                 await healthKit.requestAuthorization()
+            }
+        }
+    }
+
+    // MARK: - ダブルタップハンドラー
+    private func handleDoubleTap() {
+        // 触覚フィードバック
+        WKInterfaceDevice.current().play(.success)
+
+        doubleTapCount += 1
+        print("[Watch] 👆 Double tap detected (count: \(doubleTapCount))")
+
+        // メインダッシュボード表示中の場合、ワークアウトを開始
+        if selectedTab == 1 && !showFlow {
+            showFlow = true
+        }
+        // 摂取記録ページの場合は、水を記録
+        else if selectedTab == 0 {
+            confirmIntake(type: "water", subtype: nil,
+                        message: "水\(connectivity.waterPerCup)mlを追加しますか？")
+        }
+        // ヘルスデータページの場合は、データを更新
+        else if selectedTab == 2 {
+            Task {
+                await healthKit.fetchAllTodayData()
             }
         }
     }
@@ -103,13 +136,16 @@ struct WatchDashboardView: View {
                 // ── 食事 ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "🌅", label: "朝食") {
-                        confirmIntake(type: "meal", subtype: "breakfast", message: "朝食を記録しますか？")
+                        confirmIntake(type: "meal", subtype: "breakfast",
+                                    message: "朝食\(connectivity.breakfastCalories)kcalを追加しますか？")
                     }
                     watchIntakeButton(emoji: "🍱", label: "昼食") {
-                        confirmIntake(type: "meal", subtype: "lunch", message: "昼食を記録しますか？")
+                        confirmIntake(type: "meal", subtype: "lunch",
+                                    message: "昼食\(connectivity.lunchCalories)kcalを追加しますか？")
                     }
                     watchIntakeButton(emoji: "🍽️", label: "夕食") {
-                        confirmIntake(type: "meal", subtype: "dinner", message: "夕食を記録しますか？")
+                        confirmIntake(type: "meal", subtype: "dinner",
+                                    message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
                     }
                 }
                 .padding(8)
@@ -119,10 +155,12 @@ struct WatchDashboardView: View {
                 // ── 水分・コーヒー ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "💧", label: "水") {
-                        confirmIntake(type: "water", subtype: nil, message: "水を記録しますか？")
+                        confirmIntake(type: "water", subtype: nil,
+                                    message: "水\(connectivity.waterPerCup)mlを追加しますか？")
                     }
                     watchIntakeButton(emoji: "☕", label: "コーヒー") {
-                        confirmIntake(type: "coffee", subtype: nil, message: "コーヒーを記録しますか？")
+                        confirmIntake(type: "coffee", subtype: nil,
+                                    message: "コーヒー\(connectivity.coffeePerCup)ml（カフェイン\(connectivity.caffeinePerCup)mg）を追加しますか？")
                     }
                 }
                 .padding(8)
@@ -132,13 +170,16 @@ struct WatchDashboardView: View {
                 // ── アルコール ──────────────────────
                 VStack(spacing: 6) {
                     watchIntakeButton(emoji: "🍺", label: "ビール") {
-                        confirmIntake(type: "alcohol", subtype: "beer", message: "ビールを記録しますか？")
+                        confirmIntake(type: "alcohol", subtype: "beer",
+                                    message: "ビール（アルコール\(String(format: "%.1f", connectivity.beerAlcoholG))g）を追加しますか？")
                     }
                     watchIntakeButton(emoji: "🍷", label: "ワイン") {
-                        confirmIntake(type: "alcohol", subtype: "wine", message: "ワインを記録しますか？")
+                        confirmIntake(type: "alcohol", subtype: "wine",
+                                    message: "ワイン（アルコール\(String(format: "%.1f", connectivity.wineAlcoholG))g）を追加しますか？")
                     }
                     watchIntakeButton(emoji: "🥃", label: "酎ハイ") {
-                        confirmIntake(type: "alcohol", subtype: "chuhai", message: "酎ハイを記録しますか？")
+                        confirmIntake(type: "alcohol", subtype: "chuhai",
+                                    message: "酎ハイ（アルコール\(String(format: "%.1f", connectivity.chuhaiAlcoholG))g）を追加しますか？")
                     }
                 }
                 .padding(8)
@@ -183,11 +224,33 @@ struct WatchDashboardView: View {
 
                 // ── ステータス（統一指標）────────────────────────
                 HStack(spacing: 0) {
-                    WatchStatItem(icon: "💪", value: "\(connectivity.todaySetCount)/\(connectivity.dailySetGoal)", label: "トレーニング")
+                    WatchStatItem(
+                        icon: "💪",
+                        value: "\(connectivity.totalTraining)/\(connectivity.totalTrainingGoal)",
+                        label: "トレーニング",
+                        isCompleted: connectivity.totalTraining >= connectivity.totalTrainingGoal && connectivity.totalTrainingGoal > 0
+                    )
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "🧘", value: healthKit.todayMindfulnessSessions > 0 ? "✓" : "−", label: "マインドフル")
+                    WatchStatItem(
+                        icon: "🧘",
+                        value: "\(connectivity.totalMindfulness)/\(connectivity.totalMindfulnessGoal)",
+                        label: "マインドフル",
+                        isCompleted: connectivity.totalMindfulness >= connectivity.totalMindfulnessGoal && connectivity.totalMindfulnessGoal > 0
+                    )
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(icon: "🍽️", value: connectivity.todayMealLogged ? "✓" : "−", label: "ログ入力")
+                    WatchStatItem(
+                        icon: "🍽️",
+                        value: "\(connectivity.totalMealLogged)/\(connectivity.totalMealGoal)",
+                        label: "食事",
+                        isCompleted: connectivity.totalMealLogged >= connectivity.totalMealGoal && connectivity.totalMealGoal > 0
+                    )
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
+                    WatchStatItem(
+                        icon: "💧",
+                        value: "\(connectivity.totalDrinkLogged)/\(connectivity.totalDrinkGoal)",
+                        label: "水分",
+                        isCompleted: connectivity.totalDrinkLogged >= connectivity.totalDrinkGoal && connectivity.totalDrinkGoal > 0
+                    )
                 }
                 .padding(.vertical, 6)
                 .background(Color.white.opacity(0.08))
@@ -226,17 +289,16 @@ struct WatchDashboardView: View {
                         .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
+                    .handGestureShortcut(.primaryAction)
 
                     // ── マインドフルネスボタン ────────────────────
                     Button {
-                        Task {
-                            await recordMindfulness()
-                        }
+                        openMindfulnessApp()
                     } label: {
                         VStack(spacing: 3) {
                             Text("🧘").font(.system(size: 32))
                             Text("マインドフルネス").font(.system(size: 13)).fontWeight(.bold)
-                            Text("1分呼吸セッション").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
+                            Text("Breatheアプリを開く").font(.system(size: 9)).foregroundColor(.white.opacity(0.6))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -339,7 +401,23 @@ struct WatchDashboardView: View {
         showIntakeConfirm = true
     }
 
-    // MARK: - マインドフルネス記録
+    // MARK: - マインドフルネスアプリを開く
+    private func openMindfulnessApp() {
+        // マインドフルネス（旧Breathe）アプリのURL
+        if let url = URL(string: "com.apple.mindfulness://") {
+            openURL(url)
+            print("[Watch] 🧘 Opening Mindfulness app")
+        } else {
+            // フォールバック: HealthKitに直接記録
+            Task {
+                await healthKit.saveMindfulnessSession(durationMinutes: 1)
+                await healthKit.fetchTodayMindfulness()
+                print("[Watch] 🧘 Mindfulness session recorded (fallback)")
+            }
+        }
+    }
+
+    // MARK: - マインドフルネス記録（未使用 - 念のため残す）
     private func recordMindfulness() async {
         // HealthKitに1分間のマインドフルネスセッションを記録
         await healthKit.saveMindfulnessSession(durationMinutes: 1)
@@ -369,6 +447,10 @@ struct WatchDashboardView: View {
                 }
                 .padding(.top, 0)
                 .padding(.bottom, 4)
+                .onAppear {
+                    // ページ表示時に摂取データを更新
+                    connectivity.requestStatsFromiOS()
+                }
 
                 // ── 今日のApple Health ──────────────────────
                 if healthKit.isAuthorized {
@@ -384,6 +466,7 @@ struct WatchDashboardView: View {
                             Button {
                                 Task {
                                     await healthKit.fetchAllTodayData()
+                                    connectivity.requestStatsFromiOS()
                                 }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
@@ -493,12 +576,21 @@ struct WatchDashboardView: View {
 }
 
 struct WatchStatItem: View {
-    let icon: String; let value: String; let label: String
+    let icon: String
+    let value: String
+    let label: String
+    var isCompleted: Bool = false
+
     var body: some View {
         VStack(spacing: 1) {
             Text(icon).font(.system(size: 15))
-            Text(value).font(.system(size: 13)).fontWeight(.black)
-            Text(label).font(.system(size: 8)).foregroundColor(.gray)
+            Text(value)
+                .font(.system(size: 13))
+                .fontWeight(.black)
+                .foregroundColor(isCompleted ? duoGreen : .white)
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundColor(.gray)
         }
         .frame(maxWidth: .infinity)
     }

@@ -63,6 +63,28 @@ enum TimeSlot: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - カスタムアクティビティ
+
+struct CustomActivity: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var emoji: String
+    var isEnabled: Bool
+
+    init(id: String = UUID().uuidString, name: String, emoji: String, isEnabled: Bool = true) {
+        self.id = id
+        self.name = name
+        self.emoji = emoji
+        self.isEnabled = isEnabled
+    }
+
+    // プリセットアクティビティ
+    static let duolingo = CustomActivity(name: "Duolingo", emoji: "🦉")
+    static let reading = CustomActivity(name: "読書", emoji: "📚")
+    static let meditation = CustomActivity(name: "瞑想", emoji: "🧘")
+    static let stretching = CustomActivity(name: "ストレッチ", emoji: "🤸")
+}
+
 // MARK: - 時間帯ごとの目標
 
 struct TimeSlotGoal: Codable, Identifiable {
@@ -71,6 +93,7 @@ struct TimeSlotGoal: Codable, Identifiable {
     var trainingGoal: Int           // トレーニングセット数
     var mindfulnessGoal: Int        // マインドフルネス回数
     var logGoal: LogGoal            // ログ目標
+    var customActivities: [CustomActivity] = [] // カスタムアクティビティ
     var reminderEnabled: Bool       // リマインダー有効
     var reminderTime: Date?         // リマインダー時刻
 
@@ -108,6 +131,7 @@ struct TimeSlotProgress: Codable, Identifiable {
     var trainingCompleted: Int = 0       // 完了したトレーニングセット数
     var mindfulnessCompleted: Int = 0    // 完了したマインドフルネス回数
     var logProgress: LogProgress = LogProgress()
+    var completedActivityIds: Set<String> = [] // 完了したカスタムアクティビティのID
     var lastUpdated: Date = Date()
 
     /// 目標達成率（0.0 - 1.0）
@@ -140,6 +164,15 @@ struct TimeSlotProgress: Codable, Identifiable {
             }
         }
 
+        // カスタムアクティビティ
+        let enabledActivities = goal.customActivities.filter { $0.isEnabled }
+        for activity in enabledActivities {
+            totalGoals += 1
+            if completedActivityIds.contains(activity.id) {
+                completed += 1
+            }
+        }
+
         return totalGoals > 0 ? Double(completed) / Double(totalGoals) : 0.0
     }
 
@@ -152,17 +185,34 @@ struct TimeSlotProgress: Codable, Identifiable {
 // MARK: - ログ進捗
 
 struct LogProgress: Codable {
-    var mealLogged: Bool = false
-    var drinkLogged: Bool = false
-    var mindInputLogged: Bool = false
+    var mealLogged: Int = 0  // 記録された食事の回数
+    var drinkLogged: Int = 0  // 記録されたドリンクの回数
+    var mindInputLogged: Int = 0  // 記録されたマインド入力の回数
 
     var completedCount: Int {
         var count = 0
-        if mealLogged { count += 1 }
-        if drinkLogged { count += 1 }
-        if mindInputLogged { count += 1 }
+        if mealLogged > 0 { count += 1 }
+        if drinkLogged > 0 { count += 1 }
+        if mindInputLogged > 0 { count += 1 }
         return count
     }
+}
+
+// MARK: - 1日全体の目標（時間帯に関係なし）
+
+struct DailyGlobalGoals: Codable {
+    var workoutEnabled: Bool = false           // ワークアウト目標を使用するか
+    var workoutMinutes: Int = 15               // 目標ワークアウト時間（分）
+    var standEnabled: Bool = false             // スタンド時間目標を使用するか
+    var standHours: Int = 12                   // 目標スタンド時間（時間）
+}
+
+// MARK: - 1日全体の実績
+
+struct DailyGlobalProgress: Codable {
+    var workoutMinutes: Int = 0                // 完了したワークアウト時間（分）
+    var standHours: Int = 0                    // 完了したスタンド時間（時間）
+    var lastUpdated: Date = Date()
 }
 
 // MARK: - 1日の時間帯別目標設定
@@ -170,6 +220,7 @@ struct LogProgress: Codable {
 struct DailyTimeSlotSettings: Codable {
     var goals: [TimeSlotGoal]
     var date: Date
+    var globalGoals: DailyGlobalGoals = DailyGlobalGoals()  // 1日全体の目標
 
     init(date: Date = Date()) {
         self.date = date
@@ -192,6 +243,7 @@ struct DailyTimeSlotSettings: Codable {
 struct DailyTimeSlotProgress: Codable {
     var progress: [TimeSlotProgress]
     var date: Date
+    var globalProgress: DailyGlobalProgress = DailyGlobalProgress()  // 1日全体の実績
 
     init(date: Date = Date()) {
         self.date = date

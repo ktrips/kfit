@@ -38,62 +38,54 @@ struct DashboardView: View {
     @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
     @State private var pendingIntakeAction: (() -> Void)?  // 保留中の記録アクション
     @State private var confirmMessage = ""  // 確認メッセージ
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.duoBg.ignoresSafeArea()
+        ZStack {
+            // 背景色（セーフエリア全体を含む）
+            Color.duoBg
+                .ignoresSafeArea(.all)
 
-                // メインコンテンツ
-                VStack(spacing: 0) {
-                    if isLoading {
-                        Spacer()
-                        ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
-                        Spacer()
-                    } else {
-                        ScrollView(showsIndicators: false) {
-                            VStack(spacing: 10) {
-                                dailySetsCard
-                                quickMenu
-                                calorieAndWeightCard
-                                weeklyGoalCard
-                                challengeCard
-                                habitStackCard
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.top, 0)
-                            .padding(.bottom, 60)
-                        }
-                        .padding(.top, geometry.safeAreaInsets.top + 8)
-                    }
-                }
-
-                // 固定ヘッダー（最上部）
-                VStack(spacing: 0) {
-                    heroSection
+            // メインコンテンツ
+            VStack(spacing: 0) {
+                if isLoading {
                     Spacer()
-                }
-                .zIndex(1)
-
-
-                // ハンバーガーメニュー（オーバーレイ）
-                if showMenu {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showMenu = false
-                            }
+                    ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
+                    Spacer()
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 10) {
+                            headerInfoCard
+                            dailySetsCard
+                            quickMenu
+                            calorieAndWeightCard
+                            weeklyGoalCard
+                            challengeCard
+                            habitStackCard
                         }
-
-                    VStack {
-                        Spacer()
-                        floatingMenuPanel
+                        .padding(.horizontal, 10)
+                        .padding(.top, 8)
+                        .padding(.bottom, 60)
                     }
-                    .transition(.move(edge: .bottom))
                 }
             }
-            .ignoresSafeArea()
+
+            // ハンバーガーメニュー（オーバーレイ）
+            if showMenu {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showMenu = false
+                        }
+                    }
+
+                VStack {
+                    Spacer()
+                    floatingMenuPanel
+                }
+                .transition(.move(edge: .bottom))
+            }
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showTracker) {
@@ -129,6 +121,29 @@ struct DashboardView: View {
                 pendingIntakeAction = nil
             }
         }
+        .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
+            // マインドフルネスセッション数が増えたら時間帯別進捗に記録
+            Task {
+                print("🧘 Mindfulness sessions changed from \(oldValue) to \(newValue)")
+
+                // 増えた分だけ現在の時間帯に記録
+                let increment = newValue - oldValue
+                if increment > 0 {
+                    let currentSlot = TimeSlot.current()
+                    for _ in 0..<increment {
+                        await timeSlotManager.recordMindfulnessCompleted(at: currentSlot)
+                    }
+                    print("✅ Recorded \(increment) mindfulness session(s) to \(currentSlot.displayName)")
+                }
+
+                await timeSlotManager.loadTodayProgress()
+                updateWidgetData()
+            }
+        }
+        .onChange(of: healthKit.todayActiveCalories) { _, _ in Task { updateWidgetData() } }
+        .onChange(of: healthKit.todayRestingCalories) { _, _ in Task { updateWidgetData() } }
+        .onChange(of: todayIntake.totalCalories) { _, _ in Task { updateWidgetData() } }
+        .onChange(of: todaySetCount) { _, _ in Task { updateWidgetData() } }
         .onAppear {
             withAnimation { mascotBounce = true }
             // 初回のみloadDataを実行
@@ -148,6 +163,20 @@ struct DashboardView: View {
                 }
             } else {
                 print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
+            }
+        }
+        .onChange(of: scenePhase) { (oldPhase: ScenePhase, newPhase: ScenePhase) in
+            if newPhase == .active {
+                // アプリがフォアグラウンドに戻ったときにHealthKitデータを再取得
+                print("🔄 App became active - refreshing HealthKit data")
+                Task {
+                    // HealthKitデータを再取得（マインドフルネスなど）
+                    if healthKit.isAvailable && healthKit.isAuthorized {
+                        await healthKit.refreshMindfulness()
+                    }
+                    await timeSlotManager.loadTodayProgress()
+                    await timeSlotManager.updateGlobalProgressFromHealthKit()
+                }
             }
         }
     }
@@ -256,42 +285,262 @@ struct DashboardView: View {
         .frame(height: 110)
     }
 
-    // MARK: - ヒーロー（極小1行バー）
+    // MARK: - ヒーロー（極小1行バー + 記録ボタン）
     private var heroSection: some View {
         GeometryReader { geometry in
-            ZStack {
+            ZStack(alignment: .top) {
                 LinearGradient(
                     colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 )
-                HStack(spacing: 0) {
-                    // ── ロゴ ──────────────────
+                .ignoresSafeArea(.all, edges: .top)
+
+                VStack(spacing: 0) {
+                    // ステータスバー領域（実際のセーフエリア高さを使用）
+                    Color.clear
+                        .frame(height: geometry.safeAreaInsets.top)
+
+                    // ロゴ + 統計（1行のみ）
+                    HStack(spacing: 0) {
+                        // ── ロゴ ──────────────────
+                        HStack(spacing: 2) {
+                            Image("mascot")
+                                .resizable().scaledToFill()
+                                .frame(width: 11, height: 11)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
+                            Text("DuoFit")
+                                .font(.system(size: 10, design: .rounded))
+                                .fontWeight(.black)
+                                .foregroundColor(.white)
+                        }
+
+                        Spacer()
+
+                        // ── 統計 2項目（横1列）- 連続記録と直近の時間帯セット状況 ───
+                        currentTimeSlotStats
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                }
+            }
+            .frame(height: geometry.safeAreaInsets.top + 22)
+        }
+        .frame(height: 66)
+    }
+
+    // MARK: - ヘッダー情報カード（メインコンテンツ最上部）
+    private var headerInfoCard: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+
+            HStack {
+                // 左側: ロゴ
+                HStack(spacing: 2) {
+                    Image("mascot")
+                        .resizable().scaledToFill()
+                        .frame(width: 16, height: 16)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
+                    Text("DuoFit")
+                        .font(.system(size: 16, design: .rounded))
+                        .fontWeight(.black)
+                        .foregroundColor(.white)
+                }
+
+                Spacer()
+
+                // 右側: 数値情報
+                HStack(spacing: 8) {
+                    // 連続記録
                     HStack(spacing: 2) {
-                        Image("mascot")
-                            .resizable().scaledToFill()
-                            .frame(width: 14, height: 14)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
-                        Text("DuoFit")
-                            .font(.system(size: 12, design: .rounded))
-                            .fontWeight(.black)
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange)
+                        Text("\(authManager.userProfile?.streak ?? 0)日")
+                            .font(.system(size: 10, design: .rounded))
+                            .fontWeight(.semibold)
                             .foregroundColor(.white)
                     }
 
-                    Spacer()
+                    // 到達度
+                    HStack(spacing: 2) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white)
+                        Text("\(completionPercentage)%")
+                            .font(.system(size: 10, design: .rounded))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
 
-                    // ── 統計 2項目（横1列）- 連続記録と直近の時間帯セット状況 ───
-                    currentTimeSlotStats
+                    // カロリー収支
+                    HStack(spacing: 2) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red)
+                        Text("\(calorieBalance)cal")
+                            .font(.system(size: 10, design: .rounded))
+                            .fontWeight(.semibold)
+                            .foregroundColor(calorieBalance >= 0 ? .white : .red.opacity(0.8))
+                    }
 
+                    // ポイント
+                    HStack(spacing: 2) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                        Text("\(totalXP)")
+                            .font(.system(size: 10, design: .rounded))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.top, geometry.safeAreaInsets.top)
-                .padding(.bottom, 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .cornerRadius(12)
+    }
+
+    // MARK: - ヘッダー計算プロパティ
+
+    private var completionPercentage: Int {
+        let totalGoals = timeSlotManager.settings.goals.reduce(0) { $0 + $1.trainingGoal + $1.mindfulnessGoal }
+        guard totalGoals > 0 else { return 0 }
+
+        let totalCompleted = timeSlotManager.progress.progress.reduce(0) { $0 + $1.trainingCompleted + $1.mindfulnessCompleted }
+        return min(100, Int((Double(totalCompleted) / Double(totalGoals)) * 100))
+    }
+
+    private var calorieBalance: Int {
+        let consumed = todayIntake.totalCalories
+        let burned = Int(healthKit.todayActiveCalories + healthKit.todayRestingCalories)
+        return burned - consumed
+    }
+
+    // MARK: - ヘッダー（コンパクト・最上段固定）
+    private var headerCard: some View {
+        let currentHour = Calendar.current.component(.hour, from: Date())
+        var completedSlots: [TimeSlot] = []
+        if currentHour >= 6 { completedSlots.append(.morning) }
+        if currentHour >= 10 { completedSlots.append(.noon) }
+        if currentHour >= 14 { completedSlots.append(.afternoon) }
+        if currentHour >= 18 { completedSlots.append(.evening) }
+
+        let totalTrainingCompleted = completedSlots.reduce(0) { sum, slot in
+            sum + countSetsInTimeSlot(slot)
+        }
+        let totalTrainingGoal = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
+        }
+        let totalMindfulnessCompleted = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.mindfulnessCompleted ?? 0)
+        }
+        let totalMindfulnessGoal = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
+        }
+        let totalMealLogged = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.mealLogged ?? 0)
+        }
+        let totalMealGoal = completedSlots.filter { slot in
+            timeSlotManager.settings.goalFor(slot)?.logGoal.mealRequired ?? false
+        }.count
+        let totalDrinkLogged = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.drinkLogged ?? 0)
+        }
+        let totalDrinkGoal = completedSlots.filter { slot in
+            timeSlotManager.settings.goalFor(slot)?.logGoal.drinkRequired ?? false
+        }.count
+
+        var totalGoals = 0
+        var completedGoals = 0
+        if totalTrainingGoal > 0 {
+            totalGoals += 1
+            if totalTrainingCompleted >= totalTrainingGoal { completedGoals += 1 }
+        }
+        if totalMindfulnessGoal > 0 {
+            totalGoals += 1
+            if totalMindfulnessCompleted >= totalMindfulnessGoal { completedGoals += 1 }
+        }
+        if totalMealGoal > 0 {
+            totalGoals += 1
+            if totalMealLogged >= totalMealGoal { completedGoals += 1 }
+        }
+        if totalDrinkGoal > 0 {
+            totalGoals += 1
+            if totalDrinkLogged >= totalDrinkGoal { completedGoals += 1 }
+        }
+        if timeSlotManager.settings.globalGoals.workoutEnabled {
+            totalGoals += 1
+            if timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes {
+                completedGoals += 1
             }
         }
-        .frame(height: (UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.top ?? 44) + 8)
+        if timeSlotManager.settings.globalGoals.standEnabled {
+            totalGoals += 1
+            if timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours {
+                completedGoals += 1
+            }
+        }
+
+        let progressPercent = totalGoals > 0 ? Int((Double(completedGoals) / Double(totalGoals)) * 100) : 0
+        let totalConsumed = healthKit.todayTotalCalories
+        let intake = Double(todayIntake.totalCalories)
+        let balance = intake - totalConsumed
+
+        return GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea(.all, edges: .top)
+
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: geometry.safeAreaInsets.top)
+
+                    VStack(spacing: 4) {
+                        // ロゴ
+                        HStack(spacing: 3) {
+                            Image("mascot")
+                                .resizable().scaledToFill()
+                                .frame(width: 14, height: 14)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
+                            Text("DuoFit")
+                                .font(.system(size: 12, design: .rounded))
+                                .fontWeight(.black)
+                                .foregroundColor(.white)
+                        }
+
+                        // 統計情報
+                        HStack(spacing: 8) {
+                            compactStat(icon: "🔥", value: "\(authManager.userProfile?.streak ?? 0)")
+                            compactStat(icon: "📊", value: "\(progressPercent)%")
+                            compactStat(icon: balance >= 0 ? "📈" : "📉", value: balance >= 0 ? "+\(Int(balance))" : "\(Int(balance))")
+                            compactStat(icon: "⭐", value: "\((authManager.userProfile?.totalPoints ?? 0).formatted())")
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                }
+            }
+            .frame(height: geometry.safeAreaInsets.top + 50)
+        }
+        .frame(height: 94)
+    }
+
+    private func compactStat(icon: String, value: String) -> some View {
+        HStack(spacing: 1) {
+            Text(icon).font(.system(size: 10))
+            Text(value)
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+        }
     }
 
     // ── 現在の時間帯セット状況 ───
@@ -306,9 +555,9 @@ struct DashboardView: View {
         if currentHour >= 14 { completedSlots.append(.afternoon) }
         if currentHour >= 18 { completedSlots.append(.evening) }
 
-        // トータルのトレーニング実績と目標
+        // トータルのトレーニング実績と目標（実際のセット数）
         let totalTrainingCompleted = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.progress.progressFor(slot)?.trainingCompleted ?? 0)
+            sum + countSetsInTimeSlot(slot)
         }
         let totalTrainingGoal = completedSlots.reduce(0) { sum, slot in
             sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
@@ -322,76 +571,110 @@ struct DashboardView: View {
             sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
         }
 
-        // トータルのログ完了状況（各時間帯で1つでも完了していればtrue）
-        let anyMealLogged = completedSlots.contains { slot in
-            timeSlotManager.progress.progressFor(slot)?.logProgress.mealLogged ?? false
+        // トータルのログ完了状況（回数の合計）
+        let totalMealLogged = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.mealLogged ?? 0)
         }
-        let anyDrinkLogged = completedSlots.contains { slot in
-            timeSlotManager.progress.progressFor(slot)?.logProgress.drinkLogged ?? false
-        }
-        let totalLogCompleted = (anyMealLogged ? 1 : 0) + (anyDrinkLogged ? 1 : 0)
-        let totalLogGoal = 2
+        let totalMealGoal = completedSlots.filter { slot in
+            timeSlotManager.settings.goalFor(slot)?.logGoal.mealRequired ?? false
+        }.count
 
-        return HStack(spacing: 6) {
+        let totalDrinkLogged = completedSlots.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.drinkLogged ?? 0)
+        }
+        let totalDrinkGoal = completedSlots.filter { slot in
+            timeSlotManager.settings.goalFor(slot)?.logGoal.drinkRequired ?? false
+        }.count
+
+        // トータル進捗％を計算（1日全体の目標も含む）
+        var totalGoals = 0
+        var completedGoals = 0
+
+        if totalTrainingGoal > 0 {
+            totalGoals += 1
+            if totalTrainingCompleted >= totalTrainingGoal { completedGoals += 1 }
+        }
+        if totalMindfulnessGoal > 0 {
+            totalGoals += 1
+            if totalMindfulnessCompleted >= totalMindfulnessGoal { completedGoals += 1 }
+        }
+        if totalMealGoal > 0 {
+            totalGoals += 1
+            if totalMealLogged >= totalMealGoal { completedGoals += 1 }
+        }
+        if totalDrinkGoal > 0 {
+            totalGoals += 1
+            if totalDrinkLogged >= totalDrinkGoal { completedGoals += 1 }
+        }
+
+        // 1日全体の目標（ワークアウトとスタンド時間）
+        if timeSlotManager.settings.globalGoals.workoutEnabled {
+            totalGoals += 1
+            if timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes {
+                completedGoals += 1
+            }
+        }
+        if timeSlotManager.settings.globalGoals.standEnabled {
+            totalGoals += 1
+            if timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours {
+                completedGoals += 1
+            }
+        }
+
+        let progressPercent = totalGoals > 0 ? Int((Double(completedGoals) / Double(totalGoals)) * 100) : 0
+
+        // カロリー収支を計算
+        let totalConsumed = healthKit.todayTotalCalories
+        let intake = Double(todayIntake.totalCalories)
+        let balance = intake - totalConsumed
+        let isPositive = balance > 0
+
+        return HStack(spacing: 3) {
             // 1. 連続記録
             miniStat("🔥", "\(authManager.userProfile?.streak ?? 0)", "")
 
-            // 2. トレーニング到達度
-            let trainingComplete = totalTrainingGoal > 0 && totalTrainingCompleted >= totalTrainingGoal
+            // 2. トータル進捗％
             HStack(spacing: 1) {
-                Text("💪").font(.system(size: 11))
-                Text("\(totalTrainingCompleted)/\(max(totalTrainingGoal, 1))")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundColor(trainingComplete ? Color.white : Color.white.opacity(0.8))
-                if trainingComplete {
+                Text("📊").font(.system(size: 9))
+                Text("\(progressPercent)%")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .foregroundColor(progressPercent == 100 ? Color.white : Color.white.opacity(0.8))
+                if progressPercent == 100 {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 7))
                         .foregroundColor(.white)
                 }
             }
 
-            // 3. マインドフル実施
-            if totalMindfulnessGoal > 0 {
-                let mindfulnessComplete = totalMindfulnessCompleted >= totalMindfulnessGoal
-                HStack(spacing: 1) {
-                    Text("🧘").font(.system(size: 11))
-                    if mindfulnessComplete {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white)
-                    } else {
-                        Image(systemName: "circle")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
+            // 3. カロリー収支
+            HStack(spacing: 1) {
+                Text(isPositive ? "📈" : "📉").font(.system(size: 9))
+                Text(isPositive ? "+" : "")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(.white.opacity(0.9))
+                Text("\(Int(abs(balance)))")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
             }
 
-            // 4. ログ入力完了
-            let logComplete = totalLogCompleted >= totalLogGoal
+            // 4. 総ポイント数
             HStack(spacing: 1) {
-                Text("🍽️").font(.system(size: 11))
-                if logComplete {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.white)
-                } else {
-                    Image(systemName: "circle")
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
-                }
+                Text("⭐").font(.system(size: 9))
+                Text("\((authManager.userProfile?.totalPoints ?? 0).formatted())")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoYellow)
             }
         }
     }
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
         HStack(spacing: 1) {
-            Text(icon).font(.system(size: 11))
+            Text(icon).font(.system(size: 9))
             Text(value)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 9, weight: .black, design: .rounded))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 9))
+                .font(.system(size: 7))
                 .foregroundColor(Color.white.opacity(0.7))
         }
     }
@@ -445,7 +728,14 @@ struct DashboardView: View {
         let totalCompletedSlots = visibleSlots.filter { slot in
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                return progress.isFullyCompleted(goal: goal)
+                // トレーニングは実際のセット数でチェック
+                let setsCompleted = countSetsInTimeSlot(slot)
+                let trainingGoalMet = goal.trainingGoal == 0 || setsCompleted >= goal.trainingGoal
+                let mindfulnessGoalMet = goal.mindfulnessGoal == 0 || progress.mindfulnessCompleted >= goal.mindfulnessGoal
+                let mealGoalMet = !goal.logGoal.mealRequired || progress.logProgress.mealLogged > 0
+                let drinkGoalMet = !goal.logGoal.drinkRequired || progress.logProgress.drinkLogged > 0
+                let mindInputGoalMet = !goal.logGoal.mindInputRequired || progress.logProgress.mindInputLogged > 0
+                return trainingGoalMet && mindfulnessGoalMet && mealGoalMet && drinkGoalMet && mindInputGoalMet
             }
             return false
         }.count
@@ -455,16 +745,37 @@ struct DashboardView: View {
         var totalTrainingGoal = 0
         var totalMindfulness = 0
         var totalMindfulnessGoal = 0
+        var totalMealLogged = 0
+        var totalMealGoal = 0
+        var totalDrinkLogged = 0
+        var totalDrinkGoal = 0
 
         for slot in visibleSlots {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                totalTraining += progress.trainingCompleted
+                // 実際のセット数をカウント（その時間帯に実行された運動記録の数）
+                let setsInSlot = countSetsInTimeSlot(slot)
+                totalTraining += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
                 totalMindfulness += progress.mindfulnessCompleted
                 totalMindfulnessGoal += goal.mindfulnessGoal
+
+                if goal.logGoal.mealRequired {
+                    totalMealGoal += 1
+                    totalMealLogged += progress.logProgress.mealLogged
+                }
+                if goal.logGoal.drinkRequired {
+                    totalDrinkGoal += 1
+                    totalDrinkLogged += progress.logProgress.drinkLogged
+                }
             }
         }
+
+        // 全ての目標達成チェック
+        let allGoalsCompleted = (totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal) &&
+                                (totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal) &&
+                                (totalMealGoal > 0 && totalMealLogged >= totalMealGoal) &&
+                                (totalDrinkGoal > 0 && totalDrinkLogged >= totalDrinkGoal)
 
         return VStack(alignment: .leading, spacing: 0) {
             // ヘッダー（タップで展開）
@@ -473,35 +784,36 @@ struct DashboardView: View {
                     showTodayRecords.toggle()
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    // タイトル行
+                VStack(alignment: .leading, spacing: 8) {
+                    // タイトル行: 日付 + ステータス
                     HStack(spacing: 6) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark.seal.fill")
-                            Text("今日のセット状況").fontWeight(.black)
+                        HStack(spacing: 3) {
+                            Text("今日")
+                                .font(.headline)
+                                .fontWeight(.black)
+                                .foregroundColor(Color.duoDark)
+                            Text(formatDate(Date()))
+                                .font(.headline)
+                                .fontWeight(.black)
+                                .foregroundColor(Color.duoGreen)
+                            Text("の状況")
+                                .font(.headline)
+                                .fontWeight(.black)
+                                .foregroundColor(Color.duoDark)
                         }
-                        .font(.headline)
-                        .foregroundColor(Color.duoDark)
 
                         Spacer()
 
-                        if totalCompletedSlots == totalSlotsToShow {
+                        if allGoalsCompleted {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")
-                                Text("完璧！")
+                                Text("完了!")
                                     .font(.caption).fontWeight(.black)
                             }
                             .foregroundColor(.white)
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(Color.duoGreen)
                             .cornerRadius(20)
-                        } else {
-                            Text("\(totalCompletedSlots)/\(totalSlotsToShow) 完了")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(Color.duoOrange)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(Color.duoOrange.opacity(0.12))
-                                .cornerRadius(20)
                         }
 
                         Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
@@ -509,49 +821,72 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoGreen)
                     }
 
-                    Divider()
+                    // トータル進捗（罫線なし）
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Text("💪").font(.caption)
+                            Text("\(totalTraining)/\(totalTrainingGoal)")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
+                        }
+                        HStack(spacing: 4) {
+                            Text("🧘").font(.caption)
+                            Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
+                        }
 
-                    // トータル進捗（経過時間帯の合計）
-                    if totalSlotsToShow > 1 {
-                        HStack(spacing: 12) {
+                        // 1日全体の目標（有効な場合のみ表示）
+                        if timeSlotManager.settings.globalGoals.workoutEnabled && timeSlotManager.progress.globalProgress.workoutMinutes > 0 {
                             HStack(spacing: 4) {
-                                Text("💪").font(.caption)
-                                Text("トータル \(totalTraining)/\(totalTrainingGoal)")
+                                Text("🏃").font(.caption)
+                                Text("\(timeSlotManager.progress.globalProgress.workoutMinutes)分")
                                     .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
-                            }
-                            HStack(spacing: 4) {
-                                Text("🧘").font(.caption)
-                                Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
+                                    .foregroundColor(
+                                        timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes
+                                        ? Color.duoGreen : Color.duoDark
+                                    )
                             }
                         }
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 8)
-                        .background(Color.duoGreen.opacity(0.08))
-                        .cornerRadius(8)
+                        if timeSlotManager.settings.globalGoals.standEnabled && timeSlotManager.progress.globalProgress.standHours > 0 {
+                            HStack(spacing: 4) {
+                                Text("🕐").font(.caption)
+                                Text("\(timeSlotManager.progress.globalProgress.standHours)h")
+                                    .font(.caption).fontWeight(.bold)
+                                    .foregroundColor(
+                                        timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours
+                                        ? Color.duoGreen : Color.duoDark
+                                    )
+                            }
+                        }
 
-                        Divider()
-                    }
+                        Spacer()
 
-                    // 時間帯別の進捗（現在時刻までの時間帯のみ表示）
-                    VStack(spacing: 8) {
-                        ForEach(visibleSlots, id: \.rawValue) { slot in
-                            timeSlotRow(for: slot)
+                        HStack(spacing: 8) {
+                            if totalMealGoal > 0 && totalMealLogged > 0 {
+                                HStack(spacing: 2) {
+                                    Text("🍽️").font(.caption)
+                                    Text("\(totalMealLogged)")
+                                        .font(.caption2).fontWeight(.bold)
+                                        .foregroundColor(totalMealLogged >= totalMealGoal ? Color.duoGreen : Color.duoSubtitle)
+                                }
+                            }
+                            if totalDrinkGoal > 0 && totalDrinkLogged > 0 {
+                                HStack(spacing: 2) {
+                                    Text("💧").font(.caption)
+                                    Text("\(totalDrinkLogged)")
+                                        .font(.caption2).fontWeight(.bold)
+                                        .foregroundColor(totalDrinkLogged >= totalDrinkGoal ? Color.duoBlue : Color.duoSubtitle)
+                                }
+                            }
                         }
                     }
 
                     // 達成メッセージ
                     if totalCompletedSlots == totalSlotsToShow {
-                        HStack(spacing: 6) {
-                            Image("mascot")
-                                .resizable().scaledToFill()
-                                .frame(width: 22, height: 22).clipShape(Circle())
-                            Text(totalSlotsToShow == 4 ? "全時間帯の目標達成！素晴らしい一日🎉" : "ここまでの目標達成！順調です💪")
-                                .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
-                        }
-                        .padding(.top, 2)
+                        Text(totalSlotsToShow == 4 ? "全時間帯の目標達成！素晴らしい一日🎉" : "ここまでの目標達成！順調です💪")
+                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen)
+                            .padding(.top, 2)
                     } else if totalCompletedSlots == 0 {
                         Text("今日はまだ目標を達成していません。始めましょう！")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
@@ -565,6 +900,22 @@ struct DashboardView: View {
                 .padding(16)
             }
             .buttonStyle(.plain)
+
+            // 時間帯別の進捗（アコーディオン）- メッセージの下
+            if showTodayRecords {
+                VStack(spacing: 0) {
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    VStack(spacing: 8) {
+                        ForEach(visibleSlots, id: \.rawValue) { slot in
+                            timeSlotRow(for: slot)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+            }
 
             // トレーニング開始ボタン
             VStack(spacing: 0) {
@@ -590,8 +941,8 @@ struct DashboardView: View {
 
                         VStack(alignment: .leading, spacing: 0) {
                             Text(todayExercises.isEmpty
-                                 ? "今日のトレーニングを始めよう！"
-                                 : "さらに記録する")
+                                 ? "今日のDuoFitスタート！"
+                                 : "\(todaySetCount + 1)回目のDuoFit記録")
                                 .font(.caption).fontWeight(.black)
                                 .foregroundColor(.white)
                             Text(todayExercises.isEmpty
@@ -623,7 +974,7 @@ struct DashboardView: View {
                 .padding(.vertical, 12)
             }
 
-            // 今日の記録（展開時のみ表示）
+            // 今日の記録（展開時のみ表示）- 緑ボタンの下
             if showTodayRecords && !todayExercises.isEmpty {
                 VStack(spacing: 0) {
                     Divider()
@@ -879,36 +1230,38 @@ struct DashboardView: View {
         let progress = timeSlotManager.progress.progressFor(slot)
 
         return HStack(spacing: 8) {
-            // 時間帯アイコンと名前
-            Text(slot.emoji).font(.subheadline)
-            Text(slot.displayName)
-                .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                .frame(width: 36, alignment: .leading)
+            // 時間帯アイコンと名前 + 時刻
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 4) {
+                    Text(slot.emoji).font(.subheadline)
+                    Text(slot.displayName)
+                        .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                }
+                Text("~\(slot.endHour):00")
+                    .font(.system(size: 9))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .frame(width: 50, alignment: .leading)
 
-            // トレーニング進捗
+            // トレーニング進捗（実際のセット数）
             if let goal = goal, goal.trainingGoal > 0 {
                 HStack(spacing: 2) {
-                    Text("💪").font(.caption2)
-                    Text("\(progress?.trainingCompleted ?? 0)/\(goal.trainingGoal)")
+                    Text("💪").font(.caption)
+                    let setsCompleted = countSetsInTimeSlot(slot)
+                    Text("\(setsCompleted)")
                         .font(.caption2).fontWeight(.medium)
-                        .foregroundColor((progress?.trainingCompleted ?? 0) >= goal.trainingGoal ? Color.duoGreen : Color.duoSubtitle)
+                        .foregroundColor(setsCompleted >= goal.trainingGoal ? Color.duoGreen : Color.duoSubtitle)
                 }
             }
 
             // マインドフルネス進捗
             if let goal = goal, goal.mindfulnessGoal > 0 {
                 HStack(spacing: 2) {
-                    if (progress?.mindfulnessCompleted ?? 0) >= goal.mindfulnessGoal {
-                        Text("🧘").font(.caption2)
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoGreen)
-                    } else {
-                        Text("🧘").font(.caption2).opacity(0.5)
-                        Text("\(progress?.mindfulnessCompleted ?? 0)/\(goal.mindfulnessGoal)")
-                            .font(.caption2).fontWeight(.medium)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
+                    let completed = progress?.mindfulnessCompleted ?? 0
+                    Text("🧘").font(.caption)
+                    Text("\(completed)")
+                        .font(.caption2).fontWeight(.medium)
+                        .foregroundColor(completed >= goal.mindfulnessGoal ? Color.duoGreen : Color.duoSubtitle)
                 }
             }
 
@@ -916,30 +1269,23 @@ struct DashboardView: View {
 
             // ログ進捗バッジ
             if let goal = goal, let progress = progress {
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     if goal.logGoal.mealRequired {
-                        Image(systemName: progress.logProgress.mealLogged ? "fork.knife.circle.fill" : "fork.knife.circle")
-                            .font(.caption)
-                            .foregroundColor(progress.logProgress.mealLogged ? Color.duoGreen : Color(.systemGray4))
+                        Image(systemName: progress.logProgress.mealLogged > 0 ? "fork.knife.circle.fill" : "fork.knife.circle")
+                            .font(.title3)
+                            .foregroundColor(progress.logProgress.mealLogged > 0 ? Color.duoGreen : Color(.systemGray4))
                     }
                     if goal.logGoal.drinkRequired {
-                        Image(systemName: progress.logProgress.drinkLogged ? "drop.circle.fill" : "drop.circle")
-                            .font(.caption)
-                            .foregroundColor(progress.logProgress.drinkLogged ? Color.duoBlue : Color(.systemGray4))
+                        Image(systemName: progress.logProgress.drinkLogged > 0 ? "drop.circle.fill" : "drop.circle")
+                            .font(.title3)
+                            .foregroundColor(progress.logProgress.drinkLogged > 0 ? Color.duoBlue : Color(.systemGray4))
                     }
                     if goal.logGoal.mindInputRequired {
-                        Image(systemName: progress.logProgress.mindInputLogged ? "brain.head.profile.fill" : "brain.head.profile")
-                            .font(.caption)
-                            .foregroundColor(progress.logProgress.mindInputLogged ? Color.duoPurple : Color(.systemGray4))
+                        Image(systemName: progress.logProgress.mindInputLogged > 0 ? "brain.head.profile.fill" : "brain.head.profile")
+                            .font(.subheadline)
+                            .foregroundColor(progress.logProgress.mindInputLogged > 0 ? Color.duoPurple : Color(.systemGray4))
                     }
                 }
-            }
-
-            // 完了マーク
-            if let goal = goal, let progress = progress, progress.isFullyCompleted(goal: goal) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(Color.duoGreen)
             }
         }
         .padding(.vertical, 2)
@@ -1137,32 +1483,10 @@ struct DashboardView: View {
                         )
                     }
 
-                    // 行3: 総消費カロリー
-                    compactHealthItem(
-                        icon: "sum",
-                        iconColor: Color.duoGreen,
-                        label: "総消費カロリー",
-                        value: healthKit.todayTotalCalories,
-                        goal: nil,
-                        unit: "kcal",
-                        formatValue: { "\(Int($0))" }
-                    )
-
-                    // 行4: 摂取カロリー
-                    compactHealthItem(
-                        icon: "fork.knife",
-                        iconColor: Color.duoRed,
-                        label: "摂取カロリー",
-                        value: Double(todayIntake.totalCalories),
-                        goal: Double(intakeGoals.dailyCalorieGoal),
-                        unit: "kcal",
-                        formatValue: { "\(Int($0))" }
-                    )
-
                     // カロリー収支バー
                     calorieBalanceBarCard
 
-                    // 行5: 心拍数 | マインドフルネス
+                    // 行3: 心拍数 | マインドフルネス
                     HStack(spacing: 8) {
                         compactHealthItem(
                             icon: "heart.fill",
@@ -1180,7 +1504,8 @@ struct DashboardView: View {
                             value: healthKit.todayMindfulnessMinutes,
                             goal: nil,
                             unit: "分",
-                            formatValue: { String(format: "%.0f", $0) + " (\(healthKit.todayMindfulnessSessions)回)" }
+                            formatValue: { String(format: "%.0f", $0) + " (\(healthKit.todayMindfulnessSessions)回)" },
+                            healthKitURL: "x-apple-health://mindfulness"
                         )
                     }
 
@@ -1193,7 +1518,8 @@ struct DashboardView: View {
                             value: Double(todayIntake.totalWaterMl),
                             goal: Double(intakeGoals.dailyWaterGoal),
                             unit: "ml",
-                            formatValue: { "\(Int($0))" }
+                            formatValue: { "\(Int($0))" },
+                            healthKitURL: "x-apple-health://dietarywater"
                         )
                         compactHealthItemThird(
                             icon: "cup.and.saucer.fill",
@@ -1203,7 +1529,8 @@ struct DashboardView: View {
                             goal: Double(intakeGoals.dailyCaffeineLimit),
                             unit: "mg",
                             formatValue: { "\(Int($0))" },
-                            isReverse: true
+                            isReverse: true,
+                            healthKitURL: "x-apple-health://dietarycaffeine"
                         )
                         compactHealthItemThird(
                             icon: "wineglass.fill",
@@ -1213,7 +1540,8 @@ struct DashboardView: View {
                             goal: intakeGoals.dailyAlcoholLimit,
                             unit: "g",
                             formatValue: { String(format: "%.1f", $0) },
-                            isReverse: true
+                            isReverse: true,
+                            healthKitURL: "x-apple-health://nutrition"
                         )
                     }
                 }
@@ -1234,14 +1562,15 @@ struct DashboardView: View {
         goal: Double?,
         unit: String,
         formatValue: (Double) -> String,
-        isReverse: Bool = false
+        isReverse: Bool = false,
+        healthKitURL: String? = nil
     ) -> some View {
         let percent = goal != nil && goal! > 0 ? Int((value / goal!) * 100) : 0
         let isOver = goal != nil && value > goal!
         let isGood = goal == nil ? (value > 0) : (isReverse ? (value <= goal!) : (value >= goal!))
         let displayColor = (isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange)
 
-        return VStack(alignment: .leading, spacing: 4) {
+        let content = VStack(alignment: .leading, spacing: 4) {
             // アイコン + ラベル + ％
             HStack(spacing: 4) {
                 Image(systemName: icon)
@@ -1296,6 +1625,21 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(iconColor.opacity(0.08))
         .cornerRadius(8)
+
+        if let url = healthKitURL {
+            return AnyView(
+                Button {
+                    if let healthURL = URL(string: url) {
+                        UIApplication.shared.open(healthURL)
+                    }
+                } label: {
+                    content
+                }
+                .buttonStyle(.plain)
+            )
+        } else {
+            return AnyView(content)
+        }
     }
 
     // MARK: - コンパクトヘルスアイテム（1/3幅）
@@ -1307,14 +1651,15 @@ struct DashboardView: View {
         goal: Double?,
         unit: String,
         formatValue: (Double) -> String,
-        isReverse: Bool = false
+        isReverse: Bool = false,
+        healthKitURL: String? = nil
     ) -> some View {
         let percent = goal != nil && goal! > 0 ? Int((value / goal!) * 100) : 0
         let isOver = goal != nil && value > goal!
         let isGood = goal == nil ? (value > 0) : (isReverse ? (value <= goal!) : (value >= goal!))
         let displayColor = (isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoOrange)
 
-        return VStack(alignment: .center, spacing: 3) {
+        let content = VStack(alignment: .center, spacing: 3) {
             // アイコン
             Image(systemName: icon)
                 .font(.system(size: 16))
@@ -1361,6 +1706,21 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
         .background(iconColor.opacity(0.08))
         .cornerRadius(8)
+
+        if let url = healthKitURL {
+            return AnyView(
+                Button {
+                    if let healthURL = URL(string: url) {
+                        UIApplication.shared.open(healthURL)
+                    }
+                } label: {
+                    content
+                }
+                .buttonStyle(.plain)
+            )
+        } else {
+            return AnyView(content)
+        }
     }
 
     // MARK: - 体重・体脂肪カード
@@ -1421,15 +1781,15 @@ struct DashboardView: View {
         let absBalance = abs(balance)
         let maxValue = max(totalConsumed, intake)
 
-        // 収支の大きさに応じて円のサイズを変更（最小40、最大65）
+        // 収支の大きさに応じて円のサイズを変更（最小35、最大55）
         let circleSize: CGFloat = {
-            let baseSize: CGFloat = 40
-            let maxSize: CGFloat = 65
+            let baseSize: CGFloat = 35
+            let maxSize: CGFloat = 55
             let sizeFactor = min(absBalance / 1000.0, 1.0)  // 1000kcalで最大サイズ
             return baseSize + (maxSize - baseSize) * sizeFactor
         }()
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 4) {
             // タイトル
             HStack(spacing: 4) {
                 Image(systemName: "chart.bar.fill")
@@ -1447,125 +1807,127 @@ struct DashboardView: View {
                 let consumedWidth = maxValue > 0 ? (totalConsumed / maxValue) * barWidth * 0.5 : 0
                 let intakeWidth = maxValue > 0 ? (intake / maxValue) * barWidth * 0.5 : 0
 
-                VStack(spacing: 4) {
-                    // ラベル行（バーの真上）
+                VStack(alignment: .leading, spacing: 1) {
+                    // ラベル行（バーの真上、近くに）
                     HStack(spacing: 0) {
                         Text("消費Cal")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(Color.duoGreen)
                             .frame(width: max(consumedWidth, 60), alignment: .center)
                         Text("摂取Cal")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(Color.duoRed)
                             .frame(width: max(intakeWidth, 60), alignment: .center)
                         Spacer()
                     }
 
                     // バーと収支円
-                    HStack(spacing: 0) {
-                        // 左側: 総消費カロリー（グリーン）
-                        HStack(spacing: 2) {
-                            Spacer()
-                            Text("\(Int(totalConsumed))")
-                                .font(.system(size: 13, weight: .black))
-                                .foregroundColor(.white)
-                            Text("cal")
-                                .font(.system(size: 7, weight: .medium))
-                                .foregroundColor(.white.opacity(0.9))
-                                .padding(.bottom, 1)
+                    HStack(alignment: .center, spacing: 0) {
+                        // 左側: 総消費カロリー（トータルのみ）
+                        ZStack {
+                            // 背景: 単色バー
+                            Rectangle()
+                                .fill(Color.duoGreen)
+
+                            // 前面: 合計値テキスト
+                            HStack(spacing: 2) {
+                                Spacer()
+                                Text("\(Int(totalConsumed))")
+                                    .font(.system(size: 13, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("cal")
+                                    .font(.system(size: 8, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .padding(.bottom, 1)
+                            }
                         }
-                        .frame(width: max(consumedWidth, 60), height: 32)
-                        .background(Color.duoGreen)
+                        .frame(width: max(consumedWidth, 60), height: 36)
                         .cornerRadius(6, corners: [.topLeft, .bottomLeft])
 
-                        // 右側: 摂取カロリー（レッド）
-                        HStack(spacing: 2) {
-                            Text("\(Int(intake))")
-                                .font(.system(size: 13, weight: .black))
-                                .foregroundColor(.white)
-                            Text("cal")
-                                .font(.system(size: 7, weight: .medium))
-                                .foregroundColor(.white.opacity(0.9))
-                                .padding(.bottom, 1)
-                            Spacer()
+                        // 右側: 摂取カロリー（トータルのみ）
+                        ZStack {
+                            // 背景: 単色バー
+                            Rectangle()
+                                .fill(Color.duoRed)
+
+                            // 前面: 合計値テキスト
+                            HStack(spacing: 2) {
+                                Text("\(Int(intake))")
+                                    .font(.system(size: 13, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("cal")
+                                    .font(.system(size: 8, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .padding(.bottom, 1)
+                                Spacer()
+                            }
                         }
-                        .frame(width: max(intakeWidth, 60), height: 32)
-                        .background(Color.duoRed)
+                        .frame(width: max(intakeWidth, 60), height: 36)
                         .cornerRadius(6, corners: [.topRight, .bottomRight])
 
                         Spacer()
-                            .frame(width: 8)
 
-                        // 収支円（コンパクト）
-                        ZStack {
-                            Circle()
-                                .fill(isPositive ? Color.red : Color.duoGreen)
-                                .frame(width: circleSize, height: circleSize)
-                                .shadow(color: (isPositive ? Color.red : Color.duoGreen).opacity(0.3), radius: 3, y: 1)
+                        // 収支円 + 傾向表示（右寄せ）
+                        VStack(alignment: .trailing, spacing: 2) {
+                            // 収支円
+                            ZStack {
+                                Circle()
+                                    .fill(isPositive ? Color.red : Color.duoGreen)
+                                    .frame(width: circleSize, height: circleSize)
+                                    .shadow(color: (isPositive ? Color.red : Color.duoGreen).opacity(0.3), radius: 2, y: 1)
+                                VStack(spacing: -1) {
+                                    Text(isPositive ? "+" : "-")
+                                        .font(.system(size: circleSize * 0.20, weight: .bold))
+                                        .foregroundColor(.white)
+                                    Text("\(Int(absBalance))")
+                                        .font(.system(size: circleSize * 0.30, weight: .black))
+                                        .foregroundColor(.white)
+                                    Text("cal")
+                                        .font(.system(size: circleSize * 0.13))
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                            }
+
+                            // 体重増減予測
+                            let weightChangeG = Int(absBalance / 7200.0 * 1000)  // 7200kcalで約1kg、グラムで表示
                             VStack(spacing: 0) {
-                                Text(isPositive ? "+" : "-")
-                                    .font(.system(size: circleSize * 0.22, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text("\(Int(absBalance))")
-                                    .font(.system(size: circleSize * 0.32, weight: .black))
-                                    .foregroundColor(.white)
-                                Text("cal")
-                                    .font(.system(size: circleSize * 0.14))
-                                    .foregroundColor(.white.opacity(0.9))
+                                if isPositive {
+                                    HStack(spacing: 1) {
+                                        Image(systemName: "arrow.up.circle.fill")
+                                            .font(.system(size: 6))
+                                            .foregroundColor(Color.red)
+                                        Text("+\(weightChangeG)g")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .foregroundColor(Color.red)
+                                    }
+                                } else if balance < 0 {
+                                    HStack(spacing: 1) {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 6))
+                                            .foregroundColor(Color.duoGreen)
+                                        Text("-\(weightChangeG)g")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .foregroundColor(Color.duoGreen)
+                                    }
+                                } else {
+                                    HStack(spacing: 1) {
+                                        Image(systemName: "equal.circle.fill")
+                                            .font(.system(size: 6))
+                                            .foregroundColor(Color.duoGreen)
+                                        Text("±0g")
+                                            .font(.system(size: 7, weight: .bold))
+                                            .foregroundColor(Color.duoGreen)
+                                    }
+                                }
                             }
                         }
+                        .padding(.trailing, 8)
                     }
                 }
             }
-            .frame(height: 60)
-
-            // 傾向表示
-            HStack(spacing: 8) {
-                if isPositive {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.red)
-                        Text("太り傾向")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color.red)
-                    }
-                } else if balance < 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.duoGreen)
-                        Text("痩せ傾向")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color.duoGreen)
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: "equal.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.duoGreen)
-                        Text("バランス")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color.duoGreen)
-                    }
-                }
-
-                Spacer()
-
-                // 体重変化予測
-                if absBalance > 0 {
-                    let kgPerDay = absBalance / 7200.0
-                    Text("約\(String(format: "%.2f", kgPerDay))kg/日")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(5)
-                }
-            }
+            .frame(height: 68)
         }
-        .padding(10)
+        .padding(8)
         .background(Color.white.opacity(0.5))
         .cornerRadius(10)
         .overlay(
@@ -2615,6 +2977,13 @@ struct DashboardView: View {
         return formatter.string(from: date)
     }
 
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M月d日(E)"
+        return formatter.string(from: date)
+    }
+
     // MARK: - 健康サマリーカード（HealthKit）
     @ViewBuilder
     private var healthSummaryCard: some View {
@@ -2654,13 +3023,15 @@ struct DashboardView: View {
                             icon: "figure.walk",
                             value: healthKit.todaySteps > 0 ? "\(healthKit.todaySteps.formatted())" : "0",
                             unit: "歩",
-                            bg: Color(red: 0.843, green: 1.0, blue: 0.722) // #D7FFB8
+                            bg: Color(red: 0.843, green: 1.0, blue: 0.722), // #D7FFB8
+                            healthCategory: "StepCount"
                         )
                         healthMetricTile(
                             icon: "flame.fill",
                             value: healthKit.todayCalories > 0 ? "\(Int(healthKit.todayCalories))" : "0",
                             unit: "kcal",
-                            bg: Color(red: 1.0, green: 0.953, blue: 0.878) // #FFF3E0
+                            bg: Color(red: 1.0, green: 0.953, blue: 0.878), // #FFF3E0
+                            healthCategory: "ActiveEnergyBurned"
                         )
                     }
 
@@ -2670,13 +3041,15 @@ struct DashboardView: View {
                             icon: "heart.fill",
                             value: healthKit.latestHeartRate > 0 ? "\(Int(healthKit.latestHeartRate))" : "—",
                             unit: "bpm",
-                            bg: Color(red: 0.988, green: 0.894, blue: 0.925) // #FCE4EC
+                            bg: Color(red: 0.988, green: 0.894, blue: 0.925), // #FCE4EC
+                            healthCategory: "HeartRate"
                         )
                         healthMetricTile(
                             icon: "bed.double.fill",
                             value: healthKit.lastNightTotalHours > 0.1 ? String(format: "%.1f", healthKit.lastNightTotalHours) : "—",
                             unit: "時間",
-                            bg: Color(red: 0.918, green: 0.902, blue: 1.0) // #EAE6FF
+                            bg: Color(red: 0.918, green: 0.902, blue: 1.0), // #EAE6FF
+                            healthCategory: "SleepAnalysis"
                         )
                     }
                 }
@@ -2708,23 +3081,36 @@ struct DashboardView: View {
         }
     }
 
-    private func healthMetricTile(icon: String, value: String, unit: String, bg: Color) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.subheadline)
-                .foregroundColor(Color.duoDark)
-            Text(value)
-                .font(.system(.subheadline, design: .rounded))
-                .fontWeight(.black)
-                .foregroundColor(Color.duoDark)
-            Text(unit)
-                .font(.system(size: 9)).fontWeight(.bold)
-                .foregroundColor(Color.duoSubtitle)
+    private func healthMetricTile(icon: String, value: String, unit: String, bg: Color, healthCategory: String? = nil) -> some View {
+        Button {
+            if let category = healthCategory {
+                openHealthApp(category: category)
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoDark)
+                Text(value)
+                    .font(.system(.subheadline, design: .rounded))
+                    .fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Text(unit)
+                    .font(.system(size: 9)).fontWeight(.bold)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(bg)
+            .cornerRadius(10)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(bg)
-        .cornerRadius(10)
+        .buttonStyle(.plain)
+    }
+
+    private func openHealthApp(category: String) {
+        if let url = URL(string: "x-apple-health://\(category)") {
+            UIApplication.shared.open(url)
+        }
     }
 
     /// 種目 ID → 推定 kcal/rep
@@ -2890,6 +3276,71 @@ struct DashboardView: View {
             sharedDefaults.set(1, forKey: "timeSlotGoal")
         }
 
+        // 到達度情報を追加（現在時刻までの時間帯の合計）
+        var completedSlots: [TimeSlot] = []
+        if currentHour >= 6 { completedSlots.append(.morning) }
+        if currentHour >= 10 { completedSlots.append(.noon) }
+        if currentHour >= 14 { completedSlots.append(.afternoon) }
+        if currentHour >= 18 { completedSlots.append(.evening) }
+
+        var totalTrainingCompleted = 0
+        var totalTrainingGoal = 0
+        var totalMindfulnessCompleted = 0
+        var totalMindfulnessGoal = 0
+        var totalMealLogged = 0
+        var totalMealGoal = 0
+        var totalDrinkLogged = 0
+        var totalDrinkGoal = 0
+
+        for slot in completedSlots {
+            if let goal = timeSlotManager.settings.goalFor(slot),
+               let progress = timeSlotManager.progress.progressFor(slot) {
+                totalTrainingCompleted += progress.trainingCompleted
+                totalTrainingGoal += goal.trainingGoal
+                totalMindfulnessCompleted += progress.mindfulnessCompleted
+                totalMindfulnessGoal += goal.mindfulnessGoal
+
+                if goal.logGoal.mealRequired {
+                    totalMealGoal += 1
+                    totalMealLogged += progress.logProgress.mealLogged
+                }
+                if goal.logGoal.drinkRequired {
+                    totalDrinkGoal += 1
+                    totalDrinkLogged += progress.logProgress.drinkLogged
+                }
+            }
+        }
+
+        sharedDefaults.set(totalTrainingCompleted, forKey: "trainingCompleted")
+        sharedDefaults.set(totalTrainingGoal, forKey: "trainingGoal")
+        sharedDefaults.set(totalMindfulnessCompleted, forKey: "mindfulnessCompleted")
+        sharedDefaults.set(totalMindfulnessGoal, forKey: "mindfulnessGoal")
+        sharedDefaults.set(totalMealLogged, forKey: "mealLogged")
+        sharedDefaults.set(totalMealGoal, forKey: "mealGoal")
+        sharedDefaults.set(totalDrinkLogged, forKey: "drinkLogged")
+        sharedDefaults.set(totalDrinkGoal, forKey: "drinkGoal")
+
+        // カロリー収支を計算して保存
+        let totalConsumed = healthKit.todayRestingCalories + healthKit.todayActiveCalories
+        let intake = Double(todayIntake.meals.reduce(0) { $0 + $1.calories })
+        let calorieBalance = Int(intake - totalConsumed)
+        sharedDefaults.set(calorieBalance, forKey: "calorieBalance")
+
+        // 総ポイントを保存
+        let totalPoints = authManager.userProfile?.totalPoints ?? 0
+        sharedDefaults.set(totalPoints, forKey: "totalPoints")
+
+        // ワークアウトとスタンド時間を保存
+        let workoutMinutes = timeSlotManager.progress.globalProgress.workoutMinutes
+        let workoutGoal = timeSlotManager.settings.globalGoals.workoutEnabled ? timeSlotManager.settings.globalGoals.workoutMinutes : 0
+        let standHours = timeSlotManager.progress.globalProgress.standHours
+        let standGoal = timeSlotManager.settings.globalGoals.standEnabled ? timeSlotManager.settings.globalGoals.standHours : 0
+
+        sharedDefaults.set(workoutMinutes, forKey: "workoutMinutes")
+        sharedDefaults.set(workoutGoal, forKey: "workoutGoal")
+        sharedDefaults.set(standHours, forKey: "standHours")
+        sharedDefaults.set(standGoal, forKey: "standGoal")
+
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -2907,6 +3358,15 @@ struct DashboardView: View {
         if let url = URL(string: "x-apple-health://mindfulness") {
             UIApplication.shared.open(url)
         }
+    }
+
+    /// 指定された時間帯に実行されたセット数（運動記録の数）をカウント
+    private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
+        let calendar = Calendar.current
+        return todayExercises.filter { exercise in
+            let hour = calendar.component(.hour, from: exercise.timestamp)
+            return hour >= slot.startHour && hour < slot.endHour
+        }.count
     }
 }
 

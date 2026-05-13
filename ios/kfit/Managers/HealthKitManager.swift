@@ -102,6 +102,12 @@ final class HealthKitManager: ObservableObject {
     @Published var todayMindfulnessSessions: Int = 0    // 今日のマインドフルネスセッション数
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
 
+    // ワークアウト
+    @Published var todayWorkoutMinutes: Int = 0         // 今日のワークアウト時間（分）
+
+    // スタンド時間
+    @Published var todayStandHours: Int = 0             // 今日のスタンド時間（時間）
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
@@ -127,6 +133,11 @@ final class HealthKitManager: ObservableObject {
         if let mindfulness = HKCategoryType.categoryType(forIdentifier: .mindfulSession) {
             set.insert(mindfulness)
         }
+        if let standHour = HKCategoryType.categoryType(forIdentifier: .appleStandHour) {
+            set.insert(standHour)
+        }
+        // ワークアウトタイプを追加
+        set.insert(HKWorkoutType.workoutType())
         return set
     }
 
@@ -740,7 +751,7 @@ final class HealthKitManager: ObservableObject {
     // MARK: - マインドフルネス
 
     /// 今日のマインドフルネスセッションを取得
-    private func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int) {
+    func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int) {
         guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
             return (0, 0)
         }
@@ -764,6 +775,81 @@ final class HealthKitManager: ObservableObject {
                 }
 
                 continuation.resume(returning: (totalMinutes, samples.count))
+            }
+            store.execute(query)
+        }
+    }
+
+    /// マインドフルネスデータを手動で更新
+    func refreshMindfulness() async {
+        let result = await fetchTodayMindfulness()
+        todayMindfulnessMinutes = result.minutes
+        todayMindfulnessSessions = result.sessions
+        print("[HealthKit] 🧘 Refreshed mindfulness: \(result.sessions) sessions, \(String(format: "%.1f", result.minutes)) min")
+    }
+
+    // MARK: - ワークアウト
+
+    /// 今日のワークアウト時間を取得（分単位）
+    func fetchTodayWorkout() async -> Int {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKWorkoutType.workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, error in
+                guard let workouts = samples as? [HKWorkout] else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+
+                var totalMinutes: Double = 0
+                for workout in workouts {
+                    let duration = workout.duration // 秒単位
+                    totalMinutes += duration / 60.0
+                }
+
+                continuation.resume(returning: Int(totalMinutes))
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - スタンド時間
+
+    /// 今日のスタンド時間を取得（時間単位）
+    func fetchTodayStand() async -> Int {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .appleStandHour) else {
+            return 0
+        }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, error in
+                guard let samples = samples as? [HKCategorySample] else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+
+                // スタンドした時間の数をカウント（1サンプル = 1時間）
+                let standHours = samples.filter { $0.value == HKCategoryValueAppleStandHour.stood.rawValue }.count
+
+                continuation.resume(returning: standHours)
             }
             store.execute(query)
         }

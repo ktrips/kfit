@@ -141,6 +141,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                             if let mealType = MealType(rawValue: mealTypeStr) {
                                 await AuthenticationManager.shared.recordMeal(mealType: mealType)
                                 await TimeSlotManager.shared.recordMealLog(at: timeSlot)
+                                print("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) at \(timeSlot.displayName)")
                             }
                         }
                     case "water", "coffee", "alcohol":
@@ -154,10 +155,28 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                             }
                         }
                         await TimeSlotManager.shared.recordDrinkLog(at: timeSlot)
+                        print("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) at \(timeSlot.displayName)")
                     default:
                         break
                     }
-                    print("[iOSWatchBridge] 摂取記録: \(type) \(subtype ?? "") at \(timeSlot.displayName)")
+
+                    // 摂取記録後、少し待ってからTimeSlotManagerの最新データを再読み込み
+                    // （Firestoreへの保存が完了するまで待つ）
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+                    await TimeSlotManager.shared.loadTodayProgress()
+                    print("[iOSWatchBridge] 📊 TimeSlotProgress再読み込み完了")
+
+                    // 最新データをWatchに送信
+                    let profile = AuthenticationManager.shared.userProfile
+                    let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+                    let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
+                    let todayXP = todayExercises.reduce(0) { $0 + $1.points }
+                    self.sendStatsToWatch(
+                        streak: profile?.streak ?? 0,
+                        todayReps: todayReps,
+                        todayXP: todayXP,
+                        todayExercises: todayExercises
+                    )
                 }
                 return
             }
@@ -200,6 +219,76 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    // 時間帯別の進捗を計算
+    private func calculateTimeSlotProgress() async -> TimeSlotProgressData {
+        let currentHour = Calendar.current.component(.hour, from: Date())
+        var visibleSlots: [TimeSlot]
+
+        if currentHour < 6 {
+            visibleSlots = TimeSlot.allCases
+        } else if currentHour < 10 {
+            visibleSlots = [.morning]
+        } else if currentHour < 14 {
+            visibleSlots = [.morning, .noon]
+        } else if currentHour < 18 {
+            visibleSlots = [.morning, .noon, .afternoon]
+        } else {
+            visibleSlots = TimeSlot.allCases
+        }
+
+        var totalTraining = 0
+        var totalTrainingGoal = 0
+        var totalMindfulness = 0
+        var totalMindfulnessGoal = 0
+        var totalMealLogged = 0
+        var totalMealGoal = 0
+        var totalDrinkLogged = 0
+        var totalDrinkGoal = 0
+
+        let timeSlotManager = TimeSlotManager.shared
+        await timeSlotManager.loadTodayProgress()
+
+        // 今日の運動記録を取得
+        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+        let calendar = Calendar.current
+
+        for slot in visibleSlots {
+            if let goal = timeSlotManager.settings.goalFor(slot),
+               let progress = timeSlotManager.progress.progressFor(slot) {
+                // トレーニングは実際のセット数をカウント（iOS側と同じロジック）
+                let setsInSlot = todayExercises.filter { exercise in
+                    let hour = calendar.component(.hour, from: exercise.timestamp)
+                    return hour >= slot.startHour && hour < slot.endHour
+                }.count
+                totalTraining += setsInSlot
+                totalTrainingGoal += goal.trainingGoal
+
+                totalMindfulness += progress.mindfulnessCompleted
+                totalMindfulnessGoal += goal.mindfulnessGoal
+
+                if goal.logGoal.mealRequired {
+                    totalMealGoal += 1
+                    totalMealLogged += progress.logProgress.mealLogged
+                }
+                if goal.logGoal.drinkRequired {
+                    totalDrinkGoal += 1
+                    totalDrinkLogged += progress.logProgress.drinkLogged
+                }
+            }
+        }
+
+        return TimeSlotProgressData(
+            totalTraining: totalTraining,
+            totalTrainingGoal: totalTrainingGoal,
+            totalMindfulness: totalMindfulness,
+            totalMindfulnessGoal: totalMindfulnessGoal,
+            totalMealLogged: totalMealLogged,
+            totalMealGoal: totalMealGoal,
+            totalDrinkLogged: totalDrinkLogged,
+            totalDrinkGoal: totalDrinkGoal
+        )
+    }
+
     // iOS → Watch: 更新後の数値を送信
     private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todayExercises: [CompletedExercise] = []) {
         guard WCSession.isSupported() else { return }
@@ -226,12 +315,22 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["calorieConsumed"] = calorieGoal.consumedCalories
             payload["caloriePercent"] = calorieGoal.percentAchieved
 
-            // 統一指標: セット数とカロリー%
+            // 統一指標: 時間帯別の進捗を計算して送信
+            let timeSlotProgress = await calculateTimeSlotProgress()
+            payload["totalTraining"] = timeSlotProgress.totalTraining
+            payload["totalTrainingGoal"] = timeSlotProgress.totalTrainingGoal
+            payload["totalMindfulness"] = timeSlotProgress.totalMindfulness
+            payload["totalMindfulnessGoal"] = timeSlotProgress.totalMindfulnessGoal
+            payload["totalMealLogged"] = timeSlotProgress.totalMealLogged
+            payload["totalMealGoal"] = timeSlotProgress.totalMealGoal
+            payload["totalDrinkLogged"] = timeSlotProgress.totalDrinkLogged
+            payload["totalDrinkGoal"] = timeSlotProgress.totalDrinkGoal
+
+            // 後方互換性: セット数も送信
             let todaySetCount = await AuthenticationManager.shared.getTodaySetCount()
             let dailySetGoal = await AuthenticationManager.shared.getDailySetGoal()
             payload["todaySetCount"] = todaySetCount
             payload["dailySetGoal"] = dailySetGoal
-            payload["caloriePercentage"] = calorieGoal.percentAchieved
 
             // モーション感度設定をWatchに送信
             let motionSensitivity = await AuthenticationManager.shared.getAllMotionSensitivity()
@@ -274,6 +373,25 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["intakeCaffeineLimit"] = intakeGoals.dailyCaffeineLimit
             payload["intakeAlcohol"] = intakeData.totalAlcoholG
             payload["intakeAlcoholLimit"] = intakeGoals.dailyAlcoholLimit
+
+            print("[iOSWatchBridge] 📤 Sending intake data to Watch: cal=\(intakeData.totalCalories), water=\(intakeData.totalWaterMl)ml, caffeine=\(intakeData.totalCaffeineMg)mg, alcohol=\(String(format: "%.1f", intakeData.totalAlcoholG))g")
+
+            // 摂取記録のデフォルト設定を含める（Watch用）
+            payload["breakfastCalories"] = intakeGoals.breakfastCalories
+            payload["lunchCalories"] = intakeGoals.lunchCalories
+            payload["dinnerCalories"] = intakeGoals.dinnerCalories
+            payload["waterPerCup"] = intakeGoals.waterPerCup
+            payload["coffeePerCup"] = intakeGoals.coffeePerCup
+            payload["caffeinePerCup"] = intakeGoals.caffeinePerCup
+            if let beerSetting = intakeGoals.settingFor(alcoholType: .beer) {
+                payload["beerAlcoholG"] = beerSetting.alcoholG
+            }
+            if let wineSetting = intakeGoals.settingFor(alcoholType: .wine) {
+                payload["wineAlcoholG"] = wineSetting.alcoholG
+            }
+            if let chuhaiSetting = intakeGoals.settingFor(alcoholType: .chuhai) {
+                payload["chuhaiAlcoholG"] = chuhaiSetting.alcoholG
+            }
 
             // ログ入力状態を含める
             payload["todayMealLogged"] = !intakeData.meals.isEmpty
@@ -319,4 +437,16 @@ struct CompletedExerciseForWatch: Codable {
     let reps: Int
     let points: Int
     let timestamp: Date
+}
+
+/// 時間帯別の進捗データ
+struct TimeSlotProgressData {
+    let totalTraining: Int
+    let totalTrainingGoal: Int
+    let totalMindfulness: Int
+    let totalMindfulnessGoal: Int
+    let totalMealLogged: Int
+    let totalMealGoal: Int
+    let totalDrinkLogged: Int
+    let totalDrinkGoal: Int
 }

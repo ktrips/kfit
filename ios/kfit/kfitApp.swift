@@ -34,6 +34,11 @@ struct kfitApp: App {
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
+                // Watchに最新データを送信
+                iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+            } else if newPhase == .background {
+                // バックグラウンド移行時もWatchに最新データを送信（ApplicationContext経由）
+                iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
             }
         }
     }
@@ -50,6 +55,7 @@ struct MainTabView: View {
             NavigationView { DashboardView() }
                 .tabItem { Label("ホーム", systemImage: "house.fill") }
                 .tag(0)
+                .ignoresSafeArea(.keyboard)
 
             // 記録（中央ボタン）
             Color.clear
@@ -72,6 +78,7 @@ struct MainTabView: View {
                 .tag(4)
         }
         .accentColor(Color.duoGreen)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: selectedTab) { oldTab, newTab in
             if newTab == 1 {
                 showRecordMenu = true

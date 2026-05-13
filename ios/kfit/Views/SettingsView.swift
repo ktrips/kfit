@@ -37,14 +37,13 @@ struct SettingsView: View {
     @State private var showHabitStack = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
-    @State private var dailySetGoal = 2  // 1日の目標セット数
     @State private var setConfiguration = SetConfiguration.defaultSet  // 1セットのメニュー構成
     @State private var motionSensitivity: [String: MotionSensitivity] = MotionSensitivity.defaultSettings  // モーション感度
     @State private var showSetEditor = false
     @State private var showSensitivityEditor = false
     @State private var showIntakeSettings = false
-    @State private var showDailyIntake = false
     @State private var showTimeSlotGoals = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
@@ -54,7 +53,6 @@ struct SettingsView: View {
                     headerSection
                     permissionBanner
                     timeSlotGoalsSection
-                    dailyGoalSection
                     setConfigurationSection
                     motionSensitivitySection
                     intakeSection
@@ -75,7 +73,6 @@ struct SettingsView: View {
         .task {
             await refreshPermStatus()
             // 設定をロード
-            dailySetGoal = await AuthenticationManager.shared.getDailySetGoal()
             setConfiguration = await AuthenticationManager.shared.getSetConfiguration()
             motionSensitivity = await AuthenticationManager.shared.getAllMotionSensitivity()
         }
@@ -89,9 +86,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showIntakeSettings) {
             IntakeSettingsView()
-        }
-        .sheet(isPresented: $showDailyIntake) {
-            DailyIntakeView()
         }
         .sheet(isPresented: $showTimeSlotGoals) {
             NavigationView { TimeSlotGoalsView() }
@@ -151,69 +145,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 1日の目標セット数
-
-    private var dailyGoalSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "target", title: "1日の目標",
-                          subtitle: "トレーニングセット数")
-
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    Image(systemName: "target")
-                        .font(.title3)
-                        .foregroundColor(Color.duoGreen)
-                        .frame(width: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("1日の目標セット数")
-                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("デフォルトは2セット（朝・夜）")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        if dailySetGoal > 1 {
-                            dailySetGoal -= 1
-                        }
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(dailySetGoal > 1 ? Color.duoGreen : Color.gray.opacity(0.3))
-                    }
-                    .disabled(dailySetGoal <= 1)
-
-                    VStack(spacing: 2) {
-                        Text("\(dailySetGoal)")
-                            .font(.system(size: 48, weight: .black, design: .rounded))
-                            .foregroundColor(Color.duoGreen)
-                        Text("セット")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    Button {
-                        if dailySetGoal < 5 {
-                            dailySetGoal += 1
-                        }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(dailySetGoal < 5 ? Color.duoGreen : Color.gray.opacity(0.3))
-                    }
-                    .disabled(dailySetGoal >= 5)
-                }
-                .padding(.vertical, 8)
-            }
-            .padding(14)
-            .background(Color.white)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-        }
-    }
 
     // MARK: - セット構成設定
 
@@ -255,50 +186,25 @@ struct SettingsView: View {
             sectionHeader(icon: "fork.knife", title: "摂取記録",
                           subtitle: "食事・水分・コーヒー・アルコール")
 
-            VStack(spacing: 8) {
-                Button {
-                    showDailyIntake = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "fork.knife")
-                            .font(.title3)
-                            .foregroundColor(Color.duoOrange)
-                            .frame(width: 32)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("今日の摂取を記録")
-                                .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                            Text("食事・水・コーヒー・アルコール")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
+            Button {
+                showIntakeSettings = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                        .foregroundColor(Color.duoOrange)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("デフォルト設定")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("カロリー量やアルコール種類など")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
-                    .padding(14)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
-
-                Divider().padding(.leading, 56)
-
-                Button {
-                    showIntakeSettings = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "gearshape")
-                            .font(.title3)
-                            .foregroundColor(Color.duoGreen)
-                            .frame(width: 32)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("デフォルト設定")
-                                .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                            Text("カロリー量やアルコール種類など")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(14)
-                }
+                .padding(14)
             }
             .background(Color.white)
             .cornerRadius(14)
@@ -559,7 +465,6 @@ struct SettingsView: View {
 
             // 設定を保存
             Task {
-                await AuthenticationManager.shared.saveDailySetGoal(dailySetGoal)
                 await AuthenticationManager.shared.saveSetConfiguration(setConfiguration)
                 for (_, sensitivity) in motionSensitivity {
                     await AuthenticationManager.shared.saveMotionSensitivity(sensitivity)
@@ -568,8 +473,11 @@ struct SettingsView: View {
 
             if permStatus == .authorized { notif.scheduleAllDaily() }
             withAnimation { savedBanner = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                withAnimation { savedBanner = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation {
+                    savedBanner = false
+                    dismiss() // ホーム画面に戻る
+                }
             }
         } label: {
             HStack(spacing: 8) {

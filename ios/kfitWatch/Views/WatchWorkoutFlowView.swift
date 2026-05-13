@@ -31,6 +31,7 @@ struct WatchWorkoutFlowView: View {
     /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
     @State private var allResults: [WatchSetExercise] = []
     @State private var showGoalReached = false
+    @State private var canDoubleTapAdvance = false  // ダブルタップで次へ進めるか
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
@@ -50,9 +51,15 @@ struct WatchWorkoutFlowView: View {
                 if useMotionSensor && !isPlank { checkGoalReached(count) }
             }
             .onChange(of: reps) { count in
-                if !useMotionSensor || isPlank { checkGoalReached(count) }
+                if !useMotionSensor { checkGoalReached(count) }
+            }
+            .onChange(of: motionManager.plankElapsedSeconds) { seconds in
+                if isPlank { checkGoalReached(seconds) }
             }
             .onChange(of: stepIdx) { _ in
+                // 新しい種目に移行したらダブルタップフラグをリセット
+                canDoubleTapAdvance = false
+
                 // プランクの画面に移ったら自動的にタイマー開始
                 if isPlank {
                     print("🔵 WatchFlow: Plank screen detected - auto-starting timer")
@@ -85,6 +92,18 @@ struct WatchWorkoutFlowView: View {
                     .foregroundColor(.white.opacity(0.9))
                     .scaleEffect(showGoalReached ? 1.0 : 0.8)
                     .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.3), value: showGoalReached)
+
+                // ダブルタップヒント
+                HStack(spacing: 4) {
+                    Text("👆👆")
+                        .font(.system(size: 12))
+                    Text("ダブルタップで次へ")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.top, 4)
+                .scaleEffect(showGoalReached ? 1.0 : 0.8)
+                .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.4), value: showGoalReached)
             }
             .padding(20)
             .background(
@@ -102,8 +121,9 @@ struct WatchWorkoutFlowView: View {
     }
 
     private func checkGoalReached(_ count: Int) {
-        if count == current.target && !showGoalReached {
+        if count >= current.target && !showGoalReached {
             showGoalReached = true
+            canDoubleTapAdvance = true  // ダブルタップで次へ進めるようにする
 
             // より強力なハプティックフィードバック（notificationを5回連続）
             WKInterfaceDevice.current().play(.notification)
@@ -257,7 +277,9 @@ struct WatchWorkoutFlowView: View {
                     }
                 }
 
-                Button { advance() } label: {
+                Button {
+                    handleAdvance()
+                } label: {
                     Text(isLast ? "完了 ✓" : "次へ →")
                         .font(.system(size: 11)).fontWeight(.bold)
                         .foregroundColor(duoGreen)
@@ -267,6 +289,7 @@ struct WatchWorkoutFlowView: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                .handGestureShortcut(.primaryAction)
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 4)
@@ -364,6 +387,30 @@ struct WatchWorkoutFlowView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 WKInterfaceDevice.current().play(.notification)
             }
+        }
+    }
+
+    // MARK: - 次の種目へ（規定回数チェック付き）
+    private func handleAdvance() {
+        // 現在のカウントを取得
+        let currentCount: Int
+        if isPlank {
+            currentCount = motionManager.plankElapsedSeconds
+        } else if useMotionSensor {
+            currentCount = motionManager.repCount
+        } else {
+            currentCount = reps
+        }
+
+        // 規定回数以上であれば次へ進める
+        if currentCount >= current.target {
+            WKInterfaceDevice.current().play(.success)
+            print("[Watch] ✓ Advancing to next exercise (count: \(currentCount)/\(current.target))")
+            advance()
+        } else {
+            // 目標未達成時は軽い振動でフィードバック
+            WKInterfaceDevice.current().play(.click)
+            print("[Watch] ⚠️ Goal not reached yet (\(currentCount)/\(current.target))")
         }
     }
 

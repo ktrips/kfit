@@ -51,11 +51,36 @@ class TimeSlotManager: ObservableObject {
                             if let timestamp = goalData["reminderTime"] as? Timestamp {
                                 goal.reminderTime = timestamp.dateValue()
                             }
+
+                            // カスタムアクティビティを読み込み
+                            if let activitiesData = goalData["customActivities"] as? [[String: Any]] {
+                                var activities: [CustomActivity] = []
+                                for actData in activitiesData {
+                                    if let id = actData["id"] as? String,
+                                       let name = actData["name"] as? String,
+                                       let emoji = actData["emoji"] as? String {
+                                        let isEnabled = actData["isEnabled"] as? Bool ?? true
+                                        activities.append(CustomActivity(id: id, name: name, emoji: emoji, isEnabled: isEnabled))
+                                    }
+                                }
+                                goal.customActivities = activities
+                            }
+
                             goals.append(goal)
                         }
                     }
                     settings = DailyTimeSlotSettings(date: today)
                     settings.goals = goals
+                }
+
+                // 1日全体の目標を読み込み
+                if let globalGoalsData = data["globalGoals"] as? [String: Any] {
+                    var globalGoals = DailyGlobalGoals()
+                    globalGoals.workoutEnabled = globalGoalsData["workoutEnabled"] as? Bool ?? false
+                    globalGoals.workoutMinutes = globalGoalsData["workoutMinutes"] as? Int ?? 15
+                    globalGoals.standEnabled = globalGoalsData["standEnabled"] as? Bool ?? false
+                    globalGoals.standHours = globalGoalsData["standHours"] as? Int ?? 12
+                    settings.globalGoals = globalGoals
                 }
             } else {
                 // デフォルト設定を作成
@@ -85,7 +110,15 @@ class TimeSlotManager: ObservableObject {
                     "drinkRequired": goal.logGoal.drinkRequired,
                     "mindInputRequired": goal.logGoal.mindInputRequired
                 ],
-                "reminderEnabled": goal.reminderEnabled
+                "reminderEnabled": goal.reminderEnabled,
+                "customActivities": goal.customActivities.map { activity in
+                    [
+                        "id": activity.id,
+                        "name": activity.name,
+                        "emoji": activity.emoji,
+                        "isEnabled": activity.isEnabled
+                    ]
+                }
             ]
             if let reminderTime = goal.reminderTime {
                 data["reminderTime"] = Timestamp(date: reminderTime)
@@ -95,7 +128,13 @@ class TimeSlotManager: ObservableObject {
 
         let docData: [String: Any] = [
             "goals": goalsData,
-            "date": Timestamp(date: today)
+            "date": Timestamp(date: today),
+            "globalGoals": [
+                "workoutEnabled": settings.globalGoals.workoutEnabled,
+                "workoutMinutes": settings.globalGoals.workoutMinutes,
+                "standEnabled": settings.globalGoals.standEnabled,
+                "standHours": settings.globalGoals.standHours
+            ]
         ]
 
         do {
@@ -131,9 +170,24 @@ class TimeSlotManager: ObservableObject {
                             prog.mindfulnessCompleted = progData["mindfulnessCompleted"] as? Int ?? 0
 
                             if let logProgressData = progData["logProgress"] as? [String: Any] {
-                                prog.logProgress.mealLogged = logProgressData["mealLogged"] as? Bool ?? false
-                                prog.logProgress.drinkLogged = logProgressData["drinkLogged"] as? Bool ?? false
-                                prog.logProgress.mindInputLogged = logProgressData["mindInputLogged"] as? Bool ?? false
+                                // Bool型との後方互換性のため、BoolとIntの両方をサポート
+                                if let mealBool = logProgressData["mealLogged"] as? Bool {
+                                    prog.logProgress.mealLogged = mealBool ? 1 : 0
+                                } else {
+                                    prog.logProgress.mealLogged = logProgressData["mealLogged"] as? Int ?? 0
+                                }
+
+                                if let drinkBool = logProgressData["drinkLogged"] as? Bool {
+                                    prog.logProgress.drinkLogged = drinkBool ? 1 : 0
+                                } else {
+                                    prog.logProgress.drinkLogged = logProgressData["drinkLogged"] as? Int ?? 0
+                                }
+
+                                if let mindBool = logProgressData["mindInputLogged"] as? Bool {
+                                    prog.logProgress.mindInputLogged = mindBool ? 1 : 0
+                                } else {
+                                    prog.logProgress.mindInputLogged = logProgressData["mindInputLogged"] as? Int ?? 0
+                                }
                             }
 
                             if let timestamp = progData["lastUpdated"] as? Timestamp {
@@ -145,13 +199,40 @@ class TimeSlotManager: ObservableObject {
                     progress = DailyTimeSlotProgress(date: today)
                     progress.progress = progressList
                 }
+
+                // 1日全体の実績を読み込み
+                if let globalProgressData = data["globalProgress"] as? [String: Any] {
+                    var globalProgress = DailyGlobalProgress()
+                    globalProgress.workoutMinutes = globalProgressData["workoutMinutes"] as? Int ?? 0
+                    globalProgress.standHours = globalProgressData["standHours"] as? Int ?? 0
+                    if let timestamp = globalProgressData["lastUpdated"] as? Timestamp {
+                        globalProgress.lastUpdated = timestamp.dateValue()
+                    }
+                    progress.globalProgress = globalProgress
+                }
             } else {
                 progress = DailyTimeSlotProgress(date: today)
             }
+
+            // HealthKitから最新のワークアウトとスタンド時間を取得
+            await updateGlobalProgressFromHealthKit()
         } catch {
             print("❌ TimeSlotManager: Failed to load progress: \(error)")
             progress = DailyTimeSlotProgress(date: today)
         }
+    }
+
+    /// HealthKitから1日全体の実績を更新
+    func updateGlobalProgressFromHealthKit() async {
+        let healthKit = HealthKitManager.shared
+        guard healthKit.isAuthorized else { return }
+
+        progress.globalProgress.workoutMinutes = await healthKit.fetchTodayWorkout()
+        progress.globalProgress.standHours = await healthKit.fetchTodayStand()
+        progress.globalProgress.lastUpdated = Date()
+
+        // Firestoreにも保存
+        await saveTodayProgress()
     }
 
     /// 今日の実績を保存
@@ -177,7 +258,12 @@ class TimeSlotManager: ObservableObject {
 
         let docData: [String: Any] = [
             "progress": progressData,
-            "date": Timestamp(date: today)
+            "date": Timestamp(date: today),
+            "globalProgress": [
+                "workoutMinutes": progress.globalProgress.workoutMinutes,
+                "standHours": progress.globalProgress.standHours,
+                "lastUpdated": Timestamp(date: progress.globalProgress.lastUpdated)
+            ]
         ]
 
         do {
@@ -226,7 +312,7 @@ class TimeSlotManager: ObservableObject {
     /// ログ記録（食事）
     func recordMealLog(at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
-            prog.logProgress.mealLogged = true
+            prog.logProgress.mealLogged += 1
             prog.lastUpdated = Date()
 
             // struct全体を再作成してSwiftUIに変更を通知
@@ -235,14 +321,14 @@ class TimeSlotManager: ObservableObject {
             progress = updatedProgress
 
             await saveTodayProgress()
-            print("✅ TimeSlot: Meal logged for \(timeSlot.displayName)")
+            print("✅ TimeSlot: Meal logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mealLogged)")
         }
     }
 
     /// ログ記録（飲み物）
     func recordDrinkLog(at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
-            prog.logProgress.drinkLogged = true
+            prog.logProgress.drinkLogged += 1
             prog.lastUpdated = Date()
 
             // struct全体を再作成してSwiftUIに変更を通知
@@ -251,14 +337,14 @@ class TimeSlotManager: ObservableObject {
             progress = updatedProgress
 
             await saveTodayProgress()
-            print("✅ TimeSlot: Drink logged for \(timeSlot.displayName)")
+            print("✅ TimeSlot: Drink logged for \(timeSlot.displayName) - Total: \(prog.logProgress.drinkLogged)")
         }
     }
 
     /// ログ記録（マインド入力）
     func recordMindInputLog(at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
-            prog.logProgress.mindInputLogged = true
+            prog.logProgress.mindInputLogged += 1
             prog.lastUpdated = Date()
 
             // struct全体を再作成してSwiftUIに変更を通知
@@ -267,7 +353,7 @@ class TimeSlotManager: ObservableObject {
             progress = updatedProgress
 
             await saveTodayProgress()
-            print("✅ TimeSlot: Mind input logged for \(timeSlot.displayName)")
+            print("✅ TimeSlot: Mind input logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mindInputLogged)")
         }
     }
 

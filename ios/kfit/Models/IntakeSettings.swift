@@ -94,6 +94,11 @@ struct IntakeSettings: Codable {
             )
         }
     }
+
+    /// 特定のアルコールタイプの設定を取得
+    func settingFor(alcoholType: AlcoholType) -> CustomAlcoholSetting? {
+        return alcoholSettings.first { $0.type == alcoholType }
+    }
 }
 
 /// 食事の栄養素情報
@@ -105,12 +110,6 @@ struct MealNutrition {
     let sugar: Double        // 糖質（g）
     let fiber: Double        // 食物繊維（g）
     let sodium: Double       // 塩分（g）
-}
-
-    /// 特定のアルコールタイプの設定を取得
-    func settingFor(alcoholType: AlcoholType) -> CustomAlcoholSetting? {
-        return alcoholSettings.first { $0.type == alcoholType }
-    }
 }
 
 /// カスタムアルコール設定

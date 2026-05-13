@@ -1119,13 +1119,20 @@ class AuthenticationManager: ObservableObject {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         let now = Date()
 
-        // 設定からデフォルトカロリーを取得
+        // 設定から栄養素情報を取得
         let settings = await getIntakeSettings()
-        let actualCalories = calories ?? settings.caloriesFor(mealType: mealType)
+        let nutrition = settings.nutritionFor(mealType: mealType)
+        let actualCalories = calories ?? nutrition.calories
 
         let data: [String: Any] = [
             "mealType": mealType.rawValue,
             "calories": actualCalories,
+            "protein": nutrition.protein,
+            "fat": nutrition.fat,
+            "carbs": nutrition.carbs,
+            "sugar": nutrition.sugar,
+            "fiber": nutrition.fiber,
+            "sodium": nutrition.sodium,
             "timestamp": now
         ]
 
@@ -1133,8 +1140,8 @@ class AuthenticationManager: ObservableObject {
             .collection("daily-intake").document("meals")
             .collection("logs").addDocument(data: data)
 
-        // Apple Healthに記録
-        await HealthKitManager.shared.saveDietaryEnergy(calories: Double(actualCalories), timestamp: now)
+        // Apple Healthに栄養素を記録
+        await HealthKitManager.shared.saveMealNutrition(nutrition, date: now)
     }
 
     /// 水を記録

@@ -148,6 +148,12 @@ final class HealthKitManager: ObservableObject {
             .dietaryEnergyConsumed,
             .dietaryWater,
             .dietaryCaffeine,
+            .dietaryProtein,        // たんぱく質
+            .dietaryFatTotal,       // 脂質
+            .dietaryCarbohydrates,  // 炭水化物
+            .dietarySugar,          // 糖質
+            .dietaryFiber,          // 食物繊維
+            .dietarySodium,         // ナトリウム（塩分）
         ]
         for id in writeIds {
             if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
@@ -852,6 +858,77 @@ final class HealthKitManager: ObservableObject {
                 continuation.resume(returning: standHours)
             }
             store.execute(query)
+        }
+    }
+
+    // MARK: - 栄養素の保存
+
+    /// 食事の栄養素をHealthKitに保存
+    func saveMealNutrition(_ nutrition: MealNutrition, date: Date = Date()) async {
+        guard isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized to save nutrition data")
+            return
+        }
+
+        var samples: [HKQuantitySample] = []
+
+        // カロリー
+        if let calorieType = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
+            let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: Double(nutrition.calories))
+            let sample = HKQuantitySample(type: calorieType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // たんぱく質
+        if let proteinType = HKQuantityType.quantityType(forIdentifier: .dietaryProtein) {
+            let quantity = HKQuantity(unit: .gram(), doubleValue: nutrition.protein)
+            let sample = HKQuantitySample(type: proteinType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // 脂質
+        if let fatType = HKQuantityType.quantityType(forIdentifier: .dietaryFatTotal) {
+            let quantity = HKQuantity(unit: .gram(), doubleValue: nutrition.fat)
+            let sample = HKQuantitySample(type: fatType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // 炭水化物
+        if let carbsType = HKQuantityType.quantityType(forIdentifier: .dietaryCarbohydrates) {
+            let quantity = HKQuantity(unit: .gram(), doubleValue: nutrition.carbs)
+            let sample = HKQuantitySample(type: carbsType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // 糖質
+        if let sugarType = HKQuantityType.quantityType(forIdentifier: .dietarySugar) {
+            let quantity = HKQuantity(unit: .gram(), doubleValue: nutrition.sugar)
+            let sample = HKQuantitySample(type: sugarType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // 食物繊維
+        if let fiberType = HKQuantityType.quantityType(forIdentifier: .dietaryFiber) {
+            let quantity = HKQuantity(unit: .gram(), doubleValue: nutrition.fiber)
+            let sample = HKQuantitySample(type: fiberType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // ナトリウム（塩分）- 塩分（g）をナトリウム（mg）に変換
+        // 塩分1g = ナトリウム約393mg
+        if let sodiumType = HKQuantityType.quantityType(forIdentifier: .dietarySodium) {
+            let sodiumMg = nutrition.sodium * 393.0  // 塩分をナトリウムに変換
+            let quantity = HKQuantity(unit: .gramUnit(with: .milli), doubleValue: sodiumMg)
+            let sample = HKQuantitySample(type: sodiumType, quantity: quantity, start: date, end: date)
+            samples.append(sample)
+        }
+
+        // HealthKitに保存
+        do {
+            try await store.save(samples)
+            print("[HealthKit] ✅ Saved meal nutrition: \(nutrition.calories)kcal, protein:\(nutrition.protein)g, fat:\(nutrition.fat)g, carbs:\(nutrition.carbs)g")
+        } catch {
+            print("[HealthKit] ❌ Failed to save nutrition: \(error)")
         }
     }
 }

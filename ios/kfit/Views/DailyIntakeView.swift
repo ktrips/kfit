@@ -611,7 +611,7 @@ struct PhotoLogView: View {
 
         // カフェイン
         if nutrition.caffeine > 0 {
-            await healthKit.saveCaffeineIntake(amountMg: Double(nutrition.caffeine), timestamp: Date())
+            await healthKit.saveCaffeineIntake(caffeineMg: Double(nutrition.caffeine), timestamp: Date())
         }
 
         // TODO: アルコールの保存

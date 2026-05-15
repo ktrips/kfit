@@ -122,15 +122,25 @@ struct WatchDashboardView: View {
     private var intakeInputPage: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
-                // ── ロゴ ──────────────────────────────
-                HStack(spacing: 6) {
-                    Text("🍽️")
-                        .font(.system(size: 34))
-                    Text("摂取記録")
-                        .font(.system(size: 20, design: .rounded))
-                        .fontWeight(.black)
-                        .foregroundColor(duoGreen)
+                // ── ヘッダー：食事／ドリンク入力状況 ──────────────────────
+                HStack(spacing: 0) {
+                    WatchStatItem(
+                        icon: "🍽️",
+                        value: "\(connectivity.totalMealLogged)/\(connectivity.totalMealGoal)",
+                        label: "食事",
+                        isCompleted: connectivity.totalMealLogged >= connectivity.totalMealGoal && connectivity.totalMealGoal > 0
+                    )
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
+                    WatchStatItem(
+                        icon: "💧",
+                        value: "\(connectivity.totalDrinkLogged)/\(connectivity.totalDrinkGoal)",
+                        label: "ドリンク",
+                        isCompleted: connectivity.totalDrinkLogged >= connectivity.totalDrinkGoal && connectivity.totalDrinkGoal > 0
+                    )
                 }
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(10)
                 .padding(.top, 4)
 
                 // ── 食事 ──────────────────────
@@ -222,7 +232,7 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
-                // ── ステータス（統一指標）────────────────────────
+                // ── ヘッダー：トレーニング／マインドフルネス ────────────────
                 HStack(spacing: 0) {
                     WatchStatItem(
                         icon: "💪",
@@ -230,29 +240,15 @@ struct WatchDashboardView: View {
                         label: "トレーニング",
                         isCompleted: connectivity.totalTraining >= connectivity.totalTrainingGoal && connectivity.totalTrainingGoal > 0
                     )
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
                     WatchStatItem(
                         icon: "🧘",
                         value: "\(connectivity.totalMindfulness)/\(connectivity.totalMindfulnessGoal)",
                         label: "マインドフル",
                         isCompleted: connectivity.totalMindfulness >= connectivity.totalMindfulnessGoal && connectivity.totalMindfulnessGoal > 0
                     )
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(
-                        icon: "🍽️",
-                        value: "\(connectivity.totalMealLogged)/\(connectivity.totalMealGoal)",
-                        label: "食事",
-                        isCompleted: connectivity.totalMealLogged >= connectivity.totalMealGoal && connectivity.totalMealGoal > 0
-                    )
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 28)
-                    WatchStatItem(
-                        icon: "💧",
-                        value: "\(connectivity.totalDrinkLogged)/\(connectivity.totalDrinkGoal)",
-                        label: "水分",
-                        isCompleted: connectivity.totalDrinkLogged >= connectivity.totalDrinkGoal && connectivity.totalDrinkGoal > 0
-                    )
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(10)
 
@@ -433,23 +429,30 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
-                // ── ロゴ ──────────────────────────────
-                HStack(spacing: 6) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 34, height: 34)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(duoGreen, lineWidth: 2))
-                    Text("DuoFit")
-                        .font(.system(size: 22, design: .rounded))
-                        .fontWeight(.black)
-                        .foregroundColor(duoGreen)
+                // ── ヘッダー：アクティビティ／スタンド ──────────────────────
+                HStack(spacing: 0) {
+                    WatchStatItem(
+                        icon: "🏃",
+                        value: "\(healthKit.todayWorkoutMinutes)分",
+                        label: "アクティビティ",
+                        isCompleted: healthKit.todayWorkoutMinutes >= 15
+                    )
+                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
+                    WatchStatItem(
+                        icon: "🕐",
+                        value: "\(healthKit.todayStandHours)h",
+                        label: "スタンド",
+                        isCompleted: healthKit.todayStandHours >= 8
+                    )
                 }
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(10)
                 .padding(.top, 0)
                 .padding(.bottom, 4)
                 .onAppear {
-                    // ページ表示時に摂取データを更新
                     connectivity.requestStatsFromiOS()
+                    Task { await healthKit.fetchAllTodayData() }
                 }
 
                 // ── 今日のApple Health ──────────────────────

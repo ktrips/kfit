@@ -2,6 +2,10 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 
+extension Notification.Name {
+    static let timeSlotProgressDidSave = Notification.Name("timeSlotProgressDidSave")
+}
+
 @MainActor
 class TimeSlotManager: ObservableObject {
     static let shared = TimeSlotManager()
@@ -314,6 +318,8 @@ class TimeSlotManager: ObservableObject {
             try await db.collection("users").document(userId)
                 .collection("time-slot-progress").document(dateStr).setData(docData)
             print("✅ TimeSlotManager: Saved progress for \(dateStr)")
+            // DashboardViewにUserDefaults更新を依頼してからウィジェットをリロードさせる
+            NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
         } catch {
             print("❌ TimeSlotManager: Failed to save progress: \(error)")
         }

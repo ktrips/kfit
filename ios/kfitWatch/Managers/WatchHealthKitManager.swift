@@ -16,9 +16,11 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayCalories: Int = 0
     @Published var averageHeartRate: Int = 0
     @Published var sleepHours: Double = 0.0
-    @Published var latestBodyMass: Double = 0.0  // 体重 (kg)
-    @Published var latestBodyFatPercentage: Double = 0.0  // 体脂肪率 (%)
-    @Published var todayMindfulnessSessions: Int = 0  // 今日のマインドフルネスセッション数
+    @Published var latestBodyMass: Double = 0.0
+    @Published var latestBodyFatPercentage: Double = 0.0
+    @Published var todayMindfulnessSessions: Int = 0
+    @Published var todayWorkoutMinutes: Int = 0  // 今日のワークアウト時間（分）
+    @Published var todayStandHours: Int = 0      // 今日のスタンド時間（時間）
 
     private init() {}
 
@@ -38,6 +40,8 @@ class WatchHealthKitManager: ObservableObject {
             HKObjectType.quantityType(forIdentifier: .bodyMass)!,
             HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
             HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
+            HKObjectType.quantityType(forIdentifier: .appleExerciseTime)!,
+            HKObjectType.categoryType(forIdentifier: .appleStandHour)!,
         ]
 
         let typesToWrite: Set<HKSampleType> = [
@@ -66,6 +70,8 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchLatestBodyMass() }
             group.addTask { await self.fetchLatestBodyFatPercentage() }
             group.addTask { await self.fetchTodayMindfulness() }
+            group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayStandHours() }
         }
     }
 
@@ -258,6 +264,51 @@ class WatchHealthKitManager: ObservableObject {
                 let count = samples?.count ?? 0
                 self?.todayMindfulnessSessions = count
                 print("[WatchHealthKit] 🧘 Mindfulness sessions: \(count)")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Workout Minutes
+
+    func fetchTodayWorkoutMinutes() async {
+        guard let exerciseType = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKStatisticsQuery(
+            quantityType: exerciseType,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum
+        ) { [weak self] _, result, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] WorkoutMinutes error: \(error)"); return }
+                let minutes = result?.sumQuantity()?.doubleValue(for: .minute()) ?? 0
+                self?.todayWorkoutMinutes = Int(minutes)
+                print("[WatchHealthKit] 🏃 WorkoutMinutes: \(Int(minutes))")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Stand Hours
+
+    func fetchTodayStandHours() async {
+        guard let standType = HKCategoryType.categoryType(forIdentifier: .appleStandHour) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKSampleQuery(
+            sampleType: standType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: nil
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] StandHours error: \(error)"); return }
+                let stood = (samples as? [HKCategorySample])?.filter {
+                    $0.value == HKCategoryValueAppleStandHour.stood.rawValue
+                }.count ?? 0
+                self?.todayStandHours = stood
+                print("[WatchHealthKit] 🕐 StandHours: \(stood)")
             }
         }
         healthStore.execute(query)

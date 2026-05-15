@@ -14,7 +14,7 @@ struct Provider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         let currentDate = Date()
         let entry = SimpleEntry(date: currentDate, stats: loadStats())
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 10, to: currentDate)!
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: currentDate)!
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
     }

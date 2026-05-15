@@ -105,12 +105,47 @@ struct DashboardView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack {
-            // 背景色（セーフエリア全体を含む）
-            Color.duoBg
-                .ignoresSafeArea(.all)
+        coreView
+            .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
+                handleMindfulnessChange(old: oldValue, new: newValue)
+            }
+            .onChange(of: healthKit.todayActiveCalories) { _, _ in updateWidgetData() }
+            .onChange(of: healthKit.todayRestingCalories) { _, _ in updateWidgetData() }
+            .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in updateWidgetData() }
+            .onChange(of: healthKit.todayStandHours) { _, _ in updateWidgetData() }
+            .onChange(of: todayIntake.totalCalories) { _, _ in updateWidgetData() }
+            .onChange(of: todaySetCount) { _, _ in updateWidgetData() }
+            .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
+                updateWidgetData()
+            }
+            .onAppear {
+                withAnimation { mascotBounce = true }
+                if !hasLoadedOnce {
+                    hasLoadedOnce = true
+                    isLoading = true
+                    Task {
+                        print("🟢 DashboardView.onAppear - loadDataを開始")
+                        if healthKit.isAvailable && !healthKit.isAuthorized {
+                            await healthKit.requestAuthorization()
+                        }
+                        await timeSlotManager.loadTodaySettings()
+                        await timeSlotManager.loadTodayProgress()
+                        await loadData()
+                    }
+                } else {
+                    print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                handleScenePhaseChange(newPhase)
+            }
+    }
 
-            // メインコンテンツ
+    // MARK: - コアビュー（シート・アラート群）
+    private var coreView: some View {
+        ZStack {
+            Color.duoBg.ignoresSafeArea(.all)
+
             VStack(spacing: 0) {
                 if isLoading {
                     Spacer()
@@ -134,7 +169,6 @@ struct DashboardView: View {
                 }
             }
 
-            // ハンバーガーメニュー（オーバーレイ）
             if showMenu {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -143,7 +177,6 @@ struct DashboardView: View {
                             showMenu = false
                         }
                     }
-
                 VStack {
                     Spacer()
                     floatingMenuPanel
@@ -158,29 +191,19 @@ struct DashboardView: View {
         }
         .onChange(of: showTracker) { _, newValue in
             if !newValue {
-                // ExerciseTrackerViewが閉じられた時にデータを再読み込み
                 Task {
                     print("🔄 ExerciseTrackerView閉じた - データ再読み込み")
                     await loadData()
                 }
             }
         }
-        .sheet(isPresented: $showHabits) {
-            NavigationView { HabitStackView() }
-        }
-        .sheet(isPresented: $showCalorieGoalEdit) {
-            calorieGoalEditSheet
-        }
-        .sheet(isPresented: $showHealthGoalEdit) {
-            healthGoalEditSheet
-        }
+        .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
+        .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
+        .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
         .sheet(isPresented: $showIntakeGoalEdit) {
-            IntakeSettingsView()
-                .environmentObject(authManager)
+            IntakeSettingsView().environmentObject(authManager)
         }
-        .fullScreenCover(isPresented: $showPhotoLog) {
-            PhotoLogView()
-        }
+        .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("キャンセル", role: .cancel) { }
             Button("記録する") {
@@ -188,63 +211,21 @@ struct DashboardView: View {
                 pendingIntakeAction = nil
             }
         }
-        .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
-            // マインドフルネスセッション数が増えたら時間帯別進捗に記録
-            Task {
-                print("🧘 Mindfulness sessions changed from \(oldValue) to \(newValue)")
+    }
 
-                // 増えた分だけ現在の時間帯に記録
-                let increment = newValue - oldValue
-                if increment > 0 {
-                    let currentSlot = TimeSlot.current()
-                    for _ in 0..<increment {
-                        await timeSlotManager.recordMindfulnessCompleted(at: currentSlot)
-                    }
-                    print("✅ Recorded \(increment) mindfulness session(s) to \(currentSlot.displayName)")
+    private func handleMindfulnessChange(old: Int, new: Int) {
+        Task {
+            print("🧘 Mindfulness sessions changed from \(old) to \(new)")
+            let increment = new - old
+            if increment > 0 {
+                let currentSlot = TimeSlot.current()
+                for _ in 0..<increment {
+                    await timeSlotManager.recordMindfulnessCompleted(at: currentSlot)
                 }
-
-                await timeSlotManager.loadTodayProgress()
-                updateWidgetData()
+                print("✅ Recorded \(increment) mindfulness session(s) to \(currentSlot.displayName)")
             }
-        }
-        .onChange(of: healthKit.todayActiveCalories) { _, _ in Task { updateWidgetData() } }
-        .onChange(of: healthKit.todayRestingCalories) { _, _ in Task { updateWidgetData() } }
-        .onChange(of: todayIntake.totalCalories) { _, _ in Task { updateWidgetData() } }
-        .onChange(of: todaySetCount) { _, _ in Task { updateWidgetData() } }
-        .onAppear {
-            withAnimation { mascotBounce = true }
-            // 初回のみloadDataを実行
-            if !hasLoadedOnce {
-                hasLoadedOnce = true
-                isLoading = true
-                Task {
-                    print("🟢 DashboardView.onAppear - loadDataを開始")
-                    // HealthKit権限をリクエスト
-                    if healthKit.isAvailable && !healthKit.isAuthorized {
-                        await healthKit.requestAuthorization()
-                    }
-                    // 時間帯別のデータを読み込み
-                    await timeSlotManager.loadTodaySettings()
-                    await timeSlotManager.loadTodayProgress()
-                    await loadData()
-                }
-            } else {
-                print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
-            }
-        }
-        .onChange(of: scenePhase) { (oldPhase: ScenePhase, newPhase: ScenePhase) in
-            if newPhase == .active {
-                // アプリがフォアグラウンドに戻ったときにHealthKitデータを再取得
-                print("🔄 App became active - refreshing HealthKit data")
-                Task {
-                    // HealthKitデータを再取得（マインドフルネスなど）
-                    if healthKit.isAvailable && healthKit.isAuthorized {
-                        await healthKit.refreshMindfulness()
-                    }
-                    await timeSlotManager.loadTodayProgress()
-                    await timeSlotManager.updateGlobalProgressFromHealthKit()
-                }
-            }
+            await timeSlotManager.loadTodayProgress()
+            updateWidgetData()
         }
     }
 
@@ -877,65 +858,55 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoGreen)
                     }
 
-                    // トレーニング・マインドフルネス表示行
-                    HStack(spacing: 16) {
+                    // トレーニング・マインドフルネス・ワークアウト・スタンド表示行
+                    let gp   = timeSlotManager.progress.globalProgress
+                    let gg   = timeSlotManager.settings.globalGoals
+                    HStack(spacing: 12) {
                         // トレーニング（セット数）
-                        HStack(spacing: 6) {
-                            Text("💪").font(.title2)
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text("\(totalTraining)/\(totalTrainingGoal)")
-                                    .font(.title3).fontWeight(.bold)
-                                    .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
-                                Text("セット")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(Color.duoSubtitle)
-                            }
+                        HStack(spacing: 4) {
+                            Text("💪").font(.title3)
+                            Text("\(totalTraining)/\(totalTrainingGoal)")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
                         }
 
                         // マインドフルネス
-                        HStack(spacing: 6) {
-                            Text("🧘").font(.title2)
+                        HStack(spacing: 4) {
+                            Text("🧘").font(.title3)
                             Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
-                                .font(.title3).fontWeight(.bold)
+                                .font(.subheadline).fontWeight(.bold)
                                 .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
+                        }
+
+                        // ワークアウト（実績のみ表示）
+                        if gg.workoutEnabled {
+                            HStack(spacing: 4) {
+                                Text("🏃").font(.title3)
+                                Text("\(gp.workoutMinutes)分")
+                                    .font(.subheadline).fontWeight(.bold)
+                                    .foregroundColor(gp.workoutMinutes >= gg.workoutMinutes ? Color.duoGreen : Color.duoDark)
+                            }
+                        }
+
+                        // スタンド時間（実績のみ表示）
+                        if gg.standEnabled {
+                            HStack(spacing: 4) {
+                                Text("🕐").font(.title3)
+                                Text("\(gp.standHours)h")
+                                    .font(.subheadline).fontWeight(.bold)
+                                    .foregroundColor(gp.standHours >= gg.standHours ? Color.duoGreen : Color.duoDark)
+                            }
                         }
 
                         Spacer()
                     }
 
-                    // 1日全体の目標と食事・水分 + 睡眠・PFC・体重計測
-                    let gp   = timeSlotManager.progress.globalProgress
-                    let gg   = timeSlotManager.settings.globalGoals
-                    let hasGlobalRow = gg.workoutEnabled || gg.standEnabled
-                        || totalMealGoal > 0 || totalDrinkGoal > 0
+                    // 食事・水分 + 睡眠・PFC・体重計測
+                    let hasGlobalRow = totalMealGoal > 0 || totalDrinkGoal > 0
                         || gp.sleepScore > 0 || gp.pfcScore > 0 || gp.weightMeasured
 
                     if hasGlobalRow {
                         HStack(spacing: 8) {
-                            // ワークアウト分
-                            if gg.workoutEnabled && gp.workoutMinutes > 0 {
-                                HStack(spacing: 3) {
-                                    Text("🏃").font(.caption)
-                                    Text("\(gp.workoutMinutes)分")
-                                        .font(.caption).fontWeight(.bold)
-                                        .foregroundColor(
-                                            gp.workoutMinutes >= gg.workoutMinutes
-                                            ? Color.duoGreen : Color.duoDark
-                                        )
-                                }
-                            }
-                            // スタンド時間
-                            if gg.standEnabled && gp.standHours > 0 {
-                                HStack(spacing: 3) {
-                                    Text("🕐").font(.caption)
-                                    Text("\(gp.standHours)h")
-                                        .font(.caption).fontWeight(.bold)
-                                        .foregroundColor(
-                                            gp.standHours >= gg.standHours
-                                            ? Color.duoGreen : Color.duoDark
-                                        )
-                                }
-                            }
                             // 睡眠スコア
                             if gp.sleepScore > 0 {
                                 let sleepAchieved = gp.sleepScore >= gg.sleepScoreThreshold
@@ -3863,6 +3834,23 @@ struct DashboardView: View {
         await timeSlotManager.recordMindfulnessCompleted(at: timeSlot)
     }
 
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        if newPhase == .active {
+            print("🔄 App became active - refreshing HealthKit data")
+            Task {
+                if healthKit.isAvailable && healthKit.isAuthorized {
+                    await healthKit.refreshMindfulness()
+                }
+                await timeSlotManager.loadTodayProgress()
+                await timeSlotManager.updateGlobalProgressFromHealthKit()
+                updateWidgetData()
+            }
+        } else if newPhase == .background {
+            print("📲 App moved to background - flushing Widget data")
+            updateWidgetData()
+        }
+    }
+
     private func updateWidgetData() {
         guard let sharedDefaults = UserDefaults(suiteName: "group.com.kfit.app") else {
             print("[Widget] ❌ Failed to access App Group UserDefaults")
@@ -3963,10 +3951,14 @@ struct DashboardView: View {
         let totalPoints = authManager.userProfile?.totalPoints ?? 0
         sharedDefaults.set(totalPoints, forKey: "totalPoints")
 
-        // ワークアウトとスタンド時間を保存
-        let workoutMinutes = timeSlotManager.progress.globalProgress.workoutMinutes
+        // ワークアウトとスタンド時間を保存（HealthKitの最新値を直接使用）
+        let workoutMinutes = healthKit.todayWorkoutMinutes > 0
+            ? healthKit.todayWorkoutMinutes
+            : timeSlotManager.progress.globalProgress.workoutMinutes
         let workoutGoal = timeSlotManager.settings.globalGoals.workoutEnabled ? timeSlotManager.settings.globalGoals.workoutMinutes : 0
-        let standHours = timeSlotManager.progress.globalProgress.standHours
+        let standHours = healthKit.todayStandHours > 0
+            ? healthKit.todayStandHours
+            : timeSlotManager.progress.globalProgress.standHours
         let standGoal = timeSlotManager.settings.globalGoals.standEnabled ? timeSlotManager.settings.globalGoals.standHours : 0
 
         sharedDefaults.set(workoutMinutes, forKey: "workoutMinutes")

@@ -28,6 +28,15 @@ struct IntakeSettings: Codable {
     var dinnerFiber: Double = 10.0
     var dinnerSodium: Double = 5.0
 
+    // スナックのデフォルト栄養素
+    var snackCalories: Int = 100
+    var snackProtein: Double = 2.0   // たんぱく質（g）
+    var snackFat: Double = 50.0      // 脂質（g）
+    var snackCarbs: Double = 10.0    // 炭水化物（g）
+    var snackSugar: Double = 8.0     // 糖質（g）
+    var snackFiber: Double = 1.0     // 食物繊維（g）
+    var snackSodium: Double = 0.2    // 食塩（g）
+
     // 水1杯の量（ml）
     var waterPerCup: Int = 200
 
@@ -49,6 +58,11 @@ struct IntakeSettings: Codable {
     var dailyCaffeineLimit: Int = 400    // mg
     var dailyAlcoholLimit: Double = 20.0 // g
 
+    // PFCバランスの目標比率（%）
+    var targetProteinPercent: Double = 15.0  // たんぱく質 15%
+    var targetFatPercent: Double = 25.0       // 脂質 25%
+    var targetCarbsPercent: Double = 60.0     // 炭水化物 60%
+
     static let defaultSettings = IntakeSettings()
 
     /// 特定の食事タイプのカロリーを取得
@@ -57,6 +71,7 @@ struct IntakeSettings: Codable {
         case .breakfast: return breakfastCalories
         case .lunch: return lunchCalories
         case .dinner: return dinnerCalories
+        case .snack: return snackCalories
         }
     }
 
@@ -92,6 +107,16 @@ struct IntakeSettings: Codable {
                 sugar: dinnerSugar,
                 fiber: dinnerFiber,
                 sodium: dinnerSodium
+            )
+        case .snack:
+            return MealNutrition(
+                calories: snackCalories,
+                protein: snackProtein,
+                fat: snackFat,
+                carbs: snackCarbs,
+                sugar: snackSugar,
+                fiber: snackFiber,
+                sodium: snackSodium
             )
         }
     }
@@ -140,7 +165,7 @@ struct LLMSettings: Codable {
         case .anthropic:
             return "claude-3-haiku-20240307"  // 最もリーズナブル
         case .google:
-            return "gemini-1.5-flash"  // 最もリーズナブル
+            return "gemini-2.5-flash"  // Gemini 2.5 Flash
         }
     }
 
@@ -191,6 +216,30 @@ struct PhotoLogEntry: Codable, Identifiable {
         guard let data = imageData else { return nil }
         return UIImage(data: data)
     }
+}
+
+/// フォトログ履歴アイテム（画像なし・軽量）
+struct PhotoLogHistoryItem: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var timestamp: Date = Date()
+    var foodName: String = ""         // 料理名（AI分析のdescription先頭部分）
+    var comment: String = ""
+    var analyzedNutrition: AnalyzedNutrition
+    var thumbnailData: Data?          // 小サムネイル（任意）
+
+    var thumbnail: UIImage? {
+        guard let data = thumbnailData else { return nil }
+        return UIImage(data: data)
+    }
+
+    /// 表示用のラベル（料理名 or コメント）
+    var displayName: String {
+        if !foodName.isEmpty { return foodName }
+        if !comment.isEmpty { return comment }
+        return "食品 \(calories)kcal"
+    }
+
+    var calories: Int { analyzedNutrition.calories }
 }
 
 /// LLMが分析した栄養情報

@@ -198,6 +198,25 @@ struct LogProgress: Codable {
     }
 }
 
+// MARK: - カスタム日次目標（任意に追加できる1日単位の目標）
+
+struct CustomDailyGoal: Codable, Identifiable, Equatable {
+    var id: String = UUID().uuidString
+    var name: String
+    var emoji: String
+    var isEnabled: Bool = true
+
+    // プリセット例
+    static let presets: [CustomDailyGoal] = [
+        CustomDailyGoal(name: "読書", emoji: "📚"),
+        CustomDailyGoal(name: "Duolingo", emoji: "🦉"),
+        CustomDailyGoal(name: "瞑想", emoji: "🧘"),
+        CustomDailyGoal(name: "ストレッチ", emoji: "🤸"),
+        CustomDailyGoal(name: "早起き", emoji: "🌅"),
+        CustomDailyGoal(name: "禁酒", emoji: "🚫"),
+    ]
+}
+
 // MARK: - 1日全体の目標（時間帯に関係なし）
 
 struct DailyGlobalGoals: Codable {
@@ -205,6 +224,12 @@ struct DailyGlobalGoals: Codable {
     var workoutMinutes: Int = 15               // 目標ワークアウト時間（分）
     var standEnabled: Bool = false             // スタンド時間目標を使用するか
     var standHours: Int = 12                   // 目標スタンド時間（時間）
+    var sleepEnabled: Bool = false             // 睡眠計測目標を使用するか
+    var sleepScoreThreshold: Int = 80          // 睡眠スコアの目標（80点以上で達成）
+    var pfcEnabled: Bool = false               // PFCバランス目標を使用するか
+    var pfcScoreThreshold: Int = 80            // PFCバランススコアの目標（80点以上で達成）
+    var weightEnabled: Bool = false            // 体重計測目標を使用するか
+    var customGoals: [CustomDailyGoal] = []    // ユーザー定義のカスタム目標
 }
 
 // MARK: - 1日全体の実績
@@ -212,6 +237,10 @@ struct DailyGlobalGoals: Codable {
 struct DailyGlobalProgress: Codable {
     var workoutMinutes: Int = 0                // 完了したワークアウト時間（分）
     var standHours: Int = 0                    // 完了したスタンド時間（時間）
+    var sleepScore: Int = 0                    // 睡眠スコア（0-100点）
+    var pfcScore: Int = 0                      // PFCバランススコア（0-100点）
+    var weightMeasured: Bool = false           // 今日体重を計測したか
+    var completedCustomGoalIds: [String] = []  // 達成済みカスタム目標IDリスト
     var lastUpdated: Date = Date()
 }
 

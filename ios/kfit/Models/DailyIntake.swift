@@ -6,12 +6,14 @@ enum MealType: String, Codable, CaseIterable {
     case breakfast = "breakfast"
     case lunch = "lunch"
     case dinner = "dinner"
+    case snack = "snack"
 
     var displayName: String {
         switch self {
         case .breakfast: return "朝食"
         case .lunch: return "昼食"
         case .dinner: return "夕食"
+        case .snack: return "スナック"
         }
     }
 
@@ -20,6 +22,7 @@ enum MealType: String, Codable, CaseIterable {
         case .breakfast: return "🌅"
         case .lunch: return "🍱"
         case .dinner: return "🍽️"
+        case .snack: return "🍫"
         }
     }
 
@@ -28,6 +31,7 @@ enum MealType: String, Codable, CaseIterable {
         case .breakfast: return 400
         case .lunch: return 600
         case .dinner: return 800
+        case .snack: return 100
         }
     }
 }

@@ -4,12 +4,37 @@ import {
   getWeeklyGoals,
   getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getTodaySetLog,
   getWeekLabel, getActiveDaysElapsed,
-  getDailyCalorieGoal, setCalorieTarget,
   type WeeklySetProgress,
-  type DailyCalorieGoal,
   type CompletedSetRecord,
 } from '../services/firebase';
+import { getGlobalProgress, type GlobalProgress } from '../services/timeSlotService';
 import { useAppStore } from '../store/appStore';
+
+// --- ヘルスデータのスコアリング ---
+
+function getSleepRating(score: number): string {
+  if (score >= 90) return '最高';
+  if (score >= 80) return '良好';
+  if (score >= 70) return '普通';
+  if (score >= 50) return '要改善';
+  return '不十分';
+}
+
+function getPFCRating(score: number): string {
+  if (score >= 90) return '理想的';
+  if (score >= 80) return '良好';
+  if (score >= 70) return 'まずまず';
+  if (score >= 50) return '要改善';
+  return 'バランス悪い';
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 90) return '#58CC02';
+  if (score >= 80) return '#6DC400';
+  if (score >= 70) return '#FF9600';
+  if (score >= 50) return '#FF6B00';
+  return '#FF4B4B';
+}
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
@@ -60,16 +85,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [todaySetCount, setTodaySetCount] = useState(0);
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
-  const [calorieGoal, setCalorieGoal] = useState<DailyCalorieGoal>({ targetCalories: 500, consumedCalories: 0, percentAchieved: 0 });
-  const [editingCalorieTarget, setEditingCalorieTarget] = useState(false);
-  const [tempCalorieTarget, setTempCalorieTarget] = useState(500);
+  const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, sp, ds, tsc, tsl, cg] = await Promise.all([
+        const [profile, exercises, goals, sp, ds, tsc, tsl, gp] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
@@ -77,7 +100,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
           getTodaySetLog(user.uid),
-          getDailyCalorieGoal(user.uid),
+          getGlobalProgress(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
@@ -91,7 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setDailySets(ds);
         setTodaySetCount(tsc);
         setTodaySets(tsl);
-        setCalorieGoal(cg);
+        setGlobalProgress(gp);
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -114,17 +137,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
   const streak = userProfile?.streak || 0;
   const goalProgress = Math.min((streak / 90) * 100, 100);
-
-  const handleUpdateCalorieTarget = async () => {
-    if (!user || tempCalorieTarget <= 0) return;
-    try {
-      await setCalorieTarget(user.uid, tempCalorieTarget);
-      setCalorieGoal(prev => ({ ...prev, targetCalories: tempCalorieTarget }));
-      setEditingCalorieTarget(false);
-    } catch (err) {
-      console.error('Error updating calorie target:', err);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
@@ -347,7 +359,86 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* Health Data Card - hidden on web, iOS only */}
+        {/* iOSからのHealthKitデータ（Firestoreに同期済みの場合のみ表示） */}
+        {(globalProgress && (globalProgress.sleepScore > 0 || globalProgress.pfcScore > 0 || globalProgress.workoutMinutes > 0)) && (
+          <div className="space-y-3">
+            {/* 睡眠スコア + PFCスコア — 両方あれば2列、片方なら1列 */}
+            {(globalProgress.sleepScore > 0 || globalProgress.pfcScore > 0) && (
+              <div className={`grid gap-3 ${globalProgress.sleepScore > 0 && globalProgress.pfcScore > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+
+                {/* 睡眠スコアカード */}
+                {globalProgress.sleepScore > 0 && (
+                  <div className="duo-card p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xl">😴</span>
+                      <p className="font-black text-duo-dark text-sm">睡眠スコア</p>
+                    </div>
+                    <div className="flex items-end gap-2 mb-2">
+                      <p className="text-4xl font-black leading-none" style={{ color: getScoreColor(globalProgress.sleepScore) }}>
+                        {globalProgress.sleepScore}
+                      </p>
+                      <p className="text-duo-gray font-bold text-xs mb-1">点</p>
+                    </div>
+                    <span
+                      className="inline-block px-2 py-0.5 rounded-full text-xs font-black"
+                      style={{
+                        color: getScoreColor(globalProgress.sleepScore),
+                        backgroundColor: getScoreColor(globalProgress.sleepScore) + '20',
+                      }}
+                    >
+                      {getSleepRating(globalProgress.sleepScore)}
+                    </span>
+                  </div>
+                )}
+
+                {/* PFCバランススコアカード */}
+                {globalProgress.pfcScore > 0 && (
+                  <div className="duo-card p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xl">🥗</span>
+                      <p className="font-black text-duo-dark text-sm">PFCバランス</p>
+                    </div>
+                    <div className="flex items-end gap-2 mb-2">
+                      <p className="text-4xl font-black leading-none" style={{ color: getScoreColor(globalProgress.pfcScore) }}>
+                        {globalProgress.pfcScore}
+                      </p>
+                      <p className="text-duo-gray font-bold text-xs mb-1">点</p>
+                    </div>
+                    <span
+                      className="inline-block px-2 py-0.5 rounded-full text-xs font-black"
+                      style={{
+                        color: getScoreColor(globalProgress.pfcScore),
+                        backgroundColor: getScoreColor(globalProgress.pfcScore) + '20',
+                      }}
+                    >
+                      {getPFCRating(globalProgress.pfcScore)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ワークアウト時間 */}
+            {globalProgress.workoutMinutes > 0 && (
+              <div className="duo-card p-4 flex items-center gap-4">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+                  style={{ background: '#E8F5E9' }}
+                >
+                  🏃
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-duo-dark text-sm">ワークアウト時間</p>
+                  <p className="text-duo-gray font-bold text-xs">Apple Healthから同期</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-2xl font-black text-duo-green">{globalProgress.workoutMinutes}</p>
+                  <p className="text-xs font-bold text-duo-gray">分</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 90-day goal */}
         <div className="duo-card p-5">

@@ -1,6 +1,6 @@
-# kfit iOS App (v0.4.13)
+# kfit iOS App (v0.6.0)
 
-A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, and Firebase backend integration.
+A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, Firebase backend integration, and AI-powered nutrition analysis.
 
 ## Features
 
@@ -8,12 +8,16 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 - **Motion Detection (Default)** - Automatic rep counting using Core Motion (50Hz accelerometer/gyroscope)
 - **Manual Counter (Optional)** - Fallback manual rep input
 - **Apple Watch Support** - Companion watchOS app with motion detection (20Hz) and haptic feedback
-- **HealthKit Integration** - Read heart rate, activity, and sleep data from Apple Health
+- **HealthKit Integration** - Read heart rate, activity, sleep, and PFC nutrition data from Apple Health
+- **PFC Balance Analysis** - Score-based protein/fat/carbs balance tracking (0–100 points) with donut chart visualization
+- **Sleep Score Analysis** - Multi-factor sleep quality scoring (0–100 points) based on duration, deep sleep, and REM
+- **Daily Global Goals** - Set targets for workout, stand, sleep score, and PFC balance score
+- **Photo Log (AI Food Analysis)** - Analyze food photos with OpenAI / Anthropic Claude / Google Gemini 4 Flash
 - **AI Training Plans** - Generate personalized workout plans
 - **Weekly Goals** - Set and track weekly exercise targets
 - **History View** - Review past 14 days of workouts
 - **Form Scoring** - Real-time form quality feedback based on motion patterns
-- **Daily Dashboard** - View streaks, XP, and 90-day challenge progress
+- **Daily Dashboard** - View streaks, XP, sleep score, PFC chart, and 90-day challenge progress
 - **Real-time Sync** - Firebase Firestore syncs with Web and Watch apps
 - **Watch Connectivity** - Bidirectional data sync between iPhone and Apple Watch
 
@@ -75,12 +79,18 @@ ios/
 ├── kfit/                      # iPhone App
 │   ├── kfitApp.swift
 │   ├── Managers/
-│   │   ├── AuthenticationManager.swift
+│   │   ├── AuthenticationManager.swift   # Auth + PhotoLogManager (AI食事分析)
 │   │   ├── MotionDetectionManager.swift
-│   │   └── HealthKitManager.swift
+│   │   ├── HealthKitManager.swift        # PFC/睡眠スコア分析含む
+│   │   └── TimeSlotManager.swift         # タイムスロット目標・進捗管理
+│   ├── Models/
+│   │   ├── IntakeSettings.swift          # PFC目標比率, LLM設定
+│   │   └── TimeSlotGoals.swift           # 睡眠/PFC目標・進捗モデル
 │   ├── Views/
 │   │   ├── LoginView.swift
-│   │   ├── DashboardView.swift
+│   │   ├── DashboardView.swift           # PFC円グラフ, 睡眠スコアカード
+│   │   ├── DailyIntakeView.swift         # PFCバランス分析セクション
+│   │   ├── TimeSlotGoalsView.swift       # 睡眠/PFC目標設定UI
 │   │   ├── ExerciseTrackerView.swift
 │   │   ├── WeeklyGoalView.swift
 │   │   ├── HistoryView.swift
@@ -178,8 +188,20 @@ xcodebuild -scheme kfit test
 2. Verify accelerometer data is being received
 3. Ensure motion threshold is appropriate for exercise type
 
-## Recent Updates (v0.4.x)
+## Recent Updates
 
+### v0.6.0 (May 2026)
+- ✅ **PFCバランス分析**: HealthKitからたんぱく質・脂質・炭水化物を取得しスコア化（0-100点）
+- ✅ **睡眠スコア分析**: 睡眠時間・深い睡眠・REM・連続性を総合的にスコア化
+- ✅ **PFC・睡眠目標**: タイムスロット目標に睡眠スコア・PFCスコアの目標追加
+- ✅ **PFC円グラフ**: ダッシュボードにドーナツ型グラフでPFC比率を可視化
+- ✅ **フォトログ改善**: JSON解析ロジック堅牢化（マークダウン・コードブロック除去）
+- ✅ **LLMエラーハンドリング強化**: OpenAI/Anthropic/Google全APIのステータスコード+レスポンスログ
+- ✅ **Gemini 4 Flash対応**: `gemini-4-flash-202603` に更新
+- ✅ **UIリファイン**: マスコット画像表示、カロリー収支カラー（赤字=赤、黒字=黄色）
+- ✅ **マインドフルネス**: Apple Watchのマインドフルネスアプリを直接起動
+
+### v0.4.x (以前)
 - ✅ Apple Watch companion app with motion detection and haptic feedback
 - ✅ HealthKit integration (heart rate, activity, sleep data)
 - ✅ AI Training Plan generation
@@ -195,6 +217,8 @@ xcodebuild -scheme kfit test
 ## Future Enhancements
 
 - [ ] App Store submission
+- [ ] PFC目標比率のカスタマイズUI
+- [ ] 睡眠トレンドグラフ（週次）
 - [ ] Advanced form analysis with machine learning
 - [ ] Push notifications for workout reminders
 - [ ] Social leaderboards and friend challenges
@@ -214,7 +238,7 @@ pod 'GoogleSignIn'
 
 ## Version
 
-Current version: **0.4.13** (May 2026)
+Current version: **0.6.0** (May 2026)
 
 ## License
 

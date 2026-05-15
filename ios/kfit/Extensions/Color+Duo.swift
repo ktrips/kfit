@@ -1,4 +1,15 @@
 import SwiftUI
+import UIKit
+
+extension UIImage {
+    /// 指定サイズにリサイズした UIImage を返す
+    func resized(to size: CGSize) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            self.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
 
 extension Color {
     static let duoGreen  = Color(red: 0.345, green: 0.800, blue: 0.008) // #58CC02

@@ -8,6 +8,7 @@ struct DailyIntakeView: View {
     @State private var isLoading = true
     @State private var showSettings = false
     @State private var isRefreshingHealth = false
+    @State private var pfcAnalysis: PFCBalanceAnalysis?
 
     var body: some View {
         NavigationView {
@@ -19,6 +20,11 @@ struct DailyIntakeView: View {
                     } else {
                         // サマリーカード
                         summaryCard
+
+                        // PFCバランス分析
+                        if let analysis = pfcAnalysis, analysis.score > 0 {
+                            pfcBalanceSection(analysis)
+                        }
 
                         // 食事記録
                         mealsSection
@@ -240,11 +246,116 @@ struct DailyIntakeView: View {
         }
     }
 
+    // MARK: - PFCバランスセクション
+
+    private func pfcBalanceSection(_ analysis: PFCBalanceAnalysis) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("PFCバランス分析")
+                    .font(.headline)
+                    .foregroundColor(Color.duoText)
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("\(analysis.score)")
+                        .font(.title2).fontWeight(.black)
+                        .foregroundColor(scoreColor(analysis.score))
+                    Text("点")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+            }
+
+            Text(analysis.rating)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(scoreColor(analysis.score))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(scoreColor(analysis.score).opacity(0.1))
+                .cornerRadius(8)
+
+            VStack(spacing: 8) {
+                pfcRow(
+                    label: "たんぱく質",
+                    emoji: "💪",
+                    percent: analysis.proteinPercent,
+                    grams: analysis.proteinGrams,
+                    target: 15.0,
+                    color: .duoOrange
+                )
+                pfcRow(
+                    label: "脂質",
+                    emoji: "🥑",
+                    percent: analysis.fatPercent,
+                    grams: analysis.fatGrams,
+                    target: 25.0,
+                    color: .duoPurple
+                )
+                pfcRow(
+                    label: "炭水化物",
+                    emoji: "🍚",
+                    percent: analysis.carbsPercent,
+                    grams: analysis.carbsGrams,
+                    target: 60.0,
+                    color: .duoBlue
+                )
+            }
+
+            Text("目安: たんぱく質15% / 脂質25% / 炭水化物60%")
+                .font(.caption2)
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .padding()
+        .background(Color.duoCard)
+        .cornerRadius(16)
+    }
+
+    private func pfcRow(label: String, emoji: String, percent: Double, grams: Double, target: Double, color: Color) -> some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(emoji)
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoText)
+                Spacer()
+                Text(String(format: "%.1f%%", percent))
+                    .font(.subheadline).fontWeight(.bold)
+                    .foregroundColor(color)
+                Text("(目標: \(Int(target))%)")
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            HStack {
+                Spacer()
+                Text(String(format: "%.1fg", grams))
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.duoBackground)
+        .cornerRadius(8)
+    }
+
+    private func scoreColor(_ score: Int) -> Color {
+        switch score {
+        case 90...100: return .duoGreen
+        case 80..<90:  return Color(red: 0.4, green: 0.8, blue: 0.2)
+        case 70..<80:  return .duoOrange
+        case 50..<70:  return Color(red: 1.0, green: 0.5, blue: 0.0)
+        default:       return .duoRed
+        }
+    }
+
     // MARK: - Data Loading
 
     private func loadData() async {
         isLoading = true
         todaySummary = await authManager.getTodayIntakeSummary()
+        await healthKit.fetchAll()
+        pfcAnalysis = healthKit.analyzePFCBalance()
         isLoading = false
     }
 }
@@ -270,6 +381,8 @@ struct PhotoLogView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var llmSettings = LLMSettings.defaultSettings
+    @State private var fromHistory = false          // 履歴から選択したか
+    @State private var selectedHistoryId: String?   // 選択中の履歴ID
 
     var body: some View {
         NavigationView {
@@ -278,22 +391,26 @@ struct PhotoLogView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        if selectedImage == nil {
-                            // 写真選択
+                        // 状態A: 初期画面（履歴 + カメラ選択）
+                        if selectedImage == nil && analyzedNutrition == nil {
+                            if !photoLogManager.history.isEmpty {
+                                historySection
+                            }
                             photoSelectionSection
-                        } else {
-                            // 写真表示
+
+                        // 状態B: 履歴から選択済み
+                        } else if fromHistory, let nutrition = analyzedNutrition {
+                            historySelectedBanner
+                            nutritionResultSection(nutrition)
+                            saveButton
+
+                        // 状態C: 写真を撮影/選択して分析
+                        } else if selectedImage != nil {
                             photoDisplaySection
-
-                            // コメント入力
                             commentSection
-
-                            // 分析ボタン
                             if analyzedNutrition == nil && !photoLogManager.isAnalyzing {
                                 analyzeButton
                             }
-
-                            // 分析結果
                             if let nutrition = analyzedNutrition {
                                 nutritionResultSection(nutrition)
                                 saveButton
@@ -338,7 +455,7 @@ struct PhotoLogView: View {
                     .foregroundColor(Color.duoGreen)
                 }
             }
-            .sheet(isPresented: $showCamera) {
+            .fullScreenCover(isPresented: $showCamera) {
                 ImagePicker(sourceType: .camera, selectedImage: $selectedImage)
             }
             .sheet(isPresented: $showPhotoPicker) {
@@ -353,6 +470,131 @@ struct PhotoLogView: View {
                 llmSettings = await authManager.getLLMSettings()
             }
         }
+    }
+
+    // MARK: - History Section
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundColor(Color.duoGreen)
+                Text("最近の記録から追加")
+                    .font(.subheadline).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("\(photoLogManager.history.count)件")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(photoLogManager.history) { item in
+                        historyCard(item)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(14)
+        .background(Color.white)
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+    }
+
+    private func historyCard(_ item: PhotoLogHistoryItem) -> some View {
+        let isSelected = selectedHistoryId == item.id
+
+        return Button {
+            applyHistoryItem(item)
+        } label: {
+            VStack(spacing: 6) {
+                // サムネイルまたはプレースホルダー
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isSelected ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
+                        .frame(width: 72, height: 72)
+
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else {
+                        Text("🍽️")
+                            .font(.system(size: 28))
+                    }
+
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.duoGreen, lineWidth: 2)
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color.duoGreen)
+                            .background(Color.white.clipShape(Circle()))
+                            .offset(x: 26, y: -26)
+                    }
+                }
+
+                Text(item.displayName)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.duoDark)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 72)
+
+                Text("\(item.calories)kcal")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.duoGreen)
+
+                // 日付
+                Text(item.timestamp, style: .date)
+                    .font(.system(size: 9))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                photoLogManager.deleteHistoryItem(id: item.id)
+            } label: {
+                Label("履歴から削除", systemImage: "trash")
+            }
+        }
+    }
+
+    private var historySelectedBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .foregroundColor(Color.duoGreen)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("履歴から選択")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoGreen)
+                if let id = selectedHistoryId,
+                   let item = photoLogManager.history.first(where: { $0.id == id }) {
+                    Text(item.displayName)
+                        .font(.subheadline).fontWeight(.black)
+                        .foregroundColor(Color.duoDark)
+                }
+            }
+            Spacer()
+            Button {
+                resetToInitial()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.counterclockwise")
+                    Text("戻る")
+                }
+                .font(.caption)
+                .foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .padding(12)
+        .background(Color.duoGreen.opacity(0.08))
+        .cornerRadius(12)
     }
 
     // MARK: - Photo Selection
@@ -403,7 +645,7 @@ struct PhotoLogView: View {
             }
             .padding(.horizontal)
         }
-        .padding(.vertical, 40)
+        .padding(.vertical, 24)
     }
 
     // MARK: - Photo Display
@@ -420,9 +662,7 @@ struct PhotoLogView: View {
             }
 
             Button {
-                selectedImage = nil
-                analyzedNutrition = nil
-                comment = ""
+                resetToInitial()
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.counterclockwise")
@@ -571,6 +811,24 @@ struct PhotoLogView: View {
 
     // MARK: - Actions
 
+    /// 履歴アイテムを選択して栄養結果を即適用
+    private func applyHistoryItem(_ item: PhotoLogHistoryItem) {
+        selectedHistoryId = item.id
+        analyzedNutrition = item.analyzedNutrition
+        comment = item.comment
+        selectedImage = nil
+        fromHistory = true
+    }
+
+    /// 初期状態にリセット
+    private func resetToInitial() {
+        selectedImage = nil
+        analyzedNutrition = nil
+        comment = ""
+        fromHistory = false
+        selectedHistoryId = nil
+    }
+
     private func analyzePhoto() async {
         guard let image = selectedImage else { return }
 
@@ -616,12 +874,16 @@ struct PhotoLogView: View {
 
         // TODO: アルコールの保存
 
-        // フォトログを保存
+        // フォトログを保存（履歴からの場合は履歴への再追加をスキップ）
         var entry = PhotoLogEntry()
         entry.imageData = selectedImage?.jpegData(compressionQuality: 0.8)
         entry.comment = comment
         entry.analyzedNutrition = nutrition
-        photoLogManager.savePhotoLog(entry)
+        if fromHistory {
+            photoLogManager.savePhotoLogWithoutHistory(entry)
+        } else {
+            photoLogManager.savePhotoLog(entry)
+        }
 
         dismiss()
     }
@@ -638,6 +900,36 @@ struct ImagePicker: UIViewControllerRepresentable {
         let picker = UIImagePickerController()
         picker.sourceType = sourceType
         picker.delegate = context.coordinator
+
+        // カメラの場合、フルスクリーンでプレビューを表示
+        if sourceType == .camera {
+            picker.modalPresentationStyle = .fullScreen
+            picker.cameraCaptureMode = .photo
+            picker.cameraDevice = .rear
+            picker.showsCameraControls = true
+
+            // 画面全体を使用するようにカメラのアスペクト比を調整
+            picker.cameraFlashMode = .auto
+
+            // カメラプレビューを画面全体に拡大（16:9や4:3から画面全体へ）
+            let screenHeight = UIScreen.main.bounds.height
+            let screenWidth = UIScreen.main.bounds.width
+            let cameraAspectRatio: CGFloat = 4.0 / 3.0  // カメラの標準アスペクト比
+            let screenAspectRatio = screenHeight / screenWidth
+
+            var scale: CGFloat = 1.0
+            if screenAspectRatio > cameraAspectRatio {
+                // 画面の方が縦長の場合（ほとんどのiPhone）
+                scale = screenHeight / (screenWidth * cameraAspectRatio)
+            } else {
+                // 画面の方が横長の場合
+                scale = screenWidth / (screenHeight / cameraAspectRatio)
+            }
+
+            // スケール変換を適用してプレビューを拡大
+            picker.cameraViewTransform = CGAffineTransform(scaleX: scale, y: scale)
+        }
+
         return picker
     }
 

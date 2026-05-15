@@ -1,10 +1,8 @@
 import {
-  collection,
   doc,
   getDoc,
   setDoc,
   Timestamp,
-  updateDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
@@ -13,8 +11,6 @@ import {
   TimeSlotProgress,
   DailyTimeSlotSettings,
   DailyTimeSlotProgress,
-  LogGoal,
-  LogProgress
 } from '../types/timeSlot';
 
 const TIME_SLOT_GOALS_COLLECTION = 'time-slot-goals';
@@ -291,4 +287,38 @@ export async function recordMindInputLog(
     slotProgress.lastUpdated = new Date();
     await saveTodayProgress(userId, progress);
   }
+}
+
+// iOSがHealthKitから記録した1日全体の実績（睡眠スコア・PFCスコアなど）
+export interface GlobalProgress {
+  workoutMinutes: number;
+  standHours: number;
+  sleepScore: number;
+  pfcScore: number;
+  lastUpdated?: Date;
+}
+
+// 今日のglobalProgressを取得（iOSがHealthKitから書き込んだデータ）
+export async function getGlobalProgress(userId: string): Promise<GlobalProgress | null> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dateStr = dateToString(today);
+
+  const docRef = doc(db, 'users', userId, TIME_SLOT_PROGRESS_COLLECTION, dateStr);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    if (data.globalProgress) {
+      const gp = data.globalProgress;
+      return {
+        workoutMinutes: gp.workoutMinutes || 0,
+        standHours: gp.standHours || 0,
+        sleepScore: gp.sleepScore || 0,
+        pfcScore: gp.pfcScore || 0,
+        lastUpdated: gp.lastUpdated ? (gp.lastUpdated as Timestamp).toDate() : undefined,
+      };
+    }
+  }
+  return null;
 }

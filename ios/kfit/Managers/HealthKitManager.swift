@@ -38,6 +38,28 @@ struct SleepSegment: Identifiable {
     }
 }
 
+/// PFCバランスの分析結果
+struct PFCBalanceAnalysis {
+    let proteinPercent: Double  // たんぱく質の割合（%）
+    let fatPercent: Double       // 脂質の割合（%）
+    let carbsPercent: Double     // 炭水化物の割合（%）
+    let proteinGrams: Double     // たんぱく質の摂取量（g）
+    let fatGrams: Double         // 脂質の摂取量（g）
+    let carbsGrams: Double       // 炭水化物の摂取量（g）
+    let score: Int               // バランススコア（0-100点）
+    let rating: String           // 評価（理想的、良好、まずまず、要改善、バランス悪い）
+}
+
+/// 睡眠スコアの分析結果
+struct SleepScoreAnalysis {
+    let totalHours: Double       // 総睡眠時間（時間）
+    let deepHours: Double        // 深い睡眠時間（時間）
+    let remHours: Double         // REM睡眠時間（時間）
+    let coreHours: Double        // コア睡眠時間（時間）
+    let score: Int               // 睡眠スコア（0-100点）
+    let rating: String           // 評価（最高、良好、普通、要改善、不十分）
+}
+
 // MARK: - HealthKitManager
 
 /// Apple HealthKit から健康データを読み取る専用マネージャ
@@ -96,6 +118,11 @@ final class HealthKitManager: ObservableObject {
     @Published var todayIntakeWater: Double = 0         // ml
     @Published var todayIntakeCaffeine: Double = 0      // mg
     @Published var todayIntakeAlcohol: Double = 0       // g（純アルコール）
+
+    // PFC（たんぱく質・脂質・炭水化物）
+    @Published var todayIntakeProtein: Double = 0       // g
+    @Published var todayIntakeFat: Double = 0           // g
+    @Published var todayIntakeCarbs: Double = 0         // g
 
     // マインドフルネス
     @Published var todayMindfulnessMinutes: Double = 0  // 今日のマインドフルネス時間（分）
@@ -306,6 +333,9 @@ final class HealthKitManager: ObservableObject {
         async let intakeWater = fetchTodayIntakeWater()
         async let intakeCaffeine = fetchTodayIntakeCaffeine()
         async let intakeAlcohol = fetchTodayIntakeAlcohol()
+        async let intakeProtein = fetchTodayIntakeProtein()
+        async let intakeFat = fetchTodayIntakeFat()
+        async let intakeCarbs = fetchTodayIntakeCarbs()
         async let mindfulness = fetchTodayMindfulness()
 
         todaySteps          = await steps
@@ -327,6 +357,9 @@ final class HealthKitManager: ObservableObject {
         todayIntakeWater    = await intakeWater
         todayIntakeCaffeine = await intakeCaffeine
         todayIntakeAlcohol  = await intakeAlcohol
+        todayIntakeProtein  = await intakeProtein
+        todayIntakeFat      = await intakeFat
+        todayIntakeCarbs    = await intakeCarbs
         let mindfulnessResult = await mindfulness
         todayMindfulnessMinutes = mindfulnessResult.minutes
         let newSessions = mindfulnessResult.sessions
@@ -352,7 +385,7 @@ final class HealthKitManager: ObservableObject {
         todayMindfulnessSessions = newSessions
         previousMindfulnessSessions = newSessions
 
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
 
     // MARK: - 歩数
@@ -754,6 +787,69 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    /// 今日のたんぱく質摂取量を取得（g）
+    private func fetchTodayIntakeProtein() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryProtein) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let g = sum.doubleValue(for: .gram())
+                    continuation.resume(returning: g)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今日の脂質摂取量を取得（g）
+    private func fetchTodayIntakeFat() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryFatTotal) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let g = sum.doubleValue(for: .gram())
+                    continuation.resume(returning: g)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今日の炭水化物摂取量を取得（g）
+    private func fetchTodayIntakeCarbs() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCarbohydrates) else { return 0 }
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let sum = result?.sumQuantity() {
+                    let g = sum.doubleValue(for: .gram())
+                    continuation.resume(returning: g)
+                } else {
+                    continuation.resume(returning: 0)
+                }
+            }
+            store.execute(query)
+        }
+    }
+
     // MARK: - マインドフルネス
 
     /// 今日のマインドフルネスセッションを取得
@@ -859,6 +955,190 @@ final class HealthKitManager: ObservableObject {
             }
             store.execute(query)
         }
+    }
+
+    // MARK: - 睡眠スコア分析
+
+    /// 睡眠データを分析してスコア化（0-100点）
+    /// - Parameter targetHours: 目標睡眠時間（デフォルト7時間）
+    /// - Returns: 睡眠スコアの分析結果
+    func analyzeSleepScore(targetHours: Double = 7.0) -> SleepScoreAnalysis {
+        let totalHours = lastNightTotalHours
+        let deepHours = lastNightDeepHours
+
+        // 各ステージの時間を計算
+        var remHours: Double = 0
+        var coreHours: Double = 0
+        for segment in sleepSegments {
+            switch segment.stage {
+            case .rem:
+                remHours += segment.durationHours
+            case .core:
+                coreHours += segment.durationHours
+            default:
+                break
+            }
+        }
+
+        guard totalHours > 0 else {
+            return SleepScoreAnalysis(
+                totalHours: 0, deepHours: 0, remHours: 0, coreHours: 0,
+                score: 0, rating: "未記録"
+            )
+        }
+
+        // スコア計算（100点満点）
+        var score = 0.0
+
+        // 1. 睡眠時間スコア（最大40点）
+        // 目標時間±30分以内: 40点
+        // 6-8時間: 30-40点
+        // 5-6時間 or 8-9時間: 20-30点
+        // 5時間未満 or 9時間以上: 0-20点
+        let hoursDiff = abs(totalHours - targetHours)
+        if hoursDiff <= 0.5 {
+            score += 40
+        } else if totalHours >= 6 && totalHours <= 8 {
+            score += 40 - (hoursDiff * 10)
+        } else if totalHours >= 5 && totalHours <= 9 {
+            score += 30 - (abs(totalHours - 7) * 5)
+        } else {
+            score += max(0, 20 - (abs(totalHours - 7) * 5))
+        }
+
+        // 2. 深い睡眠スコア（最大30点）
+        // 目安: 総睡眠の15-20%が理想
+        let deepPercent = (deepHours / totalHours) * 100
+        if deepPercent >= 15 && deepPercent <= 25 {
+            score += 30
+        } else if deepPercent >= 10 && deepPercent < 15 {
+            score += 20 + ((deepPercent - 10) * 2)
+        } else if deepPercent > 25 && deepPercent <= 30 {
+            score += 25
+        } else {
+            score += max(0, 10)
+        }
+
+        // 3. REM睡眠スコア（最大20点）
+        // 目安: 総睡眠の20-25%が理想
+        let remPercent = (remHours / totalHours) * 100
+        if remPercent >= 18 && remPercent <= 28 {
+            score += 20
+        } else if remPercent >= 12 && remPercent < 18 {
+            score += 10 + ((remPercent - 12) * 1.5)
+        } else if remPercent > 28 && remPercent <= 35 {
+            score += 15
+        } else {
+            score += max(0, 5)
+        }
+
+        // 4. 睡眠効率スコア（最大10点）
+        // 深い睡眠 + REM睡眠の合計が多いほど良い
+        let qualitySleepPercent = ((deepHours + remHours) / totalHours) * 100
+        if qualitySleepPercent >= 40 {
+            score += 10
+        } else if qualitySleepPercent >= 30 {
+            score += 5 + ((qualitySleepPercent - 30) * 0.5)
+        } else {
+            score += max(0, qualitySleepPercent * 0.2)
+        }
+
+        let finalScore = Int(min(100, max(0, score)))
+
+        // 評価
+        let rating: String
+        switch finalScore {
+        case 90...100: rating = "最高"
+        case 80..<90:  rating = "良好"
+        case 70..<80:  rating = "普通"
+        case 50..<70:  rating = "要改善"
+        default:       rating = "不十分"
+        }
+
+        return SleepScoreAnalysis(
+            totalHours: totalHours,
+            deepHours: deepHours,
+            remHours: remHours,
+            coreHours: coreHours,
+            score: finalScore,
+            rating: rating
+        )
+    }
+
+    // MARK: - PFCバランス分析
+
+    /// PFCバランスを分析して点数化（0-100点）
+    /// - Parameter settings: 目標設定（デフォルトは15% / 25% / 60%）
+    /// - Returns: PFCバランスの分析結果
+    func analyzePFCBalance(settings: IntakeSettings = .defaultSettings) -> PFCBalanceAnalysis {
+        // 各栄養素のカロリー換算
+        // たんぱく質: 1g = 4kcal
+        // 脂質: 1g = 9kcal
+        // 炭水化物: 1g = 4kcal
+        let proteinKcal = todayIntakeProtein * 4.0
+        let fatKcal = todayIntakeFat * 9.0
+        let carbsKcal = todayIntakeCarbs * 4.0
+        let totalKcal = proteinKcal + fatKcal + carbsKcal
+
+        guard totalKcal > 0 else {
+            return PFCBalanceAnalysis(
+                proteinPercent: 0, fatPercent: 0, carbsPercent: 0,
+                proteinGrams: 0, fatGrams: 0, carbsGrams: 0,
+                score: 0, rating: "未記録"
+            )
+        }
+
+        // 実際の比率（%）
+        let actualProteinPercent = (proteinKcal / totalKcal) * 100
+        let actualFatPercent = (fatKcal / totalKcal) * 100
+        let actualCarbsPercent = (carbsKcal / totalKcal) * 100
+
+        // 目標との差分（絶対値）
+        let proteinDiff = abs(actualProteinPercent - settings.targetProteinPercent)
+        let fatDiff = abs(actualFatPercent - settings.targetFatPercent)
+        let carbsDiff = abs(actualCarbsPercent - settings.targetCarbsPercent)
+
+        // 平均偏差
+        let avgDiff = (proteinDiff + fatDiff + carbsDiff) / 3.0
+
+        // スコア計算（偏差が大きいほど減点）
+        // 偏差0% → 100点
+        // 偏差5% → 90点
+        // 偏差10% → 75点
+        // 偏差15% → 60点
+        // 偏差20% → 40点
+        // 偏差30%以上 → 0点
+        let score: Int
+        if avgDiff <= 5 {
+            score = max(0, 100 - Int(avgDiff * 2))
+        } else if avgDiff <= 15 {
+            score = max(0, 90 - Int((avgDiff - 5) * 3))
+        } else if avgDiff <= 25 {
+            score = max(0, 60 - Int((avgDiff - 15) * 2))
+        } else {
+            score = 0
+        }
+
+        // 評価
+        let rating: String
+        switch score {
+        case 90...100: rating = "理想的"
+        case 80..<90:  rating = "良好"
+        case 70..<80:  rating = "まずまず"
+        case 50..<70:  rating = "要改善"
+        default:       rating = "バランス悪い"
+        }
+
+        return PFCBalanceAnalysis(
+            proteinPercent: actualProteinPercent,
+            fatPercent: actualFatPercent,
+            carbsPercent: actualCarbsPercent,
+            proteinGrams: todayIntakeProtein,
+            fatGrams: todayIntakeFat,
+            carbsGrams: todayIntakeCarbs,
+            score: score,
+            rating: rating
+        )
     }
 
     // MARK: - 栄養素の保存

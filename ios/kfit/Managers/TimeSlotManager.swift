@@ -80,6 +80,20 @@ class TimeSlotManager: ObservableObject {
                     globalGoals.workoutMinutes = globalGoalsData["workoutMinutes"] as? Int ?? 15
                     globalGoals.standEnabled = globalGoalsData["standEnabled"] as? Bool ?? false
                     globalGoals.standHours = globalGoalsData["standHours"] as? Int ?? 12
+                    globalGoals.sleepEnabled = globalGoalsData["sleepEnabled"] as? Bool ?? false
+                    globalGoals.sleepScoreThreshold = globalGoalsData["sleepScoreThreshold"] as? Int ?? 80
+                    globalGoals.pfcEnabled = globalGoalsData["pfcEnabled"] as? Bool ?? false
+                    globalGoals.pfcScoreThreshold = globalGoalsData["pfcScoreThreshold"] as? Int ?? 80
+                    globalGoals.weightEnabled = globalGoalsData["weightEnabled"] as? Bool ?? false
+                    if let customGoalsData = globalGoalsData["customGoals"] as? [[String: Any]] {
+                        globalGoals.customGoals = customGoalsData.compactMap { g -> CustomDailyGoal? in
+                            guard let id = g["id"] as? String,
+                                  let name = g["name"] as? String,
+                                  let emoji = g["emoji"] as? String else { return nil }
+                            return CustomDailyGoal(id: id, name: name, emoji: emoji,
+                                                   isEnabled: g["isEnabled"] as? Bool ?? true)
+                        }
+                    }
                     settings.globalGoals = globalGoals
                 }
             } else {
@@ -126,6 +140,10 @@ class TimeSlotManager: ObservableObject {
             return data
         }
 
+        let customGoalsData = settings.globalGoals.customGoals.map { g -> [String: Any] in
+            ["id": g.id, "name": g.name, "emoji": g.emoji, "isEnabled": g.isEnabled]
+        }
+
         let docData: [String: Any] = [
             "goals": goalsData,
             "date": Timestamp(date: today),
@@ -133,7 +151,13 @@ class TimeSlotManager: ObservableObject {
                 "workoutEnabled": settings.globalGoals.workoutEnabled,
                 "workoutMinutes": settings.globalGoals.workoutMinutes,
                 "standEnabled": settings.globalGoals.standEnabled,
-                "standHours": settings.globalGoals.standHours
+                "standHours": settings.globalGoals.standHours,
+                "sleepEnabled": settings.globalGoals.sleepEnabled,
+                "sleepScoreThreshold": settings.globalGoals.sleepScoreThreshold,
+                "pfcEnabled": settings.globalGoals.pfcEnabled,
+                "pfcScoreThreshold": settings.globalGoals.pfcScoreThreshold,
+                "weightEnabled": settings.globalGoals.weightEnabled,
+                "customGoals": customGoalsData
             ]
         ]
 
@@ -205,6 +229,10 @@ class TimeSlotManager: ObservableObject {
                     var globalProgress = DailyGlobalProgress()
                     globalProgress.workoutMinutes = globalProgressData["workoutMinutes"] as? Int ?? 0
                     globalProgress.standHours = globalProgressData["standHours"] as? Int ?? 0
+                    globalProgress.sleepScore = globalProgressData["sleepScore"] as? Int ?? 0
+                    globalProgress.pfcScore = globalProgressData["pfcScore"] as? Int ?? 0
+                    globalProgress.weightMeasured = globalProgressData["weightMeasured"] as? Bool ?? false
+                    globalProgress.completedCustomGoalIds = globalProgressData["completedCustomGoalIds"] as? [String] ?? []
                     if let timestamp = globalProgressData["lastUpdated"] as? Timestamp {
                         globalProgress.lastUpdated = timestamp.dateValue()
                     }
@@ -229,6 +257,18 @@ class TimeSlotManager: ObservableObject {
 
         progress.globalProgress.workoutMinutes = await healthKit.fetchTodayWorkout()
         progress.globalProgress.standHours = await healthKit.fetchTodayStand()
+
+        // 睡眠スコアを更新
+        let sleepAnalysis = healthKit.analyzeSleepScore()
+        progress.globalProgress.sleepScore = sleepAnalysis.score
+
+        // PFCバランススコアを更新
+        let pfcAnalysis = healthKit.analyzePFCBalance()
+        progress.globalProgress.pfcScore = pfcAnalysis.score
+
+        // 体重計測を確認（今日のデータがあれば達成）
+        progress.globalProgress.weightMeasured = healthKit.latestBodyMass > 0
+
         progress.globalProgress.lastUpdated = Date()
 
         // Firestoreにも保存
@@ -262,6 +302,10 @@ class TimeSlotManager: ObservableObject {
             "globalProgress": [
                 "workoutMinutes": progress.globalProgress.workoutMinutes,
                 "standHours": progress.globalProgress.standHours,
+                "sleepScore": progress.globalProgress.sleepScore,
+                "pfcScore": progress.globalProgress.pfcScore,
+                "weightMeasured": progress.globalProgress.weightMeasured,
+                "completedCustomGoalIds": progress.globalProgress.completedCustomGoalIds,
                 "lastUpdated": Timestamp(date: progress.globalProgress.lastUpdated)
             ]
         ]
@@ -355,6 +399,21 @@ class TimeSlotManager: ObservableObject {
             await saveTodayProgress()
             print("✅ TimeSlot: Mind input logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mindInputLogged)")
         }
+    }
+
+    // MARK: - カスタム目標のトグル
+
+    /// カスタム目標の達成状態をトグル
+    func toggleCustomGoal(id: String) async {
+        var updatedProgress = progress
+        if updatedProgress.globalProgress.completedCustomGoalIds.contains(id) {
+            updatedProgress.globalProgress.completedCustomGoalIds.removeAll { $0 == id }
+        } else {
+            updatedProgress.globalProgress.completedCustomGoalIds.append(id)
+        }
+        updatedProgress.globalProgress.lastUpdated = Date()
+        progress = updatedProgress
+        await saveTodayProgress()
     }
 
     // MARK: - ヘルパー

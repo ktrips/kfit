@@ -367,6 +367,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["breakfastCalories"] = intakeGoals.breakfastCalories
             payload["lunchCalories"] = intakeGoals.lunchCalories
             payload["dinnerCalories"] = intakeGoals.dinnerCalories
+            payload["snackCalories"] = intakeGoals.snackCalories
             payload["waterPerCup"] = intakeGoals.waterPerCup
             payload["coffeePerCup"] = intakeGoals.coffeePerCup
             payload["caffeinePerCup"] = intakeGoals.caffeinePerCup

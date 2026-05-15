@@ -1567,8 +1567,36 @@ class PhotoLogManager: ObservableObject {
 
     @Published var logs: [PhotoLogEntry] = []
     @Published var isAnalyzing = false
+    @Published var history: [PhotoLogHistoryItem] = []
 
-    private init() {}
+    private let historyKey = "photoLogHistory"
+    private let maxHistoryCount = 50
+
+    private init() {
+        loadHistory()
+    }
+
+    // MARK: - History
+
+    /// 履歴をUserDefaultsから読み込む
+    private func loadHistory() {
+        guard let data = UserDefaults.standard.data(forKey: historyKey),
+              let items = try? JSONDecoder().decode([PhotoLogHistoryItem].self, from: data) else { return }
+        history = items
+    }
+
+    /// 履歴をUserDefaultsに保存
+    private func persistHistory() {
+        if let data = try? JSONEncoder().encode(history) {
+            UserDefaults.standard.set(data, forKey: historyKey)
+        }
+    }
+
+    /// 履歴アイテムを削除
+    func deleteHistoryItem(id: String) {
+        history.removeAll { $0.id == id }
+        persistHistory()
+    }
 
     /// 写真を分析して栄養情報を取得
     func analyzePhoto(_ image: UIImage, comment: String, settings: LLMSettings) async throws -> AnalyzedNutrition {
@@ -1599,18 +1627,59 @@ class PhotoLogManager: ObservableObject {
         }
     }
 
+    /// フォトログを保存（履歴への追加なし・履歴から再利用した場合）
+    func savePhotoLogWithoutHistory(_ entry: PhotoLogEntry) {
+        logs.insert(entry, at: 0)
+        // TODO: Firestoreに保存
+    }
+
     /// フォトログを保存
     func savePhotoLog(_ entry: PhotoLogEntry) {
         logs.insert(entry, at: 0)
         // TODO: Firestoreに保存
+
+        // 履歴に追加（画像なし軽量アイテム）
+        guard let nutrition = entry.analyzedNutrition else { return }
+        let foodName = extractFoodName(from: nutrition.description)
+        var item = PhotoLogHistoryItem(
+            foodName: foodName,
+            comment: entry.comment,
+            analyzedNutrition: nutrition
+        )
+        // サムネイル（100×100）を生成
+        if let image = entry.image {
+            item.thumbnailData = makeThumbnail(from: image, size: CGSize(width: 100, height: 100))
+        }
+        history.insert(item, at: 0)
+        if history.count > maxHistoryCount {
+            history = Array(history.prefix(maxHistoryCount))
+        }
+        persistHistory()
+    }
+
+    /// description の最初の文（句読点または改行まで）を料理名として抽出
+    private func extractFoodName(from description: String) -> String {
+        let separators = CharacterSet(charactersIn: "、。,.\n")
+        let name = description.components(separatedBy: separators).first ?? description
+        return String(name.prefix(20))
+    }
+
+    /// UIImage からサムネイルを生成
+    private func makeThumbnail(from image: UIImage, size: CGSize) -> Data? {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let thumb = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return thumb.jpegData(compressionQuality: 0.7)
     }
 
     // MARK: - Private Methods
 
     private func createAnalysisPrompt(comment: String) -> String {
         var prompt = """
-        この画像に写っている食べ物や飲み物を分析して、以下の情報をJSON形式で返してください。
+        この画像に写っている食べ物や飲み物を分析して、以下の情報を**必ずJSON形式のみ**で返してください。説明文や追加のテキストは含めず、JSONのみを返してください。
 
+        JSONフォーマット:
         {
           "description": "食品の簡潔な説明",
           "calories": カロリー（kcal、整数）,
@@ -1631,6 +1700,8 @@ class PhotoLogManager: ObservableObject {
             prompt += "\n\nユーザーコメント: \(comment)"
             prompt += "\nコメントから食事タイプ（朝食、昼食、夕食）や飲み物の種類（コーヒー、ワインなど）を推測してください。"
         }
+
+        prompt += "\n\n回答は上記のJSON形式のみで返してください。"
 
         return prompt
     }
@@ -1663,14 +1734,21 @@ class PhotoLogManager: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw PhotoLogError.apiError("OpenAI API error")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PhotoLogError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[PhotoLog] OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            throw PhotoLogError.apiError("OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            print("[PhotoLog] Failed to parse OpenAI API response structure")
             throw PhotoLogError.invalidResponse
         }
 
@@ -1705,13 +1783,20 @@ class PhotoLogManager: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw PhotoLogError.apiError("Anthropic API error")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PhotoLogError.apiError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[PhotoLog] Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            throw PhotoLogError.apiError("Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let content = json?["content"] as? [[String: Any]],
               let text = content.first?["text"] as? String else {
+            print("[PhotoLog] Failed to parse Anthropic API response structure")
             throw PhotoLogError.invalidResponse
         }
 
@@ -1721,38 +1806,62 @@ class PhotoLogManager: ObservableObject {
     // MARK: - Google Gemini API
 
     private func analyzeWithGoogle(base64Image: String, prompt: String, settings: LLMSettings) async throws -> AnalyzedNutrition {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(settings.effectiveModel):generateContent?key=\(settings.apiKey)")!
+        // Google Gemini APIのエンドポイント (v1betaを使用)
+        let modelName = settings.effectiveModel
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(settings.apiKey)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        print("[PhotoLog] Google API URL: \(url.absoluteString.replacingOccurrences(of: settings.apiKey, with: "***"))")
 
         let payload: [String: Any] = [
             "contents": [
                 [
                     "parts": [
                         ["text": prompt],
-                        ["inline_data": ["mime_type": "image/jpeg", "data": base64Image]]
+                        ["inline_data": [
+                            "mime_type": "image/jpeg",
+                            "data": base64Image
+                        ]]
                     ]
                 ]
             ],
             "generationConfig": [
-                "response_mime_type": "application/json"
+                "temperature": 0.4,
+                "topP": 1.0,
+                "topK": 32,
+                "maxOutputTokens": 2048
             ]
         ]
+
+        print("[PhotoLog] Google API request payload keys: \(payload.keys)")
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw PhotoLogError.apiError("Google API error")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PhotoLogError.apiError("Invalid response")
+        }
+
+        // エラーレスポンスをログに出力
+        if httpResponse.statusCode != 200 {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[PhotoLog] Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            throw PhotoLogError.apiError("Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        // レスポンス構造をログに出力
+        print("[PhotoLog] Google API response: \(json ?? [:])")
+
         guard let candidates = json?["candidates"] as? [[String: Any]],
               let content = candidates.first?["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let text = parts.first?["text"] as? String else {
+            print("[PhotoLog] Failed to parse Google API response structure")
             throw PhotoLogError.invalidResponse
         }
 
@@ -1762,8 +1871,33 @@ class PhotoLogManager: ObservableObject {
     // MARK: - JSON Parsing
 
     private func parseNutritionJSON(_ jsonString: String) throws -> AnalyzedNutrition {
-        guard let data = jsonString.data(using: .utf8),
+        print("[PhotoLog] Parsing JSON from: \(jsonString.prefix(200))...")
+
+        // JSONの前後にあるテキストを除去
+        var cleanedString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // ```json で囲まれている場合は除去
+        if cleanedString.hasPrefix("```json") {
+            cleanedString = cleanedString.replacingOccurrences(of: "```json", with: "")
+        }
+        if cleanedString.hasPrefix("```") {
+            cleanedString = cleanedString.replacingOccurrences(of: "```", with: "")
+        }
+        if cleanedString.hasSuffix("```") {
+            cleanedString = String(cleanedString.dropLast(3))
+        }
+
+        // JSONの開始位置を探す
+        if let startIndex = cleanedString.firstIndex(of: "{"),
+           let endIndex = cleanedString.lastIndex(of: "}") {
+            cleanedString = String(cleanedString[startIndex...endIndex])
+        }
+
+        cleanedString = cleanedString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = cleanedString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("[PhotoLog] Failed to parse JSON: \(cleanedString)")
             throw PhotoLogError.invalidResponse
         }
 
@@ -1780,6 +1914,8 @@ class PhotoLogManager: ObservableObject {
         nutrition.caffeine = json["caffeine"] as? Int ?? 0
         nutrition.alcohol = json["alcohol"] as? Double ?? 0.0
         nutrition.confidence = json["confidence"] as? Double ?? 0.8
+
+        print("[PhotoLog] Successfully parsed nutrition: \(nutrition.calories)kcal")
 
         return nutrition
     }

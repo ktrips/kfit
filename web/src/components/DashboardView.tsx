@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   getTodayExercises, getUserProfile,
   getWeeklyGoals, getWeeklyProgress,
-  getWeeklySetProgress, getDailySetGoal, getTodaySetCount,
+  getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getWeeklySetLog,
   getWeekLabel, getActiveDaysElapsed,
-  type WeeklySetProgress,
+  type WeeklySetProgress, type CompletedSetRecord,
 } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 interface DashboardViewProps {
@@ -18,6 +18,8 @@ const EXERCISE_EMOJI: Record<string, string> = {
   'push-up': '💪', 'pushup': '💪',
   'squat':   '🏋️',
   'sit-up':  '🔥', 'situp': '🔥',
+  'lunge':   '🦵',
+  'plank':   '🧘',
 };
 
 function getExerciseEmoji(name: string): string {
@@ -26,6 +28,15 @@ function getExerciseEmoji(name: string): string {
     if (key.includes(k)) return v;
   }
   return '⚡';
+}
+
+function getTimePeriod(date: Date): { label: string; emoji: string } {
+  const h = date.getHours();
+  if (h < 6)  return { label: '深夜', emoji: '🌙' };
+  if (h < 12) return { label: '午前', emoji: '🌅' };
+  if (h < 15) return { label: '昼',   emoji: '☀️' };
+  if (h < 19) return { label: '午後', emoji: '🌤️' };
+  return { label: '夜', emoji: '🌆' };
 }
 
 /** 種目ごとの推定カロリー（kcal/rep） */
@@ -42,7 +53,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onLogWorkout, onWeeklyGoal, onWorkoutPlan }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
@@ -53,17 +64,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [totalPoints, setTotalPoints] = useState(0);
   const [totalCalories, setTotalCalories] = useState(0);
   const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
-  const [weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
+  const [_weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
+  const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
+  const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress, sp, ds, tsc] = await Promise.all([
+        const [profile, exercises, goals, progress, sp, ds, tsc, weekSets] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
@@ -71,6 +84,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           getWeeklySetProgress(user.uid),
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
+          getWeeklySetLog(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
@@ -85,6 +99,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setSetProgress(sp);
         setDailySets(ds);
         setTodaySetCount(tsc);
+        // 今日分だけフィルタ
+        const today = new Date();
+        setTodaySets(weekSets.filter(s => {
+          const d = s.timestamp;
+          return d.getFullYear() === today.getFullYear() &&
+                 d.getMonth() === today.getMonth() &&
+                 d.getDate() === today.getDate();
+        }));
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -278,6 +300,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             </div>
           );
         })()}
+
+        {/* Today's set details */}
+        {todaySets.length > 0 && (
+          <div className="duo-card p-5">
+            <h2 className="text-lg font-black text-duo-dark mb-4">📊 今日の記録</h2>
+            <div className="space-y-3">
+              {todaySets.map((set, idx) => {
+                const isExpanded = expandedSetId === set.id;
+                const time = set.timestamp.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                const period = getTimePeriod(set.timestamp);
+                return (
+                  <div key={set.id} className="border-2 border-duo-border rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setExpandedSetId(isExpanded ? null : set.id)}
+                      className="w-full px-4 py-3 flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-duo-green/10 flex items-center justify-center text-lg shrink-0">
+                          {period.emoji}
+                        </div>
+                        <div className="text-left">
+                          <p className="font-black text-duo-dark text-sm">{period.label} セット{idx + 1}</p>
+                          <p className="text-duo-gray text-xs font-bold">{time} · {set.totalReps}回 · +{set.totalXP} XP</p>
+                        </div>
+                      </div>
+                      <span className="text-duo-gray text-xl">{isExpanded ? '▼' : '▶'}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-4 py-3 bg-gray-50 border-t-2 border-duo-border space-y-2">
+                        {set.exercises.map((ex, exIdx) => {
+                          const isPlankEx = (ex.exerciseId ?? '').toLowerCase().includes('plank');
+                          return (
+                            <div key={exIdx} className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{getExerciseEmoji(ex.exerciseName)}</span>
+                                <span className="font-bold text-duo-dark text-sm">{ex.exerciseName}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-black text-duo-dark text-sm">
+                                  {ex.reps}{isPlankEx ? '秒' : '回'}
+                                </span>
+                                <span className="font-extrabold text-xs" style={{ color: '#CE9700' }}>
+                                  +{ex.points} XP
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 90-day goal */}
         <div className="duo-card p-5">

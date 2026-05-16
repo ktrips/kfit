@@ -152,6 +152,7 @@ final class HealthKitManager: ObservableObject {
             .stepCount,
             .activeEnergyBurned,
             .basalEnergyBurned,     // 安静時カロリー（基礎代謝）
+            .appleExerciseTime,     // アクティブ運動時間
             .bodyMass,              // 体重
             .bodyFatPercentage,     // 体脂肪率
             .dietaryEnergyConsumed, // 摂取カロリー
@@ -354,6 +355,7 @@ final class HealthKitManager: ObservableObject {
         async let intakeCarbs = fetchTodayIntakeCarbs()
         async let mindfulness = fetchTodayMindfulness()
         async let daylight = fetchTodayDaylight()
+        async let exerciseMinutes = fetchTodayExerciseMinutes()
 
         todaySteps          = await steps
         todayActiveCalories = await activeCalories
@@ -404,7 +406,8 @@ final class HealthKitManager: ObservableObject {
 
         todayMindfulnessSessions = newSessions
         previousMindfulnessSessions = newSessions
-        todayDaylightMinutes = await daylight
+        todayDaylightMinutes  = await daylight
+        todayWorkoutMinutes   = await exerciseMinutes
 
         print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
@@ -1037,6 +1040,14 @@ final class HealthKitManager: ObservableObject {
         let start = Calendar.current.startOfDay(for: Date())
         let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
         return await fetchCumulativeSum(type: type, predicate: pred, unit: .minute())
+    }
+
+    private func fetchTodayExerciseMinutes() async -> Int {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) else { return 0 }
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let value = await fetchCumulativeSum(type: type, predicate: pred, unit: .minute())
+        return Int(value)
     }
 
     // MARK: - 睡眠スコア分析

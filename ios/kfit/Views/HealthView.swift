@@ -219,6 +219,13 @@ struct HealthView: View {
                     unit: "kcal",
                     bg: Color(hex: "#FFF3E0")
                 )
+                activityTile(
+                    icon: "sun.max.fill",
+                    color: Color(hex: "#FFD900"),
+                    value: hk.todayDaylightMinutes > 0 ? "\(Int(hk.todayDaylightMinutes))" : "—",
+                    unit: "分（日光）",
+                    bg: Color(hex: "#FFFDE7")
+                )
             }
         }
         .padding(16)
@@ -276,6 +283,15 @@ struct HealthView: View {
                     icon: "bed.double.fill",
                     bg: Color(hex: "#E3F2FD"),
                     accent: Color(hex: "#1CB0F6")
+                )
+                // 心拍変動（HRV）
+                heartRateTile(
+                    label: "心拍変動",
+                    value: hk.latestHRV > 0 ? "\(Int(hk.latestHRV))" : "—",
+                    unit: "ms",
+                    icon: "waveform.path.ecg.rectangle",
+                    bg: Color(hex: "#E8F5E9"),
+                    accent: Color(hex: "#58CC02")
                 )
             }
 

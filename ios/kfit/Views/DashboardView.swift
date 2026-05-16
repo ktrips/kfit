@@ -1616,23 +1616,11 @@ struct DashboardView: View {
             } else {
                 // 2列グリッド表示
                 VStack(spacing: 8) {
-                    // 行1: 睡眠スコア | 体重・体脂肪
-                    HStack(spacing: 8) {
-                        if let sleep = sleepScore, sleep.score > 0 {
-                            sleepScoreCard(sleep)
-                        } else {
-                            compactHealthItem(
-                                icon: "bed.double.fill",
-                                iconColor: Color(red: 0.451, green: 0.369, blue: 0.937),
-                                label: "睡眠",
-                                value: healthKit.lastNightTotalHours,
-                                goal: 7.0,
-                                unit: "h",
-                                formatValue: { String(format: "%.1f", $0) }
-                            )
-                        }
-                        bodyWeightFatCard
-                    }
+                    // 行1: 統合睡眠カード（フル幅）
+                    integratedSleepCard
+
+                    // 行1b: 体重・体脂肪
+                    bodyWeightFatCard
 
                     // 行2: 歩数 | 活動カロリー
                     HStack(spacing: 8) {
@@ -1659,17 +1647,9 @@ struct DashboardView: View {
                     // カロリー収支バー
                     calorieBalanceBarCard
 
-                    // 行3: 心拍数 | マインドフルネス
+                    // 行3: 心拍数 + 心拍変動 | マインドフルネス
                     HStack(spacing: 8) {
-                        compactHealthItem(
-                            icon: "heart.fill",
-                            iconColor: Color(red: 1.0, green: 0.294, blue: 0.294),
-                            label: "心拍数",
-                            value: healthKit.latestHeartRate,
-                            goal: nil,
-                            unit: "bpm",
-                            formatValue: { "\(Int($0))" }
-                        )
+                        heartRateWithHRVItem
                         compactHealthItem(
                             icon: "brain.head.profile",
                             iconColor: Color.duoPurple,
@@ -1680,6 +1660,20 @@ struct DashboardView: View {
                             formatValue: { String(format: "%.0f", $0) + " (\(healthKit.todayMindfulnessSessions)回)" },
                             healthKitURL: "x-apple-health://mindfulness"
                         )
+                    }
+
+                    // 行4: 日光下時間（半幅）
+                    HStack(spacing: 8) {
+                        compactHealthItem(
+                            icon: "sun.max.fill",
+                            iconColor: Color.duoYellow,
+                            label: "日光下時間",
+                            value: healthKit.todayDaylightMinutes,
+                            goal: 30.0,
+                            unit: "分",
+                            formatValue: { "\(Int($0))" }
+                        )
+                        Color.clear.frame(maxWidth: .infinity)
                     }
 
                     // 行6: 水分 | カフェイン | アルコール
@@ -2063,21 +2057,27 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
                     }
+                    if let delta = healthKit.weeklyBodyMassChange {
+                        weeklyDeltaLabel(delta: delta, unit: "kg", decimalPlaces: 1)
+                    }
                 }
 
                 Divider()
-                    .frame(height: 20)
+                    .frame(height: 28)
 
                 // 体脂肪
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .bottom, spacing: 2) {
-                        Text(healthKit.latestBodyFatPercentage > 0 ? "\(Int(healthKit.latestBodyFatPercentage))" : "—")
+                        Text(healthKit.latestBodyFatPercentage > 0 ? String(format: "%.1f", healthKit.latestBodyFatPercentage) : "—")
                             .font(.system(size: 16, weight: .black, design: .rounded))
                             .foregroundColor(healthKit.latestBodyFatPercentage > 0 ? Color.duoGreen : Color.duoDark)
                         Text("%")
                             .font(.system(size: 9))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
+                    }
+                    if let delta = healthKit.weeklyBodyFatChange {
+                        weeklyDeltaLabel(delta: delta, unit: "%", decimalPlaces: 1)
                     }
                 }
             }
@@ -2086,6 +2086,24 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.duoBlue.opacity(0.08))
         .cornerRadius(8)
+    }
+
+    /// 1週間変動ラベル（▲▼矢印付き）
+    @ViewBuilder
+    private func weeklyDeltaLabel(delta: Double, unit: String, decimalPlaces: Int) -> some View {
+        let absVal = abs(delta)
+        let fmt = String(format: "%.\(decimalPlaces)f", absVal)
+        let (arrow, color): (String, Color) = {
+            if delta > 0.009 { return ("▲", Color(red: 1.0, green: 0.29, blue: 0.29)) }
+            if delta < -0.009 { return ("▼", Color.duoGreen) }
+            return ("→", Color.duoSubtitle)
+        }()
+        HStack(spacing: 1) {
+            Text(arrow).font(.system(size: 8, weight: .bold)).foregroundColor(color)
+            Text(delta == 0 ? "0\(unit)" : "\(fmt)\(unit)")
+                .font(.system(size: 8, weight: .bold)).foregroundColor(color)
+            Text("7日").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+        }
     }
 
     // MARK: - カロリー収支バーカード
@@ -3617,6 +3635,171 @@ struct DashboardView: View {
         case 50..<70:  return Color(red: 1.0, green: 0.5, blue: 0.0)
         default:       return .duoRed
         }
+    }
+
+    // MARK: - 睡眠ステージバー（Dashboard用）
+    private var dashboardSleepStageBar: some View {
+        let segments = healthKit.sleepSegments
+        let total = segments.reduce(0.0) { $0 + $1.durationHours }
+
+        return VStack(alignment: .leading, spacing: 4) {
+            if total > 0 {
+                GeometryReader { geo in
+                    HStack(spacing: 1) {
+                        ForEach(segments) { seg in
+                            let w = max(2, geo.size.width * CGFloat(seg.durationHours / total))
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: seg.stage.color))
+                                .frame(width: w, height: 14)
+                        }
+                    }
+                }
+                .frame(height: 14)
+
+                // 凡例
+                HStack(spacing: 10) {
+                    ForEach([
+                        (SleepSegment.SleepStage.deep,  "深い"),
+                        (.rem,   "REM"),
+                        (.core,  "コア"),
+                        (.awake, "覚醒"),
+                    ], id: \.0.rawValue) { stage, label in
+                        HStack(spacing: 3) {
+                            Circle().fill(Color(hex: stage.color)).frame(width: 6, height: 6)
+                            Text(label).font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - 統合睡眠カード（スコア + ステージバー）
+    private var integratedSleepCard: some View {
+        Button {
+            if let url = URL(string: "x-apple-health://SleepAnalysis") {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "bed.double.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
+                    Text("睡眠")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                }
+
+                if let sleep = sleepScore, sleep.score > 0 {
+                    HStack(alignment: .bottom, spacing: 4) {
+                        Text("\(sleep.score)")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundColor(sleepScoreColor(sleep.score))
+                        Text("点")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.bottom, 2)
+                        Text(sleep.rating)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(sleepScoreColor(sleep.score))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(sleepScoreColor(sleep.score).opacity(0.15))
+                            .cornerRadius(4)
+                        Spacer()
+                    }
+                    HStack(spacing: 4) {
+                        Text(String(format: "%.1fh", sleep.totalHours))
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(Color.duoDark)
+                        Circle().fill(Color(red: 0.109, green: 0.753, blue: 0.965)).frame(width: 5, height: 5)
+                        Text(String(format: "深い%.1fh", sleep.deepHours))
+                            .font(.system(size: 8))
+                            .foregroundColor(Color.duoSubtitle)
+                        Circle().fill(Color(red: 0.808, green: 0.510, blue: 1.0)).frame(width: 5, height: 5)
+                        Text(String(format: "REM%.1fh", sleep.remHours))
+                            .font(.system(size: 8))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                } else {
+                    HStack(alignment: .bottom, spacing: 2) {
+                        Text(healthKit.lastNightTotalHours > 0 ? String(format: "%.1f", healthKit.lastNightTotalHours) : "—")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundColor(healthKit.lastNightTotalHours >= 7.0 ? Color.duoGreen : Color.duoOrange)
+                        Text("h")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.bottom, 2)
+                        Spacer()
+                    }
+                }
+
+                if !healthKit.sleepSegments.isEmpty {
+                    dashboardSleepStageBar
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.duoBg)
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 心拍数 + 心拍変動 複合タイル
+    private var heartRateWithHRVItem: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
+                Text("心拍数 / 変動")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+            }
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(alignment: .bottom, spacing: 2) {
+                        Text(healthKit.latestHeartRate > 0 ? "\(Int(healthKit.latestHeartRate))" : "—")
+                            .font(.system(size: 17, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("bpm")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.bottom, 2)
+                    }
+                }
+                Divider().frame(height: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "waveform.path.ecg.rectangle")
+                            .font(.system(size: 8))
+                            .foregroundColor(Color.duoGreen)
+                        Text("HRV")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    HStack(alignment: .bottom, spacing: 2) {
+                        Text(healthKit.latestHRV > 0 ? "\(Int(healthKit.latestHRV))" : "—")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color.duoDark)
+                        Text("ms")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.bottom, 1)
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.duoBg)
+        .cornerRadius(10)
     }
 
     // MARK: - 睡眠スコアカード

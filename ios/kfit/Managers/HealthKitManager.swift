@@ -101,6 +101,7 @@ final class HealthKitManager: ObservableObject {
     // 心拍数
     @Published var latestHeartRate:  Double     = 0
     @Published var restingHeartRate: Double     = 0
+    @Published var latestHRV:        Double     = 0  // 心拍変動（ms）
     @Published var hrSamples:        [HRSample] = []
 
     // 睡眠
@@ -109,9 +110,11 @@ final class HealthKitManager: ObservableObject {
     @Published var sleepSegments:       [SleepSegment] = []
 
     // 体重・体脂肪
-    @Published var latestBodyMass: Double = 0           // kg
-    @Published var latestBodyFatPercentage: Double = 0  // %
-    @Published var todayBodyMassMeasurements: Int = 0   // 今日の測定回数
+    @Published var latestBodyMass: Double = 0              // kg
+    @Published var latestBodyFatPercentage: Double = 0     // %
+    @Published var todayBodyMassMeasurements: Int = 0      // 今日の測定回数
+    @Published var weeklyBodyMassChange: Double? = nil     // 1週間の体重変動（kg）nil=データ不足
+    @Published var weeklyBodyFatChange: Double? = nil      // 1週間の体脂肪変動（%）nil=データ不足
 
     // 摂取データ（Apple Healthから読み取り）
     @Published var todayIntakeCalories: Double = 0      // kcal
@@ -135,6 +138,9 @@ final class HealthKitManager: ObservableObject {
     // スタンド時間
     @Published var todayStandHours: Int = 0             // 今日のスタンド時間（時間）
 
+    // 日光下時間（iOS 17+）
+    @Published var todayDaylightMinutes: Double = 0     // 今日の日光下時間（分）
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {
@@ -142,6 +148,7 @@ final class HealthKitManager: ObservableObject {
         let quantityIds: [HKQuantityTypeIdentifier] = [
             .heartRate,
             .restingHeartRate,
+            .heartRateVariabilitySDNN,  // 心拍変動
             .stepCount,
             .activeEnergyBurned,
             .basalEnergyBurned,     // 安静時カロリー（基礎代謝）
@@ -162,6 +169,12 @@ final class HealthKitManager: ObservableObject {
         }
         if let standHour = HKCategoryType.categoryType(forIdentifier: .appleStandHour) {
             set.insert(standHour)
+        }
+        // 日光下時間（iOS 17+）
+        if #available(iOS 17.0, *) {
+            if let daylightType = HKQuantityType.quantityType(forIdentifier: .timeInDaylight) {
+                set.insert(daylightType)
+            }
         }
         // ワークアウトタイプを追加
         set.insert(HKWorkoutType.workoutType())
@@ -324,11 +337,14 @@ final class HealthKitManager: ObservableObject {
         async let restingCalories = fetchTodayRestingCalories()
         async let latHR    = fetchLatestHeartRate()
         async let restHR   = fetchRestingHeartRate()
+        async let hrv      = fetchLatestHRV()
         async let hrList   = fetchTodayHRSamples()
         async let sleep    = fetchLastNightSleep()
         async let bodyMass = fetchLatestBodyMass()
         async let bodyFat  = fetchLatestBodyFatPercentage()
         async let bodyMassCount = fetchTodayBodyMassMeasurements()
+        async let bodyMassChange = fetchWeeklyBodyMassChange()
+        async let bodyFatChange  = fetchWeeklyBodyFatChange()
         async let intakeCal = fetchTodayIntakeCalories()
         async let intakeWater = fetchTodayIntakeWater()
         async let intakeCaffeine = fetchTodayIntakeCaffeine()
@@ -337,6 +353,7 @@ final class HealthKitManager: ObservableObject {
         async let intakeFat = fetchTodayIntakeFat()
         async let intakeCarbs = fetchTodayIntakeCarbs()
         async let mindfulness = fetchTodayMindfulness()
+        async let daylight = fetchTodayDaylight()
 
         todaySteps          = await steps
         todayActiveCalories = await activeCalories
@@ -345,14 +362,17 @@ final class HealthKitManager: ObservableObject {
         todayCalories       = todayActiveCalories  // 後方互換性
         latestHeartRate     = await latHR
         restingHeartRate    = await restHR
+        latestHRV           = await hrv
         hrSamples           = await hrList
         let sleepResult     = await sleep
         lastNightTotalHours = sleepResult.total
         lastNightDeepHours  = sleepResult.deep
         sleepSegments       = sleepResult.segments
-        latestBodyMass      = await bodyMass
+        latestBodyMass          = await bodyMass
         latestBodyFatPercentage = await bodyFat
         todayBodyMassMeasurements = await bodyMassCount
+        weeklyBodyMassChange    = await bodyMassChange
+        weeklyBodyFatChange     = await bodyFatChange
         todayIntakeCalories = await intakeCal
         todayIntakeWater    = await intakeWater
         todayIntakeCaffeine = await intakeCaffeine
@@ -384,8 +404,9 @@ final class HealthKitManager: ObservableObject {
 
         todayMindfulnessSessions = newSessions
         previousMindfulnessSessions = newSessions
+        todayDaylightMinutes = await daylight
 
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), sleep=\(String(format: "%.1f", lastNightTotalHours))h, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
+        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
 
     // MARK: - 歩数
@@ -434,6 +455,13 @@ final class HealthKitManager: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .restingHeartRate) else { return 0 }
         let unit = HKUnit.count().unitDivided(by: .minute())
         return await fetchLatestSampleValue(type: type, unit: unit)
+    }
+
+    // MARK: - 心拍変動（最新）
+
+    private func fetchLatestHRV() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return 0 }
+        return await fetchLatestSampleValue(type: type, unit: .secondUnit(with: .milli))
     }
 
     // MARK: - 今日の心拍数サンプル一覧
@@ -608,6 +636,50 @@ final class HealthKitManager: ObservableObject {
         return await withCheckedContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
                 continuation.resume(returning: samples?.count ?? 0)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - 1週間の体重・体脂肪変動
+
+    /// 過去7日間の最古の体重と現在値の差分を返す（データ不足はnil）
+    private func fetchWeeklyBodyMassChange() async -> Double? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return nil }
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+                guard let samples = samples as? [HKQuantitySample], samples.count >= 2 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let oldest  = samples.first!.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                let current = samples.last!.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                continuation.resume(returning: current - oldest)
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 過去7日間の最古の体脂肪と現在値の差分を返す（データ不足はnil）
+    private func fetchWeeklyBodyFatChange() async -> Double? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else { return nil }
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+                guard let samples = samples as? [HKQuantitySample], samples.count >= 2 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let oldest  = samples.first!.quantity.doubleValue(for: .percent()) * 100
+                let current = samples.last!.quantity.doubleValue(for: .percent()) * 100
+                continuation.resume(returning: current - oldest)
             }
             store.execute(query)
         }
@@ -955,6 +1027,16 @@ final class HealthKitManager: ObservableObject {
             }
             store.execute(query)
         }
+    }
+
+    // MARK: - 日光下時間（iOS 17+）
+
+    private func fetchTodayDaylight() async -> Double {
+        guard #available(iOS 17.0, *) else { return 0 }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .timeInDaylight) else { return 0 }
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        return await fetchCumulativeSum(type: type, predicate: pred, unit: .minute())
     }
 
     // MARK: - 睡眠スコア分析

@@ -1180,6 +1180,7 @@ class AuthenticationManager: ObservableObject {
 
         // Apple Healthに栄養素を記録
         await HealthKitManager.shared.saveMealNutrition(nutrition, date: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
     /// 水を記録
@@ -1202,6 +1203,7 @@ class AuthenticationManager: ObservableObject {
 
         // Apple Healthに記録
         await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
     /// コーヒーを記録
@@ -1226,6 +1228,7 @@ class AuthenticationManager: ObservableObject {
 
         // Apple Healthにカフェイン記録
         await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
     /// アルコールを記録
@@ -1252,6 +1255,7 @@ class AuthenticationManager: ObservableObject {
 
         // Apple Healthにアルコール記録（純アルコール量も渡す）
         await HealthKitManager.shared.saveAlcoholIntake(amountMl: Double(amountMl), alcoholG: alcoholG, timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
     /// 今日の摂取記録を取得

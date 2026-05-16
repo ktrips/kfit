@@ -455,17 +455,65 @@ struct WatchDashboardView: View {
                     Task { await healthKit.fetchAllTodayData() }
                 }
 
+                // ── 摂取データ（iOSから同期 - HealthKit認証不要）──────────────────────
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("🍽️").font(.system(size: 18))
+                        Text("今日の摂取")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                        Spacer()
+                        Button {
+                            connectivity.requestStatsFromiOS()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14))
+                                .foregroundColor(duoGreen)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.bottom, 4)
+
+                    VStack(spacing: 7) {
+                        watchLargeHealthItem(
+                            icon: "🍽️", label: "摂取Cal",
+                            value: Double(connectivity.intakeCalories),
+                            goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
+                            formatValue: { "\(Int($0))" }
+                        )
+                        watchLargeHealthItem(
+                            icon: "💧", label: "水分",
+                            value: Double(connectivity.intakeWater),
+                            goal: Double(connectivity.intakeWaterGoal), unit: "ml",
+                            formatValue: { "\(Int($0))" }
+                        )
+                        watchLargeHealthItem(
+                            icon: "☕", label: "カフェイン",
+                            value: Double(connectivity.intakeCaffeine),
+                            goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
+                            formatValue: { "\(Int($0))" }, isReverse: true
+                        )
+                        watchLargeHealthItem(
+                            icon: "🍺", label: "アルコール",
+                            value: connectivity.intakeAlcohol,
+                            goal: connectivity.intakeAlcoholLimit, unit: "g",
+                            formatValue: { String(format: "%.1f", $0) }, isReverse: true
+                        )
+                    }
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(14)
+
                 // ── 今日のApple Health ──────────────────────
                 if healthKit.isAuthorized {
                     VStack(spacing: 6) {
                         HStack {
-                            Text("💚")
-                                .font(.system(size: 18))
+                            Text("💚").font(.system(size: 18))
                             Text("今日のHealth")
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white.opacity(0.9))
                             Spacer()
-                            // 更新ボタン
                             Button {
                                 Task {
                                     await healthKit.fetchAllTodayData()
@@ -480,7 +528,6 @@ struct WatchDashboardView: View {
                         }
                         .padding(.bottom, 4)
 
-                        // 1列レイアウト
                         VStack(spacing: 7) {
                             watchLargeHealthItem(
                                 icon: "😴", label: "睡眠",
@@ -509,51 +556,24 @@ struct WatchDashboardView: View {
                             )
                             watchLargeHealthItem(
                                 icon: "🔥", label: "消費Cal",
-                                value: Double(healthKit.todayCalories), goal: Double(connectivity.calorieTarget), unit: "kcal",
+                                value: Double(healthKit.todayCalories),
+                                goal: Double(connectivity.calorieTarget), unit: "kcal",
                                 formatValue: { "\(Int($0))" }
-                            )
-                            watchLargeHealthItem(
-                                icon: "🍽️", label: "摂取Cal",
-                                value: Double(connectivity.intakeCalories), goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
-                                formatValue: { "\(Int($0))" }
-                            )
-                            watchLargeHealthItem(
-                                icon: "💧", label: "水分",
-                                value: Double(connectivity.intakeWater), goal: Double(connectivity.intakeWaterGoal), unit: "ml",
-                                formatValue: { "\(Int($0))" }
-                            )
-                            watchLargeHealthItem(
-                                icon: "☕", label: "カフェイン",
-                                value: Double(connectivity.intakeCaffeine), goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
-                                formatValue: { "\(Int($0))" }, isReverse: true
-                            )
-                            watchLargeHealthItem(
-                                icon: "🍺", label: "アルコール",
-                                value: connectivity.intakeAlcohol, goal: connectivity.intakeAlcoholLimit, unit: "g",
-                                formatValue: { String(format: "%.1f", $0) }, isReverse: true
                             )
                         }
                     }
-
                 } else {
-                    // 未連携時のプレースホルダー
                     VStack(spacing: 14) {
-                        Text("💚")
-                            .font(.system(size: 36))
-
+                        Text("💚").font(.system(size: 36))
                         Text("Apple Healthと連動")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
-
                         Text("健康データを自動取得")
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.6))
                             .multilineTextAlignment(.center)
-
                         Button {
-                            Task {
-                                await healthKit.requestAuthorization()
-                            }
+                            Task { await healthKit.requestAuthorization() }
                         } label: {
                             Text("許可する")
                                 .font(.system(size: 13, weight: .bold))

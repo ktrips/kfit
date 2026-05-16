@@ -335,23 +335,8 @@ class AuthenticationManager: ObservableObject {
 
     // MARK: - Apple Watch からのワークアウトを Firestore に記録（種目ごと通知キャンセル用）
     func recordWatchWorkout(_ workout: WatchWorkoutData) async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
-
-        // キャッシュ無効化
-        invalidateTodayExercisesCache()
-
-        let data: [String: Any] = [
-            "exerciseId":   workout.exerciseId,      // "watch" ではなく実際の ID を使用
-            "exerciseName": workout.exerciseName,
-            "reps":         workout.reps,
-            "points":       workout.points,
-            "formScore":    85.0,
-            "timestamp":    workout.timestamp,
-            "source":       "watch"
-        ]
-        try? await db.collection("users").document(userId)
-            .collection("completed-exercises").addDocument(data: data)
-        // ポイント・ストリーク更新は完了セット受信時にまとめて行うため、ここでは通知キャンセルのみ
+        // 種目ごとの Firestore 書き込みは recordWatchCompletedSet で一括処理する。
+        // updateApplicationContext はキーを上書きするため、個別送信では最後の種目しか残らない。
         NotificationManager.shared.handleWorkoutRecorded()
     }
 
@@ -387,6 +372,22 @@ class AuthenticationManager: ObservableObject {
             print("✅ Valid set recorded: All exercises met target reps")
         } else {
             print("⚠️ Set not counted: Some exercises did not meet target reps")
+        }
+
+        // 各種目を completed-exercises に書き込む（履歴表示で正しい回数を出すため）
+        // recordWatchWorkout では updateApplicationContext の上書き問題で最後の種目しか残らない
+        for ex in set.exercises {
+            let exData: [String: Any] = [
+                "exerciseId":   ex.exerciseId,
+                "exerciseName": ex.exerciseName,
+                "reps":         ex.reps,
+                "points":       ex.points,
+                "formScore":    85.0,
+                "timestamp":    now,
+                "source":       "watch"
+            ]
+            try? await db.collection("users").document(userId)
+                .collection("completed-exercises").addDocument(data: exData)
         }
 
         // ストリーク・ポイントをまとめて更新

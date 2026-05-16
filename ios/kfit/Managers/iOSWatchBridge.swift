@@ -97,22 +97,25 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 print("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
                 let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP, todayExercises: todayExercises)
+                let dailySets = await AuthenticationManager.shared.getDailySets()
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
+                                 todaySets: dailySets.amSets + dailySets.pmSets, todayExercises: todayExercises)
                 return
             }
 
             // ③ stats リクエスト（Watch 起動時）
             if (message["action"] as? String) == "request_stats" {
                 let profile = AuthenticationManager.shared.userProfile
-                // 今日の運動データを取得（非同期）
                 Task {
                     let todayExercises = await AuthenticationManager.shared.getTodayExercises()
                     let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
                     let todayXP = todayExercises.reduce(0) { $0 + $1.points }
+                    let dailySets = await AuthenticationManager.shared.getDailySets()
                     self.sendStatsToWatch(
                         streak:    profile?.streak ?? 0,
                         todayReps: todayReps,
                         todayXP:   todayXP,
+                        todaySets: dailySets.amSets + dailySets.pmSets,
                         todayExercises: todayExercises
                     )
                 }
@@ -198,7 +201,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
                 let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP, todayExercises: todayExercises)
+                let dailySets = await AuthenticationManager.shared.getDailySets()
+                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
+                                 todaySets: dailySets.amSets + dailySets.pmSets, todayExercises: todayExercises)
             }
         }
     }
@@ -210,10 +215,12 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             let todayExercises = await AuthenticationManager.shared.getTodayExercises()
             let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
             let todayXP   = todayExercises.reduce(0) { $0 + $1.points }
+            let dailySets = await AuthenticationManager.shared.getDailySets()
             sendStatsToWatch(
                 streak: profile?.streak ?? 0,
                 todayReps: todayReps,
                 todayXP: todayXP,
+                todaySets: dailySets.amSets + dailySets.pmSets,
                 todayExercises: todayExercises
             )
         }
@@ -277,7 +284,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     }
 
     // iOS → Watch: 更新後の数値を送信
-    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todayExercises: [CompletedExercise] = []) {
+    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todaySets: Int = 0, todayExercises: [CompletedExercise] = []) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
@@ -293,6 +300,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             "streak":    streak,
             "todayReps": todayReps,
             "todayXP":   todayXP,
+            "todaySets": todaySets,
         ]
 
         // 目標カロリー情報 & 統一指標を取得して送信

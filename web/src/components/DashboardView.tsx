@@ -1,40 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   getTodayExercises, getUserProfile,
-  getWeeklyGoals,
-  getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getTodaySetLog,
+  getWeeklyGoals, getWeeklyProgress,
+  getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getWeeklySetLog,
   getWeekLabel, getActiveDaysElapsed,
-  type WeeklySetProgress,
-  type CompletedSetRecord,
+  type WeeklySetProgress, type CompletedSetRecord,
 } from '../services/firebase';
-import { getGlobalProgress, type GlobalProgress } from '../services/timeSlotService';
 import { useAppStore } from '../store/appStore';
-
-// --- ヘルスデータのスコアリング ---
-
-function getSleepRating(score: number): string {
-  if (score >= 90) return '最高';
-  if (score >= 80) return '良好';
-  if (score >= 70) return '普通';
-  if (score >= 50) return '要改善';
-  return '不十分';
-}
-
-function getPFCRating(score: number): string {
-  if (score >= 90) return '理想的';
-  if (score >= 80) return '良好';
-  if (score >= 70) return 'まずまず';
-  if (score >= 50) return '要改善';
-  return 'バランス悪い';
-}
-
-function getScoreColor(score: number): string {
-  if (score >= 90) return '#58CC02';
-  if (score >= 80) return '#6DC400';
-  if (score >= 70) return '#FF9600';
-  if (score >= 50) return '#FF6B00';
-  return '#FF4B4B';
-}
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
@@ -46,6 +18,8 @@ const EXERCISE_EMOJI: Record<string, string> = {
   'push-up': '💪', 'pushup': '💪',
   'squat':   '🏋️',
   'sit-up':  '🔥', 'situp': '🔥',
+  'lunge':   '🦵',
+  'plank':   '🧘',
 };
 
 function getExerciseEmoji(name: string): string {
@@ -54,6 +28,15 @@ function getExerciseEmoji(name: string): string {
     if (key.includes(k)) return v;
   }
   return '⚡';
+}
+
+function getTimePeriod(date: Date): { label: string; emoji: string } {
+  const h = date.getHours();
+  if (h < 6)  return { label: '深夜', emoji: '🌙' };
+  if (h < 12) return { label: '午前', emoji: '🌅' };
+  if (h < 15) return { label: '昼',   emoji: '☀️' };
+  if (h < 19) return { label: '午後', emoji: '🌤️' };
+  return { label: '夜', emoji: '🌆' };
 }
 
 /** 種目ごとの推定カロリー（kcal/rep） */
@@ -75,32 +58,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
+  const setStoreWeeklyProgress = useAppStore((s) => s.setWeeklyProgress);
 
   const [totalReps, setTotalReps] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
   const [totalCalories, setTotalCalories] = useState(0);
   const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
+  const [_weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
-  const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, sp, ds, tsc, tsl, gp] = await Promise.all([
+        const [profile, exercises, goals, progress, sp, ds, tsc, weekSets] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
+          getWeeklyProgress(user.uid),
           getWeeklySetProgress(user.uid),
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
-          getTodaySetLog(user.uid),
-          getGlobalProgress(user.uid),
+          getWeeklySetLog(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
@@ -109,12 +93,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           exercises.reduce((s: number, e: any) => s + estimateKcal(e.exerciseId ?? '', e.reps || 0), 0)
         ));
         setWeeklyGoals(goals);
+        setWeeklyProgress(progress);
         setStoreWeeklyGoals(goals);
+        setStoreWeeklyProgress(progress);
         setSetProgress(sp);
         setDailySets(ds);
         setTodaySetCount(tsc);
-        setTodaySets(tsl);
-        setGlobalProgress(gp);
+        // 今日分だけフィルタ
+        const today = new Date();
+        setTodaySets(weekSets.filter(s => {
+          const d = s.timestamp;
+          return d.getFullYear() === today.getFullYear() &&
+                 d.getMonth() === today.getMonth() &&
+                 d.getDate() === today.getDate();
+        }));
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
@@ -122,7 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
       }
     };
     loadData();
-  }, [user, setUserProfile, setStoreWeeklyGoals]);
+  }, [user, setUserProfile, setStoreWeeklyGoals, setStoreWeeklyProgress]);
 
   if (isLoading) {
     return (
@@ -161,7 +153,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         </div>
 
-        {/* Stats - 統一指標 */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="duo-stat-card" style={{ backgroundColor: '#FFF3E0', borderColor: '#FF9600', boxShadow: '0 3px 0 #CC7000' }}>
             <span className="text-3xl">🔥</span>
@@ -169,17 +161,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CC7000' }}>日連続</p>
           </div>
           <div className="duo-stat-card" style={{ backgroundColor: '#E8F5E9', borderColor: '#58CC02', boxShadow: '0 3px 0 #46A302' }}>
-            <span className="text-3xl">📊</span>
-            <p className="text-2xl font-black text-duo-green leading-tight">{todaySetCount}/{dailySets}</p>
-            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#46A302' }}>セット</p>
+            <span className="text-3xl">⚡</span>
+            <p className="text-2xl font-black text-duo-green leading-tight">{totalReps}回</p>
+            <p className="text-sm font-extrabold leading-none" style={{ color: '#46A302' }}>
+              {totalCalories}kcal
+            </p>
+            <p className="text-xs font-extrabold text-duo-green-dark uppercase tracking-wide mt-0.5">今日</p>
           </div>
-          <div className="duo-stat-card" style={{ backgroundColor: '#E3F2FD', borderColor: '#58CC02', boxShadow: '0 3px 0 #46A302' }}>
-            <span className="text-3xl">💪</span>
-            <p className="text-3xl font-black text-duo-green">{totalReps}</p>
-            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#46A302' }}>回数</p>
+          <div className="duo-stat-card" style={{ backgroundColor: '#FFF8E1', borderColor: '#FFD900', boxShadow: '0 3px 0 #CE9700' }}>
+            <span className="text-3xl">⭐</span>
+            <p className="text-3xl font-black" style={{ color: '#CE9700' }}>{totalPoints}</p>
+            <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CE9700' }}>今日のXP</p>
           </div>
         </div>
-
 
         {/* Today's set status — count-based */}
         {todaySetCount === 0 ? (
@@ -312,9 +306,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           <div className="duo-card p-5">
             <h2 className="text-lg font-black text-duo-dark mb-4">📊 今日の記録</h2>
             <div className="space-y-3">
-              {todaySets.map((set) => {
+              {todaySets.map((set, idx) => {
                 const isExpanded = expandedSetId === set.id;
                 const time = set.timestamp.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                const period = getTimePeriod(set.timestamp);
                 return (
                   <div key={set.id} className="border-2 border-duo-border rounded-xl overflow-hidden">
                     <button
@@ -322,13 +317,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
                       className="w-full px-4 py-3 flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-duo-green/10 flex items-center justify-center">
-                          <span className="text-lg font-black text-duo-green">
-                            {todaySets.indexOf(set) + 1}
-                          </span>
+                        <div className="w-10 h-10 rounded-lg bg-duo-green/10 flex items-center justify-center text-lg shrink-0">
+                          {period.emoji}
                         </div>
                         <div className="text-left">
-                          <p className="font-black text-duo-dark text-sm">セット {todaySets.indexOf(set) + 1}</p>
+                          <p className="font-black text-duo-dark text-sm">{period.label} セット{idx + 1}</p>
                           <p className="text-duo-gray text-xs font-bold">{time} · {set.totalReps}回 · +{set.totalXP} XP</p>
                         </div>
                       </div>
@@ -336,107 +329,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
                     </button>
                     {isExpanded && (
                       <div className="px-4 py-3 bg-gray-50 border-t-2 border-duo-border space-y-2">
-                        {set.exercises.map((ex, idx) => (
-                          <div key={idx} className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <span className="text-base">{getExerciseEmoji(ex.exerciseName)}</span>
-                              <span className="font-bold text-duo-dark text-sm">{ex.exerciseName}</span>
+                        {set.exercises.map((ex, exIdx) => {
+                          const isPlankEx = (ex.exerciseId ?? '').toLowerCase().includes('plank');
+                          return (
+                            <div key={exIdx} className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{getExerciseEmoji(ex.exerciseName)}</span>
+                                <span className="font-bold text-duo-dark text-sm">{ex.exerciseName}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-black text-duo-dark text-sm">
+                                  {ex.reps}{isPlankEx ? '秒' : '回'}
+                                </span>
+                                <span className="font-extrabold text-xs" style={{ color: '#CE9700' }}>
+                                  +{ex.points} XP
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-black text-duo-dark text-sm">{ex.reps}回</span>
-                              <span className="font-extrabold text-xs" style={{ color: '#CE9700' }}>
-                                +{ex.points} XP
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* iOSからのHealthKitデータ（Firestoreに同期済みの場合のみ表示） */}
-        {(globalProgress && (globalProgress.sleepScore > 0 || globalProgress.pfcScore > 0 || globalProgress.workoutMinutes > 0)) && (
-          <div className="space-y-3">
-            {/* 睡眠スコア + PFCスコア — 両方あれば2列、片方なら1列 */}
-            {(globalProgress.sleepScore > 0 || globalProgress.pfcScore > 0) && (
-              <div className={`grid gap-3 ${globalProgress.sleepScore > 0 && globalProgress.pfcScore > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-
-                {/* 睡眠スコアカード */}
-                {globalProgress.sleepScore > 0 && (
-                  <div className="duo-card p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xl">😴</span>
-                      <p className="font-black text-duo-dark text-sm">睡眠スコア</p>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <p className="text-4xl font-black leading-none" style={{ color: getScoreColor(globalProgress.sleepScore) }}>
-                        {globalProgress.sleepScore}
-                      </p>
-                      <p className="text-duo-gray font-bold text-xs mb-1">点</p>
-                    </div>
-                    <span
-                      className="inline-block px-2 py-0.5 rounded-full text-xs font-black"
-                      style={{
-                        color: getScoreColor(globalProgress.sleepScore),
-                        backgroundColor: getScoreColor(globalProgress.sleepScore) + '20',
-                      }}
-                    >
-                      {getSleepRating(globalProgress.sleepScore)}
-                    </span>
-                  </div>
-                )}
-
-                {/* PFCバランススコアカード */}
-                {globalProgress.pfcScore > 0 && (
-                  <div className="duo-card p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xl">🥗</span>
-                      <p className="font-black text-duo-dark text-sm">PFCバランス</p>
-                    </div>
-                    <div className="flex items-end gap-2 mb-2">
-                      <p className="text-4xl font-black leading-none" style={{ color: getScoreColor(globalProgress.pfcScore) }}>
-                        {globalProgress.pfcScore}
-                      </p>
-                      <p className="text-duo-gray font-bold text-xs mb-1">点</p>
-                    </div>
-                    <span
-                      className="inline-block px-2 py-0.5 rounded-full text-xs font-black"
-                      style={{
-                        color: getScoreColor(globalProgress.pfcScore),
-                        backgroundColor: getScoreColor(globalProgress.pfcScore) + '20',
-                      }}
-                    >
-                      {getPFCRating(globalProgress.pfcScore)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ワークアウト時間 */}
-            {globalProgress.workoutMinutes > 0 && (
-              <div className="duo-card p-4 flex items-center gap-4">
-                <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
-                  style={{ background: '#E8F5E9' }}
-                >
-                  🏃
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-duo-dark text-sm">ワークアウト時間</p>
-                  <p className="text-duo-gray font-bold text-xs">Apple Healthから同期</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-2xl font-black text-duo-green">{globalProgress.workoutMinutes}</p>
-                  <p className="text-xs font-bold text-duo-gray">分</p>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

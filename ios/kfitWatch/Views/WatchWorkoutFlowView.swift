@@ -31,6 +31,8 @@ struct WatchWorkoutFlowView: View {
     /// 各種目の完了結果を蓄積（セット完了時にまとめて送信）
     @State private var allResults: [WatchSetExercise] = []
     @State private var showGoalReached = false
+    @State private var plankSeconds = 0
+    @State private var plankTimer: Timer?
     @State private var canDoubleTapAdvance = false  // ダブルタップで次へ進めるか
 
     private var current: FlowStep { flowSteps[stepIdx] }
@@ -306,14 +308,14 @@ struct WatchWorkoutFlowView: View {
         }
         .onDisappear {
             motionManager.stopDetection()
+            stopPlankTimer()
         }
     }
 
-    // 表示用のreps（モーションセンサー使用時はmotionManagerから取得）
+    // 表示用カウント（プランクは秒数、モーションONは検出値、それ以外は手動）
     private var displayReps: Int {
-        if useMotionSensor && !isPlank {
-            return motionManager.repCount
-        }
+        if isPlank { return plankSeconds }
+        if useMotionSensor { return motionManager.repCount }
         return reps
     }
 
@@ -334,6 +336,18 @@ struct WatchWorkoutFlowView: View {
 
         print("🟢 WatchFlow: Starting motion detection for \(current.name)")
         motionManager.startDetection(for: exerciseType)
+    }
+
+    // MARK: - プランクタイマー
+    private func startPlankTimer() {
+        plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in plankSeconds += 1 }
+        }
+    }
+
+    private func stopPlankTimer() {
+        plankTimer?.invalidate()
+        plankTimer = nil
     }
 
     // MARK: - 完了画面
@@ -467,10 +481,12 @@ struct WatchWorkoutFlowView: View {
                 timestamp: Date()
             )
             WatchConnectivityManager.shared.sendCompletedSet(setData)
+            WatchConnectivityManager.shared.todaySets += 1
             done = true
         } else {
             stepIdx += 1
             reps = 0
+            plankSeconds = 0
 
             // 次の種目でモーション検出を開始
             if useMotionSensor && !isPlank {

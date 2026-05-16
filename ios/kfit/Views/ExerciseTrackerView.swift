@@ -124,9 +124,9 @@ struct ExerciseTrackerView: View {
             guard isManualMode && !isPlankSelected else { return }
             if count == current.target && !showGoalReached { triggerGoalReached() }
         }
-        .onChange(of: plankSeconds) { seconds in
+        .onChange(of: plankSeconds) { secs in
             guard isPlankSelected else { return }
-            if seconds == current.target && !showGoalReached { triggerGoalReached() }
+            if secs >= current.target && !showGoalReached { triggerGoalReached() }
         }
     }
 
@@ -149,13 +149,8 @@ struct ExerciseTrackerView: View {
             Text(current.name)
                 .font(.title2).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
-            if isPlankSelected {
-                Text("目標: \(current.target) 秒")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
-            } else {
-                Text("目標: \(current.target) 回")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
-            }
+            Text(isPlankSelected ? "目標: \(current.target) 秒" : "目標: \(current.target) 回")
+                .font(.caption).foregroundColor(Color.duoSubtitle)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

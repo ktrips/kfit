@@ -33,6 +33,44 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Firestoreキャッシュ設定（パフォーマンス最適化）
+import { enableIndexedDbPersistence } from 'firebase/firestore';
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('Firestore persistence: Multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    console.warn('Firestore persistence: Not supported in this browser');
+  }
+});
+
+// キャッシュマネージャー
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 30000; // 30秒
+
+function getCachedData<T>(key: string): T | null {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data as T;
+  }
+  return null;
+}
+
+function setCachedData<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+function invalidateCache(pattern?: string): void {
+  if (pattern) {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
+      }
+    }
+  } else {
+    cache.clear();
+  }
+}
+
 const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
@@ -151,6 +189,10 @@ export const setDailyGoals = async (userId: string, date: string, goals: any[]) 
 // (Cloud Functions will override if deployed)
 export const recordExercise = async (userId: string, exerciseData: any) => {
   try {
+    // キャッシュ無効化
+    invalidateCache(`todayExercises:${userId}`);
+    invalidateCache(`weeklyProgress:${userId}`);
+
     const now = new Date();
     const docRef = await addDoc(
       collection(db, 'users', userId, 'completed-exercises'),
@@ -209,6 +251,12 @@ interface CompletedExercise {
 
 // Get completed exercises for today
 export const getTodayExercises = async (userId: string): Promise<CompletedExercise[]> => {
+  const cacheKey = `todayExercises:${userId}`;
+  const cached = getCachedData<CompletedExercise[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -220,10 +268,13 @@ export const getTodayExercises = async (userId: string): Promise<CompletedExerci
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(d => ({
+  const exercises = querySnapshot.docs.map(d => ({
     id: d.id,
     ...(d.data() as Omit<CompletedExercise, 'id'>),
   }));
+
+  setCachedData(cacheKey, exercises);
+  return exercises;
 };
 
 export interface DayExercises {
@@ -274,14 +325,116 @@ export const getRecentExercises = async (userId: string, days: number = 7): Prom
   return result;
 };
 
+// ── Achievements ─────────────────────────────────────────────────────────────
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
+  earnedDate?: Date;
+  progress?: number;
+  target?: number;
+}
+
+export const ACHIEVEMENT_DEFINITIONS: Record<string, Omit<Achievement, 'id' | 'earnedDate'>> = {
+  'early-bird-10': {
+    name: 'Early Bird',
+    description: '朝9時前に10回トレーニング',
+    emoji: '🌅',
+    tier: 'bronze',
+    target: 10,
+  },
+  'early-bird-50': {
+    name: 'Morning Champion',
+    description: '朝9時前に50回トレーニング',
+    emoji: '🌄',
+    tier: 'silver',
+    target: 50,
+  },
+  'form-master-50': {
+    name: 'Form Master',
+    description: '完璧なフォームで50回',
+    emoji: '💎',
+    tier: 'silver',
+    target: 50,
+  },
+  'iron-will-30': {
+    name: 'Iron Will',
+    description: '30日連続トレーニング',
+    emoji: '🔥',
+    tier: 'gold',
+    target: 30,
+  },
+  'iron-will-90': {
+    name: 'Legend',
+    description: '90日連続トレーニング',
+    emoji: '👑',
+    tier: 'platinum',
+    target: 90,
+  },
+  'century-club': {
+    name: 'Century Club',
+    description: '1日で100回以上',
+    emoji: '💯',
+    tier: 'gold',
+    target: 100,
+  },
+  'leaderboard-king': {
+    name: 'Leaderboard King',
+    description: '週間ランキング1位獲得',
+    emoji: '🏆',
+    tier: 'platinum',
+    target: 1,
+  },
+  'first-workout': {
+    name: 'First Step',
+    description: '最初のトレーニング完了',
+    emoji: '🎯',
+    tier: 'bronze',
+    target: 1,
+  },
+  'workout-10': {
+    name: 'Consistent',
+    description: '10回トレーニング完了',
+    emoji: '💪',
+    tier: 'bronze',
+    target: 10,
+  },
+  'workout-100': {
+    name: 'Dedicated',
+    description: '100回トレーニング完了',
+    emoji: '⚡',
+    tier: 'silver',
+    target: 100,
+  },
+  'workout-500': {
+    name: 'Elite',
+    description: '500回トレーニング完了',
+    emoji: '🌟',
+    tier: 'gold',
+    target: 500,
+  },
+};
+
 // Get achievements
-export const getAchievements = async (userId: string) => {
+export const getAchievements = async (userId: string): Promise<Achievement[]> => {
   const q = collection(db, 'users', userId, 'achievements');
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+  return querySnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name,
+      description: data.description,
+      emoji: data.emoji,
+      tier: data.tier,
+      earnedDate: data.earnedDate?.toDate?.() ?? data.earnedDate,
+      progress: data.progress,
+      target: data.target,
+    };
+  });
 };
 
 // ── Weekly goals ─────────────────────────────────────────────────────────────
@@ -374,17 +527,65 @@ export interface WeeklySetProgress {
   exercises: Record<string, { reps: number; sets: number; exerciseName: string }>;
 }
 
+// セット構成の取得（iOS互換）
+interface SetConfigExercise {
+  exerciseId: string;
+  exerciseName: string;
+  targetReps: number;
+}
+
+const getSetConfiguration = async (userId: string): Promise<SetConfigExercise[]> => {
+  const docRef = doc(db, 'users', userId, 'settings', 'set-configuration');
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    return (data.exercises ?? []) as SetConfigExercise[];
+  }
+
+  // デフォルト構成
+  return [
+    { exerciseId: 'pushup', exerciseName: '腕立て伏せ', targetReps: 10 },
+    { exerciseId: 'squat', exerciseName: 'スクワット', targetReps: 15 },
+    { exerciseId: 'situp', exerciseName: '腹筋', targetReps: 10 },
+  ];
+};
+
+// セットが有効か検証（各メニューが目標回数以上達成されているか）
+const validateSetCompletion = (exercises: SetExercise[], config: SetConfigExercise[]): boolean => {
+  for (const target of config) {
+    const completed = exercises.find(e => e.exerciseId === target.exerciseId);
+    if (!completed || completed.reps < target.targetReps) {
+      console.warn(`⚠️ ${target.exerciseName}: ${completed?.reps ?? 0}/${target.targetReps} - 目標未達`);
+      return false;
+    }
+  }
+  return true;
+};
+
 export const recordCompletedSet = async (
   userId: string,
   exercises: SetExercise[]
 ): Promise<void> => {
   const now = new Date();
-  await addDoc(collection(db, 'users', userId, 'completed-sets'), {
-    timestamp: now,
-    exercises,
-    totalXP: exercises.reduce((s, e) => s + e.points, 0),
-    totalReps: exercises.reduce((s, e) => s + e.reps, 0),
-  });
+
+  // セット構成を取得して目標達成を確認
+  const config = await getSetConfiguration(userId);
+  const isValidSet = validateSetCompletion(exercises, config);
+
+  // セットとしてカウントする場合のみ記録
+  if (isValidSet) {
+    await addDoc(collection(db, 'users', userId, 'completed-sets'), {
+      timestamp: now,
+      exercises,
+      totalXP: exercises.reduce((s, e) => s + e.points, 0),
+      totalReps: exercises.reduce((s, e) => s + e.reps, 0),
+      isValidSet: true,
+    });
+    console.log('✅ Valid set recorded: All exercises met target reps');
+  } else {
+    console.warn('⚠️ Set not counted: Some exercises did not meet target reps');
+  }
 };
 
 export const getWeeklySetProgress = async (userId: string): Promise<WeeklySetProgress> => {
@@ -460,6 +661,33 @@ export const getTodaySetCount = async (userId: string): Promise<number> => {
   return snapshot.size;
 };
 
+/** 今日完了したセット一覧を新しい順で取得 */
+export const getTodaySetLog = async (userId: string): Promise<CompletedSetRecord[]> => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const q = query(
+    collection(db, 'users', userId, 'completed-sets'),
+    where('timestamp', '>=', start),
+    where('timestamp', '<=', end),
+    orderBy('timestamp', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    const ts = data.timestamp instanceof Timestamp
+      ? data.timestamp.toDate()
+      : new Date(data.timestamp);
+    return {
+      id: d.id,
+      timestamp: ts,
+      exercises: data.exercises ?? [],
+      totalXP: data.totalXP ?? 0,
+      totalReps: data.totalReps ?? 0,
+    };
+  });
+};
+
 export const getDailySetGoal = async (userId: string): Promise<number> => {
   const weekId = getCurrentWeekId();
   const snap = await getDoc(doc(db, 'users', userId, 'weekly-goals', weekId));
@@ -475,8 +703,20 @@ export const saveDailySetGoal = async (userId: string, dailySets: number): Promi
   );
 };
 
+// ── Leaderboard ──────────────────────────────────────────────────────────────
+
+export interface LeaderboardEntry {
+  id: string;
+  userId: string;
+  username: string;
+  rank: number;
+  points: number;
+  workouts: number;
+  streak: number;
+}
+
 // Get leaderboard
-export const getLeaderboard = async (_period: string = 'week') => {
+export const getLeaderboard = async (_period: string = 'week'): Promise<LeaderboardEntry[]> => {
   const now = new Date();
   const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 / 7);
   const year = now.getFullYear();
@@ -487,8 +727,89 @@ export const getLeaderboard = async (_period: string = 'week') => {
   return querySnapshot.docs
     .map(doc => ({
       id: doc.id,
-      ...doc.data()
+      userId: doc.data().userId,
+      username: doc.data().username,
+      rank: doc.data().rank,
+      points: doc.data().points,
+      workouts: doc.data().workouts ?? 0,
+      streak: doc.data().streak ?? 0,
     }))
-    .sort((a: any, b: any) => a.rank - b.rank)
+    .sort((a, b) => a.rank - b.rank)
     .slice(0, 100);
+};
+
+// ── Daily Calorie Goal ────────────────────────────────────────────────────────
+
+export interface DailyCalorieGoal {
+  targetCalories: number;
+  consumedCalories: number;
+  percentAchieved: number;
+}
+
+/** 種目ごとのカロリー消費量（kcal/rep） */
+const CALORIES_PER_REP: Record<string, number> = {
+  'pushup': 0.5,
+  'push-up': 0.5,
+  'squat': 0.6,
+  'situp': 0.3,
+  'sit-up': 0.3,
+  'lunge': 0.5,
+  'burpee': 1.0,
+  'plank': 0.1,
+};
+
+/** カロリー目標を取得（カスタム設定またはデフォルト） */
+export const getCalorieTarget = async (userId: string): Promise<number> => {
+  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
+  const settingsSnap = await getDoc(settingsRef);
+
+  if (settingsSnap.exists() && settingsSnap.data().target) {
+    return settingsSnap.data().target;
+  }
+
+  // デフォルト: 週間目標から計算
+  const weeklyGoals = await getWeeklyGoals(userId);
+  if (weeklyGoals.length > 0) {
+    const dailyTotalReps = weeklyGoals.reduce((sum, g) => sum + ((g as any).dailyReps ?? 10), 0);
+    // 平均的な種目のカロリー消費率 0.5 kcal/rep で計算
+    return Math.round(dailyTotalReps * 0.5);
+  }
+
+  // フォールバック: 500kcal
+  return 500;
+};
+
+/** カロリー目標をカスタム設定 */
+export const setCalorieTarget = async (userId: string, targetCalories: number): Promise<void> => {
+  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
+  await setDoc(settingsRef, {
+    target: targetCalories,
+    updatedAt: Timestamp.now(),
+  });
+};
+
+/** 今日の目標カロリーと消費カロリーを取得 */
+export const getDailyCalorieGoal = async (userId: string): Promise<DailyCalorieGoal> => {
+  // カスタム目標または計算された目標を取得
+  const targetCalories = await getCalorieTarget(userId);
+
+  // 今日の運動記録からカロリー計算
+  const todayExercises = await getTodayExercises(userId);
+  const consumedCalories = Math.round(
+    todayExercises.reduce((total, ex) => {
+      const exerciseId = (ex as any).exerciseId?.toLowerCase() ?? '';
+      const calorieRate = CALORIES_PER_REP[exerciseId] ?? 0.4;
+      return total + (ex.reps ?? 0) * calorieRate;
+    }, 0)
+  );
+
+  const percentAchieved = targetCalories > 0
+    ? Math.round((consumedCalories / targetCalories) * 100)
+    : 0;
+
+  return {
+    targetCalories,
+    consumedCalories,
+    percentAchieved,
+  };
 };

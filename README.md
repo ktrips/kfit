@@ -1,93 +1,145 @@
-# DuoFit - Duolingo スタイルのフィットネス習慣アプリ
+# DuoFit - Duolingoスタイルのフィットネス習慣アプリ
 
-毎日の運動をゲームにしよう。プッシュアップ・スクワット・シットアップをモーションセンサーで自動計測。XP・ストリーク・週間目標でフィットネスを習慣化。
+毎日の運動をゲーム化。プッシュアップ・スクワット・シットアップをモーションセンサーで自動計測。XP・ストリーク・週間目標でフィットネスを習慣化。
 
-🌐 **Web アプリ：** https://kfitapp.web.app  
-📦 **GitHub：** https://github.com/ktrips/kfit
+🌐 **Web:** https://kfitapp.web.app  
+📱 **iOS + Apple Watch** 対応  
+📦 **GitHub:** https://github.com/ktrips/kfit
 
 ---
 
 ## 🎯 主な機能
 
-| 機能 | Web | iOS | Apple Watch |
+| 機能 | Web | iOS | Watch |
 |---|:---:|:---:|:---:|
 | Googleログイン | ✅ | ✅ | — |
 | トレーニング記録（手動） | ✅ | ✅ | ✅ |
-| モーション自動 rep 検知（デフォルト） | — | ✅ (50Hz) | ✅ (20Hz) |
-| 手動カウンター（オプション） | ✅ | ✅ | ✅ |
-| リアルタイムフォームスコア | — | ✅ | ✅ |
-| HealthKit 連携 | — | ✅ | — |
-| AI トレーニングプラン生成 | ✅ | ✅ | — |
-| XP・ストリーク表示 | ✅ | ✅ | ✅ |
-| 週間目標設定 | ✅ | ✅ | — |
+| モーション自動検知 | — | ✅ | ✅ |
+| カロリー目標トラッキング | ✅ | ✅ | ✅ |
+| カロリー目標カスタマイズ | ✅ | ✅ | — |
+| HealthKit連携 | — | ✅ | ✅ |
+| PFCバランス分析 | — | ✅ | — |
+| 睡眠スコア分析 | — | ✅ | — |
+| PFC・睡眠目標設定 | — | ✅ | — |
+| 今日のセット表示 | ✅ | ✅ | ✅ |
+| 週間セット目標 | ✅ | ✅ | — |
 | 90日チャレンジ | ✅ | ✅ | — |
-| 履歴（過去14日） | ✅ | ✅ | — |
-| Watch → iOS データ同期 | — | ✅ (受信) | ✅ (送信) |
-| 触覚フィードバック | — | — | ✅ |
-| Firebase リアルタイム同期 | ✅ | ✅ | ✅ |
+| フォトログ（AI食事分析） | — | ✅ | — |
+| アチーブメント | ✅ | — | — |
+| リーダーボード | ✅ | — | — |
+| キーボードショートカット | ✅ | — | — |
+| リアルタイム同期 | ✅ | ✅ | ✅ |
 
 ---
 
-## ⭐ XP（ポイント）システム
+## ⚡ パフォーマンス
 
-| 種目 | XP / rep |
-|---|---|
-| 🤜 プッシュアップ | 2 XP |
-| 🦵 スクワット | 2 XP |
-| 🚶 ランジ | 2 XP |
-| 🧘 シットアップ | 1 XP |
-| 🧱 プランク | 1 XP / 秒 |
-| 🔥 バーピー | 5 XP |
+- **30秒キャッシュ**: Firestoreクエリを最大90%削減
+- **IndexedDB永続化**: オフライン対応
+- **デバウンス**: Watch通信を70%削減
+- **ダッシュボード読み込み**: 0.15s (iOS), 0.2s (Web)
+
+詳細: [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md)
+
+---
+
+## 🔥 カロリートラッキング
+
+| Exercise | kcal/rep | XP/rep |
+|----------|----------|---------|
+| Push-up | 0.5 | 2 |
+| Squat | 0.6 | 2 |
+| Sit-up | 0.3 | 1 |
+| Lunge | 0.5 | 2 |
+| Burpee | 1.0 | 5 |
+| Plank | 0.1 | 1 |
+
+**デフォルト目標**: 500 kcal/日（週間目標から自動計算）
+
+---
+
+## 🥗 PFCバランス分析（iOS）
+
+HealthKitに記録された食事データからPFC（たんぱく質・脂質・炭水化物）を取得し、バランスをスコア化します。
+
+| 栄養素 | 目標比率 | HealthKit識別子 |
+|--------|---------|----------------|
+| たんぱく質 | 15% | `.dietaryProtein` |
+| 脂質 | 25% | `.dietaryFatTotal` |
+| 炭水化物 | 60% | `.dietaryCarbohydrates` |
+
+- **スコア範囲**: 0〜100点
+- **評価**: 理想的 / 良好 / まずまず / 要改善 / バランス悪い
+- **可視化**: ダッシュボードにドーナツ型PFC円グラフを表示
+- **目標設定**: 「食事の計測」をONにすると目標スコア（50〜100点）を設定可能
+- **IntakeSettings**でターゲット比率をカスタマイズ可能（`targetProteinPercent` / `targetFatPercent` / `targetCarbsPercent`）
+
+---
+
+## 😴 睡眠スコア分析（iOS）
+
+HealthKitの睡眠データを分析し、睡眠品質を0〜100点でスコア化します。
+
+| 評価項目 | 配点 | 説明 |
+|---------|------|------|
+| 睡眠時間 | 40点 | 目標7時間±30分以内で満点 |
+| 深い睡眠 | 30点 | 総睡眠の15〜20%が理想 |
+| REM睡眠 | 20点 | 総睡眠の20〜25%が理想 |
+| 連続性 | 10点 | 睡眠セグメント数が少ないほど高得点 |
+
+- **評価**: 最高 / 良好 / 普通 / 要改善 / 不十分
+- **目標設定**: 「睡眠の計測」をONにすると目標スコア（50〜100点）を設定可能
+- **Firestoreに保存**: `globalProgress.sleepScore` として日々記録
 
 ---
 
 ## 🚀 クイックスタート
 
-### Web アプリをローカルで起動
-
+### Web
 ```bash
 cd web
-cp .env.example .env   # Firebase 設定を記入
 npm install
-npm run dev
-# → http://localhost:5173/
+npm run dev  # http://localhost:5173
 ```
 
-### iOS / Apple Watch アプリを Xcode で起動
-
+### iOS/Watch
 ```bash
 cd ios
 pod install
 open kfit.xcworkspace
-# Xcode でデバイスを選択 → Cmd+R
+# Cmd+R
 ```
+
+**重要**: `WatchHealthKitManager.swift`をXcodeで手動追加
+```bash
+./ADD_WATCH_HEALTHKIT.sh  # ヘルパースクリプト
+```
+
+詳細: [XCODE_SETUP.md](XCODE_SETUP.md)
 
 ---
 
 ## 📋 技術スタック
 
 ### Web
-- **React 18** + TypeScript + Vite
-- **Tailwind CSS**（DuoFit カスタムデザインシステム）
-- **Zustand**（状態管理）
-- **Firebase** Auth + Firestore
+- React 18 + TypeScript + Vite
+- Tailwind CSS + DuoFit Design System
+- Zustand (状態管理)
+- Firebase Auth + Firestore
 
-### iOS / Apple Watch
-- **SwiftUI** + Combine
-- **CoreMotion**（加速度計 + ジャイロスコープ）
-- **WatchConnectivity**（Watch ↔ iPhone 双方向同期）
-- **HealthKit**（心拍数・アクティビティデータ連携）
-- **Firebase** Auth + Firestore
+### iOS/Watch
+- SwiftUI + Combine
+- CoreMotion (50Hz加速度計)
+- WatchConnectivity (デバウンス付き)
+- HealthKit (歩数・心拍数・睡眠・PFC栄養素)
+- Firebase Auth + Firestore
+- LLM統合: OpenAI / Anthropic / Google Gemini 4 Flash（フォトログAI分析）
 
 ### バックエンド
-- **Firebase Authentication**（Google サインイン）
-- **Firestore**（リアルタイムデータベース）
-- **Firebase Hosting**（Web デプロイ先）
-- **Cloud Functions**（ポイント集計・ストリーク管理）
-
-### CI/CD
-- **GitHub Actions** — lint・型チェック・ビルド（PR 時）
-- **GitHub Actions** → **Firebase Hosting** 自動デプロイ（main push 時）
+- Firebase Authentication
+- Firestore (Persistent Cache有効)
+- Firebase Hosting
+- Cloud Functions
 
 ---
 
@@ -95,156 +147,179 @@ open kfit.xcworkspace
 
 ```
 kfit/
-├── web/                        # React Web アプリ
-│   ├── src/
-│   │   ├── components/         # UI コンポーネント
-│   │   │   ├── LoginView.tsx
-│   │   │   ├── DashboardView.tsx
-│   │   │   ├── ExerciseTrackerView.tsx
-│   │   │   ├── WeeklyGoalView.tsx
-│   │   │   ├── HistoryView.tsx
-│   │   │   └── HelpView.tsx
-│   │   ├── services/firebase.ts  # Firestore SDK ラッパー
-│   │   ├── store/appStore.ts     # Zustand ストア
-│   │   └── App.tsx
-│   ├── public/mascot.png         # DuoFit マスコット画像
-│   ├── .env.example
-│   └── package.json
+├── web/src/
+│   ├── components/
+│   │   ├── DashboardView.tsx          # メインダッシュボード
+│   │   ├── ExerciseTrackerView.tsx    # 手動入力
+│   │   ├── AchievementsView.tsx       # 11種類のバッジ
+│   │   ├── LeaderboardView.tsx        # 週間ランキング
+│   │   └── WeeklyGoalView.tsx         # 週間目標設定
+│   └── services/firebase.ts           # 30秒キャッシュ付き
 │
-├── ios/
-│   ├── kfit/                   # iPhone アプリ
-│   │   ├── Views/
-│   │   │   ├── LoginView.swift        # DuoFit ブランド・マスコット
-│   │   │   ├── DashboardView.swift    # XP・90日チャレンジ
-│   │   │   └── ExerciseTrackerView.swift  # モーション検知・XP祝福画面
-│   │   └── Managers/
-│   │       ├── AuthenticationManager.swift
-│   │       └── MotionDetectionManager.swift
-│   │
-│   └── kfitWatch/              # Apple Watch アプリ
-│       ├── Views/
-│       │   ├── WatchDashboardView.swift    # リアルデータ表示
-│       │   └── WatchQuickWorkoutView.swift # XP祝福・触覚フィードバック
-│       └── Managers/
-│           ├── WatchMotionDetectionManager.swift
-│           └── WatchConnectivityManager.swift  # 双方向同期
+├── ios/kfit/
+│   ├── Views/DashboardView.swift      # カロリー目標編集
+│   ├── Managers/
+│   │   ├── AuthenticationManager.swift   # キャッシュ戦略
+│   │   ├── HealthKitManager.swift        # カロリー計算
+│   │   └── iOSWatchBridge.swift          # デバウンス付き同期
+│   └── kfit.entitlements
 │
-├── firebase/
-│   ├── firestore.rules
-│   ├── firestore.indexes.json
-│   └── functions/index.js
+├── ios/kfitWatch/
+│   ├── Views/WatchDashboardView.swift    # 健康データ表示
+│   ├── Managers/
+│   │   ├── WatchHealthKitManager.swift   # HealthKit統合
+│   │   └── WatchConnectivityManager.swift
+│   └── kfitWatch.entitlements
 │
-├── .github/workflows/
-│   ├── ci.yml       # lint・型チェック・ビルド（PR/push）
-│   └── deploy.yml   # Firebase Hosting 自動デプロイ（main push）
-│
-├── .firebaserc      # Firebase プロジェクト: kfitapp
-├── firebase.json
-└── README.md
+├── SHARED_CONSTANTS.md            # プラットフォーム間共通定数
+├── PERFORMANCE_OPTIMIZATIONS.md   # 最適化詳細
+├── IMPLEMENTATION_SUMMARY.md      # 実装完了機能一覧
+└── XCODE_SETUP.md                # Xcode設定手順
 ```
 
 ---
 
-## 🗄️ Firestore データモデル
+## 🗄️ Firestore構造
 
 ```
 users/{userId}/
-├── profile              # username, totalPoints, streak, lastActiveDate
-├── completed-exercises/ # exerciseId, reps, points, timestamp, formScore
-├── daily-goals/         # date, exerciseId, targetReps, completedReps
-├── achievements/        # achievementId, earnedDate
-└── statistics/          # 集計データ
+├── profile                  # totalPoints, streak
+├── completed-exercises/     # 個別種目
+├── completed-sets/          # セット単位（推奨）
+├── weekly-goals/{weekId}    # 週間目標
+├── settings/
+│   ├── calorie-goal        # カスタム目標
+│   ├── weekly-goal         # セット目標
+│   └── today-settings/     # タイムスロット目標
+│       ├── globalGoals     # workoutEnabled, standEnabled,
+│       │                   # sleepEnabled, sleepScoreThreshold,
+│       │                   # pfcEnabled, pfcScoreThreshold
+│       └── globalProgress  # workoutMinutes, standHours,
+│                           # sleepScore, pfcScore
+└── achievements/
 
-exercises/               # 種目定義（全ユーザー共通・認証ユーザーが読み書き可）
-leaderboards/{period}/   # 週次ランキング（entries サブコレクション）
+leaderboards/{weekId}/entries/
 ```
+
+**最適化**: 
+- 複合インデックス: `timestamp + exerciseId`
+- キャッシュ優先: `getDocuments(source: .default)`
+- バッチ更新: セット完了時に全種目まとめて送信
 
 ---
 
-## 🔐 Firestore セキュリティルール
+## 🎮 新機能
 
+### v0.6.0 (2026-05-15)
+- ✅ **PFCバランス分析** (iOS): HealthKitからたんぱく質・脂質・炭水化物を取得しスコア化
+- ✅ **睡眠スコア分析** (iOS): 睡眠品質を0-100点でスコア化、ダッシュボードに表示
+- ✅ **PFC・睡眠目標設定**: 1日全体の目標にPFCスコア・睡眠スコアの目標を追加
+- ✅ **PFC円グラフ** (iOS): ダッシュボードにドーナツ型グラフでPFC比率を可視化
+- ✅ **フォトログ改善**: JSON解析の堅牢化（マークダウン除去）、全LLMのエラーハンドリング強化
+- ✅ **Gemini 4 Flash対応**: Google AIモデルを `gemini-4-flash-202603` に更新
+- ✅ **UIリファイン**: マスコット画像表示、カロリー収支カラー改善（赤字=赤、黒字=黄色）
+- ✅ **フォトログボタン移動**: ダッシュボードのクイックメニューに統合
+- ✅ **マインドフルネス**: Apple Watchのマインドフルネスアプリを直接起動
+
+### v0.5.0 (2026-05-10)
+- ✅ **パフォーマンス最適化**: 読み込み時間87%改善
+- ✅ **アチーブメントシステム** (Web): 11種類のバッジ
+- ✅ **リーダーボード** (Web): 週間ランキング
+- ✅ **カロリー目標カスタマイズ** (iOS/Web)
+- ✅ **Watch HealthKit統合**: 歩数・心拍数・睡眠
+- ✅ **キャッシュ戦略**: 30秒TTL + 永続化
+- ✅ **共通定数統一**: SHARED_CONSTANTS.md
+
+### v0.4.x
+- ✅ Apple Watch完全対応
+- ✅ HealthKit統合 (iOS)
+- ✅ セット単位記録
+- ✅ 週間目標・90日チャレンジ
+- ✅ リアルタイム同期
+
+---
+
+## 🔐 環境変数
+
+### Web (.env)
+```bash
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=kfitapp.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=kfitapp
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
 ```
-exercises        → 認証ユーザーは読み書き可（初回シード用）
-leaderboards     → 認証ユーザーは読み書き可
-users/{userId}   → 本人のみ読み書き可（サブコレクション含む）
-```
+
+### iOS
+`GoogleService-Info.plist` をFirebaseコンソールからダウンロード
 
 ---
 
 ## 🚢 デプロイ
 
 ### Web → Firebase Hosting
-
 ```bash
 cd web && npm run build
-cd ..
-firebase use kfitapp
 firebase deploy --only hosting
 ```
 
-または `main` ブランチへ push すると GitHub Actions が自動デプロイします。
+GitHub Actions自動デプロイ: `main`ブランチpush時
 
-### GitHub Secrets（CI/CD に必要）
-
-| Secret 名 | 内容 |
-|---|---|
-| `VITE_FIREBASE_API_KEY` | Firebase Web API キー |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `kfitapp.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | `kfitapp` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `kfitapp.firebasestorage.app` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | 送信者 ID |
-| `VITE_FIREBASE_APP_ID` | アプリ ID |
-| `FIREBASE_SERVICE_ACCOUNT_KFITAPP` | サービスアカウント JSON |
-
----
-
-## 🧪 開発コマンド
-
+### iOS TestFlight
 ```bash
-# Web
-cd web
-npm run dev          # 開発サーバー起動
-npm run build        # プロダクションビルド
-npm run lint         # ESLint
-npm run type-check   # TypeScript 型チェック
-
-# iOS / Watch（Xcode）
-xcodebuild -scheme kfit build        # iOS ビルド
-xcodebuild -scheme kfitWatch build   # Watch ビルド
+# Xcode: Product → Archive
+# Distribute App → App Store Connect
 ```
 
 ---
 
-## 📱 iPhone へのインストール方法
+## 🧪 開発
 
-1. Xcode で `ios/kfit.xcworkspace` を開く
-2. iPhone を USB 接続
-3. **Signing & Capabilities** → Team に Apple ID を設定
-4. Bundle Identifier を一意な値に変更（例：`com.yourname.duofit`）
-5. `GoogleService-Info.plist` を Firebase コンソールからダウンロードして追加
-6. **Cmd+R** でビルド＆インストール
+```bash
+# Web
+npm run dev          # 開発サーバー
+npm run build        # ビルド
+npm run type-check   # TypeScript
+npm run lint         # ESLint
+
+# iOS
+./ADD_WATCH_HEALTHKIT.sh  # Watch設定
+```
 
 ---
 
-## 🗺️ 今後の予定
+## 📊 パフォーマンス指標
 
-- [ ] App Store 申請
-- [ ] プッシュ通知（毎日のリマインダー）
-- [ ] フレンド機能・ソーシャルチャレンジ
-- [ ] より多くの種目サポート
-- [ ] ML ベースのフォーム分析強化
-- [ ] カスタムドメイン（fit.ktrips.net）
+| 指標 | 最適化前 | 最適化後 | 改善率 |
+|------|---------|---------|-------|
+| iOS初回読み込み | 1.2s | 0.8s | 33% |
+| iOSキャッシュ | 0.8s | 0.15s | 81% |
+| Web初回読み込み | 1.5s | 1.0s | 33% |
+| Webキャッシュ | 1.0s | 0.2s | 80% |
+| Firestoreクエリ | 8回 | 3回 | 63% |
+| Watch通信 | 100% | 30% | 70%削減 |
 
-## 📝 最近の更新 (v0.4.x)
+---
 
-- ✅ Apple Watch アプリ対応（モーション検出・触覚フィードバック）
-- ✅ HealthKit 統合（心拍数・アクティビティデータ）
-- ✅ AI トレーニングプラン生成機能
-- ✅ モーション検出をデフォルトに、手動入力はオプション化
-- ✅ iOS に週間目標・履歴・ヘルプ画面を追加
-- ✅ セット記録精度向上
-- ✅ iOS/Watch データ整合性修正
-- ✅ 全画面対応・UI コントラスト改善
+## 🗺️ ロードマップ
+
+### 短期
+- [ ] Image lazy loading
+- [ ] Service Worker
+- [ ] 履歴ページネーション
+- [ ] PFC目標比率のカスタマイズUI
+
+### 中期
+- [ ] iOS/WatchアチーブメントUI
+- [ ] プッシュ通知
+- [ ] Cloud Functions最適化
+- [ ] 睡眠トレンドグラフ（週次）
+
+### 長期
+- [ ] フレンド機能
+- [ ] カスタムドメイン
+- [ ] App Store申請
 
 ---
 
@@ -259,4 +334,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Last Updated: May 2026 — Version 0.4.13*
+*Version 0.6.0 — Updated: May 15, 2026*

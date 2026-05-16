@@ -7,13 +7,71 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
     @Published var lastWorkout: WorkoutData?
 
-    // Watch側でリアルタイム表示するデータ
+    // Watch側でリアルタイム表示するデータ（統一指標）
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
     @Published var todaySets: Int = 0
     @Published var recentWorkouts: [String] = []
     @Published var todayExercises: [CompletedExerciseWatch] = []
+
+    // 統一指標用（時間帯別の進捗）
+    @Published var totalTraining: Int = 0
+    @Published var totalTrainingGoal: Int = 0
+    @Published var totalMindfulness: Int = 0
+    @Published var totalMindfulnessGoal: Int = 0
+    @Published var totalMealLogged: Int = 0
+    @Published var totalMealGoal: Int = 0
+    @Published var totalDrinkLogged: Int = 0
+    @Published var totalDrinkGoal: Int = 0
+
+    // 後方互換性のため残す
+    @Published var todaySetCount: Int = 0
+    @Published var dailySetGoal: Int = 2
+
+    // モーション感度設定
+    @Published var motionSensitivity: [String: (threshold: Double, minInterval: Double)] = [:]
+
+    // 目標カロリー
+    @Published var calorieTarget: Int = 500
+    @Published var calorieConsumed: Int = 0
+    @Published var caloriePercent: Int = 0
+
+    // 摂取データ
+    @Published var intakeCalories: Int = 0
+    @Published var intakeCaloriesGoal: Int = 1800
+    @Published var intakeWater: Int = 0
+    @Published var intakeWaterGoal: Int = 1000
+    @Published var intakeCaffeine: Int = 0
+    @Published var intakeCaffeineLimit: Int = 400
+    @Published var intakeAlcohol: Double = 0.0
+    @Published var intakeAlcoholLimit: Double = 20.0
+
+    // 摂取記録のデフォルト設定
+    @Published var breakfastCalories: Int = 400
+    @Published var lunchCalories: Int = 600
+    @Published var dinnerCalories: Int = 800
+    @Published var waterPerCup: Int = 200
+    @Published var coffeePerCup: Int = 150
+    @Published var caffeinePerCup: Int = 90
+    @Published var beerAlcoholG: Double = 14.0
+    @Published var wineAlcoholG: Double = 11.5
+    @Published var chuhaiAlcoholG: Double = 19.6
+
+    // ログ入力状態
+    @Published var todayMealLogged: Bool = false
+
+    // HealthKitデータ
+    @Published var todaySteps: Int = 0
+    @Published var todayActiveCalories: Int = 0
+    @Published var todayRestingCalories: Int = 0
+    @Published var todayTotalCalories: Int = 0
+    @Published var latestHeartRate: Int = 0
+    @Published var lastNightTotalHours: Double = 0.0
+    @Published var latestBodyMass: Double = 0.0
+    @Published var latestBodyFatPercentage: Double = 0.0
+    @Published var todayMindfulnessSessions: Int = 0
+    @Published var todayMindfulnessMinutes: Double = 0.0
 
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
@@ -66,6 +124,22 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
         } else {
             try? session?.updateApplicationContext(["pendingCompletedSet": data])
+        }
+    }
+
+    // MARK: - Watch → iOS: 摂取記録
+    func sendIntakeRecord(type: String, subtype: String? = nil) {
+        guard let session = session else { return }
+        var message: [String: Any] = ["action": "record_intake", "type": type]
+        if let subtype = subtype {
+            message["subtype"] = subtype
+        }
+        if session.isReachable {
+            session.sendMessage(message, replyHandler: nil) { error in
+                print("WatchConnectivity sendIntakeRecord error: \(error)")
+            }
+        } else {
+            try? session.updateApplicationContext(message)
         }
     }
 
@@ -122,6 +196,41 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }
         if let sets  = message["todaySets"] as? Int { self.todaySets = sets }
 
+        // 統一指標用データ受信（時間帯別の進捗）
+        if let val = message["totalTraining"] as? Int { self.totalTraining = val }
+        if let val = message["totalTrainingGoal"] as? Int { self.totalTrainingGoal = val }
+        if let val = message["totalMindfulness"] as? Int { self.totalMindfulness = val }
+        if let val = message["totalMindfulnessGoal"] as? Int { self.totalMindfulnessGoal = val }
+        if let val = message["totalMealLogged"] as? Int { self.totalMealLogged = val }
+        if let val = message["totalMealGoal"] as? Int { self.totalMealGoal = val }
+        if let val = message["totalDrinkLogged"] as? Int { self.totalDrinkLogged = val }
+        if let val = message["totalDrinkGoal"] as? Int { self.totalDrinkGoal = val }
+
+        // 後方互換性のため残す
+        if let setCount = message["todaySetCount"] as? Int { self.todaySetCount = setCount }
+        if let setGoal = message["dailySetGoal"] as? Int { self.dailySetGoal = setGoal }
+
+        // モーション感度設定を受信
+        if let sensitivityData = message["motionSensitivity"] as? Data {
+            if let sensitivityArray = try? JSONSerialization.jsonObject(with: sensitivityData) as? [[String: Any]] {
+                var newSensitivity: [String: (threshold: Double, minInterval: Double)] = [:]
+                for item in sensitivityArray {
+                    if let exerciseId = item["exerciseId"] as? String,
+                       let threshold = item["threshold"] as? Double,
+                       let minInterval = item["minInterval"] as? Double {
+                        newSensitivity[exerciseId] = (threshold, minInterval)
+                    }
+                }
+                self.motionSensitivity = newSensitivity
+                print("🔵 WatchConnectivity: Received motion sensitivity for \(newSensitivity.keys.joined(separator: ", "))")
+            }
+        }
+
+        // 目標カロリー受信
+        if let target = message["calorieTarget"] as? Int { self.calorieTarget = target }
+        if let consumed = message["calorieConsumed"] as? Int { self.calorieConsumed = consumed }
+        if let percent = message["caloriePercent"] as? Int { self.caloriePercent = percent }
+
         // 今日の運動記録を受信
         if let exercisesData = message["todayExercises"] as? Data {
             do {
@@ -136,6 +245,52 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 print("⚠️ todayExercises decode error: \(error)")
             }
         }
+
+        // 摂取データを受信
+        if let val = message["intakeCalories"] as? Int {
+            self.intakeCalories = val
+            print("📊 Watch: Received intakeCalories = \(val)")
+        }
+        if let val = message["intakeCaloriesGoal"] as? Int { self.intakeCaloriesGoal = val }
+        if let val = message["intakeWater"] as? Int {
+            self.intakeWater = val
+            print("💧 Watch: Received intakeWater = \(val)")
+        }
+        if let val = message["intakeWaterGoal"] as? Int { self.intakeWaterGoal = val }
+        if let val = message["intakeCaffeine"] as? Int {
+            self.intakeCaffeine = val
+            print("☕ Watch: Received intakeCaffeine = \(val)")
+        }
+        if let val = message["intakeCaffeineLimit"] as? Int { self.intakeCaffeineLimit = val }
+        if let val = message["intakeAlcohol"] as? Double {
+            self.intakeAlcohol = val
+            print("🍺 Watch: Received intakeAlcohol = \(val)")
+        }
+        if let val = message["intakeAlcoholLimit"] as? Double { self.intakeAlcoholLimit = val }
+        if let val = message["todayMealLogged"] as? Bool { self.todayMealLogged = val }
+
+        // 摂取記録のデフォルト設定を受信
+        if let val = message["breakfastCalories"] as? Int { self.breakfastCalories = val }
+        if let val = message["lunchCalories"] as? Int { self.lunchCalories = val }
+        if let val = message["dinnerCalories"] as? Int { self.dinnerCalories = val }
+        if let val = message["waterPerCup"] as? Int { self.waterPerCup = val }
+        if let val = message["coffeePerCup"] as? Int { self.coffeePerCup = val }
+        if let val = message["caffeinePerCup"] as? Int { self.caffeinePerCup = val }
+        if let val = message["beerAlcoholG"] as? Double { self.beerAlcoholG = val }
+        if let val = message["wineAlcoholG"] as? Double { self.wineAlcoholG = val }
+        if let val = message["chuhaiAlcoholG"] as? Double { self.chuhaiAlcoholG = val }
+
+        // HealthKitデータを受信
+        if let val = message["todaySteps"] as? Int { self.todaySteps = val }
+        if let val = message["todayActiveCalories"] as? Int { self.todayActiveCalories = val }
+        if let val = message["todayRestingCalories"] as? Int { self.todayRestingCalories = val }
+        if let val = message["todayTotalCalories"] as? Int { self.todayTotalCalories = val }
+        if let val = message["latestHeartRate"] as? Int { self.latestHeartRate = val }
+        if let val = message["lastNightTotalHours"] as? Double { self.lastNightTotalHours = val }
+        if let val = message["latestBodyMass"] as? Double { self.latestBodyMass = val }
+        if let val = message["latestBodyFatPercentage"] as? Double { self.latestBodyFatPercentage = val }
+        if let val = message["todayMindfulnessSessions"] as? Int { self.todayMindfulnessSessions = val }
+        if let val = message["todayMindfulnessMinutes"] as? Double { self.todayMindfulnessMinutes = val }
 
         // データ受信完了
         isLoading = false
@@ -213,6 +368,24 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
             if applicationContext["streak"] != nil {
                 self.handleProfileUpdate(applicationContext)
+            }
+
+            // プロフィール更新（通常のstatsデータ）
+            if applicationContext["intakeCalories"] != nil {
+                print("📥 Watch: Received application context with intake data")
+                self.handleProfileUpdate(applicationContext)
+            }
+        }
+    }
+
+    // Watch起動時に最新のApplicationContextを確認
+    func checkLatestApplicationContext() {
+        guard let session = session else { return }
+        let context = session.receivedApplicationContext
+        if !context.isEmpty {
+            print("📥 Watch: Loading latest application context")
+            Task { @MainActor in
+                self.handleProfileUpdate(context)
             }
         }
     }

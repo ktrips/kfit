@@ -28,9 +28,9 @@ private let flowSteps: [(emoji: String, name: String, target: Int, id: String, x
 ]
 
 struct ExerciseTrackerView: View {
+    @Binding var isPresented: Bool
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var motionManager = MotionDetectionManager()
-    @Environment(\.dismiss) var dismiss
 
     // フロー管理
     @State private var stepIdx = 0
@@ -47,7 +47,7 @@ struct ExerciseTrackerView: View {
     @State private var pulseAnimation = false
 
     /// セット内の記録済み種目
-    @State private var completedExercises: [(name: String, emoji: String, reps: Int, points: Int)] = []
+    @State private var completedExercises: [(id: String, name: String, emoji: String, reps: Int, points: Int)] = []
 
     private var current: (emoji: String, name: String, target: Int, id: String, xp: Int) {
         flowSteps[stepIdx]
@@ -175,7 +175,11 @@ struct ExerciseTrackerView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button { dismiss() } label: {
+                Button {
+                    motionManager.stopDetection()
+                    plankTimer?.invalidate()
+                    isPresented = false
+                } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(Color.duoSubtitle)
@@ -379,7 +383,11 @@ struct ExerciseTrackerView: View {
                     Text(item.emoji).font(.callout)
                     Text(item.name).font(.caption).fontWeight(.medium)
                     Spacer()
-                    Text("\(item.reps)").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    if item.name.lowercased().contains("プランク") {
+                        Text("\(item.reps)秒").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    } else {
+                        Text("\(item.reps)回").font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
                     Text("+\(item.points)").font(.caption2).fontWeight(.bold).foregroundColor(Color.duoGold)
                 }
                 .padding(.vertical, 6)
@@ -400,9 +408,15 @@ struct ExerciseTrackerView: View {
                 Text("Good job!")
                     .font(.system(size: 38, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoGreen)
-                Text("目標 \(current.target) 回 達成！")
-                    .font(.headline).fontWeight(.bold)
-                    .foregroundColor(.white)
+                if isPlankSelected {
+                    Text("目標 \(current.target) 秒 達成！")
+                        .font(.headline).fontWeight(.bold)
+                        .foregroundColor(.white)
+                } else {
+                    Text("目標 \(current.target) 回 達成！")
+                        .font(.headline).fontWeight(.bold)
+                        .foregroundColor(.white)
+                }
                 Text("続けても記録できます 💪")
                     .font(.subheadline).foregroundColor(.white.opacity(0.75))
             }
@@ -454,7 +468,9 @@ struct ExerciseTrackerView: View {
 
                 Spacer()
 
-                Button { dismiss() } label: {
+                Button {
+                    isPresented = false
+                } label: {
                     Text("ダッシュボードへ戻る")
                         .font(.headline).fontWeight(.black)
                         .foregroundColor(.white)
@@ -518,11 +534,11 @@ struct ExerciseTrackerView: View {
 
         let xp = currentReps * current.xp
         earnedXP += xp
-        completedExercises.append((current.name, current.emoji, currentReps, xp))
+        completedExercises.append((current.id, current.name, current.emoji, currentReps, xp))
 
-        // 記録を保存
+        // 個別の種目をcompleted-exercisesに記録（種目ごと）
         Task {
-            await authManager.recordExerciseDirect(
+            await authManager.recordExerciseOnly(
                 exerciseId: current.id,
                 exerciseName: current.name,
                 reps: currentReps,
@@ -531,9 +547,15 @@ struct ExerciseTrackerView: View {
         }
 
         if isLast {
-            // 全種目完了
+            // 全種目完了 → 1セットとして記録
             isSubmitting = true
             Task {
+                // 全種目のデータを1セットとして記録
+                let setExercises = completedExercises.map { ex in
+                    (exerciseId: ex.id, exerciseName: ex.name, reps: ex.reps, points: ex.points)
+                }
+                await authManager.recordCompletedSet(exercises: setExercises)
+
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 await MainActor.run {
                     isSubmitting = false
@@ -569,6 +591,7 @@ private struct CountButton: View {
 }
 
 #Preview {
-    ExerciseTrackerView()
+    @Previewable @State var isPresented = true
+    ExerciseTrackerView(isPresented: $isPresented)
         .environmentObject(AuthenticationManager.shared)
 }

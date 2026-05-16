@@ -34,6 +34,11 @@ struct kfitApp: App {
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
+                // Watchに最新データを送信
+                iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+            } else if newPhase == .background {
+                // バックグラウンド移行時もWatchに最新データを送信（ApplicationContext経由）
+                iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
             }
         }
     }
@@ -42,51 +47,46 @@ struct kfitApp: App {
 struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var selectedTab = 0
-    @State private var showTracker = false
+    @State private var showRecordMenu = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            // ホーム
             NavigationView { DashboardView() }
                 .tabItem { Label("ホーム", systemImage: "house.fill") }
                 .tag(0)
+                .ignoresSafeArea(.keyboard)
 
-            NavigationView { WorkoutPlanView() }
-                .tabItem { Label("プラン", systemImage: "list.bullet") }
-                .tag(1)
-
+            // 記録（中央ボタン）
             Color.clear
                 .tabItem { Label("記録", systemImage: "plus.circle.fill") }
-                .tag(2)
+                .tag(1)
 
-            NavigationView { WeeklyGoalView() }
-                .tabItem { Label("週間", systemImage: "flag.fill") }
-                .tag(3)
-
-            NavigationView { HistoryView() }
-                .tabItem { Label("履歴", systemImage: "calendar") }
-                .tag(4)
-
-            NavigationView { HelpView() }
-                .tabItem { Label("ヘルプ", systemImage: "questionmark.circle.fill") }
-                .tag(5)
-
-            NavigationView { HealthView() }
-                .tabItem { Label("健康", systemImage: "heart.fill") }
-                .tag(6)
-
+            // 設定（時間帯別目標を含む）
             NavigationView { SettingsView() }
                 .tabItem { Label("設定", systemImage: "gearshape.fill") }
-                .tag(7)
+                .tag(2)
+
+            // プラン
+            NavigationView { WorkoutPlanView() }
+                .tabItem { Label("プラン", systemImage: "list.bullet") }
+                .tag(3)
+
+            // その他（More）
+            MoreView()
+                .tabItem { Label("その他", systemImage: "ellipsis.circle.fill") }
+                .tag(4)
         }
         .accentColor(Color.duoGreen)
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: selectedTab) { oldTab, newTab in
-            if newTab == 2 {
-                showTracker = true
+            if newTab == 1 {
+                showRecordMenu = true
                 selectedTab = 0
             }
         }
-        .fullScreenCover(isPresented: $showTracker) {
-            ExerciseTrackerView()
+        .fullScreenCover(isPresented: $showRecordMenu) {
+            RecordMenuView(isPresented: $showRecordMenu)
                 .environmentObject(authManager)
         }
     }
@@ -130,12 +130,34 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler([.banner, .sound, .badge])
     }
 
-    // 通知タップ時のハンドリング（将来的に特定画面へ遷移可能）
+    // 通知タップ時のハンドリング
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let userInfo = response.notification.request.content.userInfo
+
+        // アクションボタンがタップされた場合
+        if response.actionIdentifier == NotificationManager.Action.startWorkout {
+            print("[AppDelegate] 🏋️ Start Workout action tapped - sending signal to Watch")
+            // Watchアプリを自動起動
+            iOSWatchBridge.shared.sendStartWorkoutSignal()
+        } else if response.actionIdentifier == NotificationManager.Action.recordWeight {
+            print("[AppDelegate] ⚖️ Record Weight action tapped")
+            // 体重記録画面への遷移（将来実装）
+        }
+        // 通知本体がタップされた場合（デフォルトアクション）
+        else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            if let action = userInfo["action"] as? String {
+                if action == "startWorkout" {
+                    print("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
+                    // Watchアプリを自動起動
+                    iOSWatchBridge.shared.sendStartWorkoutSignal()
+                }
+            }
+        }
+
         completionHandler()
     }
 }

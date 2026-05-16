@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "idiom" : "universal", "scale" : "1x", "filename" : "edulingo.png" },
+    { "idiom" : "universal", "scale" : "2x", "filename" : "edulingo@2x.png" },
+    { "idiom" : "universal", "scale" : "3x", "filename" : "edulingo@3x.png" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

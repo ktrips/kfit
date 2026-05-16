@@ -10,9 +10,11 @@ import { HelpView } from './components/HelpView';
 import { WorkoutPlanView } from './components/WorkoutPlanView';
 import { DailyWorkoutFlow } from './components/DailyWorkoutFlow';
 import { SettingsView } from './components/SettingsView';
+import { AchievementsView } from './components/AchievementsView';
+import { LeaderboardView } from './components/LeaderboardView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -137,6 +139,8 @@ function App() {
                         { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
                         { view: 'tracker' as View, icon: '💪', label: 'トレーニング' },
                         { view: 'weekly' as View, icon: '🎯', label: '週間目標' },
+                        { view: 'achievements' as View, icon: '🏆', label: 'アチーブメント' },
+                        { view: 'leaderboard' as View, icon: '📊', label: 'ランキング' },
                         { view: 'history' as View, icon: '📅', label: '履歴' },
                         { view: 'help' as View, icon: '❓', label: 'ヘルプ' },
                       ].map(({ view, icon, label }) => (
@@ -197,7 +201,10 @@ function App() {
           <DailyWorkoutFlow onFinish={() => navigate('dashboard')} />
         )}
         {currentView === 'tracker' && user && (
-          <ExerciseTrackerView onSuccess={() => navigate('dashboard')} />
+          <ExerciseTrackerView
+            onSuccess={() => navigate('dashboard')}
+            onBack={() => navigate('dashboard')}
+          />
         )}
         {currentView === 'weekly' && user && (
           <WeeklyGoalView />
@@ -213,6 +220,12 @@ function App() {
         )}
         {currentView === 'settings' && user && (
           <SettingsView />
+        )}
+        {currentView === 'achievements' && user && (
+          <AchievementsView />
+        )}
+        {currentView === 'leaderboard' && user && (
+          <LeaderboardView />
         )}
       </main>
     </div>

@@ -817,6 +817,13 @@ struct DashboardView: View {
                                 (totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal) &&
                                 (totalMealGoal > 0 && totalMealLogged >= totalMealGoal) &&
                                 (totalDrinkGoal > 0 && totalDrinkLogged >= totalDrinkGoal)
+        // @ViewBuilder内に書くとスタックオーバーフローの原因になるため事前計算
+        let gp = timeSlotManager.progress.globalProgress
+        let gg = timeSlotManager.settings.globalGoals
+        let hasGlobalRow = totalMealGoal > 0 || totalDrinkGoal > 0
+            || gp.sleepScore > 0 || gp.pfcScore > 0 || gp.weightMeasured
+        let sleepAchieved = gp.sleepScore >= gg.sleepScoreThreshold
+        let pfcAchieved = gp.pfcScore >= gg.pfcScoreThreshold
 
         return VStack(alignment: .leading, spacing: 0) {
             // ヘッダー（タップで展開）
@@ -859,8 +866,6 @@ struct DashboardView: View {
                     }
 
                     // トレーニング・マインドフルネス・ワークアウト・スタンド表示行
-                    let gp   = timeSlotManager.progress.globalProgress
-                    let gg   = timeSlotManager.settings.globalGoals
                     HStack(spacing: 12) {
                         // トレーニング（セット数）
                         HStack(spacing: 4) {
@@ -902,14 +907,10 @@ struct DashboardView: View {
                     }
 
                     // 食事・水分 + 睡眠・PFC・体重計測
-                    let hasGlobalRow = totalMealGoal > 0 || totalDrinkGoal > 0
-                        || gp.sleepScore > 0 || gp.pfcScore > 0 || gp.weightMeasured
-
                     if hasGlobalRow {
                         HStack(spacing: 8) {
                             // 睡眠スコア
                             if gp.sleepScore > 0 {
-                                let sleepAchieved = gp.sleepScore >= gg.sleepScoreThreshold
                                 HStack(spacing: 3) {
                                     Text("😴").font(.caption)
                                     Text("\(gp.sleepScore)")
@@ -919,7 +920,6 @@ struct DashboardView: View {
                             }
                             // PFCバランス
                             if gp.pfcScore > 0 {
-                                let pfcAchieved = gp.pfcScore >= gg.pfcScoreThreshold
                                 HStack(spacing: 3) {
                                     Text("🥗").font(.caption)
                                     Text("\(gp.pfcScore)")
@@ -998,150 +998,7 @@ struct DashboardView: View {
                 }
             }
 
-            // トレーニング開始ボタン
-            VStack(spacing: 0) {
-                Divider()
-                    .padding(.horizontal, 16)
-
-                Button { showTracker = true } label: {
-                    HStack(spacing: 10) {
-                        // マスコットアイコン
-                        Image("mascot")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 32, height: 32)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
-                            .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.1 : 1.0)
-                            .animation(
-                                todayExercises.isEmpty
-                                    ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                    : .default,
-                                value: mascotBounce
-                            )
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(todayExercises.isEmpty
-                                 ? "今日のDuoFit!"
-                                 : "\(todaySetCount + 1)回目のDuoFit!")
-                                .font(.system(size: 15, weight: .black))
-                                .foregroundColor(.white)
-                            Text(todayExercises.isEmpty
-                                 ? "タップして開始"
-                                 : "\(todayExercises.count) 種目 · \(totalXP) XP")
-                                .font(.caption)
-                                .foregroundColor(Color.white.opacity(0.85))
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.white.opacity(0.8))
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(color: Color.duoGreen.opacity(0.3), radius: 6, y: 2)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
-                // マインドフルネスボタン
-                Button {
-                    openWatchMindfulness()
-                } label: {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.duoPurple.opacity(0.2))
-                                .frame(width: 30, height: 30)
-                            Text("🧘")
-                                .font(.callout)
-                        }
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("マインドフルネス")
-                                .font(.subheadline).fontWeight(.black)
-                                .foregroundColor(Color.duoPurple)
-                            Text("Watchアプリを起動")
-                                .font(.caption)
-                                .foregroundColor(Color.duoPurple.opacity(0.7))
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.callout)
-                            .foregroundColor(Color.duoPurple.opacity(0.6))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.duoPurple.opacity(0.15), Color.duoPurple.opacity(0.08)],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-
-                // フォトログボタン
-                Button {
-                    showPhotoLog = true
-                } label: {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(
-                                    colors: [Color.blue, Color.purple],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                ))
-                                .frame(width: 30, height: 30)
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 14))
-                                .foregroundColor(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("フォトログ")
-                                .font(.subheadline).fontWeight(.black)
-                                .foregroundColor(Color.duoDark)
-                            Text("AI食事分析")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.callout)
-                            .foregroundColor(Color.duoSubtitle.opacity(0.6))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.08), Color.purple.opacity(0.08)],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-            }
+            dailySetsCardButtons
 
             // 今日の記録（展開時のみ表示）- 緑ボタンの下
             if showTodayRecords && !todayExercises.isEmpty {
@@ -1156,6 +1013,144 @@ struct DashboardView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    private var dailySetsCardButtons: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.horizontal, 16)
+
+            Button { showTracker = true } label: {
+                HStack(spacing: 10) {
+                    Image("mascot")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
+                        .scaleEffect(mascotBounce && todayExercises.isEmpty ? 1.1 : 1.0)
+                        .animation(
+                            todayExercises.isEmpty
+                                ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                : .default,
+                            value: mascotBounce
+                        )
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(todayExercises.isEmpty
+                             ? "今日のDuoFit!"
+                             : "\(todaySetCount + 1)回目のDuoFit!")
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundColor(.white)
+                        Text(todayExercises.isEmpty
+                             ? "タップして開始"
+                             : "\(todayExercises.count) 種目 · \(totalXP) XP")
+                            .font(.caption)
+                            .foregroundColor(Color.white.opacity(0.85))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.white.opacity(0.8))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: [Color.duoGreen, Color(red: 0.18, green: 0.62, blue: 0.0)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .shadow(color: Color.duoGreen.opacity(0.3), radius: 6, y: 2)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Button { openWatchMindfulness() } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.duoPurple.opacity(0.2))
+                            .frame(width: 30, height: 30)
+                        Text("🧘").font(.callout)
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("マインドフルネス")
+                            .font(.subheadline).fontWeight(.black)
+                            .foregroundColor(Color.duoPurple)
+                        Text("Watchアプリを起動")
+                            .font(.caption)
+                            .foregroundColor(Color.duoPurple.opacity(0.7))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.callout)
+                        .foregroundColor(Color.duoPurple.opacity(0.6))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    LinearGradient(
+                        colors: [Color.duoPurple.opacity(0.15), Color.duoPurple.opacity(0.08)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+
+            Button { showPhotoLog = true } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(
+                                colors: [Color.blue, Color.purple],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 30, height: 30)
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("フォトログ")
+                            .font(.subheadline).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("AI食事分析")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.callout)
+                        .foregroundColor(Color.duoSubtitle.opacity(0.6))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.08), Color.purple.opacity(0.08)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+        }
     }
 
     // MARK: - 週間目標カード（独立）
@@ -1614,118 +1609,117 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                // 2列グリッド表示
-                VStack(spacing: 8) {
-                    // 行1: 統合睡眠カード（フル幅）
-                    integratedSleepCard
-
-                    // 行1b: 体重・体脂肪 | アクティブ運動時間
-                    HStack(spacing: 8) {
-                        bodyWeightFatCard
-                        activeExerciseCard
-                    }
-
-                    // 行2: 歩数 | 活動カロリー
-                    HStack(spacing: 8) {
-                        compactHealthItem(
-                            icon: "figure.walk",
-                            iconColor: Color.duoGreen,
-                            label: "歩数",
-                            value: Double(healthKit.todaySteps),
-                            goal: 10000.0,
-                            unit: "歩",
-                            formatValue: { "\(Int($0))" }
-                        )
-                        compactHealthItem(
-                            icon: "flame.fill",
-                            iconColor: Color.duoOrange,
-                            label: "活動Cal",
-                            value: healthKit.todayActiveCalories,
-                            goal: Double(calorieGoal.targetCalories),
-                            unit: "kcal",
-                            formatValue: { "\(Int($0))" }
-                        )
-                    }
-
-                    // カロリー収支バー
-                    calorieBalanceBarCard
-
-                    // 行3: 心拍数 + 心拍変動 | マインドフルネス
-                    HStack(spacing: 8) {
-                        heartRateWithHRVItem
-                        compactHealthItem(
-                            icon: "brain.head.profile",
-                            iconColor: Color.duoPurple,
-                            label: "マインドフル",
-                            value: healthKit.todayMindfulnessMinutes,
-                            goal: nil,
-                            unit: "分",
-                            formatValue: { String(format: "%.0f", $0) + " (\(healthKit.todayMindfulnessSessions)回)" },
-                            healthKitURL: "x-apple-health://mindfulness"
-                        )
-                    }
-
-                    // 行4: 日光下時間（半幅）
-                    HStack(spacing: 8) {
-                        compactHealthItem(
-                            icon: "sun.max.fill",
-                            iconColor: Color.duoYellow,
-                            label: "日光下時間",
-                            value: healthKit.todayDaylightMinutes,
-                            goal: 30.0,
-                            unit: "分",
-                            formatValue: { "\(Int($0))" }
-                        )
-                        Color.clear.frame(maxWidth: .infinity)
-                    }
-
-                    // 行6: 水分 | カフェイン | アルコール
-                    HStack(spacing: 8) {
-                        compactHealthItemThird(
-                            icon: "drop.fill",
-                            iconColor: Color.duoBlue,
-                            label: "水分",
-                            value: Double(todayIntake.totalWaterMl),
-                            goal: Double(intakeGoals.dailyWaterGoal),
-                            unit: "ml",
-                            formatValue: { "\(Int($0))" },
-                            healthKitURL: "x-apple-health://dietarywater"
-                        )
-                        compactHealthItemThird(
-                            icon: "cup.and.saucer.fill",
-                            iconColor: Color.duoBrown,
-                            label: "カフェイン",
-                            value: Double(todayIntake.totalCaffeineMg),
-                            goal: Double(intakeGoals.dailyCaffeineLimit),
-                            unit: "mg",
-                            formatValue: { "\(Int($0))" },
-                            isReverse: true,
-                            healthKitURL: "x-apple-health://dietarycaffeine"
-                        )
-                        compactHealthItemThird(
-                            icon: "wineglass.fill",
-                            iconColor: Color.duoPurple,
-                            label: "アルコール",
-                            value: todayIntake.totalAlcoholG,
-                            goal: intakeGoals.dailyAlcoholLimit,
-                            unit: "g",
-                            formatValue: { String(format: "%.1f", $0) },
-                            isReverse: true,
-                            healthKitURL: "x-apple-health://nutrition"
-                        )
-                    }
-
-                    // PFCバランス円グラフ
-                    if let analysis = pfcAnalysis, analysis.score > 0 {
-                        pfcBalanceChart(analysis)
-                    }
-                }
+                healthMetricsGrid
             }
         }
         .padding(12)
         .background(Color.white)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+    }
+
+    // MARK: - ヘルスメトリクスグリッド（型境界を分離してスタックオーバーフロー防止）
+    private var healthMetricsGrid: some View {
+        VStack(spacing: 8) {
+            integratedSleepCard
+            HStack(spacing: 8) {
+                bodyWeightFatCard
+                activeExerciseCard
+            }
+            healthMetricsGridTop
+            calorieBalanceBarCard
+            healthMetricsGridBottom
+        }
+    }
+
+    @ViewBuilder
+    private var healthMetricsGridTop: some View {
+        HStack(spacing: 8) {
+            compactHealthItem(
+                icon: "figure.walk",
+                iconColor: Color.duoGreen,
+                label: "歩数",
+                value: Double(healthKit.todaySteps),
+                goal: 10000.0,
+                unit: "歩",
+                formatValue: { "\(Int($0))" }
+            )
+            compactHealthItem(
+                icon: "flame.fill",
+                iconColor: Color.duoOrange,
+                label: "活動Cal",
+                value: healthKit.todayActiveCalories,
+                goal: Double(calorieGoal.targetCalories),
+                unit: "kcal",
+                formatValue: { "\(Int($0))" }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var healthMetricsGridBottom: some View {
+        HStack(spacing: 8) {
+            heartRateWithHRVItem
+            compactHealthItem(
+                icon: "brain.head.profile",
+                iconColor: Color.duoPurple,
+                label: "マインドフル",
+                value: healthKit.todayMindfulnessMinutes,
+                goal: nil,
+                unit: "分",
+                formatValue: { String(format: "%.0f", $0) + " (\(healthKit.todayMindfulnessSessions)回)" },
+                healthKitURL: "x-apple-health://mindfulness"
+            )
+        }
+        HStack(spacing: 8) {
+            compactHealthItem(
+                icon: "sun.max.fill",
+                iconColor: Color.duoYellow,
+                label: "日光下時間",
+                value: healthKit.todayDaylightMinutes,
+                goal: 30.0,
+                unit: "分",
+                formatValue: { "\(Int($0))" }
+            )
+            Color.clear.frame(maxWidth: .infinity)
+        }
+        HStack(spacing: 8) {
+            compactHealthItemThird(
+                icon: "drop.fill",
+                iconColor: Color.duoBlue,
+                label: "水分",
+                value: Double(todayIntake.totalWaterMl),
+                goal: Double(intakeGoals.dailyWaterGoal),
+                unit: "ml",
+                formatValue: { "\(Int($0))" },
+                healthKitURL: "x-apple-health://dietarywater"
+            )
+            compactHealthItemThird(
+                icon: "cup.and.saucer.fill",
+                iconColor: Color.duoBrown,
+                label: "カフェイン",
+                value: Double(todayIntake.totalCaffeineMg),
+                goal: Double(intakeGoals.dailyCaffeineLimit),
+                unit: "mg",
+                formatValue: { "\(Int($0))" },
+                isReverse: true,
+                healthKitURL: "x-apple-health://dietarycaffeine"
+            )
+            compactHealthItemThird(
+                icon: "wineglass.fill",
+                iconColor: Color.duoPurple,
+                label: "アルコール",
+                value: todayIntake.totalAlcoholG,
+                goal: intakeGoals.dailyAlcoholLimit,
+                unit: "g",
+                formatValue: { String(format: "%.1f", $0) },
+                isReverse: true,
+                healthKitURL: "x-apple-health://nutrition"
+            )
+        }
+        if let analysis = pfcAnalysis, analysis.score > 0 {
+            pfcBalanceChart(analysis)
+        }
     }
 
     // MARK: - ポイントカード
@@ -2093,7 +2087,8 @@ struct DashboardView: View {
 
     // MARK: - アクティブ運動時間カード
     private var activeExerciseCard: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let pct = min(100, Int(Double(healthKit.todayWorkoutMinutes) / 30.0 * 100))
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "figure.run")
                     .font(.system(size: 10))
@@ -2111,7 +2106,6 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoSubtitle)
                     .padding(.bottom, 1)
             }
-            let pct = min(100, Int(Double(healthKit.todayWorkoutMinutes) / 30.0 * 100))
             Text("目標 \(pct)%")
                 .font(.system(size: 8))
                 .foregroundColor(pct >= 100 ? Color.duoGreen : Color.duoOrange)
@@ -2142,165 +2136,9 @@ struct DashboardView: View {
 
     // MARK: - カロリー収支バーカード
     private var calorieBalanceBarCard: some View {
-        let totalConsumed = healthKit.todayTotalCalories
-        let intake = Double(todayIntake.totalCalories)
-        let balance = intake - totalConsumed
-        let isPositive = balance > 0
-        let absBalance = abs(balance)
-        let maxValue = max(totalConsumed, intake)
-
-        // 収支の大きさに応じて円のサイズを変更（最小35、最大55）
-        let circleSize: CGFloat = {
-            let baseSize: CGFloat = 35
-            let maxSize: CGFloat = 55
-            let sizeFactor = min(absBalance / 1000.0, 1.0)  // 1000kcalで最大サイズ
-            return baseSize + (maxSize - baseSize) * sizeFactor
-        }()
-
-        return VStack(alignment: .leading, spacing: 4) {
-            // タイトル
-            HStack(spacing: 4) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color.duoDark)
-                Text("カロリー収支")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color.duoDark)
-            }
-
-            // 横バーグラフ（ラベル付き）
-            GeometryReader { geo in
-                let circleSpace = circleSize + 12
-                let barWidth = geo.size.width - circleSpace
-                let consumedWidth = maxValue > 0 ? (totalConsumed / maxValue) * barWidth * 0.5 : 0
-                let intakeWidth = maxValue > 0 ? (intake / maxValue) * barWidth * 0.5 : 0
-
-                VStack(alignment: .leading, spacing: 1) {
-                    // ラベル行（バーの真上、近くに）
-                    HStack(spacing: 0) {
-                        Text("消費Cal")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(Color.duoGreen)
-                            .frame(width: max(consumedWidth, 60), alignment: .center)
-                        Text("摂取Cal")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(Color.duoRed)
-                            .frame(width: max(intakeWidth, 60), alignment: .center)
-                        Spacer()
-                    }
-
-                    // バーと収支円
-                    HStack(alignment: .center, spacing: 0) {
-                        // 左側: 総消費カロリー（トータルのみ）
-                        ZStack {
-                            // 背景: 単色バー
-                            Rectangle()
-                                .fill(Color.duoGreen)
-
-                            // 前面: 合計値テキスト
-                            HStack(spacing: 2) {
-                                Spacer()
-                                Text("\(Int(totalConsumed))")
-                                    .font(.system(size: 13, weight: .black))
-                                    .foregroundColor(.white)
-                                Text("cal")
-                                    .font(.system(size: 8, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.9))
-                                    .padding(.bottom, 1)
-                            }
-                        }
-                        .frame(width: max(consumedWidth, 60), height: 36)
-                        .cornerRadius(6, corners: [.topLeft, .bottomLeft])
-
-                        // 右側: 摂取カロリー（トータルのみ）
-                        ZStack {
-                            // 背景: 単色バー
-                            Rectangle()
-                                .fill(Color.duoRed)
-
-                            // 前面: 合計値テキスト
-                            HStack(spacing: 2) {
-                                Text("\(Int(intake))")
-                                    .font(.system(size: 13, weight: .black))
-                                    .foregroundColor(.white)
-                                Text("cal")
-                                    .font(.system(size: 8, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.9))
-                                    .padding(.bottom, 1)
-                                Spacer()
-                            }
-                        }
-                        .frame(width: max(intakeWidth, 60), height: 36)
-                        .cornerRadius(6, corners: [.topRight, .bottomRight])
-
-                        Spacer()
-
-                        // 収支円 + 傾向表示（右寄せ）
-                        VStack(alignment: .trailing, spacing: 2) {
-                            // 収支円
-                            ZStack {
-                                Circle()
-                                    .fill(isPositive ? Color.red : Color.duoGreen)
-                                    .frame(width: circleSize, height: circleSize)
-                                    .shadow(color: (isPositive ? Color.red : Color.duoGreen).opacity(0.3), radius: 2, y: 1)
-                                VStack(spacing: -1) {
-                                    Text(isPositive ? "+" : "-")
-                                        .font(.system(size: circleSize * 0.20, weight: .bold))
-                                        .foregroundColor(.white)
-                                    Text("\(Int(absBalance))")
-                                        .font(.system(size: circleSize * 0.30, weight: .black))
-                                        .foregroundColor(.white)
-                                    Text("cal")
-                                        .font(.system(size: circleSize * 0.13))
-                                        .foregroundColor(.white.opacity(0.9))
-                                }
-                            }
-
-                            // 体重増減予測
-                            let weightChangeG = Int(absBalance / 7200.0 * 1000)  // 7200kcalで約1kg、グラムで表示
-                            VStack(spacing: 0) {
-                                if isPositive {
-                                    HStack(spacing: 1) {
-                                        Image(systemName: "arrow.up.circle.fill")
-                                            .font(.system(size: 6))
-                                            .foregroundColor(Color.red)
-                                        Text("+\(weightChangeG)g")
-                                            .font(.system(size: 7, weight: .bold))
-                                            .foregroundColor(Color.red)
-                                    }
-                                } else if balance < 0 {
-                                    HStack(spacing: 1) {
-                                        Image(systemName: "arrow.down.circle.fill")
-                                            .font(.system(size: 6))
-                                            .foregroundColor(Color.duoGreen)
-                                        Text("-\(weightChangeG)g")
-                                            .font(.system(size: 7, weight: .bold))
-                                            .foregroundColor(Color.duoGreen)
-                                    }
-                                } else {
-                                    HStack(spacing: 1) {
-                                        Image(systemName: "equal.circle.fill")
-                                            .font(.system(size: 6))
-                                            .foregroundColor(Color.duoGreen)
-                                        Text("±0g")
-                                            .font(.system(size: 7, weight: .bold))
-                                            .foregroundColor(Color.duoGreen)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.trailing, 8)
-                    }
-                }
-            }
-            .frame(height: 68)
-        }
-        .padding(8)
-        .background(Color.white.opacity(0.5))
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isPositive ? Color.red.opacity(0.3) : Color.duoGreen.opacity(0.3), lineWidth: 2)
+        CalorieBalanceBarCard(
+            totalConsumed: healthKit.todayTotalCalories,
+            intake: Double(todayIntake.totalCalories)
         )
     }
 
@@ -4253,6 +4091,132 @@ struct RoundedCorner: Shape {
             cornerRadii: CGSize(width: radius, height: radius)
         )
         return Path(path.cgPath)
+    }
+}
+
+private struct CalorieBalanceBarCard: View {
+    let totalConsumed: Double
+    let intake: Double
+
+    var body: some View {
+        let balance = intake - totalConsumed
+        let isPositive = balance > 0
+        let absBalance = abs(balance)
+        let circleSize: CGFloat = 35 + 20 * min(absBalance / 1000.0, 1.0)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color.duoDark)
+                Text("カロリー収支")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+            }
+            GeometryReader { geo in
+                barInner(consumed: totalConsumed, intake: intake,
+                         isPositive: isPositive, absBalance: absBalance,
+                         circleSize: circleSize, geo: geo)
+            }
+            .frame(height: 68)
+        }
+        .padding(8)
+        .background(Color.white.opacity(0.5))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(isPositive ? Color.red.opacity(0.3) : Color.duoGreen.opacity(0.3), lineWidth: 2))
+    }
+
+    private func barInner(consumed: Double, intake: Double, isPositive: Bool,
+                          absBalance: Double, circleSize: CGFloat, geo: GeometryProxy) -> some View {
+        let barWidth = geo.size.width - circleSize - 12
+        let maxValue = max(consumed, intake)
+        let cw = max(maxValue > 0 ? (consumed / maxValue) * barWidth * 0.5 : 0, 60)
+        let iw = max(maxValue > 0 ? (intake  / maxValue) * barWidth * 0.5 : 0, 60)
+        return VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 0) {
+                Text("消費Cal").font(.system(size: 8, weight: .semibold)).foregroundColor(Color.duoGreen)
+                    .frame(width: cw, alignment: .center)
+                Text("摂取Cal").font(.system(size: 8, weight: .semibold)).foregroundColor(Color.duoRed)
+                    .frame(width: iw, alignment: .center)
+                Spacer()
+            }
+            HStack(alignment: .center, spacing: 0) {
+                consumedBar(consumed: consumed, width: cw)
+                intakeBar(intake: intake, width: iw)
+                Spacer()
+                balanceCircle(isPositive: isPositive, absBalance: absBalance, circleSize: circleSize)
+                    .padding(.trailing, 8)
+            }
+        }
+    }
+
+    private func consumedBar(consumed: Double, width: CGFloat) -> some View {
+        ZStack {
+            Rectangle().fill(Color.duoGreen)
+            HStack(spacing: 2) {
+                Spacer()
+                Text("\(Int(consumed))").font(.system(size: 13, weight: .black)).foregroundColor(.white)
+                Text("cal").font(.system(size: 8, weight: .medium)).foregroundColor(.white.opacity(0.9))
+                    .padding(.bottom, 1)
+            }
+        }
+        .frame(width: width, height: 36)
+        .cornerRadius(6, corners: [.topLeft, .bottomLeft])
+    }
+
+    private func intakeBar(intake: Double, width: CGFloat) -> some View {
+        ZStack {
+            Rectangle().fill(Color.duoRed)
+            HStack(spacing: 2) {
+                Text("\(Int(intake))").font(.system(size: 13, weight: .black)).foregroundColor(.white)
+                Text("cal").font(.system(size: 8, weight: .medium)).foregroundColor(.white.opacity(0.9))
+                    .padding(.bottom, 1)
+                Spacer()
+            }
+        }
+        .frame(width: width, height: 36)
+        .cornerRadius(6, corners: [.topRight, .bottomRight])
+    }
+
+    private func balanceCircle(isPositive: Bool, absBalance: Double, circleSize: CGFloat) -> some View {
+        let weightChangeG = Int(absBalance / 7200.0 * 1000)
+        return VStack(alignment: .trailing, spacing: 2) {
+            ZStack {
+                Circle().fill(isPositive ? Color.red : Color.duoGreen)
+                    .frame(width: circleSize, height: circleSize)
+                    .shadow(color: (isPositive ? Color.red : Color.duoGreen).opacity(0.3), radius: 2, y: 1)
+                VStack(spacing: -1) {
+                    Text(isPositive ? "+" : "-")
+                        .font(.system(size: circleSize * 0.20, weight: .bold)).foregroundColor(.white)
+                    Text("\(Int(absBalance))")
+                        .font(.system(size: circleSize * 0.30, weight: .black)).foregroundColor(.white)
+                    Text("cal")
+                        .font(.system(size: circleSize * 0.13)).foregroundColor(.white.opacity(0.9))
+                }
+            }
+            weightPrediction(isPositive: isPositive, absBalance: absBalance, grams: weightChangeG)
+        }
+    }
+
+    @ViewBuilder
+    private func weightPrediction(isPositive: Bool, absBalance: Double, grams: Int) -> some View {
+        if isPositive {
+            HStack(spacing: 1) {
+                Image(systemName: "arrow.up.circle.fill").font(.system(size: 6)).foregroundColor(.red)
+                Text("+\(grams)g").font(.system(size: 7, weight: .bold)).foregroundColor(.red)
+            }
+        } else if absBalance > 0 {
+            HStack(spacing: 1) {
+                Image(systemName: "arrow.down.circle.fill").font(.system(size: 6)).foregroundColor(Color.duoGreen)
+                Text("-\(grams)g").font(.system(size: 7, weight: .bold)).foregroundColor(Color.duoGreen)
+            }
+        } else {
+            HStack(spacing: 1) {
+                Image(systemName: "equal.circle.fill").font(.system(size: 6)).foregroundColor(Color.duoGreen)
+                Text("±0g").font(.system(size: 7, weight: .bold)).foregroundColor(Color.duoGreen)
+            }
+        }
     }
 }
 

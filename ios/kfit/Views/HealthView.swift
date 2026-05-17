@@ -31,6 +31,8 @@ struct HealthView: View {
                             refreshButton
                             activityCard
                             heartRateCard
+                            hrvCard
+                            sunlightCard
                             sleepCard
                             intakeCard
                             if !hk.hrSamples.isEmpty { hrHistoryCard }
@@ -219,13 +221,6 @@ struct HealthView: View {
                     unit: "kcal",
                     bg: Color(hex: "#FFF3E0")
                 )
-                activityTile(
-                    icon: "sun.max.fill",
-                    color: Color(hex: "#FFD900"),
-                    value: hk.todayDaylightMinutes > 0 ? "\(Int(hk.todayDaylightMinutes))" : "—",
-                    unit: "分（日光）",
-                    bg: Color(hex: "#FFFDE7")
-                )
             }
         }
         .padding(16)
@@ -283,15 +278,6 @@ struct HealthView: View {
                     icon: "bed.double.fill",
                     bg: Color(hex: "#E3F2FD"),
                     accent: Color(hex: "#1CB0F6")
-                )
-                // 心拍変動（HRV）
-                heartRateTile(
-                    label: "心拍変動",
-                    value: hk.latestHRV > 0 ? "\(Int(hk.latestHRV))" : "—",
-                    unit: "ms",
-                    icon: "waveform.path.ecg.rectangle",
-                    bg: Color(hex: "#E8F5E9"),
-                    accent: Color(hex: "#58CC02")
                 )
             }
 
@@ -353,41 +339,153 @@ struct HealthView: View {
         }
     }
 
-    // MARK: - 睡眠カード
+    // MARK: - 心拍変動（HRV）カード
 
-    private var sleepCard: some View {
+    private var hrvCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            cardTitle(icon: "bed.double.fill", label: "昨夜の睡眠",
-                      iconColor: Color(hex: "#CE82FF"))
+            cardTitle(icon: "waveform.circle.fill", label: "心拍変動（HRV）",
+                      iconColor: Color(hex: "#FF6B6B"))
 
-            if hk.lastNightTotalHours < 0.1 {
-                Text("昨夜の睡眠データがありません")
+            if hk.latestHRV < 0.1 {
+                Text("HRVデータがありません")
                     .font(.subheadline).foregroundColor(Color.duoSubtitle)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 12)
             } else {
-                // 合計・深い睡眠
-                HStack(spacing: 12) {
-                    sleepTile(
-                        label: "合計睡眠",
-                        value: formatHours(hk.lastNightTotalHours),
-                        bg: Color(hex: "#F3E5F5"),
-                        accent: Color(hex: "#CE82FF")
-                    )
-                    sleepTile(
-                        label: "深い睡眠",
-                        value: hk.lastNightDeepHours > 0.05
-                               ? formatHours(hk.lastNightDeepHours)
-                               : "—",
-                        bg: Color(hex: "#E3F2FD"),
-                        accent: Color(hex: "#1CB0F6")
-                    )
+                HStack(spacing: 16) {
+                    // 最新HRV
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "waveform.circle.fill")
+                                .font(.subheadline)
+                                .foregroundColor(Color(hex: "#FF6B6B"))
+                            Text("最新").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                            Spacer()
+                        }
+                        HStack(alignment: .lastTextBaseline, spacing: 4) {
+                            Text(String(format: "%.0f", hk.latestHRV))
+                                .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                                .foregroundColor(Color.duoDark)
+                            Text("ms").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: "#FCE4EC"))
+                    .cornerRadius(12)
+
+                    // 今日の平均HRV
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.subheadline)
+                                .foregroundColor(Color(hex: "#1CB0F6"))
+                            Text("平均").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                            Spacer()
+                        }
+                        HStack(alignment: .lastTextBaseline, spacing: 4) {
+                            Text(String(format: "%.0f", hk.todayAverageHRV))
+                                .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                                .foregroundColor(Color.duoDark)
+                            Text("ms").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: "#E3F2FD"))
+                    .cornerRadius(12)
                 }
 
-                // 睡眠ステージバー
-                if !hk.sleepSegments.isEmpty {
-                    sleepStageBar
-                    sleepStageLegend
+                // HRVステータスバー
+                let statusColor: Color = {
+                    switch hk.hrvStatus {
+                    case "良好": return Color.duoGreen
+                    case "中程度": return Color(hex: "#FFD900")
+                    default: return Color(hex: "#FF9600")
+                    }
+                }()
+                HStack(spacing: 8) {
+                    Circle().fill(statusColor).frame(width: 10, height: 10)
+                    Text("ステータス:").font(.caption).foregroundColor(Color.duoSubtitle)
+                    Text(hk.hrvStatus).font(.caption).fontWeight(.bold).foregroundColor(statusColor)
+                    Spacer()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
+            }
+        }
+        .padding(16)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    // MARK: - 日光露出カード
+
+    private var sunlightCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            cardTitle(icon: "sun.max.fill", label: "日光露出時間",
+                      iconColor: Color(hex: "#FFD900"))
+
+            if hk.todaySunlightExposure < 0.5 {
+                Text("記録されたデータがありません")
+                    .font(.subheadline).foregroundColor(Color.duoSubtitle)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("屋外活動時間")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                                Text(formatSunlightMinutes(hk.todaySunlightExposure))
+                                    .font(.system(.title2, design: .rounded))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Color.duoDark)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(hex: "#FFF3E0"))
+                        .cornerRadius(12)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("推奨値")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                                Text("30 分")
+                                    .font(.system(.title2, design: .rounded))
+                                    .fontWeight(.black)
+                                    .foregroundColor(Color.duoGreen)
+                                Image(systemName: hk.todaySunlightExposure >= 30 ? "checkmark.circle.fill" : "circle")
+                                    .font(.subheadline)
+                                    .foregroundColor(hk.todaySunlightExposure >= 30 ? Color.duoGreen : Color.duoSubtitle)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(hex: "#E8F5E9"))
+                        .cornerRadius(12)
+                    }
+
+                    let progressPercent = min(hk.todaySunlightExposure / 30.0, 1.0)
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.gray.opacity(0.2)).frame(height: 8)
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: [Color(hex: "#FFD900"), Color(hex: "#FF9600")],
+                                startPoint: .leading, endPoint: .trailing
+                            ))
+                            .frame(width: progressPercent * 280, height: 8)
+                    }
+
+                    Text(sunlightStatusMessage())
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
         }
@@ -397,12 +495,144 @@ struct HealthView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
-    private func sleepTile(label: String, value: String, bg: Color, accent: Color) -> some View {
+    // MARK: - 睡眠カード
+
+    private var sleepCard: some View {
+        let sleepAnalysis = hk.analyzeSleepScore()
+
+        return VStack(alignment: .leading, spacing: 16) {
+            cardTitle(icon: "bed.double.fill", label: "昨夜の睡眠",
+                      iconColor: Color(hex: "#CE82FF"))
+
+            if hk.lastNightTotalHours < 0.1 {
+                Text("昨夜の睡眠データがありません")
+                    .font(.subheadline).foregroundColor(Color.duoSubtitle)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            } else {
+                // 睡眠スコアの大きな表示
+                VStack(spacing: 12) {
+                    HStack(alignment: .center, spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                            Circle()
+                                .trim(from: 0, to: CGFloat(sleepAnalysis.score) / 100.0)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#CE82FF"), Color(hex: "#9C27B0")],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ),
+                                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                                )
+                                .rotationEffect(.degrees(-90))
+
+                            VStack(spacing: 2) {
+                                Text("\(sleepAnalysis.score)")
+                                    .font(.system(size: 32, weight: .black, design: .rounded))
+                                    .foregroundColor(Color.duoDark)
+                                Text("点").font(.caption).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                        .frame(width: 100, height: 100)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("睡眠スコア")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+
+                            Text(sleepAnalysis.rating)
+                                .font(.title3).fontWeight(.black)
+                                .foregroundColor(ratingColor(sleepAnalysis.rating))
+
+                            HStack(spacing: 4) {
+                                Text("評価:")
+                                    .font(.caption).foregroundColor(Color.duoSubtitle)
+                                Text(sleepRatingDescription(sleepAnalysis.rating))
+                                    .font(.caption).foregroundColor(Color.duoDark)
+                            }
+
+                            Spacer()
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(16)
+                .background(Color(hex: "#F3E5F5"))
+                .cornerRadius(14)
+
+                // 睡眠時間タイル（2列）
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        sleepTile(
+                            label: "合計睡眠",
+                            value: formatHours(hk.lastNightTotalHours),
+                            unit: "",
+                            bg: Color(hex: "#E8EAED"),
+                            accent: Color(hex: "#5F6368")
+                        )
+                        sleepTile(
+                            label: "深い睡眠",
+                            value: hk.lastNightDeepHours > 0.05
+                                   ? formatHours(hk.lastNightDeepHours)
+                                   : "—",
+                            unit: "",
+                            bg: Color(hex: "#BBDEFB"),
+                            accent: Color(hex: "#1976D2")
+                        )
+                    }
+
+                    HStack(spacing: 12) {
+                        sleepTile(
+                            label: "REM睡眠",
+                            value: formatHours(sleepAnalysis.remHours),
+                            unit: "",
+                            bg: Color(hex: "#E1BEE7"),
+                            accent: Color(hex: "#7B1FA2")
+                        )
+                        sleepTile(
+                            label: "コア睡眠",
+                            value: formatHours(sleepAnalysis.coreHours),
+                            unit: "",
+                            bg: Color(hex: "#C8E6C9"),
+                            accent: Color(hex: "#388E3C")
+                        )
+                    }
+                }
+
+                // 大きな睡眠ステージバー
+                if !hk.sleepSegments.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("睡眠ステージの構成")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color.duoDark)
+
+                        sleepStageBar
+                            .frame(height: 32)
+
+                        sleepStageLegendExpanded
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private func sleepTile(label: String, value: String, unit: String = "", bg: Color, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
-            Text(value)
-                .font(.system(.title2, design: .rounded)).fontWeight(.black)
-                .foregroundColor(Color.duoDark)
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                    .foregroundColor(accent)
+                if !unit.isEmpty {
+                    Text(unit).font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -416,16 +646,16 @@ struct HealthView: View {
 
         return AnyView(
             GeometryReader { geo in
-                HStack(spacing: 2) {
+                HStack(spacing: 0) {
                     ForEach(hk.sleepSegments) { seg in
-                        let w = max(2, geo.size.width * CGFloat(seg.durationHours / total))
-                        RoundedRectangle(cornerRadius: 3)
+                        let w = max(1, geo.size.width * CGFloat(seg.durationHours / total))
+                        RoundedRectangle(cornerRadius: 6)
                             .fill(Color(hex: seg.stage.color))
-                            .frame(width: w, height: 20)
+                            .frame(width: w)
                     }
                 }
             }
-            .frame(height: 20)
+            .frame(height: 32)
         )
     }
 
@@ -444,6 +674,52 @@ struct HealthView: View {
                 }
             }
             Spacer()
+        }
+    }
+
+    private var sleepStageLegendExpanded: some View {
+        let stageDetails: [(stage: SleepSegment.SleepStage, label: String, hours: Double)] = {
+            var hours: [SleepSegment.SleepStage: Double] = [:]
+            for segment in hk.sleepSegments {
+                hours[segment.stage, default: 0] += segment.durationHours
+            }
+            return [
+                (.deep, "深い睡眠", hours[.deep] ?? 0),
+                (.rem, "REM睡眠", hours[.rem] ?? 0),
+                (.core, "コア睡眠", hours[.core] ?? 0),
+                (.awake, "覚醒", hours[.awake] ?? 0),
+            ]
+        }()
+
+        let total = stageDetails.reduce(0) { $0 + $1.hours }
+
+        return VStack(spacing: 8) {
+            ForEach(stageDetails, id: \.stage.rawValue) { stage, label, hours in
+                if hours > 0 || stage == .awake {
+                    HStack(spacing: 12) {
+                        Circle().fill(Color(hex: stage.color)).frame(width: 10, height: 10)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(label)
+                                .font(.subheadline).fontWeight(.semibold)
+                                .foregroundColor(Color.duoDark)
+                            if hours > 0.01 {
+                                Text("\(formatHours(hours))")
+                                    .font(.caption).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+
+                        Spacer()
+
+                        Text(String(format: "%.0f%%", (hours / max(total, 0.1)) * 100))
+                            .font(.caption).fontWeight(.bold)
+                            .foregroundColor(Color(hex: stage.color))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Color(hex: stage.color).opacity(0.08))
+                    .cornerRadius(10)
+                }
+            }
         }
     }
 
@@ -530,6 +806,47 @@ struct HealthView: View {
     private func formatHours(_ h: Double) -> String {
         let total = Int(h * 60)
         return "\(total / 60)h \(total % 60)m"
+    }
+
+    private func formatSunlightMinutes(_ minutes: Double) -> String {
+        let mins = Int(minutes)
+        if mins < 60 {
+            return "\(mins)分"
+        } else {
+            let hours = mins / 60
+            let remainMins = mins % 60
+            return remainMins > 0 ? "\(hours)h \(remainMins)分" : "\(hours)時間"
+        }
+    }
+
+    private func sunlightStatusMessage() -> String {
+        if hk.todaySunlightExposure < 10 {
+            return "日光を浴びる時間を増やしましょう"
+        } else if hk.todaySunlightExposure < 30 {
+            return "もう少し屋外活動を増やすと理想的です"
+        } else {
+            return "素晴らしい！十分な日光を浴びています"
+        }
+    }
+
+    private func ratingColor(_ rating: String) -> Color {
+        switch rating {
+        case "最高": return Color(hex: "#00897B")
+        case "良好": return Color(hex: "#388E3C")
+        case "普通": return Color(hex: "#F57F17")
+        case "要改善": return Color(hex: "#E64A19")
+        default: return Color(hex: "#D32F2F")
+        }
+    }
+
+    private func sleepRatingDescription(_ rating: String) -> String {
+        switch rating {
+        case "最高": return "素晴らしい睡眠質"
+        case "良好": return "良好な睡眠"
+        case "普通": return "平均的な睡眠"
+        case "要改善": return "改善が必要"
+        default: return "不十分な睡眠"
+        }
     }
 
     // MARK: - 摂取データカード

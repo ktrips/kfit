@@ -21,6 +21,11 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayMindfulnessSessions: Int = 0
     @Published var todayWorkoutMinutes: Int = 0  // 今日のワークアウト時間（分）
     @Published var todayStandHours: Int = 0      // 今日のスタンド時間（時間）
+    @Published var latestHRV: Double = 0.0             // 最新の心拍変動（ms）
+    @Published var todayDietaryCalories: Double = 0.0  // 今日の摂取カロリー（kcal）
+    @Published var todayDietaryWater: Double = 0.0     // 今日の水分摂取（ml）
+    @Published var todayDietaryCaffeine: Double = 0.0  // 今日のカフェイン（mg）
+    @Published var todayDietaryAlcohol: Double = 0.0   // 今日のアルコール（g）
 
     private init() {}
 
@@ -42,6 +47,10 @@ class WatchHealthKitManager: ObservableObject {
             HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
             HKObjectType.quantityType(forIdentifier: .appleExerciseTime)!,
             HKObjectType.categoryType(forIdentifier: .appleStandHour)!,
+            HKObjectType.quantityType(forIdentifier: .dietaryEnergyConsumed)!,
+            HKObjectType.quantityType(forIdentifier: .dietaryWater)!,
+            HKObjectType.quantityType(forIdentifier: .dietaryCaffeine)!,
+            HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)!,
         ]
 
         let typesToWrite: Set<HKSampleType> = [
@@ -72,6 +81,11 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchTodayMindfulness() }
             group.addTask { await self.fetchTodayWorkoutMinutes() }
             group.addTask { await self.fetchTodayStandHours() }
+            group.addTask { await self.fetchTodayDietaryCalories() }
+            group.addTask { await self.fetchTodayDietaryWater() }
+            group.addTask { await self.fetchTodayDietaryCaffeine() }
+            group.addTask { await self.fetchTodayDietaryAlcohol() }
+            group.addTask { await self.fetchLatestHRV() }
         }
     }
 
@@ -314,6 +328,121 @@ class WatchHealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
+    // MARK: - Heart Rate Variability
+
+    func fetchLatestHRV() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return }
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+        let query = HKSampleQuery(
+            sampleType: type,
+            predicate: nil,
+            limit: 1,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] HRV error: \(error)"); return }
+                guard let sample = samples?.first as? HKQuantitySample else { return }
+                let ms = sample.quantity.doubleValue(for: HKUnit.secondUnit(with: .milli))
+                self?.latestHRV = ms
+                print("[WatchHealthKit] 💓 HRV: \(String(format: "%.1f", ms)) ms")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Dietary Calories
+
+    func fetchTodayDietaryCalories() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKStatisticsQuery(
+            quantityType: type,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum
+        ) { [weak self] _, result, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] DietaryCalories error: \(error)"); return }
+                let kcal = result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0
+                self?.todayDietaryCalories = kcal
+                print("[WatchHealthKit] 🍽️ DietaryCalories: \(Int(kcal)) kcal")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Dietary Water
+
+    func fetchTodayDietaryWater() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKStatisticsQuery(
+            quantityType: type,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum
+        ) { [weak self] _, result, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] DietaryWater error: \(error)"); return }
+                let ml = result?.sumQuantity()?.doubleValue(for: .literUnit(with: .milli)) ?? 0
+                self?.todayDietaryWater = ml
+                print("[WatchHealthKit] 💧 DietaryWater: \(Int(ml)) ml")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Dietary Caffeine
+
+    func fetchTodayDietaryCaffeine() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKStatisticsQuery(
+            quantityType: type,
+            quantitySamplePredicate: predicate,
+            options: .cumulativeSum
+        ) { [weak self] _, result, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] DietaryCaffeine error: \(error)"); return }
+                let mg = result?.sumQuantity()?.doubleValue(for: .gramUnit(with: .milli)) ?? 0
+                self?.todayDietaryCaffeine = mg
+                print("[WatchHealthKit] ☕ DietaryCaffeine: \(Int(mg)) mg")
+            }
+        }
+        healthStore.execute(query)
+    }
+
+    // MARK: - Dietary Alcohol (dietaryEnergyConsumed with alcohol metadata)
+
+    func fetchTodayDietaryAlcohol() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let query = HKSampleQuery(
+            sampleType: type,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] _, samples, error in
+            Task { @MainActor in
+                if let error { print("[WatchHealthKit] DietaryAlcohol error: \(error)"); return }
+                var totalAlcoholG = 0.0
+                for sample in (samples as? [HKQuantitySample]) ?? [] {
+                    if let intakeType = sample.metadata?["intake_type"] as? String,
+                       intakeType == "alcohol",
+                       let alcoholGrams = sample.metadata?["alcohol_grams"] as? Double {
+                        totalAlcoholG += alcoholGrams
+                    }
+                }
+                self?.todayDietaryAlcohol = totalAlcoholG
+                print("[WatchHealthKit] 🍺 DietaryAlcohol: \(String(format: "%.1f", totalAlcoholG)) g")
+            }
+        }
+        healthStore.execute(query)
+    }
+
     func saveMindfulnessSession(durationMinutes: Int) async {
         guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
             print("[WatchHealthKit] ⚠️ Mindfulness type not available")
@@ -333,6 +462,8 @@ class WatchHealthKitManager: ObservableObject {
         do {
             try await healthStore.save(sample)
             print("[WatchHealthKit] ✅ Mindfulness session saved: \(durationMinutes) min")
+            // iOS側に通知してTimeSlotManagerとWatchの表示を即座に同期
+            WatchConnectivityManager.shared.sendMindfulnessCompleted()
         } catch {
             print("[WatchHealthKit] ⚠️ Failed to save mindfulness: \(error)")
         }

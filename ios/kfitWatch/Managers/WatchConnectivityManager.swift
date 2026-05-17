@@ -127,6 +127,17 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
+    // MARK: - Watch → iOS: マインドフルネス完了通知
+    func sendMindfulnessCompleted() {
+        guard let session = session else { return }
+        let message: [String: Any] = ["action": "mindfulness_completed"]
+        if session.isReachable {
+            session.sendMessage(message, replyHandler: nil) { error in
+                print("WatchConnectivity sendMindfulnessCompleted error: \(error)")
+            }
+        }
+    }
+
     // MARK: - Watch → iOS: 摂取記録
     func sendIntakeRecord(type: String, subtype: String? = nil) {
         guard let session = session else { return }

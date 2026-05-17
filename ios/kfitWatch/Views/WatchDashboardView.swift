@@ -55,8 +55,11 @@ struct WatchDashboardView: View {
                     mainDashboard
                         .tag(1)
 
-                    healthDataPage
+                    wellnessPage
                         .tag(2)
+
+                    healthDataPage
+                        .tag(3)
                 }
                 .tabViewStyle(.page)
             }
@@ -110,11 +113,13 @@ struct WatchDashboardView: View {
             confirmIntake(type: "water", subtype: nil,
                         message: "水\(connectivity.waterPerCup)mlを追加しますか？")
         }
-        // ヘルスデータページの場合は、データを更新
+        // ウェルネスページの場合は、データを更新
         else if selectedTab == 2 {
-            Task {
-                await healthKit.fetchAllTodayData()
-            }
+            Task { await healthKit.fetchAllTodayData() }
+        }
+        // ヘルスデータページの場合は、データを更新
+        else if selectedTab == 3 {
+            Task { await healthKit.fetchAllTodayData() }
         }
     }
 
@@ -307,15 +312,22 @@ struct WatchDashboardView: View {
                     .buttonStyle(.plain)
 
                     // ── スワイプヒント ────────────────────
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.5))
-                        Text("左スワイプで摂取記録")
-                            .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.4))
+                        Text("摂取記録")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.4))
+                        Spacer()
+                        Text("ウェルネス")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.4))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.4))
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 4)
 
                     // ── 今日の記録（詳細版：個別セット表示）────────────────────────
                     if !connectivity.todayExercises.isEmpty {
@@ -397,6 +409,142 @@ struct WatchDashboardView: View {
         showIntakeConfirm = true
     }
 
+    // MARK: - ウェルネスページ（3ページ目）
+
+    private func stressInfo(hrv: Double) -> (label: String, color: Color, emoji: String) {
+        if hrv <= 0 { return ("不明", .gray, "❓") }
+        if hrv >= 60 { return ("低い", duoGreen, "😌") }
+        if hrv >= 40 { return ("やや低い", Color(red: 0.6, green: 0.85, blue: 0.3), "🙂") }
+        if hrv >= 20 { return ("普通", duoYellow, "😐") }
+        return ("高め", Color(red: 1.0, green: 0.4, blue: 0.3), "😰")
+    }
+
+    private var wellnessPage: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 10) {
+
+                // ── ヘッダー：心拍数 / HRV ────────────────────
+                let stress = stressInfo(hrv: healthKit.latestHRV)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("🫀").font(.system(size: 18))
+                        Text("ウェルネス")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                        Spacer()
+                        Button {
+                            Task { await healthKit.fetchAllTodayData() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14))
+                                .foregroundColor(duoGreen)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // 心拍数 + HRV
+                    HStack(spacing: 0) {
+                        VStack(spacing: 3) {
+                            Text("❤️").font(.system(size: 20))
+                            Text(healthKit.averageHeartRate > 0
+                                 ? "\(healthKit.averageHeartRate)"
+                                 : "—")
+                                .font(.system(size: 20, weight: .black))
+                                .foregroundColor(.white)
+                            Text("bpm").font(.system(size: 9)).foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Rectangle()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 1, height: 44)
+
+                        VStack(spacing: 3) {
+                            Text("💓").font(.system(size: 20))
+                            Text(healthKit.latestHRV > 0
+                                 ? String(format: "%.0f", healthKit.latestHRV)
+                                 : "—")
+                                .font(.system(size: 20, weight: .black))
+                                .foregroundColor(.white)
+                            Text("ms HRV").font(.system(size: 9)).foregroundColor(.gray)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(10)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(14)
+                .onAppear {
+                    Task { await healthKit.fetchAllTodayData() }
+                }
+
+                // ── ストレス度合い ────────────────────
+                HStack(spacing: 12) {
+                    Text(stress.emoji).font(.system(size: 28))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("ストレス度合い")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white.opacity(0.8))
+                        Text(stress.label)
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundColor(stress.color)
+                        if healthKit.latestHRV > 0 {
+                            Text("HRV \(String(format: "%.0f", healthKit.latestHRV))ms から推定")
+                                .font(.system(size: 9))
+                                .foregroundColor(.gray)
+                        } else {
+                            Text("HRVデータ取得中...")
+                                .font(.system(size: 9))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(14)
+
+                // ── マインドフルネスボタン ────────────────────
+                Button {
+                    openMindfulnessApp()
+                } label: {
+                    VStack(spacing: 6) {
+                        Text("🧘").font(.system(size: 34))
+                        Text("マインドフルネス")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Breatheアプリを開く")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.65))
+                        if healthKit.todayMindfulnessSessions > 0 {
+                            Text("今日 \(healthKit.todayMindfulnessSessions)回実施済み")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(duoGreen)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 0.808, green: 0.51, blue: 1.0),
+                                     Color(red: 0.58, green: 0.32, blue: 0.76)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
+        }
+    }
+
     // MARK: - マインドフルネスアプリを開く
     private func openMindfulnessApp() {
         // マインドフルネス（旧Breathe）アプリのURL
@@ -455,56 +603,6 @@ struct WatchDashboardView: View {
                     Task { await healthKit.fetchAllTodayData() }
                 }
 
-                // ── 摂取データ（iOSから同期 - HealthKit認証不要）──────────────────────
-                VStack(spacing: 6) {
-                    HStack {
-                        Text("🍽️").font(.system(size: 18))
-                        Text("今日の摂取")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                        Spacer()
-                        Button {
-                            connectivity.requestStatsFromiOS()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14))
-                                .foregroundColor(duoGreen)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.bottom, 4)
-
-                    VStack(spacing: 7) {
-                        watchLargeHealthItem(
-                            icon: "🍽️", label: "摂取Cal",
-                            value: Double(connectivity.intakeCalories),
-                            goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
-                            formatValue: { "\(Int($0))" }
-                        )
-                        watchLargeHealthItem(
-                            icon: "💧", label: "水分",
-                            value: Double(connectivity.intakeWater),
-                            goal: Double(connectivity.intakeWaterGoal), unit: "ml",
-                            formatValue: { "\(Int($0))" }
-                        )
-                        watchLargeHealthItem(
-                            icon: "☕", label: "カフェイン",
-                            value: Double(connectivity.intakeCaffeine),
-                            goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
-                            formatValue: { "\(Int($0))" }, isReverse: true
-                        )
-                        watchLargeHealthItem(
-                            icon: "🍺", label: "アルコール",
-                            value: connectivity.intakeAlcohol,
-                            goal: connectivity.intakeAlcoholLimit, unit: "g",
-                            formatValue: { String(format: "%.1f", $0) }, isReverse: true
-                        )
-                    }
-                }
-                .padding(12)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(14)
-
                 // ── 今日のApple Health ──────────────────────
                 if healthKit.isAuthorized {
                     VStack(spacing: 6) {
@@ -517,7 +615,6 @@ struct WatchDashboardView: View {
                             Button {
                                 Task {
                                     await healthKit.fetchAllTodayData()
-                                    connectivity.requestStatsFromiOS()
                                 }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
@@ -550,6 +647,16 @@ struct WatchDashboardView: View {
                                 formatValue: { "\(Int($0))" }
                             )
                             watchLargeHealthItem(
+                                icon: "🏃", label: "アクティビティ",
+                                value: Double(healthKit.todayWorkoutMinutes), goal: 30.0, unit: "分",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "🕐", label: "スタンド",
+                                value: Double(healthKit.todayStandHours), goal: 12.0, unit: "h",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
                                 icon: "❤️", label: "心拍数",
                                 value: Double(healthKit.averageHeartRate), goal: nil, unit: "bpm",
                                 formatValue: { "\(Int($0))" }
@@ -562,13 +669,66 @@ struct WatchDashboardView: View {
                             )
                         }
                     }
+                    .padding(12)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(14)
+
+                    // ── 今日の摂取（Apple Healthから取得）──────────────────────
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("🍽️").font(.system(size: 18))
+                            Text("今日の摂取")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                            Spacer()
+                            Button {
+                                Task { await healthKit.fetchAllTodayData() }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(duoGreen)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.bottom, 4)
+
+                        VStack(spacing: 7) {
+                            watchLargeHealthItem(
+                                icon: "🍽️", label: "摂取Cal",
+                                value: healthKit.todayDietaryCalories,
+                                goal: Double(connectivity.intakeCaloriesGoal), unit: "kcal",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "💧", label: "水分",
+                                value: healthKit.todayDietaryWater,
+                                goal: Double(connectivity.intakeWaterGoal), unit: "ml",
+                                formatValue: { "\(Int($0))" }
+                            )
+                            watchLargeHealthItem(
+                                icon: "☕", label: "カフェイン",
+                                value: healthKit.todayDietaryCaffeine,
+                                goal: Double(connectivity.intakeCaffeineLimit), unit: "mg",
+                                formatValue: { "\(Int($0))" }, isReverse: true
+                            )
+                            watchLargeHealthItem(
+                                icon: "🍺", label: "アルコール",
+                                value: healthKit.todayDietaryAlcohol,
+                                goal: connectivity.intakeAlcoholLimit, unit: "g",
+                                formatValue: { String(format: "%.1f", $0) }, isReverse: true
+                            )
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(14)
                 } else {
                     VStack(spacing: 14) {
                         Text("💚").font(.system(size: 36))
                         Text("Apple Healthと連動")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
-                        Text("健康データを自動取得")
+                        Text("健康データと摂取データを自動取得")
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.6))
                             .multilineTextAlignment(.center)
@@ -605,14 +765,14 @@ struct WatchStatItem: View {
     var isCompleted: Bool = false
 
     var body: some View {
-        VStack(spacing: 1) {
-            Text(icon).font(.system(size: 15))
+        VStack(spacing: 2) {
+            Text(icon).font(.system(size: 20))
             Text(value)
-                .font(.system(size: 13))
+                .font(.system(size: 16))
                 .fontWeight(.black)
                 .foregroundColor(isCompleted ? duoGreen : .white)
             Text(label)
-                .font(.system(size: 8))
+                .font(.system(size: 10))
                 .foregroundColor(.gray)
         }
         .frame(maxWidth: .infinity)

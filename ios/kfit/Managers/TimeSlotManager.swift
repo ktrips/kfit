@@ -45,8 +45,16 @@ class TimeSlotManager: ObservableObject {
 
                             var logGoal = LogGoal()
                             if let logGoalData = goalData["logGoal"] as? [String: Any] {
-                                logGoal.mealRequired = logGoalData["mealRequired"] as? Bool ?? true
-                                logGoal.drinkRequired = logGoalData["drinkRequired"] as? Bool ?? true
+                                if let mg = logGoalData["mealGoal"] as? Int {
+                                    logGoal.mealGoal = mg
+                                } else {
+                                    logGoal.mealGoal = (logGoalData["mealRequired"] as? Bool ?? true) ? 1 : 0
+                                }
+                                if let dg = logGoalData["drinkGoal"] as? Int {
+                                    logGoal.drinkGoal = dg
+                                } else {
+                                    logGoal.drinkGoal = (logGoalData["drinkRequired"] as? Bool ?? true) ? 1 : 0
+                                }
                                 logGoal.mindInputRequired = logGoalData["mindInputRequired"] as? Bool ?? false
                             }
 
@@ -73,8 +81,11 @@ class TimeSlotManager: ObservableObject {
                             goals.append(goal)
                         }
                     }
+                    // デフォルト設定（全スロット含む）をベースに、Firestoreのデータでマージ
                     settings = DailyTimeSlotSettings(date: today)
-                    settings.goals = goals
+                    for goal in goals {
+                        settings.updateGoal(goal)
+                    }
                 }
 
                 // 1日全体の目標を読み込み
@@ -85,6 +96,7 @@ class TimeSlotManager: ObservableObject {
                     globalGoals.standEnabled = globalGoalsData["standEnabled"] as? Bool ?? false
                     globalGoals.standHours = globalGoalsData["standHours"] as? Int ?? 12
                     globalGoals.sleepEnabled = globalGoalsData["sleepEnabled"] as? Bool ?? false
+                    globalGoals.sleepHoursGoal = globalGoalsData["sleepHoursGoal"] as? Int ?? 6
                     globalGoals.sleepScoreThreshold = globalGoalsData["sleepScoreThreshold"] as? Int ?? 80
                     globalGoals.pfcEnabled = globalGoalsData["pfcEnabled"] as? Bool ?? false
                     globalGoals.pfcScoreThreshold = globalGoalsData["pfcScoreThreshold"] as? Int ?? 80
@@ -124,8 +136,8 @@ class TimeSlotManager: ObservableObject {
                 "trainingGoal": goal.trainingGoal,
                 "mindfulnessGoal": goal.mindfulnessGoal,
                 "logGoal": [
-                    "mealRequired": goal.logGoal.mealRequired,
-                    "drinkRequired": goal.logGoal.drinkRequired,
+                    "mealGoal": goal.logGoal.mealGoal,
+                    "drinkGoal": goal.logGoal.drinkGoal,
                     "mindInputRequired": goal.logGoal.mindInputRequired
                 ],
                 "reminderEnabled": goal.reminderEnabled,
@@ -157,6 +169,7 @@ class TimeSlotManager: ObservableObject {
                 "standEnabled": settings.globalGoals.standEnabled,
                 "standHours": settings.globalGoals.standHours,
                 "sleepEnabled": settings.globalGoals.sleepEnabled,
+                "sleepHoursGoal": settings.globalGoals.sleepHoursGoal,
                 "sleepScoreThreshold": settings.globalGoals.sleepScoreThreshold,
                 "pfcEnabled": settings.globalGoals.pfcEnabled,
                 "pfcScoreThreshold": settings.globalGoals.pfcScoreThreshold,
@@ -218,14 +231,19 @@ class TimeSlotManager: ObservableObject {
                                 }
                             }
 
+                            prog.completedActivityIds = Set(progData["completedActivityIds"] as? [String] ?? [])
+
                             if let timestamp = progData["lastUpdated"] as? Timestamp {
                                 prog.lastUpdated = timestamp.dateValue()
                             }
                             progressList.append(prog)
                         }
                     }
+                    // デフォルト設定（全スロット含む）をベースにマージ
                     progress = DailyTimeSlotProgress(date: today)
-                    progress.progress = progressList
+                    for prog in progressList {
+                        progress.updateProgress(prog)
+                    }
                 }
 
                 // 1日全体の実績を読み込み
@@ -233,6 +251,7 @@ class TimeSlotManager: ObservableObject {
                     var globalProgress = DailyGlobalProgress()
                     globalProgress.workoutMinutes = globalProgressData["workoutMinutes"] as? Int ?? 0
                     globalProgress.standHours = globalProgressData["standHours"] as? Int ?? 0
+                    globalProgress.sleepHours = globalProgressData["sleepHours"] as? Double ?? 0.0
                     globalProgress.sleepScore = globalProgressData["sleepScore"] as? Int ?? 0
                     globalProgress.pfcScore = globalProgressData["pfcScore"] as? Int ?? 0
                     globalProgress.weightMeasured = globalProgressData["weightMeasured"] as? Bool ?? false
@@ -262,8 +281,9 @@ class TimeSlotManager: ObservableObject {
         progress.globalProgress.workoutMinutes = await healthKit.fetchTodayWorkout()
         progress.globalProgress.standHours = await healthKit.fetchTodayStand()
 
-        // 睡眠スコアを更新
+        // 睡眠データを更新
         let sleepAnalysis = healthKit.analyzeSleepScore()
+        progress.globalProgress.sleepHours = healthKit.lastNightTotalHours
         progress.globalProgress.sleepScore = sleepAnalysis.score
 
         // PFCバランススコアを更新
@@ -296,6 +316,7 @@ class TimeSlotManager: ObservableObject {
                     "drinkLogged": prog.logProgress.drinkLogged,
                     "mindInputLogged": prog.logProgress.mindInputLogged
                 ],
+                "completedActivityIds": Array(prog.completedActivityIds),
                 "lastUpdated": Timestamp(date: prog.lastUpdated)
             ]
         }
@@ -306,6 +327,7 @@ class TimeSlotManager: ObservableObject {
             "globalProgress": [
                 "workoutMinutes": progress.globalProgress.workoutMinutes,
                 "standHours": progress.globalProgress.standHours,
+                "sleepHours": progress.globalProgress.sleepHours,
                 "sleepScore": progress.globalProgress.sleepScore,
                 "pfcScore": progress.globalProgress.pfcScore,
                 "weightMeasured": progress.globalProgress.weightMeasured,
@@ -420,6 +442,23 @@ class TimeSlotManager: ObservableObject {
         updatedProgress.globalProgress.lastUpdated = Date()
         progress = updatedProgress
         await saveTodayProgress()
+    }
+
+    /// 時間帯別カスタム活動の達成状態をトグル
+    func toggleCustomActivity(id: String, at timeSlot: TimeSlot) async {
+        if var prog = progress.progressFor(timeSlot) {
+            if prog.completedActivityIds.contains(id) {
+                prog.completedActivityIds.remove(id)
+            } else {
+                prog.completedActivityIds.insert(id)
+            }
+            prog.lastUpdated = Date()
+            var updatedProgress = progress
+            updatedProgress.updateProgress(prog)
+            progress = updatedProgress
+            await saveTodayProgress()
+            print("✅ TimeSlot: CustomActivity \(id) toggled for \(timeSlot.displayName)")
+        }
     }
 
     // MARK: - ヘルパー

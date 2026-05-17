@@ -223,7 +223,25 @@ struct TimeSlotGoalsView: View {
 
             if timeSlotManager.settings.globalGoals.sleepEnabled {
                 HStack {
-                    Text("目標:")
+                    Text("目標時間:")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                    Stepper("\(timeSlotManager.settings.globalGoals.sleepHoursGoal)時間以上",
+                           value: Binding(
+                               get: { timeSlotManager.settings.globalGoals.sleepHoursGoal },
+                               set: { newValue in
+                                   timeSlotManager.settings.globalGoals.sleepHoursGoal = newValue
+                                   Task { await timeSlotManager.saveTodaySettings() }
+                               }
+                           ),
+                           in: 1...12,
+                           step: 1)
+                    .font(.subheadline).fontWeight(.bold)
+                }
+                .padding(.leading, 40)
+
+                HStack {
+                    Text("目標スコア:")
                         .font(.caption)
                         .foregroundColor(Color.duoSubtitle)
                     Stepper("\(timeSlotManager.settings.globalGoals.sleepScoreThreshold)点以上",
@@ -240,22 +258,32 @@ struct TimeSlotGoalsView: View {
                 }
                 .padding(.leading, 40)
 
-                // 進捗表示（睡眠スコア）
-                if timeSlotManager.progress.globalProgress.sleepScore > 0 {
-                    HStack(spacing: 8) {
-                        Text("昨夜:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(timeSlotManager.progress.globalProgress.sleepScore)点")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(
-                                timeSlotManager.progress.globalProgress.sleepScore >= timeSlotManager.settings.globalGoals.sleepScoreThreshold
-                                ? Color.duoGreen : Color.duoDark
-                            )
-                        if timeSlotManager.progress.globalProgress.sleepScore >= timeSlotManager.settings.globalGoals.sleepScoreThreshold {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color.duoGreen)
+                // 進捗表示（睡眠時間・スコア）
+                if timeSlotManager.progress.globalProgress.sleepHours > 0 || timeSlotManager.progress.globalProgress.sleepScore > 0 {
+                    let hours = timeSlotManager.progress.globalProgress.sleepHours
+                    let score = timeSlotManager.progress.globalProgress.sleepScore
+                    let hoursGoal = timeSlotManager.settings.globalGoals.sleepHoursGoal
+                    let scoreGoal = timeSlotManager.settings.globalGoals.sleepScoreThreshold
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            Text("昨夜:")
                                 .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                            Text(String(format: "%.1f時間", hours))
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(hours >= Double(hoursGoal) ? Color.duoGreen : Color.duoDark)
+                        }
+                        if score > 0 {
+                            HStack(spacing: 4) {
+                                Text("\(score)点")
+                                    .font(.subheadline).fontWeight(.bold)
+                                    .foregroundColor(score >= scoreGoal ? Color.duoGreen : Color.duoDark)
+                                if hours >= Double(hoursGoal) && score >= scoreGoal {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(Color.duoGreen)
+                                        .font(.caption)
+                                }
+                            }
                         }
                     }
                     .padding(.leading, 40)
@@ -553,13 +581,13 @@ struct TimeSlotGoalsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("時間帯別の目標設定")
                         .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("1日を4つの時間帯に分けて管理")
+                    Text("1日を5つの時間帯に分けて管理")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
             }
 
-            Text("朝・昼・午後・夜の時間帯ごとに、トレーニング、マインドフルネス、ログ記録の目標を設定できます。")
+            Text("夜中・朝・昼・午後・夜の時間帯ごとに、トレーニング、マインドフルネス、ログ記録の目標を設定できます。")
                 .font(.caption)
                 .foregroundColor(Color.duoSubtitle)
                 .padding(.top, 4)

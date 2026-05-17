@@ -141,6 +141,20 @@ final class HealthKitManager: ObservableObject {
     // 日光下時間（iOS 17+）
     @Published var todayDaylightMinutes: Double = 0     // 今日の日光下時間（分）
 
+    // 日光露出時間（todayDaylightMinutes の別名）
+    var todaySunlightExposure: Double { todayDaylightMinutes }
+
+    // HRV平均（現状は最新値のみ取得のため latestHRV と同値）
+    var todayAverageHRV: Double { latestHRV }
+
+    // HRV ステータス文字列
+    var hrvStatus: String {
+        if latestHRV >= 60 { return "良好" }
+        if latestHRV >= 40 { return "中程度" }
+        if latestHRV > 0   { return "要注意" }
+        return "—"
+    }
+
     // MARK: - 権限セット
 
     private var readTypes: Set<HKObjectType> {

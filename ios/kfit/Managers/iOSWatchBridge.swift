@@ -122,7 +122,34 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 return
             }
 
-            // ④ 摂取記録（Watch からの記録）
+            // ④ Watch側でマインドフルネス完了
+            if (message["action"] as? String) == "mindfulness_completed" {
+                Task {
+                    print("[iOSWatchBridge] 🧘 Watch mindfulness completed — refreshing HealthKit")
+                    await HealthKitManager.shared.refreshMindfulness()
+                    // TimeSlotManagerの合計とHealthKitの差分だけ記録（二重カウント防止）
+                    let hkCount = HealthKitManager.shared.todayMindfulnessSessions
+                    let totalInSlots = TimeSlot.allCases.compactMap {
+                        TimeSlotManager.shared.progress.progressFor($0)?.mindfulnessCompleted
+                    }.reduce(0, +)
+                    let needed = hkCount - totalInSlots
+                    if needed > 0 {
+                        let currentSlot = TimeSlot.current()
+                        for _ in 0..<needed {
+                            await TimeSlotManager.shared.recordMindfulnessCompleted(at: currentSlot)
+                        }
+                        print("[iOSWatchBridge] ✅ Recorded \(needed) mindfulness to \(currentSlot.displayName)")
+                    }
+                    let profile = AuthenticationManager.shared.userProfile
+                    let exercises = await AuthenticationManager.shared.getTodayExercises()
+                    let reps = exercises.reduce(0) { $0 + $1.reps }
+                    let xp   = exercises.reduce(0) { $0 + $1.points }
+                    self.sendStatsToWatch(streak: profile?.streak ?? 0, todayReps: reps, todayXP: xp, todayExercises: exercises)
+                }
+                return
+            }
+
+            // ⑤ 摂取記録（Watch からの記録）
             if (message["action"] as? String) == "record_intake" {
                 let type = message["type"] as? String ?? ""
                 let subtype = message["subtype"] as? String
@@ -133,9 +160,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     let hour = calendar.component(.hour, from: timestamp)
                     let timeSlot: TimeSlot
 
-                    if hour >= 6 && hour < 10 { timeSlot = .morning }
-                    else if hour >= 10 && hour < 14 { timeSlot = .noon }
-                    else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
+                    if hour < 6 { timeSlot = .midnight }
+                    else if hour < 10 { timeSlot = .morning }
+                    else if hour < 14 { timeSlot = .noon }
+                    else if hour < 18 { timeSlot = .afternoon }
                     else { timeSlot = .evening }
 
                     switch type {
@@ -248,28 +276,42 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                // トレーニングは実際のセット数をカウント（iOS側と同じロジック）
-                let setsInSlot = todayExercises.filter { exercise in
+                // トレーニング: 30分以内のまとまりを1セットとする（iOS DashboardViewと同じロジック）
+                let slotExercises = todayExercises.filter { exercise in
                     let hour = calendar.component(.hour, from: exercise.timestamp)
                     return hour >= slot.startHour && hour < slot.endHour
-                }.count
+                }.sorted { $0.timestamp < $1.timestamp }
+
+                var setsInSlot = 0
+                var lastTime: Date? = nil
+                for ex in slotExercises {
+                    if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
+                        // 同一セッション内
+                    } else {
+                        setsInSlot += 1
+                    }
+                    lastTime = ex.timestamp
+                }
                 totalTraining += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
 
-                // HealthKitのマインドフルネスセッション数を使用
-                totalMindfulness += progress.mindfulnessCompleted
                 totalMindfulnessGoal += goal.mindfulnessGoal
 
-                if goal.logGoal.mealRequired {
-                    totalMealGoal += 1
+                if goal.logGoal.mealGoal > 0 {
+                    totalMealGoal += goal.logGoal.mealGoal
                     totalMealLogged += progress.logProgress.mealLogged
                 }
-                if goal.logGoal.drinkRequired {
-                    totalDrinkGoal += 1
+                if goal.logGoal.drinkGoal > 0 {
+                    totalDrinkGoal += goal.logGoal.drinkGoal
                     totalDrinkLogged += progress.logProgress.drinkLogged
                 }
+
+                _ = progress  // suppress unused warning
             }
         }
+
+        // マインドフルネスはHealthKitを正とする（DashboardViewと一致）
+        totalMindfulness = HealthKitManager.shared.todayMindfulnessSessions
 
         return TimeSlotProgressData(
             totalTraining: totalTraining,

@@ -7,8 +7,8 @@ struct TimeSlotGoalEditView: View {
 
     @State private var trainingGoal: Int = 1
     @State private var mindfulnessGoal: Int = 1
-    @State private var mealRequired: Bool = true
-    @State private var drinkRequired: Bool = true
+    @State private var mealGoal: Int = 1
+    @State private var drinkGoal: Int = 1
     @State private var mindInputRequired: Bool = false
 
     var body: some View {
@@ -160,27 +160,8 @@ struct TimeSlotGoalEditView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle(icon: "📝", title: "ログ記録")
 
-            Toggle(isOn: $mealRequired) {
-                HStack(spacing: 8) {
-                    Text("🍽️")
-                        .font(.title3)
-                    Text("食事記録")
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundColor(Color.duoDark)
-                }
-            }
-            .tint(Color.duoOrange)
-
-            Toggle(isOn: $drinkRequired) {
-                HStack(spacing: 8) {
-                    Text("💧")
-                        .font(.title3)
-                    Text("飲み物記録")
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundColor(Color.duoDark)
-                }
-            }
-            .tint(Color.duoBlue)
+            logStepperRow(icon: "🍽️", label: "食事記録", value: $mealGoal, color: Color.duoOrange)
+            logStepperRow(icon: "💧", label: "飲み物記録", value: $drinkGoal, color: Color.duoBlue)
 
             Toggle(isOn: $mindInputRequired) {
                 HStack(spacing: 8) {
@@ -193,7 +174,7 @@ struct TimeSlotGoalEditView: View {
             }
             .tint(Color.duoPurple)
 
-            Text("この時間帯に記録する必要がある項目をオンにしてください")
+            Text("0=不要、N=この時間帯での目標回数")
                 .font(.caption)
                 .foregroundColor(Color.duoSubtitle)
         }
@@ -201,6 +182,39 @@ struct TimeSlotGoalEditView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private func logStepperRow(icon: String, label: String, value: Binding<Int>, color: Color) -> some View {
+        HStack {
+            Text(icon).font(.title3)
+            Text(label)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundColor(Color.duoDark)
+            Spacer()
+            HStack(spacing: 12) {
+                Button {
+                    if value.wrappedValue > 0 { value.wrappedValue -= 1 }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(value.wrappedValue > 0 ? color : Color(.systemGray4))
+                }
+                .disabled(value.wrappedValue <= 0)
+
+                Text(value.wrappedValue == 0 ? "なし" : "\(value.wrappedValue)回")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                    .frame(width: 44)
+
+                Button {
+                    if value.wrappedValue < 10 { value.wrappedValue += 1 }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(color)
+                }
+            }
+        }
     }
 
     // MARK: - Reminder Section
@@ -242,8 +256,8 @@ struct TimeSlotGoalEditView: View {
         if let goal = timeSlotManager.settings.goalFor(timeSlot) {
             trainingGoal = goal.trainingGoal
             mindfulnessGoal = goal.mindfulnessGoal
-            mealRequired = goal.logGoal.mealRequired
-            drinkRequired = goal.logGoal.drinkRequired
+            mealGoal = goal.logGoal.mealGoal
+            drinkGoal = goal.logGoal.drinkGoal
             mindInputRequired = goal.logGoal.mindInputRequired
         }
     }
@@ -252,8 +266,8 @@ struct TimeSlotGoalEditView: View {
         var goal = TimeSlotGoal(timeSlot: timeSlot)
         goal.trainingGoal = trainingGoal
         goal.mindfulnessGoal = mindfulnessGoal
-        goal.logGoal.mealRequired = mealRequired
-        goal.logGoal.drinkRequired = drinkRequired
+        goal.logGoal.mealGoal = mealGoal
+        goal.logGoal.drinkGoal = drinkGoal
         goal.logGoal.mindInputRequired = mindInputRequired
 
         timeSlotManager.settings.updateGoal(goal)

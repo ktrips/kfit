@@ -3,6 +3,7 @@ import Foundation
 // MARK: - 時間帯の定義
 
 enum TimeSlot: String, Codable, CaseIterable {
+    case midnight = "midnight"     // 0:00 - 6:00
     case morning = "morning"       // 6:00 - 10:00
     case noon = "noon"            // 10:00 - 14:00
     case afternoon = "afternoon"  // 14:00 - 18:00
@@ -10,6 +11,7 @@ enum TimeSlot: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .midnight: return "夜中"
         case .morning: return "朝"
         case .noon: return "昼"
         case .afternoon: return "午後"
@@ -19,6 +21,7 @@ enum TimeSlot: String, Codable, CaseIterable {
 
     var emoji: String {
         switch self {
+        case .midnight: return "💤"
         case .morning: return "🌅"
         case .noon: return "☀️"
         case .afternoon: return "🌤️"
@@ -28,6 +31,7 @@ enum TimeSlot: String, Codable, CaseIterable {
 
     var timeRange: String {
         switch self {
+        case .midnight: return "0:00 - 6:00"
         case .morning: return "6:00 - 10:00"
         case .noon: return "10:00 - 14:00"
         case .afternoon: return "14:00 - 18:00"
@@ -37,6 +41,7 @@ enum TimeSlot: String, Codable, CaseIterable {
 
     var startHour: Int {
         switch self {
+        case .midnight: return 0
         case .morning: return 6
         case .noon: return 10
         case .afternoon: return 14
@@ -46,6 +51,7 @@ enum TimeSlot: String, Codable, CaseIterable {
 
     var endHour: Int {
         switch self {
+        case .midnight: return 6
         case .morning: return 10
         case .noon: return 14
         case .afternoon: return 18
@@ -56,9 +62,10 @@ enum TimeSlot: String, Codable, CaseIterable {
     /// 現在の時刻が属する時間帯を取得
     static func current() -> TimeSlot {
         let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 6 && hour < 10 { return .morning }
-        if hour >= 10 && hour < 14 { return .noon }
-        if hour >= 14 && hour < 18 { return .afternoon }
+        if hour < 6 { return .midnight }
+        if hour < 10 { return .morning }
+        if hour < 14 { return .noon }
+        if hour < 18 { return .afternoon }
         return .evening
     }
 }
@@ -110,16 +117,15 @@ struct TimeSlotGoal: Codable, Identifiable {
 // MARK: - ログ目標
 
 struct LogGoal: Codable {
-    var mealRequired: Bool = true       // 食事記録必須
-    var drinkRequired: Bool = true      // 飲み物記録必須
-    var mindInputRequired: Bool = false // マインド入力必須
+    var mealGoal: Int = 1            // 0=不要, N=N回目標
+    var drinkGoal: Int = 1           // 0=不要, N=N杯目標
+    var mindInputRequired: Bool = false
+
+    var mealRequired: Bool { mealGoal > 0 }
+    var drinkRequired: Bool { drinkGoal > 0 }
 
     var totalRequired: Int {
-        var count = 0
-        if mealRequired { count += 1 }
-        if drinkRequired { count += 1 }
-        if mindInputRequired { count += 1 }
-        return count
+        (mealGoal > 0 ? 1 : 0) + (drinkGoal > 0 ? 1 : 0) + (mindInputRequired ? 1 : 0)
     }
 }
 
@@ -156,12 +162,17 @@ struct TimeSlotProgress: Codable, Identifiable {
         }
 
         // ログ
-        let logGoals = goal.logGoal.totalRequired
-        if logGoals > 0 {
+        if goal.logGoal.mealGoal > 0 {
             totalGoals += 1
-            if logProgress.completedCount >= logGoals {
-                completed += 1
-            }
+            if logProgress.mealLogged >= goal.logGoal.mealGoal { completed += 1 }
+        }
+        if goal.logGoal.drinkGoal > 0 {
+            totalGoals += 1
+            if logProgress.drinkLogged >= goal.logGoal.drinkGoal { completed += 1 }
+        }
+        if goal.logGoal.mindInputRequired {
+            totalGoals += 1
+            if logProgress.mindInputLogged > 0 { completed += 1 }
         }
 
         // カスタムアクティビティ
@@ -225,6 +236,7 @@ struct DailyGlobalGoals: Codable {
     var standEnabled: Bool = false             // スタンド時間目標を使用するか
     var standHours: Int = 12                   // 目標スタンド時間（時間）
     var sleepEnabled: Bool = false             // 睡眠計測目標を使用するか
+    var sleepHoursGoal: Int = 6              // 睡眠時間の目標（時間）
     var sleepScoreThreshold: Int = 80          // 睡眠スコアの目標（80点以上で達成）
     var pfcEnabled: Bool = false               // PFCバランス目標を使用するか
     var pfcScoreThreshold: Int = 80            // PFCバランススコアの目標（80点以上で達成）
@@ -237,6 +249,7 @@ struct DailyGlobalGoals: Codable {
 struct DailyGlobalProgress: Codable {
     var workoutMinutes: Int = 0                // 完了したワークアウト時間（分）
     var standHours: Int = 0                    // 完了したスタンド時間（時間）
+    var sleepHours: Double = 0.0               // 睡眠時間（時間）
     var sleepScore: Int = 0                    // 睡眠スコア（0-100点）
     var pfcScore: Int = 0                      // PFCバランススコア（0-100点）
     var weightMeasured: Bool = false           // 今日体重を計測したか

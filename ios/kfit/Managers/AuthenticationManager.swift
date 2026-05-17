@@ -207,8 +207,8 @@ class AuthenticationManager: ObservableObject {
             else { timeSlot = .evening }
             await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
-            // Widget更新
-            WidgetCenter.shared.reloadAllTimelines()
+            // Widget更新（データを書いてからリロード）
+            AuthenticationManager.syncWidgetData()
 
             // Apple Health書き込み（権限確認）
             if HealthKitManager.shared.isAvailable {
@@ -499,8 +499,8 @@ class AuthenticationManager: ObservableObject {
         // キャッシュ無効化
         invalidateTodayExercisesCache()
 
-        // Widget更新
-        WidgetCenter.shared.reloadAllTimelines()
+        // Widget更新（データを書いてからリロード）
+        AuthenticationManager.syncWidgetData()
     }
 
     /// 種目のみを記録（セットは記録しない）
@@ -533,8 +533,8 @@ class AuthenticationManager: ObservableObject {
             )
         }
 
-        // Widget更新
-        WidgetCenter.shared.reloadAllTimelines()
+        // Widget更新（データを書いてからリロード）
+        AuthenticationManager.syncWidgetData()
     }
 
     /// 完了したセットを1件として記録
@@ -1562,7 +1562,80 @@ extension AuthenticationManager {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }
+
+    // MARK: - ウィジェット同期（データを書いてからリロード）
+
+    /// SharedUserDefaultsに最新データを書き込んでウィジェットをリロードする。
+    /// DashboardView外からWidget更新が必要な場合はこちらを呼ぶ。
+    static func syncWidgetData() {
+        guard let defaults = UserDefaults(suiteName: "group.com.kfit.app") else { return }
+        let tsm = TimeSlotManager.shared
+        let hk = HealthKitManager.shared
+
+        // streak / points
+        defaults.set(shared.userProfile?.streak ?? 0, forKey: "streak")
+        defaults.set(shared.userProfile?.totalPoints ?? 0, forKey: "totalPoints")
+
+        // 全時間帯のトレーニング・マインドフル・食事・水分
+        var trainingCompleted = 0, trainingGoal = 0
+        var mindfulnessCompleted = 0, mindfulnessGoal = 0
+        var mealGoal = 0, drinkGoal = 0
+        for slot in TimeSlot.allCases {
+            if let goal = tsm.settings.goalFor(slot),
+               let prog = tsm.progress.progressFor(slot) {
+                trainingCompleted += prog.trainingCompleted
+                trainingGoal      += goal.trainingGoal
+                mindfulnessCompleted += prog.mindfulnessCompleted
+                mindfulnessGoal      += goal.mindfulnessGoal
+                if goal.logGoal.mealGoal  > 0 { mealGoal  += goal.logGoal.mealGoal }
+                if goal.logGoal.drinkGoal > 0 { drinkGoal += goal.logGoal.drinkGoal }
+            }
+        }
+        defaults.set(trainingCompleted,    forKey: "trainingCompleted")
+        defaults.set(trainingGoal,         forKey: "trainingGoal")
+        defaults.set(mindfulnessCompleted, forKey: "mindfulnessCompleted")
+        defaults.set(mindfulnessGoal,      forKey: "mindfulnessGoal")
+        defaults.set(Int(hk.todayIntakeCalories), forKey: "mealLogged")
+        defaults.set(mealGoal,             forKey: "mealGoal")
+        defaults.set(Int(hk.todayIntakeWater), forKey: "drinkLogged")
+        defaults.set(drinkGoal,            forKey: "drinkGoal")
+
+        // 現在の時間帯
+        let hour = Calendar.current.component(.hour, from: Date())
+        let currentSlot: TimeSlot
+        let slotName: String
+        if hour < 6        { currentSlot = .evening;   slotName = "夜" }
+        else if hour < 10  { currentSlot = .morning;   slotName = "朝" }
+        else if hour < 14  { currentSlot = .noon;      slotName = "昼" }
+        else if hour < 18  { currentSlot = .afternoon; slotName = "午後" }
+        else               { currentSlot = .evening;   slotName = "夜" }
+        defaults.set(slotName, forKey: "currentTimeSlot")
+        if let goal = tsm.settings.goalFor(currentSlot),
+           let prog = tsm.progress.progressFor(currentSlot) {
+            defaults.set(prog.trainingCompleted, forKey: "timeSlotCompleted")
+            defaults.set(goal.trainingGoal,      forKey: "timeSlotGoal")
+        }
+
+        // ワークアウト・スタンド
+        let gp = tsm.progress.globalProgress
+        let gg = tsm.settings.globalGoals
+        defaults.set(hk.todayWorkoutMinutes > 0 ? hk.todayWorkoutMinutes : gp.workoutMinutes, forKey: "workoutMinutes")
+        defaults.set(gg.workoutEnabled ? gg.workoutMinutes : 0, forKey: "workoutGoal")
+        defaults.set(hk.todayStandHours > 0 ? hk.todayStandHours : gp.standHours, forKey: "standHours")
+        defaults.set(gg.standEnabled ? gg.standHours : 0, forKey: "standGoal")
+
+        // カロリー収支：消費量のみ更新（摂取量はDashboardViewが正として上書きする）
+        let burned = Int(hk.todayRestingCalories + hk.todayActiveCalories)
+        let existingBalance = defaults.integer(forKey: "calorieBalance")
+        let prevIntake = existingBalance + burned
+        defaults.set(prevIntake - burned, forKey: "calorieBalance")
+
+        defaults.synchronize()
+        WidgetCenter.shared.reloadAllTimelines()
+        print("[Widget] ✅ syncWidgetData: training=\(trainingCompleted)/\(trainingGoal) streak=\(shared.userProfile?.streak ?? 0)")
+    }
 }
+
 import Foundation
 import UIKit
 

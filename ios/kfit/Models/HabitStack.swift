@@ -15,7 +15,7 @@ struct HabitStack: Identifiable, Codable, Equatable {
     }
 
     var notificationId: String {
-        "duofit.habitstack.\(id.uuidString)"
+        "fitingo.habitstack.\(id.uuidString)"
     }
 }
 

@@ -46,14 +46,16 @@ class TimeSlotManager: ObservableObject {
                             var logGoal = LogGoal()
                             if let logGoalData = goalData["logGoal"] as? [String: Any] {
                                 if let mg = logGoalData["mealGoal"] as? Int {
-                                    logGoal.mealGoal = mg
+                                    // 旧フォーマット（回数=1-10）は400kcalデフォルトに移行
+                                    logGoal.mealGoal = mg <= 10 && mg > 0 ? 400 : mg
                                 } else {
-                                    logGoal.mealGoal = (logGoalData["mealRequired"] as? Bool ?? true) ? 1 : 0
+                                    logGoal.mealGoal = (logGoalData["mealRequired"] as? Bool ?? true) ? 400 : 0
                                 }
                                 if let dg = logGoalData["drinkGoal"] as? Int {
-                                    logGoal.drinkGoal = dg
+                                    // 旧フォーマット（回数=1-10）は400mlデフォルトに移行
+                                    logGoal.drinkGoal = dg <= 10 && dg > 0 ? 400 : dg
                                 } else {
-                                    logGoal.drinkGoal = (logGoalData["drinkRequired"] as? Bool ?? true) ? 1 : 0
+                                    logGoal.drinkGoal = (logGoalData["drinkRequired"] as? Bool ?? true) ? 400 : 0
                                 }
                                 logGoal.mindInputRequired = logGoalData["mindInputRequired"] as? Bool ?? false
                             }
@@ -382,9 +384,9 @@ class TimeSlotManager: ObservableObject {
     }
 
     /// ログ記録（食事）
-    func recordMealLog(at timeSlot: TimeSlot) async {
+    func recordMealLog(at timeSlot: TimeSlot, calories: Int = 400) async {
         if var prog = progress.progressFor(timeSlot) {
-            prog.logProgress.mealLogged += 1
+            prog.logProgress.mealLogged += calories
             prog.lastUpdated = Date()
 
             // struct全体を再作成してSwiftUIに変更を通知
@@ -398,9 +400,9 @@ class TimeSlotManager: ObservableObject {
     }
 
     /// ログ記録（飲み物）
-    func recordDrinkLog(at timeSlot: TimeSlot) async {
+    func recordDrinkLog(at timeSlot: TimeSlot, ml: Int = 200) async {
         if var prog = progress.progressFor(timeSlot) {
-            prog.logProgress.drinkLogged += 1
+            prog.logProgress.drinkLogged += ml
             prog.lastUpdated = Date()
 
             // struct全体を再作成してSwiftUIに変更を通知

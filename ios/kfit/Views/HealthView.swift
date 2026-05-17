@@ -29,11 +29,16 @@ struct HealthView: View {
                             loadingCard
                         } else {
                             refreshButton
-                            activityCard
+                            HStack(spacing: 12) {
+                                stepsCard
+                                workoutCard
+                            }
                             heartRateCard
                             hrvCard
                             sunlightCard
                             sleepCard
+                            calorieBalanceCard
+                            weightBodyFatCard
                             intakeCard
                             if !hk.hrSamples.isEmpty { hrHistoryCard }
                             openHealthButton
@@ -199,58 +204,154 @@ struct HealthView: View {
         .cornerRadius(14)
     }
 
-    // MARK: - アクティビティカード（歩数・カロリー）
+    // MARK: - 歩数カード
 
-    private var activityCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cardTitle(icon: "figure.walk", label: "今日のアクティビティ",
-                      iconColor: Color.duoGreen)
+    private var stepsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "figure.walk")
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoGreen)
+                Text("歩数").font(.caption).fontWeight(.black).foregroundColor(Color.duoDark)
+                Spacer()
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text("\(hk.todaySteps.formatted())")
+                    .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Text("歩").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(hex: "#D7FFB8"))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    // MARK: - 運動カード
+
+    private var workoutCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "flame.fill")
+                    .font(.subheadline)
+                    .foregroundColor(Color(hex: "#FF9600"))
+                Text("運動").font(.caption).fontWeight(.black).foregroundColor(Color.duoDark)
+                Spacer()
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text("\(hk.todayWorkoutMinutes)")
+                    .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Text("分").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text("\(Int(hk.todayActiveCalories))")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color(hex: "#FF9600"))
+                Text("kcal").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(hex: "#FFF3E0"))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    // MARK: - カロリー収支カード
+
+    private var calorieBalanceCard: some View {
+        let netBalance = Int(hk.todayIntakeCalories) - Int(hk.todayTotalCalories)
+        let isPositive = netBalance >= 0
+        let balanceColor: Color = isPositive ? Color(hex: "#FF9600") : Color.duoGreen
+
+        return VStack(alignment: .leading, spacing: 12) {
+            cardTitle(icon: "chart.bar.fill", label: "カロリー収支", iconColor: Color(hex: "#FF6B35"))
 
             HStack(spacing: 12) {
-                activityTile(
-                    icon: "figure.walk",
-                    color: Color.duoGreen,
-                    value: "\(hk.todaySteps.formatted())",
-                    unit: "歩",
-                    bg: Color(hex: "#D7FFB8")
-                )
-                activityTile(
-                    icon: "flame.fill",
-                    color: Color(hex: "#FF9600"),
-                    value: "\(Int(hk.todayCalories))",
-                    unit: "kcal",
-                    bg: Color(hex: "#FFF3E0")
-                )
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "fork.knife")
+                            .font(.subheadline).foregroundColor(Color.duoOrange)
+                        Text("摂取").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                    }
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text("\(Int(hk.todayIntakeCalories))")
+                            .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("kcal").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: "#FFF3E0"))
+                .cornerRadius(12)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flame.fill")
+                            .font(.subheadline).foregroundColor(Color(hex: "#FF4B4B"))
+                        Text("消費").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                    }
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text("\(Int(hk.todayTotalCalories))")
+                            .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("kcal").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: "#FCE4EC"))
+                .cornerRadius(12)
             }
+
+            HStack(spacing: 8) {
+                Image(systemName: isPositive ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(balanceColor)
+                Text("収支").font(.caption).foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Text(isPositive ? "+\(netBalance)" : "\(netBalance)")
+                    .font(.subheadline).fontWeight(.black).foregroundColor(balanceColor)
+                Text("kcal").font(.caption).foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Color.gray.opacity(0.05))
+            .cornerRadius(10)
+
+            // 体重・体脂肪（小さくインライン表示）
+            HStack(spacing: 16) {
+                if hk.latestBodyMass > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "scalemass.fill")
+                            .font(.caption2).foregroundColor(Color(hex: "#1CB0F6"))
+                        Text("体重").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        Text(String(format: "%.1f kg", hk.latestBodyMass))
+                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoDark)
+                    }
+                }
+                if hk.latestBodyFatPercentage > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "percent")
+                            .font(.caption2).foregroundColor(Color(hex: "#CE82FF"))
+                        Text("体脂肪").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        Text(String(format: "%.1f%%", hk.latestBodyFatPercentage))
+                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoDark)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 4)
         }
         .padding(16)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    private func activityTile(icon: String, color: Color, value: String, unit: String, bg: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.subheadline)
-                    .foregroundColor(color)
-                Spacer()
-            }
-            HStack(alignment: .lastTextBaseline, spacing: 4) {
-                Text(value)
-                    .font(.system(.title2, design: .rounded))
-                    .fontWeight(.black)
-                    .foregroundColor(Color.duoDark)
-                Text(unit)
-                    .font(.caption).fontWeight(.bold)
-                    .foregroundColor(Color.duoSubtitle)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(bg)
-        .cornerRadius(12)
     }
 
     // MARK: - 心拍数カード
@@ -847,6 +948,62 @@ struct HealthView: View {
         case "要改善": return "改善が必要"
         default: return "不十分な睡眠"
         }
+    }
+
+    // MARK: - 体重・体脂肪カード
+
+    private var weightBodyFatCard: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass.fill")
+                        .font(.subheadline).foregroundColor(Color(hex: "#1CB0F6"))
+                    Text("体重").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                }
+                if hk.latestBodyMass > 0 {
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text(String(format: "%.1f", hk.latestBodyMass))
+                            .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("kg").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    }
+                } else {
+                    Text("未記録").font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(hex: "#E3F2FD"))
+            .cornerRadius(12)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "percent")
+                        .font(.subheadline).foregroundColor(Color(hex: "#CE82FF"))
+                    Text("体脂肪率").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                }
+                if hk.latestBodyFatPercentage > 0 {
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text(String(format: "%.1f", hk.latestBodyFatPercentage))
+                            .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("%").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    }
+                } else {
+                    Text("未記録").font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(hex: "#F3E5F5"))
+            .cornerRadius(12)
+        }
+        .padding(16)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
     // MARK: - 摂取データカード

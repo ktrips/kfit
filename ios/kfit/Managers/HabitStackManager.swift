@@ -13,7 +13,7 @@ final class HabitStackManager: ObservableObject {
         didSet { save() }
     }
 
-    private let key = "duofit.habitStacks"
+    private let key = "fitingo.habitStacks"
 
     private init() {
         load()
@@ -66,7 +66,7 @@ final class HabitStackManager: ObservableObject {
         content.title      = "\(habit.emoji) \(habit.name)の時間！"
         content.body       = "終わったらすぐトレーニングを始めよう 💪"
         content.sound      = .default
-        content.threadIdentifier = "duofit.habitstack"
+        content.threadIdentifier = "fitingo.habitstack"
         // ユーザーがタップしたらアプリを開いてトレーニング画面へ（将来拡張用）
         content.userInfo   = ["habitId": habit.id.uuidString, "action": "startWorkout"]
 

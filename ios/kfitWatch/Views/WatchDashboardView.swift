@@ -127,20 +127,20 @@ struct WatchDashboardView: View {
     private var intakeInputPage: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
-                // ── ヘッダー：食事／ドリンク入力状況 ──────────────────────
+                // ── ヘッダー：食事／ドリンク入力状況（Apple Health実績）──────────────────────
                 HStack(spacing: 0) {
                     WatchStatItem(
                         icon: "🍽️",
-                        value: "\(connectivity.totalMealLogged)/\(connectivity.totalMealGoal)",
-                        label: "食事",
-                        isCompleted: connectivity.totalMealLogged >= connectivity.totalMealGoal && connectivity.totalMealGoal > 0
+                        value: "\(Int(healthKit.todayDietaryCalories))k",
+                        label: "食事kcal",
+                        isCompleted: connectivity.totalMealGoal > 0 && Int(healthKit.todayDietaryCalories) >= connectivity.totalMealGoal
                     )
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
                     WatchStatItem(
                         icon: "💧",
-                        value: "\(connectivity.totalDrinkLogged)/\(connectivity.totalDrinkGoal)",
-                        label: "ドリンク",
-                        isCompleted: connectivity.totalDrinkLogged >= connectivity.totalDrinkGoal && connectivity.totalDrinkGoal > 0
+                        value: "\(Int(healthKit.todayDietaryWater))ml",
+                        label: "水分ml",
+                        isCompleted: connectivity.totalDrinkGoal > 0 && Int(healthKit.todayDietaryWater) >= connectivity.totalDrinkGoal
                     )
                 }
                 .padding(.vertical, 8)
@@ -237,7 +237,7 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
-                // ── ヘッダー：トレーニング／マインドフルネス ────────────────
+                // ── トレーニング／カスタム目標（マインドフルネス）────────────────
                 HStack(spacing: 0) {
                     WatchStatItem(
                         icon: "💪",
@@ -269,7 +269,7 @@ struct WatchDashboardView: View {
 
                             // メッセージ（回数に応じて変化）
                             if connectivity.todaySetCount == 0 {
-                                Text("今日のDuofitトレーニング")
+                                Text("今日のFitingoトレーニング")
                                     .font(.system(size: 15)).fontWeight(.bold)
                                 Text("タップして開始")
                                     .font(.system(size: 11)).foregroundColor(.white.opacity(0.7))

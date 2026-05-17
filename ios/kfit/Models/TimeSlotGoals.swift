@@ -117,8 +117,8 @@ struct TimeSlotGoal: Codable, Identifiable {
 // MARK: - ログ目標
 
 struct LogGoal: Codable {
-    var mealGoal: Int = 1            // 0=不要, N=N回目標
-    var drinkGoal: Int = 1           // 0=不要, N=N杯目標
+    var mealGoal: Int = 400          // 0=不要, N=目標kcal
+    var drinkGoal: Int = 400         // 0=不要, N=目標ml
     var mindInputRequired: Bool = false
 
     var mealRequired: Bool { mealGoal > 0 }
@@ -196,8 +196,8 @@ struct TimeSlotProgress: Codable, Identifiable {
 // MARK: - ログ進捗
 
 struct LogProgress: Codable {
-    var mealLogged: Int = 0  // 記録された食事の回数
-    var drinkLogged: Int = 0  // 記録されたドリンクの回数
+    var mealLogged: Int = 0  // この時間帯の累積摂取kcal
+    var drinkLogged: Int = 0  // この時間帯の累積ml
     var mindInputLogged: Int = 0  // 記録されたマインド入力の回数
 
     var completedCount: Int {

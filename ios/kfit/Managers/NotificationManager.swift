@@ -77,7 +77,7 @@ struct NotificationPrefs: Codable {
 
 // MARK: - NotificationManager
 
-/// DuoFit の通知スケジュール管理
+/// Fitingo の通知スケジュール管理
 ///
 /// 毎日の通知は NotificationPrefs (UserDefaults) から時刻・有効状態を読み込む。
 /// ユーザーが設定画面でカスタマイズした内容がそのまま反映される。
@@ -92,17 +92,17 @@ final class NotificationManager: ObservableObject {
     // MARK: - 通知 ID 定数
 
     enum ID {
-        static let amReminder  = "duofit.am.reminder"
-        static let amFollowup  = "duofit.am.followup"
-        static let noonReminder = "duofit.noon.reminder"
-        static let noonFollowup = "duofit.noon.followup"
-        static let afternoonReminder = "duofit.afternoon.reminder"
-        static let afternoonFollowup = "duofit.afternoon.followup"
-        static let pmReminder  = "duofit.pm.reminder"
-        static let pmFollowup  = "duofit.pm.followup"
-        static let streakAlert = "duofit.streak.alert"
-        static let weightMorning = "duofit.weight.morning"
-        static let weightEvening = "duofit.weight.evening"
+        static let amReminder  = "fitingo.am.reminder"
+        static let amFollowup  = "fitingo.am.followup"
+        static let noonReminder = "fitingo.noon.reminder"
+        static let noonFollowup = "fitingo.noon.followup"
+        static let afternoonReminder = "fitingo.afternoon.reminder"
+        static let afternoonFollowup = "fitingo.afternoon.followup"
+        static let pmReminder  = "fitingo.pm.reminder"
+        static let pmFollowup  = "fitingo.pm.followup"
+        static let streakAlert = "fitingo.streak.alert"
+        static let weightMorning = "fitingo.weight.morning"
+        static let weightEvening = "fitingo.weight.evening"
         static var all: [String] {
             [amReminder, amFollowup, noonReminder, noonFollowup, afternoonReminder, afternoonFollowup, pmReminder, pmFollowup, streakAlert, weightMorning, weightEvening]
         }
@@ -141,7 +141,7 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - UserDefaults 永続化
 
-    private static let prefsKey = "duofit.notificationPrefs"
+    private static let prefsKey = "fitingo.notificationPrefs"
 
     static func loadPrefs() -> NotificationPrefs {
         guard let data = UserDefaults.standard.data(forKey: prefsKey),
@@ -290,7 +290,7 @@ final class NotificationManager: ObservableObject {
         content.title = title
         content.body  = body
         content.sound = .default
-        content.threadIdentifier = "duofit.training"
+        content.threadIdentifier = "fitingo.training"
 
         // カテゴリを設定（ワークアウトリマインダーか体重測定か）
         if ID.workoutReminders.contains(id) {

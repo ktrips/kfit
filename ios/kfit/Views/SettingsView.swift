@@ -372,7 +372,7 @@ struct SettingsView: View {
         }
     }
 
-    private func slotStepperRow(emoji: String, label: String, valueText: String, valueColor: Color, value: Binding<Int>, in range: ClosedRange<Int>) -> some View {
+    private func slotStepperRow(emoji: String, label: String, valueText: String, valueColor: Color, value: Binding<Int>, in range: ClosedRange<Int>, step: Int = 1) -> some View {
         HStack(spacing: 8) {
             Text(emoji).font(.title3)
             Text(label)
@@ -385,7 +385,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 9).padding(.vertical, 3)
                 .background(valueColor.opacity(0.12))
                 .cornerRadius(7)
-            Stepper("", value: value, in: range)
+            Stepper("", value: value, in: range, step: step)
                 .labelsHidden()
                 .fixedSize()
         }
@@ -489,22 +489,22 @@ struct SettingsView: View {
                 }
 
                 slotStepperRow(
-                    emoji: "🍽️", label: "食事ログ",
-                    valueText: goal.logGoal.mealGoal == 0 ? "なし" : "\(goal.logGoal.mealGoal)回",
+                    emoji: "🍽️", label: "食事目標",
+                    valueText: goal.logGoal.mealGoal == 0 ? "なし" : "\(goal.logGoal.mealGoal)kcal",
                     valueColor: goal.logGoal.mealGoal > 0 ? Color.duoOrange : Color(.systemGray3),
                     value: Binding(
                         get: { goal.logGoal.mealGoal },
                         set: { v in var g = goal; g.logGoal.mealGoal = v; timeSlotManager.settings.updateGoal(g); Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 0...10
+                    ), in: 0...2000, step: 50
                 )
                 slotStepperRow(
-                    emoji: "💧", label: "飲み物ログ",
-                    valueText: goal.logGoal.drinkGoal == 0 ? "なし" : "\(goal.logGoal.drinkGoal)回",
+                    emoji: "💧", label: "水分目標",
+                    valueText: goal.logGoal.drinkGoal == 0 ? "なし" : "\(goal.logGoal.drinkGoal)ml",
                     valueColor: goal.logGoal.drinkGoal > 0 ? Color.duoBlue : Color(.systemGray3),
                     value: Binding(
                         get: { goal.logGoal.drinkGoal },
                         set: { v in var g = goal; g.logGoal.drinkGoal = v; timeSlotManager.settings.updateGoal(g); Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 0...10
+                    ), in: 0...2000, step: 50
                 )
 
                 customActivityRows(slot: slot, goal: goal)
@@ -897,7 +897,7 @@ struct SettingsView: View {
                         Text("通知がブロックされています")
                             .font(.subheadline).fontWeight(.black)
                             .foregroundColor(Color(hex: "#7f0000"))
-                        Text("設定アプリ → DuoFit → 通知 から許可してください")
+                        Text("設定アプリ → Fitingo → 通知 から許可してください")
                             .font(.caption)
                             .foregroundColor(Color(hex: "#7f0000"))
                     }
@@ -1098,7 +1098,7 @@ struct SettingsView: View {
     private var linkedAppsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader(icon: "square.stack.3d.up.fill", title: "連動アプリ",
-                          subtitle: "他のアプリを開いたときDuoFitを起動")
+                          subtitle: "他のアプリを開いたときFitingoを起動")
 
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
@@ -1106,7 +1106,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("iOSショートカットで自動化")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("Duolingoなどを開いたとき、DuoFitも自動起動")
+                        Text("Duolingoなどを開いたとき、Fitingoも自動起動")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
@@ -1252,7 +1252,7 @@ private struct ShortcutsGuideView: View {
         ("「オートメーション」タブ → 右上の「＋」", "plus.circle"),
         ("「App」を選択 → 連動させたいアプリ（例: Duolingo）を選ぶ", "app.connected.to.app.below.fill"),
         ("「開いたとき」を選択 → 「次へ」", "chevron.right.circle"),
-        ("「アクションを追加」→「URLを開く」→ duofit:// を入力", "link"),
+        ("「アクションを追加」→「URLを開く」→ fitingo:// を入力", "link"),
         ("「完了」で保存", "checkmark.circle.fill"),
     ]
 
@@ -1290,7 +1290,7 @@ private struct ShortcutsGuideView: View {
                             .padding(.horizontal, 20)
                         }
 
-                        Text("設定後はDuolingoを開くとDuoFitが自動的に前面に出てきます")
+                        Text("設定後はDuolingoを開くとFitingoが自動的に前面に出てきます")
                             .font(.caption)
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.horizontal, 20)

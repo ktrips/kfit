@@ -3,6 +3,13 @@ import Foundation
 
 // MARK: - Data Models
 
+struct MindfulSession: Identifiable {
+    let id = UUID()
+    let startDate: Date
+    let durationMinutes: Double
+    let sourceName: String
+}
+
 struct HRSample: Identifiable {
     let id   = UUID()
     let date: Date
@@ -130,6 +137,7 @@ final class HealthKitManager: ObservableObject {
     // マインドフルネス
     @Published var todayMindfulnessMinutes: Double = 0  // 今日のマインドフルネス時間（分）
     @Published var todayMindfulnessSessions: Int = 0    // 今日のマインドフルネスセッション数
+    @Published var todayMindfulnessSamples: [MindfulSession] = []  // 個別セッション
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
 
     // ワークアウト
@@ -398,6 +406,7 @@ final class HealthKitManager: ObservableObject {
         todayIntakeCarbs    = await intakeCarbs
         let mindfulnessResult = await mindfulness
         todayMindfulnessMinutes = mindfulnessResult.minutes
+        todayMindfulnessSamples = mindfulnessResult.samples
         let newSessions = mindfulnessResult.sessions
 
         // セッション数が増えていたら時間帯の進捗を更新
@@ -942,30 +951,37 @@ final class HealthKitManager: ObservableObject {
     // MARK: - マインドフルネス
 
     /// 今日のマインドフルネスセッションを取得
-    func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int) {
+    func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int, samples: [MindfulSession]) {
         guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
-            return (0, 0)
+            return (0, 0, [])
         }
 
         let calendar = Calendar.current
         let now = Date()
         let startOfDay = calendar.startOfDay(for: now)
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
         return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
                 guard let samples = samples as? [HKCategorySample] else {
-                    continuation.resume(returning: (0, 0))
+                    continuation.resume(returning: (0, 0, []))
                     return
                 }
 
                 var totalMinutes: Double = 0
+                var mindfulSamples: [MindfulSession] = []
                 for sample in samples {
-                    let duration = sample.endDate.timeIntervalSince(sample.startDate)
-                    totalMinutes += duration / 60.0  // 秒から分に変換
+                    let duration = sample.endDate.timeIntervalSince(sample.startDate) / 60.0
+                    totalMinutes += duration
+                    mindfulSamples.append(MindfulSession(
+                        startDate: sample.startDate,
+                        durationMinutes: duration,
+                        sourceName: sample.sourceRevision.source.name
+                    ))
                 }
 
-                continuation.resume(returning: (totalMinutes, samples.count))
+                continuation.resume(returning: (totalMinutes, samples.count, mindfulSamples))
             }
             store.execute(query)
         }
@@ -976,6 +992,7 @@ final class HealthKitManager: ObservableObject {
         let result = await fetchTodayMindfulness()
         todayMindfulnessMinutes = result.minutes
         todayMindfulnessSessions = result.sessions
+        todayMindfulnessSamples = result.samples
         print("[HealthKit] 🧘 Refreshed mindfulness: \(result.sessions) sessions, \(String(format: "%.1f", result.minutes)) min")
     }
 

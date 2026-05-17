@@ -183,7 +183,7 @@ struct kfitWidget: Widget {
                 kfitWidgetEntryView(entry: entry)
             }
         }
-        .configurationDisplayName("DuoFit")
+        .configurationDisplayName("Fitingo")
         .description("今日のトレーニング進捗を表示")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
@@ -343,7 +343,7 @@ struct LargeWidgetView: View {
                 HStack {
                     Text("💪")
                         .font(.system(size: 36))
-                    Text("DuoFit")
+                    Text("Fitingo")
                         .font(.system(size: 22, weight: .black))
                         .foregroundColor(.white)
                     Spacer()

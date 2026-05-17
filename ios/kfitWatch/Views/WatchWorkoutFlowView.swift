@@ -95,17 +95,26 @@ struct WatchWorkoutFlowView: View {
                     .scaleEffect(showGoalReached ? 1.0 : 0.8)
                     .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.3), value: showGoalReached)
 
-                // ダブルタップヒント
-                HStack(spacing: 4) {
-                    Text("👆👆")
-                        .font(.system(size: 12))
-                    Text("ダブルタップで次へ")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
+                Button {
+                    showGoalReached = false
+                    handleAdvance()
+                } label: {
+                    Text("次へ →")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(duoGreen)
+                        .cornerRadius(10)
                 }
+                .buttonStyle(.plain)
                 .padding(.top, 4)
                 .scaleEffect(showGoalReached ? 1.0 : 0.8)
                 .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.4), value: showGoalReached)
+
+                Text("ダブルタップでも次へ")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
             }
             .padding(20)
             .background(
@@ -120,6 +129,10 @@ struct WatchWorkoutFlowView: View {
         }
         .transition(.scale.combined(with: .opacity))
         .animation(.spring(response: 0.4, dampingFraction: 0.6), value: showGoalReached)
+        .onTapGesture(count: 2) {
+            showGoalReached = false
+            handleAdvance()
+        }
     }
 
     private func checkGoalReached(_ count: Int) {
@@ -378,8 +391,15 @@ struct WatchWorkoutFlowView: View {
                     .cornerRadius(10)
             }
             .buttonStyle(.plain)
+
+            Text("ダブルタップでも戻れます")
+                .font(.system(size: 9))
+                .foregroundColor(.gray)
         }
         .padding(10)
+        .onTapGesture(count: 2) {
+            isPresented = false
+        }
         .onAppear {
             // セット全体完了時の強力な振動（7回連続）
             WKInterfaceDevice.current().play(.notification)

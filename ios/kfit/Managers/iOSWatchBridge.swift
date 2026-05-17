@@ -27,7 +27,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     }
 
     /// Watch 自動起動の UserDefaults キー（SettingsView と共有）
-    static let watchAutoLaunchKey = "duofit.watchAutoLaunch"
+    static let watchAutoLaunchKey = "fitingo.watchAutoLaunch"
 
     /// Watch 自動起動が有効かどうか（デフォルト: true）
     static var isWatchAutoLaunchEnabled: Bool {
@@ -171,22 +171,28 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         if let mealTypeStr = subtype {
                             if let mealType = MealType(rawValue: mealTypeStr) {
                                 await AuthenticationManager.shared.recordMeal(mealType: mealType)
-                                await TimeSlotManager.shared.recordMealLog(at: timeSlot)
-                                print("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) at \(timeSlot.displayName)")
+                                let calories = IntakeSettings.defaultSettings.caloriesFor(mealType: mealType)
+                                await TimeSlotManager.shared.recordMealLog(at: timeSlot, calories: calories)
+                                print("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) \(calories)kcal at \(timeSlot.displayName)")
                             }
                         }
                     case "water", "coffee", "alcohol":
+                        let drinkMl: Int
                         if type == "water" {
                             await AuthenticationManager.shared.recordWater()
+                            drinkMl = IntakeSettings.defaultSettings.waterPerCup
                         } else if type == "coffee" {
                             await AuthenticationManager.shared.recordCoffee()
-                        } else if let alcoholTypeStr = subtype {
-                            if let alcoholType = AlcoholType(rawValue: alcoholTypeStr) {
-                                await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
-                            }
+                            drinkMl = IntakeSettings.defaultSettings.coffeePerCup
+                        } else if let alcoholTypeStr = subtype,
+                                  let alcoholType = AlcoholType(rawValue: alcoholTypeStr) {
+                            await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
+                            drinkMl = alcoholType.amountMl
+                        } else {
+                            drinkMl = 200
                         }
-                        await TimeSlotManager.shared.recordDrinkLog(at: timeSlot)
-                        print("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) at \(timeSlot.displayName)")
+                        await TimeSlotManager.shared.recordDrinkLog(at: timeSlot, ml: drinkMl)
+                        print("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) \(drinkMl)ml at \(timeSlot.displayName)")
                     default:
                         break
                     }

@@ -12,7 +12,7 @@ private let helpItems: [HelpItem] = [
         icon: "💪",
         title: "トレーニングの記録方法",
         content: """
-        1. ダッシュボードの「今日のDuoFit!」ボタンをタップ
+        1. ダッシュボードの「今日のFitingo!」ボタンをタップ
         2. 種目（プッシュアップ・スクワットなど）を選択
         3. ＋ ボタンでレップ数を入力、または「モーション自動検出」をONにする
         4. 「✓ トレーニングを記録」で保存
@@ -160,7 +160,7 @@ struct HelpView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("ヘルプ・使い方")
                                     .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
-                                Text("DuoFit の使い方ガイド")
+                                Text("Fitingo の使い方ガイド")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)
                             }
                             Spacer()
@@ -177,7 +177,7 @@ struct HelpView: View {
                         HStack(spacing: 12) {
                             Text("ℹ️").font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("DuoFit v0.6.0")
+                                Text("Fitingo v0.6.0")
                                     .font(.subheadline).fontWeight(.black)
                                 Text("Web・iOS・Apple Watch 対応")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)

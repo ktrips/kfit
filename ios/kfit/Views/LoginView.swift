@@ -38,7 +38,7 @@ struct LoginView: View {
                             .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: mascotBounce)
                             .onAppear { mascotBounce = true }
 
-                        Text("DuoFit")
+                        Text("Fitingo")
                             .font(.system(size: 44, weight: .black))
                             .foregroundColor(Color.duoGreen)
 

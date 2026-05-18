@@ -12,11 +12,14 @@ private let helpItems: [HelpItem] = [
         icon: "💪",
         title: "トレーニングの記録方法",
         content: """
-        1. ダッシュボードの「今日のFitingo!」ボタンをタップ
+        1. ダッシュボードの Fitingo ボタンをタップ
         2. 種目（プッシュアップ・スクワットなど）を選択
         3. ＋ ボタンでレップ数を入力、または「モーション自動検出」をONにする
         4. 「✓ トレーニングを記録」で保存
         5. XP が獲得されてダッシュボードに戻ります
+        【Fitingo ボタンの表情】
+        • 目標に対して遅れているとき → 炎マスコット（🔥）
+        • 順調・達成済みのとき → 通常マスコット
         """
     ),
     HelpItem(
@@ -68,6 +71,8 @@ private let helpItems: [HelpItem] = [
         【評価】
         90点以上: 最高 / 80点以上: 良好 / 70点以上: 普通
         50点以上: 要改善 / 50点未満: 不十分
+        【データ取得の精度】
+        Apple Watch のステージデータ（コア・深い・REM）を優先取得し、iPhoneの「就寝中」記録と重複しないよう自動除外します。対象時間帯は前日15:00〜当日12:00。
         ダッシュボードの「睡眠スコア」カードで確認できます。
         """
     ),
@@ -99,6 +104,18 @@ private let helpItems: [HelpItem] = [
         • Anthropic Claude
         • Google Gemini 2.5 Flash
         設定画面からAPIキーとモデルを選択できます。
+        """
+    ),
+    HelpItem(
+        icon: "⚖️",
+        title: "カロリー収支・体重・体脂肪",
+        content: """
+        ダッシュボードのカロリー収支バーカードで、その日のカロリー消費・摂取の収支が確認できます。
+        【表示内容】
+        • カロリー収支バー: 消費と摂取のバランスを可視化
+        • 体重（kg）: Apple Health に記録された最新値
+        • 体脂肪（%）: Apple Health に記録された最新値
+        体重・体脂肪は Apple Health またはスマート体重計のデータが自動反映されます。
         """
     ),
     HelpItem(
@@ -177,7 +194,7 @@ struct HelpView: View {
                         HStack(spacing: 12) {
                             Text("ℹ️").font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Fitingo v0.6.0")
+                                Text("Fitingo v0.9.20")
                                     .font(.subheadline).fontWeight(.black)
                                 Text("Web・iOS・Apple Watch 対応")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)

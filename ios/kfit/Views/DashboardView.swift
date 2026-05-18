@@ -400,6 +400,11 @@ struct DashboardView: View {
                         .font(.system(size: 16, design: .rounded))
                         .fontWeight(.black)
                         .foregroundColor(.white)
+                    Text(formatHeaderDate(Date()))
+                        .font(.system(size: 9, design: .rounded))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white.opacity(0.75))
+                        .padding(.leading, 4)
                 }
 
                 Spacer()
@@ -439,6 +444,7 @@ struct DashboardView: View {
                             .foregroundColor(calorieBalance > 0 ? .red : (calorieBalance < 0 ? .yellow : .white))
                     }
                 }
+                .padding(.trailing, 8)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -838,9 +844,6 @@ struct DashboardView: View {
         }
         let progressPercent = enabledGoalCount > 0 ? Int((sumProgress / Double(enabledGoalCount)) * 100) : 0
 
-        // 全ての目標達成チェック
-        let allGoalsCompleted = enabledGoalCount > 0 && progressPercent >= 100
-
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             // ヘッダー（タップで展開）
             Button {
@@ -850,14 +853,39 @@ struct DashboardView: View {
             } label: {
                 AnyView(
                     VStack(alignment: .leading, spacing: 0) {
-                        dailySetsCardGreenHeader(
-                            dateStr: formatDate(Date()),
-                            streak: authManager.userProfile?.streak ?? 0,
-                            progressPercent: progressPercent,
-                            allGoalsCompleted: allGoalsCompleted,
-                            showBadge: enabledGoalCount > 0,
-                            isExpanded: showTodayRecords
-                        )
+                        HStack(spacing: 6) {
+                            HStack(spacing: 3) {
+                                Text(formatDate(Date()))
+                                    .font(.headline).fontWeight(.black)
+                                    .foregroundColor(Color.duoGreen)
+                                Text("のFitingo")
+                                    .font(.headline).fontWeight(.black)
+                                    .foregroundColor(Color.duoDark)
+                            }
+                            Spacer()
+                            if completionPercentage >= 100 {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill").font(.caption)
+                                    Text("完了! 🎉").font(.caption).fontWeight(.black)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color.duoGreen)
+                                .cornerRadius(20)
+                            } else if completionPercentage > 0 {
+                                Text("\(completionPercentage)%")
+                                    .font(.caption).fontWeight(.black)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(
+                                        completionPercentage >= 70 ? Color.duoGreen
+                                            : completionPercentage >= 40 ? Color(hex: "#FF9600")
+                                            : Color(hex: "#FF4B4B")
+                                    )
+                                    .cornerRadius(20)
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 12)
                         dailySetsCardStatsArea(
                             progressPercent: progressPercent,
                             showBar: enabledGoalCount > 0,
@@ -866,7 +894,8 @@ struct DashboardView: View {
                             totalMealLogged: totalMealLogged, totalMealGoal: totalMealGoal,
                             totalDrinkLogged: totalDrinkLogged, totalDrinkGoal: totalDrinkGoal,
                             totalCustomCompleted: totalCustomCompleted, totalCustomGoal: totalCustomGoal,
-                            completedSlots: totalCompletedSlots, totalSlots: totalSlotsToShow
+                            completedSlots: totalCompletedSlots, totalSlots: totalSlotsToShow,
+                            isExpanded: showTodayRecords
                         )
                     }
                 )
@@ -989,7 +1018,8 @@ struct DashboardView: View {
         totalMealLogged: Int, totalMealGoal: Int,
         totalDrinkLogged: Int, totalDrinkGoal: Int,
         totalCustomCompleted: Int, totalCustomGoal: Int,
-        completedSlots: Int, totalSlots: Int
+        completedSlots: Int, totalSlots: Int,
+        isExpanded: Bool
     ) -> some View {
         let gp = timeSlotManager.progress.globalProgress
         let gg = timeSlotManager.settings.globalGoals
@@ -1007,7 +1037,7 @@ struct DashboardView: View {
         let msg: String = completedSlots == totalSlots
             ? (totalSlots == 4 ? "全時間帯の目標達成！素晴らしい一日🎉" : "ここまでの目標達成！順調です💪")
             : completedSlots == 0
-            ? "今日はまだ目標を達成していません。始めましょう！"
+            ? "今日はまだ目標を達成していません。"
             : "あと \(totalSlots - completedSlots) つの時間帯で目標達成！"
         let msgGreen = completedSlots == totalSlots
 
@@ -1067,11 +1097,17 @@ struct DashboardView: View {
                 )
             }
             goalAchievementIconsRow
-            Text(msg)
-                .font(.caption)
-                .fontWeight(msgGreen ? .bold : .regular)
-                .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
-                .padding(.top, 2)
+            HStack(spacing: 4) {
+                Text(msg)
+                    .font(.caption)
+                    .fontWeight(msgGreen ? .bold : .regular)
+                    .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
+                Spacer()
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.top, 2)
         }
         .padding(16)
     }
@@ -2352,7 +2388,9 @@ struct DashboardView: View {
     private var calorieBalanceBarCard: some View {
         CalorieBalanceBarCard(
             totalConsumed: healthKit.todayTotalCalories,
-            intake: Double(todayIntake.totalCalories)
+            intake: Double(todayIntake.totalCalories),
+            latestBodyMass: healthKit.latestBodyMass,
+            latestBodyFatPercentage: healthKit.latestBodyFatPercentage
         )
     }
 
@@ -3421,6 +3459,13 @@ struct DashboardView: View {
         return formatter.string(from: date)
     }
 
+    private func formatHeaderDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M/d(E)"
+        return formatter.string(from: date)
+    }
+
     // MARK: - 健康サマリーカード（HealthKit）
     @ViewBuilder
     private var healthSummaryCard: some View {
@@ -4264,106 +4309,71 @@ struct DashboardView: View {
         return min(1.0, Double(missedSets) / Double(totalExpectedSets))
     }
 
-    private func fitingoMessage(angerLevel: Double, sessions: Int) -> String {
-        switch angerLevel {
-        case ..<0.2:
-            switch sessions {
-            case 0:  return "さあ、今日のFitingoを始めよう！💪"
-            case 1:  return "1セット完了！次も行こう！🌟"
-            case 2:  return "2セット達成！絶好調だね！🔥"
-            default: return "\(sessions)セット！この調子で続けよう！🎉"
-            }
-        case 0.2..<0.4:
-            return sessions == 0
-                ? "まだ始めてないよ…今すぐ動こう！⚡"
-                : "いいペース！でももう少し頑張ろう！⚡"
-        case 0.4..<0.6:
-            return sessions == 0
-                ? "急げ！時間がなくなるぞ！🏃"
-                : "\(sessions)セット済み！急いでもう一本！🏃"
-        default:
-            return sessions == 0
-                ? "今日まだゼロ！今すぐFitingo！🚨"
-                : "今日\(sessions)セット！まだ足りない！😡"
+    private func fitingoDailyGoal() -> Int {
+        let timeSlotGoal = TimeSlot.allCases.reduce(0) { total, slot in
+            total + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
         }
+        return max(max(dailySetGoal, timeSlotGoal), 1)
+    }
+
+    private func fitingoMessage(sessions: Int, dailyGoal: Int, isBehind: Bool) -> String {
+        if sessions == 0 && !isBehind {
+            return "今日のFitingoを始めよう！"
+        }
+        if sessions < dailyGoal {
+            return "まだ全然終わってないよ！今すぐやろう！"
+        }
+        return "今日のFitingo達成！よくやったね！🎉"
     }
 
     private var fitingoStartButton: some View {
         let angerLevel = computeAngerLevel()
-        let isAngry = angerLevel > 0.5
-        let isWarning = angerLevel > 0.3
-        let bgColors: [Color] = angerLevel < 0.3
-            ? [Color(red: 0.30, green: 0.75, blue: 0.35), Color(red: 0.18, green: 0.55, blue: 0.22)]
-            : angerLevel < 0.6
-            ? [Color(red: 1.0, green: 0.55, blue: 0.0), Color(red: 0.85, green: 0.33, blue: 0.0)]
-            : [Color(red: 0.9, green: 0.15, blue: 0.15), Color(red: 0.6, green: 0.05, blue: 0.05)]
-        let flameSize: CGFloat = angerLevel > 0.7 ? 34 : 26
         let todaySessions = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
-        let message = fitingoMessage(angerLevel: angerLevel, sessions: todaySessions)
+        let dailyGoal = fitingoDailyGoal()
+        let isBehind = (todaySessions > 0 && todaySessions < dailyGoal) || angerLevel > 0.5
+        let isAngry = isBehind || angerLevel > 0.5
+        let isWarning = !isAngry && angerLevel > 0.3
+        let progressDeficit = max(0.0, 1.0 - Double(todaySessions) / Double(dailyGoal))
+        let severity = max(angerLevel, isBehind ? progressDeficit : 0)
+        let bgColors: [Color] = !isBehind && todaySessions == 0
+            ? [Color(hex: "#F5FFF3"), Color(hex: "#DDFBFF")]
+            : severity < 0.35
+            ? [Color(hex: "#E8FFB8"), Color(hex: "#6FE8D8")]
+            : severity < 0.7
+            ? [Color(hex: "#FFD66E"), Color(hex: "#FF9F2E")]
+            : [Color(hex: "#FF7A45"), Color(hex: "#D62828")]
+        let usesDarkText = (!isBehind && todaySessions == 0) || severity < 0.35
+        let textColor: Color = usesDarkText ? Color.duoDark : .white
+        let imageName: String = (isAngry || isWarning) ? "fitingo_fire" : "fitingo_button_mascot"
+        let message = fitingoMessage(sessions: todaySessions, dailyGoal: dailyGoal, isBehind: isBehind)
         return Button { showTracker = true } label: {
             ZStack {
-                if isAngry {
-                    Image("fitingo_fire")
-                        .resizable()
-                        .scaledToFill()
+                LinearGradient(colors: bgColors, startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.60)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-
-                    VStack(spacing: 6) {
-                        Spacer()
-                        Text(message)
-                            .font(.headline).fontWeight(.black)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 16)
+                VStack(spacing: 12) {
+                    ZStack {
+                        Image(imageName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 158, height: 158)
+                            .clipShape(RoundedRectangle(cornerRadius: 28))
+                            .scaleEffect(mascotBounce ? 1.07 : 1.0)
+                            .animation(
+                                .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                                value: mascotBounce
+                            )
+                            .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    LinearGradient(colors: bgColors, startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                    VStack(spacing: 12) {
-                        ZStack {
-                            if isWarning {
-                                HStack(spacing: 80) {
-                                    Text("🔥").font(.system(size: flameSize)).scaleEffect(x: -1)
-                                    Text("🔥").font(.system(size: flameSize))
-                                }
-                                .offset(y: 10)
-                            }
-
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 116, height: 116)
-                                .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
-
-                            Image("fitingo_simple")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 96, height: 96)
-                                .clipShape(Circle())
-                                .scaleEffect(mascotBounce ? 1.07 : 1.0)
-                                .animation(
-                                    .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-                                    value: mascotBounce
-                                )
-                        }
-
-                        Text(message)
-                            .font(.headline).fontWeight(.black)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                    }
-                    .padding(.vertical, 20)
+                    Text(message)
+                        .font(.headline).fontWeight(.black)
+                        .foregroundColor(textColor)
+                        .multilineTextAlignment(.center)
+                        .shadow(color: usesDarkText ? .clear : .black.opacity(0.28), radius: 2, y: 1)
                 }
+                .padding(.vertical, 18)
             }
-            .frame(height: 160)
+            .frame(height: 210)
             .clipShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
@@ -4474,6 +4484,8 @@ private struct HeartRateHRVItem: View {
 private struct CalorieBalanceBarCard: View {
     let totalConsumed: Double
     let intake: Double
+    var latestBodyMass: Double = 0
+    var latestBodyFatPercentage: Double = 0
 
     var body: some View {
         let balance = intake - totalConsumed
@@ -4496,6 +4508,27 @@ private struct CalorieBalanceBarCard: View {
                          circleSize: circleSize, geo: geo)
             }
             .frame(height: 68)
+            if latestBodyMass > 0 || latestBodyFatPercentage > 0 {
+                HStack(spacing: 12) {
+                    if latestBodyMass > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "scalemass.fill")
+                                .font(.system(size: 9)).foregroundColor(Color(hex: "#1CB0F6"))
+                            Text(String(format: "%.1f kg", latestBodyMass))
+                                .font(.system(size: 10, weight: .bold)).foregroundColor(Color.duoDark)
+                        }
+                    }
+                    if latestBodyFatPercentage > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "percent")
+                                .font(.system(size: 9)).foregroundColor(Color(hex: "#CE82FF"))
+                            Text(String(format: "%.1f%%", latestBodyFatPercentage))
+                                .font(.system(size: 10, weight: .bold)).foregroundColor(Color.duoDark)
+                        }
+                    }
+                    Spacer()
+                }
+            }
         }
         .padding(8)
         .background(Color.white.opacity(0.5))

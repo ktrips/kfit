@@ -524,27 +524,44 @@ final class HealthKitManager: ObservableObject {
         let cal   = Calendar.current
         let now   = Date()
         let today = cal.startOfDay(for: now)
-        let start = cal.date(byAdding: .hour, value: -21, to: today) ?? today
-        let end   = cal.date(byAdding: .hour, value: 12,  to: today) ?? now
+        let start = cal.date(byAdding: .hour, value: -9, to: today) ?? today  // 前日15:00
+        let end   = cal.date(byAdding: .hour, value: 12, to: today) ?? now    // 当日12:00
         let pred  = HKQuery.predicateForSamples(withStart: start, end: end)
 
         return await withCheckedContinuation { cont in
             let q = HKSampleQuery(
                 sampleType: type, predicate: pred,
-                limit: HKObjectQueryNoLimit, sortDescriptors: nil
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
             ) { _, samples, _ in
                 let hkSamples = samples as? [HKCategorySample] ?? []
+
+                // Core/Deep/REM のステージデータを持つソース（Watch等）を特定
+                let stagedSourceIds = Set(hkSamples
+                    .filter { [4, 5, 6].contains($0.value) }
+                    .map { $0.sourceRevision.source.bundleIdentifier }
+                )
+
+                // ステージデータがあるソースのみ使用し InBed(1) を除外して重複カウントを防ぐ
+                // ステージデータがない場合は全データを使用
+                let filtered: [HKCategorySample]
+                if !stagedSourceIds.isEmpty {
+                    filtered = hkSamples.filter {
+                        stagedSourceIds.contains($0.sourceRevision.source.bundleIdentifier)
+                        && $0.value != 1  // InBed を除外
+                    }
+                } else {
+                    filtered = hkSamples
+                }
 
                 var total: TimeInterval = 0
                 var deep:  TimeInterval = 0
                 var segs:  [SleepSegment] = []
 
-                for s in hkSamples {
+                for s in filtered {
                     let dur   = s.endDate.timeIntervalSince(s.startDate)
                     let stage = Self.sleepStage(from: s.value)
-
                     segs.append(SleepSegment(start: s.startDate, end: s.endDate, stage: stage))
-
                     switch stage {
                     case .core, .deep, .rem, .unknown:
                         total += dur
@@ -554,15 +571,13 @@ final class HealthKitManager: ObservableObject {
                     }
                 }
 
-                // 時系列順にソート
-                let sortedSegs = segs.sorted { $0.start < $1.start }
-                cont.resume(returning: (total / 3600, deep / 3600, sortedSegs))
+                cont.resume(returning: (total / 3600, deep / 3600, segs))
             }
             self.store.execute(q)
         }
     }
 
-    private static func sleepStage(from value: Int) -> SleepSegment.SleepStage {
+    private nonisolated static func sleepStage(from value: Int) -> SleepSegment.SleepStage {
         // HKCategoryValueSleepAnalysis raw values:
         //   0: asleep (deprecated, iOS <16 の全睡眠)
         //   1: inBed

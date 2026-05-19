@@ -8,6 +8,36 @@ struct MindfulSession: Identifiable {
     let startDate: Date
     let durationMinutes: Double
     let sourceName: String
+    let sourceBundleId: String
+
+    /// ソースから判定した種別ラベル
+    var sessionTypeLabel: String {
+        let b = sourceBundleId.lowercased()
+        let n = sourceName.lowercased()
+        if b.contains("breathe") || n.contains("breathe") { return "Breathe" }
+        if b.contains("reflect") || n.contains("reflect") { return "Reflect" }
+        if b.contains("mindfulness") || b.contains("nanomindfulness") || n == "マインドフルネス" { return "マインドフルネス" }
+        if b.contains("headspace") || n.contains("headspace") { return "Headspace" }
+        if b.contains("calm") || n.contains("calm") { return "Calm" }
+        return sourceName
+    }
+
+    var sessionEmoji: String {
+        switch sessionTypeLabel {
+        case "Breathe":         return "🫁"
+        case "Reflect":         return "💭"
+        case "マインドフルネス": return "🧘"
+        case "Headspace":       return "🟠"
+        case "Calm":            return "🌊"
+        default:                return "🧘"
+        }
+    }
+}
+
+struct DietarySample: Identifiable {
+    let id = UUID()
+    let startDate: Date
+    let value: Double  // ml (water) or kcal (meal)
 }
 
 struct HRSample: Identifiable {
@@ -65,6 +95,16 @@ struct SleepScoreAnalysis {
     let coreHours: Double        // コア睡眠時間（時間）
     let score: Int               // 睡眠スコア（0-100点）
     let rating: String           // 評価（最高、良好、普通、要改善、不十分）
+
+    // スコア内訳（各コンポーネントの得点）
+    var durationScore: Int = 0   // 睡眠時間スコア（最大50点）
+    var bedtimeScore: Int = 0    // 就寝時刻スコア（最大30点）
+    var interruptionScore: Int = 0 // 睡眠中断スコア（最大20点）
+
+    // 内訳の元データ
+    var firstSleepTime: Date? = nil  // 最初に眠った時刻
+    var awakeHours: Double = 0       // 覚醒時間（時間）
+    var targetHours: Double = 7.0    // 目標睡眠時間（時間）
 }
 
 // MARK: - HealthKitManager
@@ -106,10 +146,12 @@ final class HealthKitManager: ObservableObject {
     @Published var todayTotalCalories: Double = 0    // 総消費カロリー（安静時＋アクティブ）
 
     // 心拍数
-    @Published var latestHeartRate:  Double     = 0
-    @Published var restingHeartRate: Double     = 0
-    @Published var latestHRV:        Double     = 0  // 心拍変動（ms）
-    @Published var hrSamples:        [HRSample] = []
+    @Published var latestHeartRate:   Double     = 0
+    @Published var restingHeartRate:  Double     = 0
+    @Published var latestHRV:         Double     = 0  // 心拍変動（ms）
+    @Published var todayAvgHeartRate: Double     = 0  // 今日の平均心拍数
+    @Published var todayAvgHRV:       Double     = 0  // 今日の平均HRV
+    @Published var hrSamples:         [HRSample] = []
 
     // 睡眠
     @Published var lastNightTotalHours: Double         = 0
@@ -138,6 +180,10 @@ final class HealthKitManager: ObservableObject {
     @Published var todayMindfulnessMinutes: Double = 0  // 今日のマインドフルネス時間（分）
     @Published var todayMindfulnessSessions: Int = 0    // 今日のマインドフルネスセッション数
     @Published var todayMindfulnessSamples: [MindfulSession] = []  // 個別セッション
+
+    // 摂取サンプル（時刻付き）
+    @Published var todayWaterSamples: [DietarySample] = []  // 水分サンプル（ml）
+    @Published var todayMealSamples:  [DietarySample] = []  // 食事カロリーサンプル（kcal）
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
 
     // ワークアウト
@@ -148,6 +194,14 @@ final class HealthKitManager: ObservableObject {
 
     // 日光下時間（iOS 17+）
     @Published var todayDaylightMinutes: Double = 0     // 今日の日光下時間（分）
+
+    // アクティビティリング（Apple Watch / HealthKit）
+    @Published var activityMoveCalories: Double = 0    // ムーブリング（アクティブカロリー）
+    @Published var activityMoveGoal: Double = 600      // ムーブ目標（kcal）
+    @Published var activityExerciseMinutes: Int = 0    // エクササイズリング（分）
+    @Published var activityExerciseGoal: Int = 30      // エクササイズ目標（分）
+    @Published var activityStandHours: Int = 0         // スタンドリング（時間）
+    @Published var activityStandGoal: Int = 12         // スタンド目標（時間）
 
     // 日光露出時間（todayDaylightMinutes の別名）
     var todaySunlightExposure: Double { todayDaylightMinutes }
@@ -201,6 +255,8 @@ final class HealthKitManager: ObservableObject {
         }
         // ワークアウトタイプを追加
         set.insert(HKWorkoutType.workoutType())
+        // アクティビティサマリー（アクティビティリング）
+        set.insert(HKObjectType.activitySummaryType())
         return set
     }
 
@@ -361,6 +417,8 @@ final class HealthKitManager: ObservableObject {
         async let latHR    = fetchLatestHeartRate()
         async let restHR   = fetchRestingHeartRate()
         async let hrv      = fetchLatestHRV()
+        async let avgHR    = fetchTodayAverageHeartRate()
+        async let avgHRV   = fetchTodayAverageHRV()
         async let hrList   = fetchTodayHRSamples()
         async let sleep    = fetchLastNightSleep()
         async let bodyMass = fetchLatestBodyMass()
@@ -378,6 +436,9 @@ final class HealthKitManager: ObservableObject {
         async let mindfulness = fetchTodayMindfulness()
         async let daylight = fetchTodayDaylight()
         async let exerciseMinutes = fetchTodayExerciseMinutes()
+        async let activityRings = fetchTodayActivitySummary()
+        async let waterSamples = fetchTodayWaterSamplesRaw()
+        async let mealSamples  = fetchTodayMealSamplesRaw()
 
         todaySteps          = await steps
         todayActiveCalories = await activeCalories
@@ -387,6 +448,8 @@ final class HealthKitManager: ObservableObject {
         latestHeartRate     = await latHR
         restingHeartRate    = await restHR
         latestHRV           = await hrv
+        todayAvgHeartRate   = await avgHR
+        todayAvgHRV         = await avgHRV
         hrSamples           = await hrList
         let sleepResult     = await sleep
         lastNightTotalHours = sleepResult.total
@@ -431,6 +494,15 @@ final class HealthKitManager: ObservableObject {
         previousMindfulnessSessions = newSessions
         todayDaylightMinutes  = await daylight
         todayWorkoutMinutes   = await exerciseMinutes
+        let rings = await activityRings
+        activityMoveCalories    = rings.moveCalories
+        activityMoveGoal        = rings.moveGoal
+        activityExerciseMinutes = rings.exerciseMinutes
+        activityExerciseGoal    = rings.exerciseGoal
+        activityStandHours      = rings.standHours
+        activityStandGoal       = rings.standGoal
+        todayWaterSamples       = await waterSamples
+        todayMealSamples        = await mealSamples
 
         print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
@@ -490,6 +562,34 @@ final class HealthKitManager: ObservableObject {
         return await fetchLatestSampleValue(type: type, unit: .secondUnit(with: .milli))
     }
 
+    // MARK: - 今日の平均心拍数・平均HRV
+
+    private func fetchTodayAverageHeartRate() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return 0 }
+        let unit  = HKUnit.count().unitDivided(by: .minute())
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        return await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: pred, options: .discreteAverage) { _, result, _ in
+                cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+            }
+            store.execute(q)
+        }
+    }
+
+    private func fetchTodayAverageHRV() async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return 0 }
+        let unit  = HKUnit.secondUnit(with: .milli)
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        return await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: pred, options: .discreteAverage) { _, result, _ in
+                cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+            }
+            store.execute(q)
+        }
+    }
+
     // MARK: - 今日の心拍数サンプル一覧
 
     private func fetchTodayHRSamples() async -> [HRSample] {
@@ -520,12 +620,12 @@ final class HealthKitManager: ObservableObject {
             return (0, 0, [])
         }
 
-        // 前日 15:00 〜 今日 12:00 の範囲で取得
+        // 前日 15:00 〜 今日 14:00（幅広い睡眠パターンをカバー）
         let cal   = Calendar.current
         let now   = Date()
         let today = cal.startOfDay(for: now)
-        let start = cal.date(byAdding: .hour, value: -9, to: today) ?? today  // 前日15:00
-        let end   = cal.date(byAdding: .hour, value: 12, to: today) ?? now    // 当日12:00
+        let start = cal.date(byAdding: .hour, value: -9, to: today) ?? today
+        let end   = cal.date(byAdding: .hour, value: 14, to: today) ?? now
         let pred  = HKQuery.predicateForSamples(withStart: start, end: end)
 
         return await withCheckedContinuation { cont in
@@ -534,42 +634,76 @@ final class HealthKitManager: ObservableObject {
                 limit: HKObjectQueryNoLimit,
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
             ) { _, samples, _ in
-                let hkSamples = samples as? [HKCategorySample] ?? []
+                // 無効サンプル（開始 >= 終了）を除外
+                let hkSamples = (samples as? [HKCategorySample] ?? [])
+                    .filter { $0.startDate < $0.endDate }
 
-                // Core/Deep/REM のステージデータを持つソース（Watch等）を特定
-                let stagedSourceIds = Set(hkSamples
-                    .filter { [4, 5, 6].contains($0.value) }
-                    .map { $0.sourceRevision.source.bundleIdentifier }
-                )
-
-                // ステージデータがあるソースのみ使用し InBed(1) を除外して重複カウントを防ぐ
-                // ステージデータがない場合は全データを使用
-                let filtered: [HKCategorySample]
-                if !stagedSourceIds.isEmpty {
-                    filtered = hkSamples.filter {
-                        stagedSourceIds.contains($0.sourceRevision.source.bundleIdentifier)
-                        && $0.value != 1  // InBed を除外
-                    }
-                } else {
-                    filtered = hkSamples
+                // ── ソース選択 ────────────────────────────────────────
+                // staged data (Core=4, Deep=5, REM=6) を持つソースをグループ化し
+                // 最も多くの実睡眠時間を記録したソースを 1 つ選ぶ
+                let asleepValues: Set<Int> = [0, 3, 4, 5, 6]
+                let bySource = Dictionary(grouping: hkSamples) {
+                    $0.sourceRevision.source.bundleIdentifier
+                }
+                let stagedBySource = bySource.filter { _, ss in
+                    ss.contains { [4, 5, 6].contains($0.value) }
                 }
 
+                let baseSamples: [HKCategorySample]
+                if !stagedBySource.isEmpty {
+                    // staged ソースの中で実睡眠時間が最長のものを採用
+                    let best = stagedBySource.max { a, b in
+                        let dur: ([HKCategorySample]) -> TimeInterval = { ss in
+                            ss.filter { asleepValues.contains($0.value) }
+                              .reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                        }
+                        return dur(a.value) < dur(b.value)
+                    }!
+                    baseSamples = best.value.filter { $0.value != 1 }  // InBed 除外
+                } else {
+                    // staged data なし：全ソース合算（InBed 除外）
+                    baseSamples = hkSamples.filter { $0.value != 1 }
+                }
+
+                // ── 重複区間のマージ ──────────────────────────────────
+                // 同一ソース内でも稀に重複が発生するためマージ処理を行う
+                let sorted = baseSamples.sorted { $0.startDate < $1.startDate }
+                var mergedAsleep: [(start: Date, end: Date, value: Int)] = []
+                var awakeSegs:    [SleepSegment] = []
+
+                for s in sorted {
+                    if s.value == 2 {
+                        awakeSegs.append(SleepSegment(start: s.startDate, end: s.endDate, stage: .awake))
+                        continue
+                    }
+                    guard asleepValues.contains(s.value) else { continue }
+                    // deprecated asleep(0) → unspecified(3) に正規化
+                    let val = s.value == 0 ? 3 : s.value
+                    if let last = mergedAsleep.last, s.startDate < last.end {
+                        // 重複：終了時刻を延ばし、より具体的なステージを優先
+                        mergedAsleep[mergedAsleep.count - 1] = (
+                            last.start, max(last.end, s.endDate), max(last.value, val)
+                        )
+                    } else {
+                        mergedAsleep.append((s.startDate, s.endDate, val))
+                    }
+                }
+
+                // ── 集計 ──────────────────────────────────────────────
                 var total: TimeInterval = 0
                 var deep:  TimeInterval = 0
                 var segs:  [SleepSegment] = []
 
-                for s in filtered {
-                    let dur   = s.endDate.timeIntervalSince(s.startDate)
-                    let stage = Self.sleepStage(from: s.value)
-                    segs.append(SleepSegment(start: s.startDate, end: s.endDate, stage: stage))
-                    switch stage {
-                    case .core, .deep, .rem, .unknown:
-                        total += dur
-                        if stage == .deep { deep += dur }
-                    case .inBed, .awake:
-                        break
-                    }
+                for m in mergedAsleep {
+                    let dur   = m.end.timeIntervalSince(m.start)
+                    let stage = Self.sleepStage(from: m.value)
+                    segs.append(SleepSegment(start: m.start, end: m.end, stage: stage))
+                    total += dur
+                    if stage == .deep { deep += dur }
                 }
+
+                segs.append(contentsOf: awakeSegs)
+                segs.sort { $0.start < $1.start }
 
                 cont.resume(returning: (total / 3600, deep / 3600, segs))
             }
@@ -594,6 +728,46 @@ final class HealthKitManager: ObservableObject {
         case 5:      return .deep
         case 6:      return .rem
         default:     return .unknown  // value == 0 も含む
+        }
+    }
+
+    // MARK: - アクティビティリング
+
+    private struct ActivityRingsResult {
+        var moveCalories: Double = 0
+        var moveGoal: Double = 600
+        var exerciseMinutes: Int = 0
+        var exerciseGoal: Int = 30
+        var standHours: Int = 0
+        var standGoal: Int = 12
+    }
+
+    private func fetchTodayActivitySummary() async -> ActivityRingsResult {
+        var cal = Calendar.current
+        cal.timeZone = TimeZone.current
+        var components = cal.dateComponents([.era, .year, .month, .day], from: Date())
+        components.calendar = cal
+        let predicate = HKQuery.predicate(forActivitySummariesBetweenStart: components, end: components)
+
+        return await withCheckedContinuation { cont in
+            let q = HKActivitySummaryQuery(predicate: predicate) { _, summaries, _ in
+                guard let summary = summaries?.first else {
+                    cont.resume(returning: ActivityRingsResult())
+                    return
+                }
+                var result = ActivityRingsResult()
+                result.moveCalories    = summary.activeEnergyBurned.doubleValue(for: .kilocalorie())
+                let goalKcal           = summary.activeEnergyBurnedGoal.doubleValue(for: .kilocalorie())
+                result.moveGoal        = goalKcal > 0 ? goalKcal : 600
+                result.exerciseMinutes = Int(summary.appleExerciseTime.doubleValue(for: .minute()))
+                let goalMin            = Int(summary.appleExerciseTimeGoal.doubleValue(for: .minute()))
+                result.exerciseGoal    = goalMin > 0 ? goalMin : 30
+                result.standHours      = Int(summary.appleStandHours.doubleValue(for: .count()))
+                let goalHrs            = Int(summary.appleStandHoursGoal.doubleValue(for: .count()))
+                result.standGoal       = goalHrs > 0 ? goalHrs : 12
+                cont.resume(returning: result)
+            }
+            store.execute(q)
         }
     }
 
@@ -848,6 +1022,40 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    /// 今日の水分サンプル（時刻付き）を取得
+    private func fetchTodayWaterSamplesRaw() async -> [DietarySample] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return [] }
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+                let result = (samples as? [HKQuantitySample])?.map {
+                    DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .literUnit(with: .milli)))
+                } ?? []
+                continuation.resume(returning: result)
+            }
+            self.store.execute(q)
+        }
+    }
+
+    /// 今日の食事カロリーサンプル（時刻付き）を取得
+    private func fetchTodayMealSamplesRaw() async -> [DietarySample] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return [] }
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+                let result = (samples as? [HKQuantitySample])?.map {
+                    DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .kilocalorie()))
+                } ?? []
+                continuation.resume(returning: result)
+            }
+            self.store.execute(q)
+        }
+    }
+
     /// 今日のカフェイン摂取量を取得（mg）
     private func fetchTodayIntakeCaffeine() async -> Double {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return 0 }
@@ -992,7 +1200,8 @@ final class HealthKitManager: ObservableObject {
                     mindfulSamples.append(MindfulSession(
                         startDate: sample.startDate,
                         durationMinutes: duration,
-                        sourceName: sample.sourceRevision.source.name
+                        sourceName: sample.sourceRevision.source.name,
+                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier
                     ))
                 }
 
@@ -1099,22 +1308,33 @@ final class HealthKitManager: ObservableObject {
     // MARK: - 睡眠スコア分析
 
     /// 睡眠データを分析してスコア化（0-100点）
+    /// 計算式: 睡眠時間 50% + 就寝時刻 30% + 睡眠中断 20%
     /// - Parameter targetHours: 目標睡眠時間（デフォルト7時間）
     /// - Returns: 睡眠スコアの分析結果
     func analyzeSleepScore(targetHours: Double = 7.0) -> SleepScoreAnalysis {
         let totalHours = lastNightTotalHours
-        let deepHours = lastNightDeepHours
 
-        // 各ステージの時間を計算
-        var remHours: Double = 0
-        var coreHours: Double = 0
-        for segment in sleepSegments {
+        // ステージ別時間と覚醒時間・就寝開始時刻を集計
+        var deepHours:  Double = 0
+        var remHours:   Double = 0
+        var coreHours:  Double = 0
+        var awakeHours: Double = 0
+        var firstSleepStart: Date? = nil
+
+        for segment in sleepSegments.sorted(by: { $0.start < $1.start }) {
             switch segment.stage {
+            case .deep:
+                deepHours += segment.durationHours
+                if firstSleepStart == nil { firstSleepStart = segment.start }
             case .rem:
                 remHours += segment.durationHours
-            case .core:
+                if firstSleepStart == nil { firstSleepStart = segment.start }
+            case .core, .unknown:
                 coreHours += segment.durationHours
-            default:
+                if firstSleepStart == nil { firstSleepStart = segment.start }
+            case .awake:
+                awakeHours += segment.durationHours
+            case .inBed:
                 break
             }
         }
@@ -1126,65 +1346,29 @@ final class HealthKitManager: ObservableObject {
             )
         }
 
-        // スコア計算（100点満点）
-        var score = 0.0
+        // 1. 睡眠時間スコア（最大50点）: 目標時間に対する実績の比率
+        let durationScore = min(totalHours / targetHours, 1.0) * 50.0
 
-        // 1. 睡眠時間スコア（最大40点）
-        // 目標時間±30分以内: 40点
-        // 6-8時間: 30-40点
-        // 5-6時間 or 8-9時間: 20-30点
-        // 5時間未満 or 9時間以上: 0-20点
-        let hoursDiff = abs(totalHours - targetHours)
-        if hoursDiff <= 0.5 {
-            score += 40
-        } else if totalHours >= 6 && totalHours <= 8 {
-            score += 40 - (hoursDiff * 10)
-        } else if totalHours >= 5 && totalHours <= 9 {
-            score += 30 - (abs(totalHours - 7) * 5)
-        } else {
-            score += max(0, 20 - (abs(totalHours - 7) * 5))
+        // 2. 就寝時刻スコア（最大30点）: 24:00 以前なら満点、以降は10分遅れるごとに-1点
+        var bedtimeScore: Double = 0
+        if let sleepStart = firstSleepStart {
+            let cal = Calendar.current
+            let hour   = Double(cal.component(.hour,   from: sleepStart))
+            let minute = Double(cal.component(.minute, from: sleepStart))
+            let timeInHours = hour + minute / 60.0
+            // 深夜0〜6時は 24〜30 として扱い、就寝時刻の連続性を保つ
+            let normalized = timeInHours < 6 ? timeInHours + 24.0 : timeInHours
+            let minutesLate = max(0.0, (normalized - 24.0) * 60.0)
+            bedtimeScore = max(0.0, 30.0 - minutesLate / 10.0)
         }
 
-        // 2. 深い睡眠スコア（最大30点）
-        // 目安: 総睡眠の15-20%が理想
-        let deepPercent = (deepHours / totalHours) * 100
-        if deepPercent >= 15 && deepPercent <= 25 {
-            score += 30
-        } else if deepPercent >= 10 && deepPercent < 15 {
-            score += 20 + ((deepPercent - 10) * 2)
-        } else if deepPercent > 25 && deepPercent <= 30 {
-            score += 25
-        } else {
-            score += max(0, 10)
-        }
+        // 3. 睡眠中断スコア（最大20点）: 覚醒割合が0% → 20点、20%以上 → 0点
+        let totalPeriod = totalHours + awakeHours
+        let awakeRatio  = totalPeriod > 0 ? awakeHours / totalPeriod : 0.0
+        let interruptionScore = max(0.0, (1.0 - awakeRatio / 0.20) * 20.0)
 
-        // 3. REM睡眠スコア（最大20点）
-        // 目安: 総睡眠の20-25%が理想
-        let remPercent = (remHours / totalHours) * 100
-        if remPercent >= 18 && remPercent <= 28 {
-            score += 20
-        } else if remPercent >= 12 && remPercent < 18 {
-            score += 10 + ((remPercent - 12) * 1.5)
-        } else if remPercent > 28 && remPercent <= 35 {
-            score += 15
-        } else {
-            score += max(0, 5)
-        }
+        let finalScore = Int(min(100.0, durationScore + bedtimeScore + interruptionScore))
 
-        // 4. 睡眠効率スコア（最大10点）
-        // 深い睡眠 + REM睡眠の合計が多いほど良い
-        let qualitySleepPercent = ((deepHours + remHours) / totalHours) * 100
-        if qualitySleepPercent >= 40 {
-            score += 10
-        } else if qualitySleepPercent >= 30 {
-            score += 5 + ((qualitySleepPercent - 30) * 0.5)
-        } else {
-            score += max(0, qualitySleepPercent * 0.2)
-        }
-
-        let finalScore = Int(min(100, max(0, score)))
-
-        // 評価
         let rating: String
         switch finalScore {
         case 90...100: rating = "最高"
@@ -1194,7 +1378,7 @@ final class HealthKitManager: ObservableObject {
         default:       rating = "不十分"
         }
 
-        return SleepScoreAnalysis(
+        var result = SleepScoreAnalysis(
             totalHours: totalHours,
             deepHours: deepHours,
             remHours: remHours,
@@ -1202,6 +1386,13 @@ final class HealthKitManager: ObservableObject {
             score: finalScore,
             rating: rating
         )
+        result.durationScore     = Int(durationScore)
+        result.bedtimeScore      = Int(bedtimeScore)
+        result.interruptionScore = Int(interruptionScore)
+        result.firstSleepTime    = firstSleepStart
+        result.awakeHours        = awakeHours
+        result.targetHours       = targetHours
+        return result
     }
 
     // MARK: - PFCバランス分析

@@ -93,6 +93,7 @@ class TimeSlotManager: ObservableObject {
                 // 1日全体の目標を読み込み
                 if let globalGoalsData = data["globalGoals"] as? [String: Any] {
                     var globalGoals = DailyGlobalGoals()
+                    globalGoals.activityEnabled = globalGoalsData["activityEnabled"] as? Bool ?? false
                     globalGoals.workoutEnabled = globalGoalsData["workoutEnabled"] as? Bool ?? false
                     globalGoals.workoutMinutes = globalGoalsData["workoutMinutes"] as? Int ?? 15
                     globalGoals.standEnabled = globalGoalsData["standEnabled"] as? Bool ?? false
@@ -166,6 +167,7 @@ class TimeSlotManager: ObservableObject {
             "goals": goalsData,
             "date": Timestamp(date: today),
             "globalGoals": [
+                "activityEnabled": settings.globalGoals.activityEnabled,
                 "workoutEnabled": settings.globalGoals.workoutEnabled,
                 "workoutMinutes": settings.globalGoals.workoutMinutes,
                 "standEnabled": settings.globalGoals.standEnabled,
@@ -283,8 +285,8 @@ class TimeSlotManager: ObservableObject {
         progress.globalProgress.workoutMinutes = await healthKit.fetchTodayWorkout()
         progress.globalProgress.standHours = await healthKit.fetchTodayStand()
 
-        // 睡眠データを更新
-        let sleepAnalysis = healthKit.analyzeSleepScore()
+        // 睡眠データを更新（ユーザー設定の目標時間を渡して同じ数値をカードと今日の状況で共有）
+        let sleepAnalysis = healthKit.analyzeSleepScore(targetHours: Double(settings.globalGoals.sleepHoursGoal))
         progress.globalProgress.sleepHours = healthKit.lastNightTotalHours
         progress.globalProgress.sleepScore = sleepAnalysis.score
 
@@ -297,8 +299,55 @@ class TimeSlotManager: ObservableObject {
 
         progress.globalProgress.lastUpdated = Date()
 
+        // HealthKitの水分・食事サンプルを時間帯別進捗に反映
+        await syncIntakeFromHealthKit()
+
         // Firestoreにも保存
         await saveTodayProgress()
+    }
+
+    /// HealthKitの水分・食事サンプルを時間帯別進捗に反映
+    func syncIntakeFromHealthKit() async {
+        let hk = HealthKitManager.shared
+        guard hk.isAuthorized else { return }
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var changed = false
+
+        for slot in TimeSlot.allCases {
+            guard var prog = progress.progressFor(slot) else { continue }
+
+            let slotStart = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
+            let slotEnd: Date = slot.endHour >= 24
+                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
+                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
+
+            let waterInSlot = hk.todayWaterSamples
+                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd && $0.value >= 200 }
+                .reduce(0.0) { $0 + $1.value }
+
+            let mealInSlot = hk.todayMealSamples
+                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd && $0.value >= 400 }
+                .reduce(0.0) { $0 + $1.value }
+
+            let newDrink = Int(waterInSlot)
+            let newMeal  = Int(mealInSlot)
+
+            if prog.logProgress.drinkLogged != newDrink || prog.logProgress.mealLogged != newMeal {
+                prog.logProgress.drinkLogged = newDrink
+                prog.logProgress.mealLogged  = newMeal
+                prog.lastUpdated = Date()
+                var updated = progress
+                updated.updateProgress(prog)
+                progress = updated
+                changed = true
+            }
+        }
+
+        if changed {
+            print("[TimeSlot] 💧🍽️ Synced water/meal intake from HealthKit to time slots")
+        }
     }
 
     /// 今日の実績を保存

@@ -76,11 +76,11 @@ struct TimeSlotGoalsView: View {
                 Spacer()
             }
 
-            // ワークアウト目標
+            // アクティビティリング目標
             Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.workoutEnabled },
+                get: { timeSlotManager.settings.globalGoals.activityEnabled },
                 set: { newValue in
-                    timeSlotManager.settings.globalGoals.workoutEnabled = newValue
+                    timeSlotManager.settings.globalGoals.activityEnabled = newValue
                     Task { await timeSlotManager.saveTodaySettings() }
                 }
             )) {
@@ -88,113 +88,16 @@ struct TimeSlotGoalsView: View {
                     Text("🏃")
                         .font(.title3)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("ワークアウト")
+                        Text("アクティビティリング")
                             .font(.subheadline).fontWeight(.semibold)
                             .foregroundColor(Color.duoDark)
-                        Text("15分以上の運動")
+                        Text("Move・Exercise・Standのリングをすべて閉じる")
                             .font(.caption2)
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
             }
             .tint(Color.duoGreen)
-
-            if timeSlotManager.settings.globalGoals.workoutEnabled {
-                HStack {
-                    Text("目標:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.workoutMinutes)分",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.workoutMinutes },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.workoutMinutes = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 5...120,
-                           step: 5)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                // 進捗表示
-                if timeSlotManager.progress.globalProgress.workoutMinutes > 0 {
-                    HStack(spacing: 8) {
-                        Text("今日:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(timeSlotManager.progress.globalProgress.workoutMinutes)分")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(
-                                timeSlotManager.progress.globalProgress.workoutMinutes >= timeSlotManager.settings.globalGoals.workoutMinutes
-                                ? Color.duoGreen : Color.duoDark
-                            )
-                    }
-                    .padding(.leading, 40)
-                }
-            }
-
-            Divider()
-
-            // スタンド時間目標
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.standEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.standEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("🕐")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("スタンド時間")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("1時間に1回立ち上がる")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoGreen)
-
-            if timeSlotManager.settings.globalGoals.standEnabled {
-                HStack {
-                    Text("目標:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.standHours)時間",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.standHours },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.standHours = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 1...16,
-                           step: 1)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                // 進捗表示
-                if timeSlotManager.progress.globalProgress.standHours > 0 {
-                    HStack(spacing: 8) {
-                        Text("今日:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(timeSlotManager.progress.globalProgress.standHours)時間")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(
-                                timeSlotManager.progress.globalProgress.standHours >= timeSlotManager.settings.globalGoals.standHours
-                                ? Color.duoGreen : Color.duoDark
-                            )
-                    }
-                    .padding(.leading, 40)
-                }
-            }
 
             Divider()
 

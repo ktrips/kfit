@@ -129,19 +129,31 @@ struct WatchDashboardView: View {
             VStack(spacing: 8) {
                 // ── ヘッダー：食事／ドリンク入力状況（Apple Health実績）──────────────────────
                 HStack(spacing: 0) {
-                    WatchStatItem(
-                        icon: "🍽️",
-                        value: "\(Int(healthKit.todayDietaryCalories))k",
-                        label: "食事kcal",
-                        isCompleted: connectivity.totalMealGoal > 0 && Int(healthKit.todayDietaryCalories) >= connectivity.totalMealGoal
-                    )
+                    Button {
+                        confirmIntake(type: "meal", subtype: "breakfast",
+                                      message: "朝食\(connectivity.breakfastCalories)kcalを追加しますか？")
+                    } label: {
+                        WatchStatItem(
+                            icon: "🍽️",
+                            value: "\(Int(healthKit.todayDietaryCalories))k",
+                            label: "食事kcal ＋",
+                            isCompleted: connectivity.totalMealGoal > 0 && Int(healthKit.todayDietaryCalories) >= connectivity.totalMealGoal
+                        )
+                    }
+                    .buttonStyle(.plain)
                     Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
-                    WatchStatItem(
-                        icon: "💧",
-                        value: "\(Int(healthKit.todayDietaryWater))ml",
-                        label: "水分ml",
-                        isCompleted: connectivity.totalDrinkGoal > 0 && Int(healthKit.todayDietaryWater) >= connectivity.totalDrinkGoal
-                    )
+                    Button {
+                        confirmIntake(type: "water", subtype: nil,
+                                      message: "水\(connectivity.waterPerCup)mlを追加しますか？")
+                    } label: {
+                        WatchStatItem(
+                            icon: "💧",
+                            value: "\(Int(healthKit.todayDietaryWater))ml",
+                            label: "水分ml ＋",
+                            isCompleted: connectivity.totalDrinkGoal > 0 && Int(healthKit.todayDietaryWater) >= connectivity.totalDrinkGoal
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 8)
                 .background(Color.white.opacity(0.08))
@@ -577,26 +589,40 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
-                // ── ヘッダー：アクティビティ／スタンド ──────────────────────
-                HStack(spacing: 0) {
-                    WatchStatItem(
-                        icon: "🏃",
-                        value: "\(healthKit.todayWorkoutMinutes)分",
-                        label: "アクティビティ",
-                        isCompleted: healthKit.todayWorkoutMinutes >= 15
-                    )
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
-                    WatchStatItem(
-                        icon: "🕐",
-                        value: "\(healthKit.todayStandHours)h",
-                        label: "スタンド",
-                        isCompleted: healthKit.todayStandHours >= 8
-                    )
+                // ── ヘッダー：アクティビティリング ──────────────────────
+                HStack(spacing: 12) {
+                    ZStack {
+                        WatchRingView(
+                            progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
+                            color: Color(red: 0.98, green: 0.07, blue: 0.31),
+                            diameter: 56, lineWidth: 6
+                        )
+                        WatchRingView(
+                            progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
+                            color: Color(red: 0.57, green: 0.91, blue: 0.16),
+                            diameter: 40, lineWidth: 6
+                        )
+                        WatchRingView(
+                            progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
+                            color: Color(red: 0.12, green: 0.89, blue: 0.94),
+                            diameter: 24, lineWidth: 6
+                        )
+                    }
+                    .frame(width: 56, height: 56)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        ringLegendRow(color: Color(red: 0.98, green: 0.07, blue: 0.31),
+                                      value: "\(Int(healthKit.activityMoveCalories))/\(Int(healthKit.activityMoveGoal))", unit: "kcal")
+                        ringLegendRow(color: Color(red: 0.57, green: 0.91, blue: 0.16),
+                                      value: "\(healthKit.activityExerciseMinutes)/\(healthKit.activityExerciseGoal)", unit: "分")
+                        ringLegendRow(color: Color(red: 0.12, green: 0.89, blue: 0.94),
+                                      value: "\(healthKit.activityStandHours)/\(healthKit.activityStandGoal)", unit: "h")
+                    }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(10)
-                .padding(.top, 0)
                 .padding(.bottom, 4)
                 .onAppear {
                     connectivity.requestStatsFromiOS()
@@ -756,6 +782,18 @@ struct WatchDashboardView: View {
             .padding(.bottom, 8)
         }
     }
+
+    private func ringLegendRow(color: Color, value: String, unit: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+            Text(unit)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.6))
+        }
+    }
 }
 
 struct WatchStatItem: View {
@@ -776,6 +814,25 @@ struct WatchStatItem: View {
                 .foregroundColor(.gray)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+struct WatchRingView: View {
+    let progress: Double
+    let color: Color
+    let diameter: CGFloat
+    let lineWidth: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.2), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: min(CGFloat(progress), 1.0))
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: diameter, height: diameter)
     }
 }
 

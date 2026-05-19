@@ -382,24 +382,18 @@ struct WatchWorkoutFlowView: View {
                 .foregroundColor(duoYellow)
 
             Button { isPresented = false } label: {
-                Text("ホームへ")
+                Text("ホームへ戻る")
                     .font(.caption).fontWeight(.bold)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(duoGreen)
                     .cornerRadius(10)
             }
             .buttonStyle(.plain)
-
-            Text("ダブルタップでも戻れます")
-                .font(.system(size: 9))
-                .foregroundColor(.gray)
+            .handGestureShortcut(.primaryAction)
         }
         .padding(10)
-        .onTapGesture(count: 2) {
-            isPresented = false
-        }
         .onAppear {
             // セット全体完了時の強力な振動（7回連続）
             WKInterfaceDevice.current().play(.notification)

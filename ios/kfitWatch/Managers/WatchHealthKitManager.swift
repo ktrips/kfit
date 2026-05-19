@@ -27,6 +27,14 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayDietaryCaffeine: Double = 0.0  // 今日のカフェイン（mg）
     @Published var todayDietaryAlcohol: Double = 0.0   // 今日のアルコール（g）
 
+    // アクティビティリング
+    @Published var activityMoveCalories: Double = 0.0
+    @Published var activityMoveGoal: Double = 350.0
+    @Published var activityExerciseMinutes: Int = 0
+    @Published var activityExerciseGoal: Int = 30
+    @Published var activityStandHours: Int = 0
+    @Published var activityStandGoal: Int = 12
+
     private init() {}
 
     // MARK: - Authorization
@@ -51,6 +59,7 @@ class WatchHealthKitManager: ObservableObject {
             HKObjectType.quantityType(forIdentifier: .dietaryWater)!,
             HKObjectType.quantityType(forIdentifier: .dietaryCaffeine)!,
             HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)!,
+            HKObjectType.activitySummaryType(),
         ]
 
         let typesToWrite: Set<HKSampleType> = [
@@ -86,6 +95,7 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchTodayDietaryCaffeine() }
             group.addTask { await self.fetchTodayDietaryAlcohol() }
             group.addTask { await self.fetchLatestHRV() }
+            group.addTask { await self.fetchActivitySummary() }
         }
     }
 
@@ -466,6 +476,39 @@ class WatchHealthKitManager: ObservableObject {
             WatchConnectivityManager.shared.sendMindfulnessCompleted()
         } catch {
             print("[WatchHealthKit] ⚠️ Failed to save mindfulness: \(error)")
+        }
+    }
+
+    // MARK: - Activity Summary
+
+    func fetchActivitySummary() async {
+        var cal = Calendar.current
+        cal.timeZone = TimeZone.current
+        var components = cal.dateComponents([.era, .year, .month, .day], from: Date())
+        components.calendar = cal
+        let predicate = HKQuery.predicate(forActivitySummariesBetweenStart: components, end: components)
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            let q = HKActivitySummaryQuery(predicate: predicate) { [weak self] _, summaries, _ in
+                Task { @MainActor in
+                    guard let self, let summary = summaries?.first else {
+                        cont.resume()
+                        return
+                    }
+                    self.activityMoveCalories    = summary.activeEnergyBurned.doubleValue(for: .kilocalorie())
+                    let goalKcal                 = summary.activeEnergyBurnedGoal.doubleValue(for: .kilocalorie())
+                    self.activityMoveGoal        = goalKcal > 0 ? goalKcal : 350
+                    self.activityExerciseMinutes = Int(summary.appleExerciseTime.doubleValue(for: .minute()))
+                    let goalMin                  = Int(summary.appleExerciseTimeGoal.doubleValue(for: .minute()))
+                    self.activityExerciseGoal    = goalMin > 0 ? goalMin : 30
+                    self.activityStandHours      = Int(summary.appleStandHours.doubleValue(for: .count()))
+                    let goalHrs                  = Int(summary.appleStandHoursGoal.doubleValue(for: .count()))
+                    self.activityStandGoal       = goalHrs > 0 ? goalHrs : 12
+                    print("[WatchHealthKit] 🏃 Activity rings — Move: \(Int(self.activityMoveCalories))/\(Int(self.activityMoveGoal)) Exercise: \(self.activityExerciseMinutes)/\(self.activityExerciseGoal) Stand: \(self.activityStandHours)/\(self.activityStandGoal)")
+                    cont.resume()
+                }
+            }
+            healthStore.execute(q)
         }
     }
 

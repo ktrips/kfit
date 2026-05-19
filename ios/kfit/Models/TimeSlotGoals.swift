@@ -86,10 +86,13 @@ struct CustomActivity: Codable, Identifiable, Equatable {
     }
 
     // プリセットアクティビティ
-    static let duolingo = CustomActivity(name: "Duolingo", emoji: "🦉")
-    static let reading = CustomActivity(name: "読書", emoji: "📚")
-    static let meditation = CustomActivity(name: "瞑想", emoji: "🧘")
-    static let stretching = CustomActivity(name: "ストレッチ", emoji: "🤸")
+    static let duolingo      = CustomActivity(name: "Duolingo",      emoji: "🦉")
+    static let reading       = CustomActivity(name: "読書",           emoji: "📚")
+    static let meditation    = CustomActivity(name: "瞑想",           emoji: "🧘")
+    static let stretching    = CustomActivity(name: "ストレッチ",     emoji: "🤸")
+    static let toothbrushing = CustomActivity(name: "歯磨き・フロス", emoji: "🦷")
+    static let coffee        = CustomActivity(name: "コーヒーを淹れる", emoji: "☕")
+    static let study         = CustomActivity(name: "勉強",           emoji: "📖")
 }
 
 // MARK: - 時間帯ごとの目標
@@ -219,22 +222,26 @@ struct CustomDailyGoal: Codable, Identifiable, Equatable {
 
     // プリセット例
     static let presets: [CustomDailyGoal] = [
-        CustomDailyGoal(name: "読書", emoji: "📚"),
-        CustomDailyGoal(name: "Duolingo", emoji: "🦉"),
-        CustomDailyGoal(name: "瞑想", emoji: "🧘"),
-        CustomDailyGoal(name: "ストレッチ", emoji: "🤸"),
-        CustomDailyGoal(name: "早起き", emoji: "🌅"),
-        CustomDailyGoal(name: "禁酒", emoji: "🚫"),
+        CustomDailyGoal(name: "読書",           emoji: "📚"),
+        CustomDailyGoal(name: "Duolingo",       emoji: "🦉"),
+        CustomDailyGoal(name: "瞑想",           emoji: "🧘"),
+        CustomDailyGoal(name: "ストレッチ",     emoji: "🤸"),
+        CustomDailyGoal(name: "早起き",         emoji: "🌅"),
+        CustomDailyGoal(name: "禁酒",           emoji: "🚫"),
+        CustomDailyGoal(name: "歯磨き・フロス", emoji: "🦷"),
+        CustomDailyGoal(name: "コーヒーを淹れる", emoji: "☕"),
+        CustomDailyGoal(name: "勉強",           emoji: "📖"),
     ]
 }
 
 // MARK: - 1日全体の目標（時間帯に関係なし）
 
 struct DailyGlobalGoals: Codable {
-    var workoutEnabled: Bool = false           // ワークアウト目標を使用するか
-    var workoutMinutes: Int = 15               // 目標ワークアウト時間（分）
-    var standEnabled: Bool = false             // スタンド時間目標を使用するか
-    var standHours: Int = 12                   // 目標スタンド時間（時間）
+    var activityEnabled: Bool = false          // アクティビティリング目標を使用するか
+    var workoutEnabled: Bool = false           // (後方互換、非使用)
+    var workoutMinutes: Int = 15               // (後方互換、非使用)
+    var standEnabled: Bool = false             // (後方互換、非使用)
+    var standHours: Int = 12                   // (後方互換、非使用)
     var sleepEnabled: Bool = false             // 睡眠計測目標を使用するか
     var sleepHoursGoal: Int = 6              // 睡眠時間の目標（時間）
     var sleepScoreThreshold: Int = 80          // 睡眠スコアの目標（80点以上で達成）

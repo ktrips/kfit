@@ -260,39 +260,59 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
-    // 時間帯別の進捗を計算（今日1日分の全時間帯）
+    // 時間帯別の進捗を返す（DashboardView.updateWidgetData が書き込む共有 UserDefaults を読む）
     private func calculateTimeSlotProgress() async -> TimeSlotProgressData {
+        // updateWidgetData() が常に最新値を group.com.kfit.app に書き込んでいる。
+        // それをそのまま読むことで iOS の進捗バー表示と完全に一致する。
+        if let ud = UserDefaults(suiteName: "group.com.kfit.app") {
+            let totalTraining      = ud.integer(forKey: "trainingCompleted")
+            let totalTrainingGoal  = ud.integer(forKey: "trainingGoal")
+            let totalMindfulness   = ud.integer(forKey: "mindfulnessCompleted")
+            let totalMindfulnessGoal = ud.integer(forKey: "mindfulnessGoal")
+            let totalMealLogged    = ud.integer(forKey: "mealLogged")
+            let totalMealGoal      = ud.integer(forKey: "mealGoal")
+            let totalDrinkLogged   = ud.integer(forKey: "drinkLogged")
+            let totalDrinkGoal     = ud.integer(forKey: "drinkGoal")
+
+            // 少なくとも目標が設定されていれば有効なデータとみなす
+            if totalTrainingGoal > 0 || totalMindfulnessGoal > 0 {
+                return TimeSlotProgressData(
+                    totalTraining: totalTraining,
+                    totalTrainingGoal: totalTrainingGoal,
+                    totalMindfulness: totalMindfulness,
+                    totalMindfulnessGoal: totalMindfulnessGoal,
+                    totalMealLogged: totalMealLogged,
+                    totalMealGoal: totalMealGoal,
+                    totalDrinkLogged: totalDrinkLogged,
+                    totalDrinkGoal: totalDrinkGoal
+                )
+            }
+        }
+
+        // フォールバック: UserDefaults にデータがない場合はリアルタイム計算
+        let timeSlotManager = TimeSlotManager.shared
+        await timeSlotManager.loadTodayProgress()
+        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+        let calendar = Calendar.current
         var totalTraining = 0
         var totalTrainingGoal = 0
-        var totalMindfulness = 0
         var totalMindfulnessGoal = 0
         var totalMealLogged = 0
         var totalMealGoal = 0
         var totalDrinkLogged = 0
         var totalDrinkGoal = 0
 
-        let timeSlotManager = TimeSlotManager.shared
-        await timeSlotManager.loadTodayProgress()
-
-        // 今日の運動記録を取得
-        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-        let calendar = Calendar.current
-
-        // 今日1日分の全時間帯をカウント（Watch表示用）
         for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                // トレーニング: 30分以内のまとまりを1セットとする（iOS DashboardViewと同じロジック）
                 let slotExercises = todayExercises.filter { exercise in
                     let hour = calendar.component(.hour, from: exercise.timestamp)
                     return hour >= slot.startHour && hour < slot.endHour
                 }.sorted { $0.timestamp < $1.timestamp }
-
                 var setsInSlot = 0
                 var lastTime: Date? = nil
                 for ex in slotExercises {
                     if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
-                        // 同一セッション内
                     } else {
                         setsInSlot += 1
                     }
@@ -300,9 +320,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 }
                 totalTraining += setsInSlot
                 totalTrainingGoal += goal.trainingGoal
-
                 totalMindfulnessGoal += goal.mindfulnessGoal
-
                 if goal.logGoal.mealGoal > 0 {
                     totalMealGoal += goal.logGoal.mealGoal
                     totalMealLogged += progress.logProgress.mealLogged
@@ -311,18 +329,12 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     totalDrinkGoal += goal.logGoal.drinkGoal
                     totalDrinkLogged += progress.logProgress.drinkLogged
                 }
-
-                _ = progress  // suppress unused warning
             }
         }
-
-        // マインドフルネスはHealthKitを正とする（DashboardViewと一致）
-        totalMindfulness = HealthKitManager.shared.todayMindfulnessSessions
-
         return TimeSlotProgressData(
             totalTraining: totalTraining,
             totalTrainingGoal: totalTrainingGoal,
-            totalMindfulness: totalMindfulness,
+            totalMindfulness: HealthKitManager.shared.todayMindfulnessSessions,
             totalMindfulnessGoal: totalMindfulnessGoal,
             totalMealLogged: totalMealLogged,
             totalMealGoal: totalMealGoal,

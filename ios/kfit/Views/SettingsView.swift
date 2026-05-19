@@ -187,53 +187,17 @@ struct SettingsView: View {
             }
             .padding(.bottom, 14)
 
-            // ワークアウト
-            let workoutOn = timeSlotManager.settings.globalGoals.workoutEnabled
+            // アクティビティリング
             globalToggleRow(
-                emoji: "🏃", label: "ワークアウト",
-                badge: workoutOn ? "\(timeSlotManager.settings.globalGoals.workoutMinutes)分" : nil,
-                badgeColor: Color.duoGreen,
+                emoji: "🏃",
+                label: "アクティビティリング",
+                badge: timeSlotManager.settings.globalGoals.activityEnabled ? "Move・Exercise・Stand" : nil,
+                badgeColor: Color(red: 0.98, green: 0.07, blue: 0.31),
                 isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.workoutEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.workoutEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
+                    get: { timeSlotManager.settings.globalGoals.activityEnabled },
+                    set: { v in timeSlotManager.settings.globalGoals.activityEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
                 )
             )
-            if workoutOn {
-                globalStepperRow(
-                    label: "目標",
-                    valueText: "\(timeSlotManager.settings.globalGoals.workoutMinutes)分",
-                    color: Color.duoGreen,
-                    value: Binding(
-                        get: { timeSlotManager.settings.globalGoals.workoutMinutes },
-                        set: { v in timeSlotManager.settings.globalGoals.workoutMinutes = v; Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 5...120, step: 5
-                )
-            }
-
-            globalDivider
-
-            // スタンド時間
-            let standOn = timeSlotManager.settings.globalGoals.standEnabled
-            globalToggleRow(
-                emoji: "🕐", label: "スタンド時間",
-                badge: standOn ? "\(timeSlotManager.settings.globalGoals.standHours)時間" : nil,
-                badgeColor: Color.duoBlue,
-                isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.standEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.standEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
-                )
-            )
-            if standOn {
-                globalStepperRow(
-                    label: "目標",
-                    valueText: "\(timeSlotManager.settings.globalGoals.standHours)時間",
-                    color: Color.duoBlue,
-                    value: Binding(
-                        get: { timeSlotManager.settings.globalGoals.standHours },
-                        set: { v in timeSlotManager.settings.globalGoals.standHours = v; Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 1...16, step: 1
-                )
-            }
 
             globalDivider
 
@@ -710,6 +674,7 @@ struct SettingsView: View {
     private var addActivitySheet: some View {
         let activityPresets: [CustomActivity] = [
             .duolingo, .reading, .meditation, .stretching,
+            .toothbrushing, .coffee, .study,
             CustomActivity(name: "ジョギング", emoji: "🏃"),
             CustomActivity(name: "日記",       emoji: "📓"),
         ]

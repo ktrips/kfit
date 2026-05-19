@@ -34,8 +34,8 @@ struct NotificationPrefs: Codable {
         pmReminder:  ReminderConfig(enabled: true, hour: 18, minute: 0),
         pmFollowup:  ReminderConfig(enabled: true, hour: 21, minute: 0),
         streakAlert: ReminderConfig(enabled: true, hour: 22, minute: 0),
-        weightMorning: ReminderConfig(enabled: true, hour: 7, minute: 0),
-        weightEvening: ReminderConfig(enabled: true, hour: 21, minute: 0)
+        weightMorning: ReminderConfig(enabled: true, hour: 7,  minute: 0),
+        weightEvening: ReminderConfig(enabled: true, hour: 20, minute: 30)  // 21:00のpmFollowupと重複しないよう20:30に設定
     )
 
     // 動的アクセス用
@@ -214,14 +214,25 @@ final class NotificationManager: ObservableObject {
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: ID.all)
 
+        // 同時刻への重複スケジュールを防ぐ：(hour:minute) をキーに最初の1件のみ登録
+        var scheduledTimeKeys = Set<String>()
+        var skipped = 0
+
         for id in ID.all {
             let cfg = prefs[id]
             guard cfg.enabled else { continue }
+            let timeKey = String(format: "%02d:%02d", cfg.hour, cfg.minute)
+            if scheduledTimeKeys.contains(timeKey) {
+                print("[NotificationManager] ⚠️ 重複時刻をスキップ: \(id) at \(timeKey)")
+                skipped += 1
+                continue
+            }
+            scheduledTimeKeys.insert(timeKey)
             let msg = Self.messages[id] ?? (title: id, body: "")
             add(id: id, hour: cfg.hour, minute: cfg.minute,
                 title: msg.title, body: msg.body)
         }
-        print("[NotificationManager] 通知をスケジュール（prefs に基づく）")
+        print("[NotificationManager] 通知をスケジュール完了（\(scheduledTimeKeys.count)件登録、\(skipped)件重複スキップ）")
     }
 
     // MARK: - トレーニング記録後に呼ぶ
@@ -276,9 +287,16 @@ final class NotificationManager: ObservableObject {
     private func refreshNotifications(ids: [String]) {
         UNUserNotificationCenter.current()
             .removePendingNotificationRequests(withIdentifiers: ids)
+
+        // 既にスケジュール済みの時刻と重複しないように追加
+        // （全件を見るのではなく、対象IDの中だけで重複チェック）
+        var scheduledTimeKeys = Set<String>()
         for id in ids {
             let cfg = prefs[id]
             guard cfg.enabled else { continue }
+            let timeKey = String(format: "%02d:%02d", cfg.hour, cfg.minute)
+            guard !scheduledTimeKeys.contains(timeKey) else { continue }
+            scheduledTimeKeys.insert(timeKey)
             let msg = Self.messages[id] ?? (title: id, body: "")
             add(id: id, hour: cfg.hour, minute: cfg.minute,
                 title: msg.title, body: msg.body)

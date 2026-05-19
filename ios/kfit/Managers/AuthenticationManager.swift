@@ -1616,19 +1616,16 @@ extension AuthenticationManager {
             defaults.set(goal.trainingGoal,      forKey: "timeSlotGoal")
         }
 
-        // ワークアウト・スタンド
-        let gp = tsm.progress.globalProgress
-        let gg = tsm.settings.globalGoals
-        defaults.set(hk.todayWorkoutMinutes > 0 ? hk.todayWorkoutMinutes : gp.workoutMinutes, forKey: "workoutMinutes")
-        defaults.set(gg.workoutEnabled ? gg.workoutMinutes : 0, forKey: "workoutGoal")
-        defaults.set(hk.todayStandHours > 0 ? hk.todayStandHours : gp.standHours, forKey: "standHours")
-        defaults.set(gg.standEnabled ? gg.standHours : 0, forKey: "standGoal")
+        // ワークアウト・スタンド（HealthKit実績のみ保存、目標は廃止）
+        defaults.set(hk.todayWorkoutMinutes, forKey: "workoutMinutes")
+        defaults.set(0, forKey: "workoutGoal")
+        defaults.set(hk.todayStandHours, forKey: "standHours")
+        defaults.set(0, forKey: "standGoal")
 
-        // カロリー収支：消費量のみ更新（摂取量はDashboardViewが正として上書きする）
+        // カロリー収支：摂取 - 消費
         let burned = Int(hk.todayRestingCalories + hk.todayActiveCalories)
-        let existingBalance = defaults.integer(forKey: "calorieBalance")
-        let prevIntake = existingBalance + burned
-        defaults.set(prevIntake - burned, forKey: "calorieBalance")
+        let intake = Int(hk.todayIntakeCalories)
+        defaults.set(intake - burned, forKey: "calorieBalance")
 
         defaults.synchronize()
         WidgetCenter.shared.reloadAllTimelines()

@@ -60,6 +60,9 @@ struct WatchDashboardView: View {
 
                     healthDataPage
                         .tag(3)
+
+                    watchFacePage
+                        .tag(4)
                 }
                 .tabViewStyle(.page)
             }
@@ -120,6 +123,10 @@ struct WatchDashboardView: View {
         // ヘルスデータページの場合は、データを更新
         else if selectedTab == 3 {
             Task { await healthKit.fetchAllTodayData() }
+        }
+        // ウォッチフェイスページの場合は、ワークアウトを開始
+        else if selectedTab == 4 {
+            showFlow = true
         }
     }
 
@@ -781,6 +788,120 @@ struct WatchDashboardView: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
         }
+    }
+
+    // MARK: - ウォッチフェイスページ（5ページ目）
+    private var watchFacePage: some View {
+        VStack(spacing: 5) {
+            Spacer(minLength: 2)
+
+            // ── 時刻 ──────────────────────────────────────
+            Text(Date(), style: .time)
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .monospacedDigit()
+
+            // ── 日付 + ストリーク ──────────────────────────
+            HStack(spacing: 6) {
+                Text(watchFaceDateString)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.65))
+                if connectivity.streak > 0 {
+                    HStack(spacing: 2) {
+                        Text("🔥").font(.system(size: 10))
+                        Text("\(connectivity.streak)d")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+
+            // ── アクティビティリング（タップでワークアウト開始）──
+            Button(action: { showFlow = true }) {
+                ZStack {
+                    WatchRingView(
+                        progress: healthKit.activityMoveGoal > 0
+                            ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
+                        color: Color(red: 0.98, green: 0.07, blue: 0.31),
+                        diameter: 90, lineWidth: 11
+                    )
+                    WatchRingView(
+                        progress: healthKit.activityExerciseGoal > 0
+                            ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
+                        color: Color(red: 0.57, green: 0.91, blue: 0.16),
+                        diameter: 64, lineWidth: 11
+                    )
+                    WatchRingView(
+                        progress: healthKit.activityStandGoal > 0
+                            ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
+                        color: Color(red: 0.12, green: 0.89, blue: 0.94),
+                        diameter: 38, lineWidth: 11
+                    )
+                    // 中央：トレーニング進捗
+                    let trainingDone = connectivity.totalTrainingGoal > 0
+                                    && connectivity.totalTraining >= connectivity.totalTrainingGoal
+                    VStack(spacing: 1) {
+                        Text("💪").font(.system(size: 10))
+                        Text("\(connectivity.totalTraining)/\(connectivity.totalTrainingGoal)")
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .foregroundColor(trainingDone ? duoGreen : .white)
+                    }
+                }
+                .frame(width: 90, height: 90)
+            }
+            .buttonStyle(.plain)
+
+            // ── 下部3指標 ──────────────────────────────────
+            HStack(spacing: 5) {
+                watchFaceStat(
+                    icon: "⭐",
+                    value: connectivity.todayXP >= 1000
+                        ? String(format: "%.1fk", Double(connectivity.todayXP) / 1000.0)
+                        : "\(connectivity.todayXP)",
+                    label: "XP"
+                )
+                watchFaceStat(
+                    icon: "❤️",
+                    value: healthKit.averageHeartRate > 0 ? "\(healthKit.averageHeartRate)" : "—",
+                    label: "bpm"
+                )
+                watchFaceStat(
+                    icon: "😴",
+                    value: healthKit.sleepHours > 0
+                        ? String(format: "%.1f", healthKit.sleepHours) : "—",
+                    label: "h"
+                )
+            }
+
+            Spacer(minLength: 2)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func watchFaceStat(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(icon).font(.system(size: 13))
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(8)
+    }
+
+    private var watchFaceDateString: String {
+        let f = DateFormatter()
+        f.dateFormat = "M/d (EEE)"
+        f.locale = Locale(identifier: "ja_JP")
+        return f.string(from: Date())
     }
 
     private func ringLegendRow(color: Color, value: String, unit: String) -> some View {

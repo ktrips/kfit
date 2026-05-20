@@ -107,6 +107,13 @@ struct SleepScoreAnalysis {
     var targetHours: Double = 7.0    // 目標睡眠時間（時間）
 }
 
+// MARK: - 体重記録（日別）
+struct BodyMassRecord: Identifiable {
+    let id = UUID()
+    let measuredAt: Date   // 計測日時
+    let kg: Double
+}
+
 // MARK: - HealthKitManager
 
 /// Apple HealthKit から健康データを読み取る専用マネージャ
@@ -162,8 +169,10 @@ final class HealthKitManager: ObservableObject {
     @Published var latestBodyMass: Double = 0              // kg
     @Published var latestBodyFatPercentage: Double = 0     // %
     @Published var todayBodyMassMeasurements: Int = 0      // 今日の測定回数
+    @Published var todayBodyMassRecord: BodyMassRecord? = nil  // 今日の体重計測（時刻付き）
     @Published var weeklyBodyMassChange: Double? = nil     // 1週間の体重変動（kg）nil=データ不足
     @Published var weeklyBodyFatChange: Double? = nil      // 1週間の体脂肪変動（%）nil=データ不足
+    @Published var bodyMassHistory: [BodyMassRecord] = []  // 日別体重履歴
 
     // 摂取データ（Apple Healthから読み取り）
     @Published var todayIntakeCalories: Double = 0      // kcal
@@ -424,6 +433,7 @@ final class HealthKitManager: ObservableObject {
         async let bodyMass = fetchLatestBodyMass()
         async let bodyFat  = fetchLatestBodyFatPercentage()
         async let bodyMassCount = fetchTodayBodyMassMeasurements()
+        async let todayBM  = fetchTodayBodyMassRecord()
         async let bodyMassChange = fetchWeeklyBodyMassChange()
         async let bodyFatChange  = fetchWeeklyBodyFatChange()
         async let intakeCal = fetchTodayIntakeCalories()
@@ -458,6 +468,7 @@ final class HealthKitManager: ObservableObject {
         latestBodyMass          = await bodyMass
         latestBodyFatPercentage = await bodyFat
         todayBodyMassMeasurements = await bodyMassCount
+        todayBodyMassRecord     = await todayBM
         weeklyBodyMassChange    = await bodyMassChange
         weeklyBodyFatChange     = await bodyFatChange
         todayIntakeCalories = await intakeCal
@@ -856,6 +867,71 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    /// 今日計測された最新の体重レコードを取得（時刻付き）
+    func fetchTodayBodyMassRecord() async -> BodyMassRecord? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return nil }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? Date()
+        let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: 1, sortDescriptors: [sort]) { [weak self] _, samples, _ in
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    Task { @MainActor in self?.todayBodyMassRecord = nil }
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let record = BodyMassRecord(measuredAt: sample.endDate,
+                                            kg: sample.quantity.doubleValue(for: .gramUnit(with: .kilo)))
+                Task { @MainActor in self?.todayBodyMassRecord = record }
+                continuation.resume(returning: record)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - 日別体重履歴（履歴画面用）
+
+    /// 過去 days 日間の体重サンプルを取得し、日ごとに最新1件を bodyMassHistory に格納する
+    func fetchBodyMassHistory(days: Int = 14) async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: cal.date(byAdding: .day, value: -days, to: Date()) ?? Date())
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { [weak self] _, samples, _ in
+                guard let self, let samples = samples as? [HKQuantitySample] else {
+                    cont.resume(); return
+                }
+                let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                var map: [String: BodyMassRecord] = [:]
+                for s in samples {
+                    let key = fmt.string(from: s.endDate)
+                    // ascending order → last write wins = latest sample per day
+                    map[key] = BodyMassRecord(
+                        measuredAt: s.endDate,
+                        kg: s.quantity.doubleValue(for: .gramUnit(with: .kilo))
+                    )
+                }
+                Task { @MainActor in
+                    self.bodyMassHistory = map.values.sorted { $0.measuredAt > $1.measuredAt }
+                }
+                cont.resume()
+            }
+            store.execute(q)
+        }
+    }
+
+    /// "yyyy-MM-dd" キーで体重記録を検索する
+    func bodyMassRecord(for dateKey: String) -> BodyMassRecord? {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        return bodyMassHistory.first { fmt.string(from: $0.measuredAt) == dateKey }
+    }
+
     // MARK: - 1週間の体重・体脂肪変動
 
     /// 過去7日間の最古の体重と現在値の差分を返す（データ不足はnil）
@@ -1205,7 +1281,9 @@ final class HealthKitManager: ObservableObject {
                     ))
                 }
 
-                continuation.resume(returning: (totalMinutes, samples.count, mindfulSamples))
+                // 1分セッションのみをマインドフルネスカウントとして扱う（Apple Watch 1分セッション基準）
+                let oneMinuteCount = mindfulSamples.filter { $0.durationMinutes <= 1.5 }.count
+                continuation.resume(returning: (totalMinutes, oneMinuteCount, mindfulSamples))
             }
             store.execute(query)
         }

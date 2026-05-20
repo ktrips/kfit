@@ -66,6 +66,14 @@ class TimeSlotManager: ObservableObject {
                                 goal.reminderTime = timestamp.dateValue()
                             }
 
+                            // ストレッチ・ヨガ目標を読み込み
+                            if let stretchData = goalData["stretchGoal"] as? [String: Any] {
+                                goal.stretchGoal.enabled = stretchData["enabled"] as? Bool ?? false
+                                goal.stretchGoal.stretchMinutes = stretchData["stretchMinutes"] as? Int
+                                    ?? stretchData["stretchCount"] as? Int
+                                    ?? stretchData["setsGoal"] as? Int ?? 3
+                            }
+
                             // カスタムアクティビティを読み込み
                             if let activitiesData = goalData["customActivities"] as? [[String: Any]] {
                                 var activities: [CustomActivity] = []
@@ -144,6 +152,10 @@ class TimeSlotManager: ObservableObject {
                     "mindInputRequired": goal.logGoal.mindInputRequired
                 ],
                 "reminderEnabled": goal.reminderEnabled,
+                "stretchGoal": [
+                    "enabled": goal.stretchGoal.enabled,
+                    "stretchMinutes": goal.stretchGoal.stretchMinutes
+                ],
                 "customActivities": goal.customActivities.map { activity in
                     [
                         "id": activity.id,
@@ -213,6 +225,7 @@ class TimeSlotManager: ObservableObject {
                             var prog = TimeSlotProgress(timeSlot: timeSlot)
                             prog.trainingCompleted = progData["trainingCompleted"] as? Int ?? 0
                             prog.mindfulnessCompleted = progData["mindfulnessCompleted"] as? Int ?? 0
+                            prog.stretchSetsCompleted = progData["stretchSetsCompleted"] as? Int ?? 0
 
                             if let logProgressData = progData["logProgress"] as? [String: Any] {
                                 // Bool型との後方互換性のため、BoolとIntの両方をサポート
@@ -294,16 +307,61 @@ class TimeSlotManager: ObservableObject {
         let pfcAnalysis = healthKit.analyzePFCBalance()
         progress.globalProgress.pfcScore = pfcAnalysis.score
 
-        // 体重計測を確認（今日のデータがあれば達成）
-        progress.globalProgress.weightMeasured = healthKit.latestBodyMass > 0
+        // 体重計測を確認（今日計測されたデータがあれば達成）
+        progress.globalProgress.weightMeasured = healthKit.todayBodyMassMeasurements > 0
 
         progress.globalProgress.lastUpdated = Date()
 
         // HealthKitの水分・食事サンプルを時間帯別進捗に反映
         await syncIntakeFromHealthKit()
 
+        // ReflectセッションからストレッチセットをSync
+        await syncStretchFromHealthKit()
+
         // Firestoreにも保存
         await saveTodayProgress()
+    }
+
+    /// ReflectセッションからストレッチをSync（夜中以外）
+    /// 時間帯内のReflect合計分数 = 完了分数
+    func syncStretchFromHealthKit() async {
+        let hk = HealthKitManager.shared
+        guard hk.isAuthorized else { return }
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let reflectSessions = hk.todayMindfulnessSamples.filter { $0.sessionTypeLabel == "Reflect" }
+        var changed = false
+
+        for slot in TimeSlot.allCases where slot != .midnight {
+            guard var prog = progress.progressFor(slot),
+                  let goal = settings.goalFor(slot),
+                  goal.stretchGoal.enabled else { continue }
+
+            let slotStart = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
+            let slotEnd: Date = slot.endHour >= 24
+                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
+                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
+
+            let totalMinutes = reflectSessions
+                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
+                .reduce(0.0) { $0 + $1.durationMinutes }
+
+            let newCompleted = Int(totalMinutes)
+
+            if prog.stretchSetsCompleted != newCompleted {
+                prog.stretchSetsCompleted = newCompleted
+                prog.lastUpdated = Date()
+                var updated = progress
+                updated.updateProgress(prog)
+                progress = updated
+                changed = true
+            }
+        }
+
+        if changed {
+            print("[TimeSlot] 🤸 Synced stretch from Reflect mindfulness sessions")
+        }
     }
 
     /// HealthKitの水分・食事サンプルを時間帯別進捗に反映
@@ -367,6 +425,7 @@ class TimeSlotManager: ObservableObject {
                     "drinkLogged": prog.logProgress.drinkLogged,
                     "mindInputLogged": prog.logProgress.mindInputLogged
                 ],
+                "stretchSetsCompleted": prog.stretchSetsCompleted,
                 "completedActivityIds": Array(prog.completedActivityIds),
                 "lastUpdated": Timestamp(date: prog.lastUpdated)
             ]

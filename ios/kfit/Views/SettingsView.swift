@@ -78,7 +78,6 @@ struct SettingsView: View {
                     motionSensitivitySection
                     intakeSection
                     llmSection
-                    reminderSection
                     watchSection
                     habitStackSection
                     linkedAppsSection
@@ -167,6 +166,9 @@ struct SettingsView: View {
                         timeSlotCardInline(slot: slot, goal: goal, progress: progress)
                     }
                 }
+
+                // ストリーク・アラート（夜の設定の後）
+                reminderSection
             }
         }
     }
@@ -415,8 +417,20 @@ struct SettingsView: View {
                     )
                 }
 
+                if goal.stretchGoal.enabled {
+                    let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+                    slotStepperRow(
+                        emoji: "🤸", label: "ストレッチ目標",
+                        valueText: "\(goal.stretchGoal.stretchMinutes)分", valueColor: stretchColor,
+                        value: Binding(
+                            get: { goal.stretchGoal.stretchMinutes },
+                            set: { v in var g = goal; g.stretchGoal.stretchMinutes = v; if v == 0 { g.stretchGoal.enabled = false }; timeSlotManager.settings.updateGoal(g); Task { await timeSlotManager.saveTodaySettings() } }
+                        ), in: 0...30
+                    )
+                }
+
                 // 未設定の項目への追加ボタン
-                if goal.trainingGoal == 0 || goal.mindfulnessGoal == 0 {
+                if goal.trainingGoal == 0 || goal.mindfulnessGoal == 0 || !goal.stretchGoal.enabled {
                     HStack(spacing: 8) {
                         if goal.trainingGoal == 0 {
                             Button {
@@ -444,6 +458,22 @@ struct SettingsView: View {
                                     .foregroundColor(Color.duoPurple)
                                     .padding(.horizontal, 8).padding(.vertical, 4)
                                     .background(Color.duoPurple.opacity(0.1))
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if !goal.stretchGoal.enabled {
+                            let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+                            Button {
+                                var g = goal; g.stretchGoal.enabled = true
+                                timeSlotManager.settings.updateGoal(g)
+                                Task { await timeSlotManager.saveTodaySettings() }
+                            } label: {
+                                Label("ストレッチ", systemImage: "plus.circle")
+                                    .font(.caption).fontWeight(.semibold)
+                                    .foregroundColor(stretchColor)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(stretchColor.opacity(0.1))
                                     .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -483,17 +513,6 @@ struct SettingsView: View {
                     config: Binding(
                         get: { notif.prefs[ids.reminder] },
                         set: { notif.prefs[ids.reminder] = $0 }
-                    )
-                )
-
-                ReminderRow(
-                    meta: ReminderMeta(id: ids.followup,
-                                       emoji: "⚡",
-                                       label: "\(slot.displayName)のアラート",
-                                       description: "トレーニング未実施の時のみ通知"),
-                    config: Binding(
-                        get: { notif.prefs[ids.followup] },
-                        set: { notif.prefs[ids.followup] = $0 }
                     )
                 )
             }

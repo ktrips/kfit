@@ -1,4 +1,4 @@
-# kfit iOS App (v0.6.0)
+# kfit iOS App (v0.9.22)
 
 A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, Firebase backend integration, and AI-powered nutrition analysis.
 
@@ -18,6 +18,11 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 - **History View** - Review past 14 days of workouts
 - **Form Scoring** - Real-time form quality feedback based on motion patterns
 - **Daily Dashboard** - View streaks, XP, sleep score, PFC chart, and 90-day challenge progress
+- **Activity Score** - Aggregate Move/Exercise/Stand ring achievement percentage in activity card
+- **HRV Stress Estimation** - Piecewise linear stress score (0–100) from average HRV value
+- **Grouped Training History** - Exercise history grouped by type; tap group to expand individual sets
+- **Time-based Stretch Goal** - Stretch goal measured in minutes (Reflect sessions only); configurable per time slot
+- **Weekly Weight/Fat Trend** - ±X kg/7日 and ±X%/7日 shown below current values in activity card
 - **Real-time Sync** - Firebase Firestore syncs with Web and Watch apps
 - **Watch Connectivity** - Bidirectional data sync between iPhone and Apple Watch
 
@@ -190,6 +195,18 @@ xcodebuild -scheme kfit test
 
 ## Recent Updates
 
+### v0.9.22 (2026-05-20)
+- ✅ **アクティビティスコア**: Move・エクササイズ・スタンド各リングの達成率を平均した総合スコア（0–100%）をアクティビティカードのヘッダーに表示。色分け（緑≥100%、オレンジ≥70%、赤<70%）
+- ✅ **HRVストレス推定**: 平均HRVから区分線形でストレススコア（0–100）を算出し、HealthViewのHRVカードにスコア・レベルラベル・プログレスバーで表示
+- ✅ **トレーニング履歴グループ表示**: 今日の状況の履歴を種目別にまとめ表示、タップで個別セット（時刻・rep・XP）に展開
+- ✅ **ストレッチ目標を時間（分）制に変更**: 従来の回数から分数（デフォルト3分）に変更。Apple Watch の Reflect セッションのみをストレッチとしてカウント
+- ✅ **マインドフルネスカウント精密化**: 1分以内（≤1.5分）の Breathe/短時間セッションのみをマインドフルネス回数としてカウント
+- ✅ **履歴に体脂肪率表示**: 今日の状況の体重行に体脂肪率（%）を併記
+- ✅ **アクティビティカードに週次増減表示**: 体重・体脂肪の7日間増減（±X kg/7日, ±X%/7日）を小さく表示
+- ✅ **睡眠カードのレイアウトをコンパクト化**: スコアサークル縮小、ステージバー高さ削減、パディング最適化
+- ✅ **Fitingoヘッダーアイコン拡大・カロリー収支削除**: 右側アイコンを20%拡大、カロリー収支の数値表示を削除
+- ✅ **ヘルプ・README更新**: 全仕様変更をヘルプビューとREADMEに反映（v0.9.22）
+
 ### v0.6.0 (May 2026)
 - ✅ **PFCバランス分析**: HealthKitからたんぱく質・脂質・炭水化物を取得しスコア化（0-100点）
 - ✅ **睡眠スコア分析**: 睡眠時間・深い睡眠・REM・連続性を総合的にスコア化
@@ -238,7 +255,7 @@ pod 'GoogleSignIn'
 
 ## Version
 
-Current version: **0.6.0** (May 2026)
+Current version: **0.9.22** (2026-05-20)
 
 ## License
 

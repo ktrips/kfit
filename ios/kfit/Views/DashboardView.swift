@@ -111,6 +111,7 @@ struct DashboardView: View {
     @State private var showPointsDetail   = false  // ポイント詳細シート
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
     @State private var showTodayRecords = false  // 今日の記録を表示するか
+    @State private var expandedExerciseGroups: Set<String> = []  // 展開中の種目グループ
     @State private var showMenu = false  // ハンバーガーメニューの表示状態
     @State private var showHealthGoalEdit = false  // 健康目標編集モーダル
     @State private var tempSleepGoal = 7.0  // 一時的な睡眠目標
@@ -444,7 +445,7 @@ struct DashboardView: View {
                             .font(.system(size: 10))
                             .foregroundColor(.orange)
                         Text("\(authManager.userProfile?.streak ?? 0)日")
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 8, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                     }
@@ -455,23 +456,12 @@ struct DashboardView: View {
                             .font(.system(size: 10))
                             .foregroundColor(.white)
                         Text("\(completionPercentage)%")
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 8, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                     }
-
-                    // カロリー収支（プラスは赤字、マイナスは黄色字）
-                    HStack(spacing: 2) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(calorieBalance > 0 ? .red : (calorieBalance < 0 ? .yellow : .white))
-                        Text(calorieBalance > 0 ? "+\(calorieBalance)cal" : (calorieBalance < 0 ? "\(calorieBalance)cal" : "0cal"))
-                            .font(.system(size: 10, design: .rounded))
-                            .fontWeight(.semibold)
-                            .foregroundColor(calorieBalance > 0 ? .red : (calorieBalance < 0 ? .yellow : .white))
-                    }
                 }
-                .padding(.trailing, 8)
+                .padding(.trailing, 24)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -910,14 +900,9 @@ struct DashboardView: View {
 
             dailySetsCardButtons
 
-            // 今日の記録（展開時のみ表示）- 緑ボタンの下
-            if showTodayRecords && !todayExercises.isEmpty {
-                VStack(spacing: 0) {
-                    Divider()
-                        .padding(.horizontal, 16)
-
-                    todayRecordsSection
-                }
+            // 今日の履歴（展開時のみ表示）- フォトログの下
+            if showTodayRecords {
+                todayExpandedHistorySection
             }
         })
         .background(Color.white)
@@ -1052,7 +1037,7 @@ struct DashboardView: View {
                     HStack(spacing: 3) {
                         Text("💪").font(.system(size: 14))
                         Text("\(totalTraining)/\(totalTrainingGoal)")
-                            .font(.caption).fontWeight(.bold)
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(totalTraining >= totalTrainingGoal ? Color.duoGreen : Color.duoDark)
                     }
                 }
@@ -1060,15 +1045,31 @@ struct DashboardView: View {
                     HStack(spacing: 3) {
                         Text("🧘").font(.system(size: 14))
                         Text("\(totalMindfulness)/\(totalMindfulnessGoal)")
-                            .font(.caption).fontWeight(.bold)
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(totalMindfulness >= totalMindfulnessGoal ? Color.duoGreen : Color.duoDark)
+                    }
+                }
+                let totalStretchGoal = TimeSlot.allCases.filter { $0 != .midnight }.reduce(0) { sum, s in
+                    guard let g = timeSlotManager.settings.goalFor(s), g.stretchGoal.enabled else { return sum }
+                    return sum + g.stretchGoal.stretchMinutes
+                }
+                let totalStretch = TimeSlot.allCases.filter { $0 != .midnight }.reduce(0) { sum, s in
+                    sum + (timeSlotManager.progress.progressFor(s)?.stretchSetsCompleted ?? 0)
+                }
+                if totalStretchGoal > 0 {
+                    let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+                    HStack(spacing: 3) {
+                        Text("🤸").font(.system(size: 14))
+                        Text("\(totalStretch)/\(totalStretchGoal)分")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(totalStretch >= totalStretchGoal ? stretchColor : Color.duoDark)
                     }
                 }
                 if totalMealGoal > 0 {
                     HStack(spacing: 2) {
                         Text("🍽️").font(.system(size: 14))
                         Text(totalMealLogged > 0 ? "\(totalMealLogged)" : "—")
-                            .font(.caption).fontWeight(.bold)
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(totalMealLogged >= totalMealGoal ? Color.duoGreen : Color.duoSubtitle)
                     }
                 }
@@ -1076,7 +1077,7 @@ struct DashboardView: View {
                     HStack(spacing: 2) {
                         Text("💧").font(.system(size: 14))
                         Text(totalDrinkLogged > 0 ? "\(totalDrinkLogged)" : "—")
-                            .font(.caption).fontWeight(.bold)
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(totalDrinkLogged >= totalDrinkGoal ? Color.duoBlue : Color.duoSubtitle)
                     }
                 }
@@ -1163,6 +1164,341 @@ struct DashboardView: View {
                         .font(.caption2).fontWeight(.bold)
                         .foregroundColor(totalCustomCompleted >= totalCustomGoal ? Color.duoGreen : Color.duoDark)
                 }
+            }
+        }
+    }
+
+    // MARK: - 今日の統合履歴（フォトログ下）
+
+    private var todayExpandedHistorySection: some View {
+        let timeFmt: DateFormatter = {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+        }()
+        let breatheSessions = healthKit.todayMindfulnessSamples
+            .filter { $0.sessionTypeLabel == "Breathe" }
+            .sorted { $0.startDate < $1.startDate }
+        let reflectSessions = healthKit.todayMindfulnessSamples
+            .filter { $0.sessionTypeLabel == "Reflect" }
+            .sorted { $0.startDate < $1.startDate }
+        let otherMindfulSessions = healthKit.todayMindfulnessSamples
+            .filter { !["Breathe", "Reflect"].contains($0.sessionTypeLabel) }
+            .sorted { $0.startDate < $1.startDate }
+        let mealSamples = healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate }
+        let waterSamples = healthKit.todayWaterSamples.sorted { $0.startDate < $1.startDate }
+        let exerciseGroups: [(String, [CompletedExercise])] = {
+            var dict: [String: [CompletedExercise]] = [:]
+            for ex in todayExercises { dict[ex.exerciseName, default: []].append(ex) }
+            return dict.keys.sorted().compactMap { key in dict[key].map { (key, $0) } }
+        }()
+
+        let hasAny = !todayExercises.isEmpty || !breatheSessions.isEmpty || !reflectSessions.isEmpty
+            || !otherMindfulSessions.isEmpty
+            || healthKit.todayBodyMassRecord != nil || !mealSamples.isEmpty || !waterSamples.isEmpty
+
+        guard hasAny else { return AnyView(EmptyView()) }
+
+        return AnyView(VStack(spacing: 0) {
+            Divider().padding(.horizontal, 16)
+
+            VStack(alignment: .leading, spacing: 12) {
+
+                // 1. トレーニングのセット（種目別グループ → タップで個別セット展開）
+                if !todayExercises.isEmpty {
+                    historyGroup(icon: "💪", label: "トレーニング") {
+                        AnyView(VStack(spacing: 4) {
+                            ForEach(exerciseGroups, id: \.0) { name, sets in
+                                exerciseGroupRow(name: name, sets: sets, timeFmt: timeFmt)
+                            }
+                        })
+                    }
+                }
+
+                // 2. Breathe
+                if !breatheSessions.isEmpty {
+                    historyGroup(icon: "🫁", label: "Breathe") {
+                        AnyView(mindfulRows(sessions: breatheSessions, color: Color(hex: "#4FC3F7"), timeFmt: timeFmt, showStretch: true))
+                    }
+                }
+
+                // 3. Reflect
+                if !reflectSessions.isEmpty {
+                    historyGroup(icon: "💭", label: "Reflect") {
+                        AnyView(mindfulRows(sessions: reflectSessions, color: Color.duoPurple, timeFmt: timeFmt, showStretch: true))
+                    }
+                }
+
+                // 3b. その他のマインドフルネス（Breathe/Reflect以外）
+                if !otherMindfulSessions.isEmpty {
+                    historyGroup(icon: "🧘", label: "マインドフルネス") {
+                        AnyView(mindfulRows(sessions: otherMindfulSessions, color: Color(hex: "#CE93D8"), timeFmt: timeFmt, showStretch: true))
+                    }
+                }
+
+                // 4. 体重の計測
+                if let rec = healthKit.todayBodyMassRecord {
+                    historyGroup(icon: "⚖️", label: "体重") {
+                        AnyView(HStack(spacing: 8) {
+                            Text(timeFmt.string(from: rec.measuredAt))
+                                .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                .frame(width: 38, alignment: .leading)
+                            Text(String(format: "%.1f kg", rec.kg))
+                                .font(.system(size: 13, weight: .black, design: .rounded)).foregroundColor(Color.duoDark)
+                            if healthKit.latestBodyFatPercentage > 0 {
+                                Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
+                                    .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoSubtitle)
+                            }
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11)).foregroundColor(Color.duoGreen)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color(hex: "#1CB0F6").opacity(0.07))
+                        .cornerRadius(6))
+                    }
+                }
+
+                // 5. 食事のカロリー
+                if !mealSamples.isEmpty {
+                    historyGroup(icon: "🍽️", label: "食事") {
+                        AnyView(VStack(spacing: 4) {
+                            ForEach(mealSamples) { s in
+                                HStack(spacing: 6) {
+                                    Text(timeFmt.string(from: s.startDate))
+                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 38, alignment: .leading)
+                                    Spacer()
+                                    Text(String(format: "%.0f kcal", s.value))
+                                        .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoOrange)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.duoOrange.opacity(0.06))
+                                .cornerRadius(6)
+                            }
+                        })
+                    }
+                }
+
+                // 6. 水分の記録
+                if !waterSamples.isEmpty {
+                    historyGroup(icon: "💧", label: "水分") {
+                        AnyView(VStack(spacing: 4) {
+                            ForEach(waterSamples) { s in
+                                HStack(spacing: 6) {
+                                    Text(timeFmt.string(from: s.startDate))
+                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 38, alignment: .leading)
+                                    Spacer()
+                                    Text(String(format: "%.0f ml", s.value))
+                                        .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoBlue)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.duoBlue.opacity(0.06))
+                                .cornerRadius(6)
+                            }
+                        })
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        })
+    }
+
+    private func historyGroup(icon: String, label: String, @ViewBuilder content: () -> AnyView) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text(icon).font(.caption)
+                Text(label)
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark)
+            }
+            content()
+        }
+    }
+
+    private func exerciseGroupRow(name: String, sets: [CompletedExercise], timeFmt: DateFormatter) -> some View {
+        let isExpanded = expandedExerciseGroups.contains(name)
+        let totalRepsInGroup = sets.reduce(0) { $0 + $1.reps }
+        return VStack(spacing: 3) {
+            Button(action: {
+                if expandedExerciseGroups.contains(name) {
+                    expandedExerciseGroups.remove(name)
+                } else {
+                    expandedExerciseGroups.insert(name)
+                }
+            }) {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoDark)
+                    Spacer()
+                    Text("\(sets.count) セット")
+                        .font(.system(size: 10, weight: .bold)).foregroundColor(Color.duoGreen)
+                    Text("· \(totalRepsInGroup) rep")
+                        .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(Color.duoGreen.opacity(0.07))
+            .cornerRadius(6)
+
+            if isExpanded {
+                ForEach(sets, id: \.id) { ex in
+                    HStack(spacing: 6) {
+                        Text(timeFmt.string(from: ex.timestamp))
+                            .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                            .frame(width: 38, alignment: .leading)
+                        Spacer()
+                        Text("\(ex.reps) rep")
+                            .font(.system(size: 10, weight: .black)).foregroundColor(Color.duoGreen)
+                        Text("+\(ex.points) XP")
+                            .font(.system(size: 9)).foregroundColor(Color.duoGold)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 2)
+                    .background(Color.duoGreen.opacity(0.03))
+                    .cornerRadius(4)
+                }
+            }
+        }
+    }
+
+    private func mindfulRows(sessions: [MindfulSession], color: Color, timeFmt: DateFormatter, showStretch: Bool) -> some View {
+        VStack(spacing: 4) {
+            ForEach(sessions) { s in
+                HStack(spacing: 6) {
+                    Text(timeFmt.string(from: s.startDate))
+                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                        .frame(width: 38, alignment: .leading)
+                    Text(String(format: "%.0f分", s.durationMinutes))
+                        .font(.system(size: 11, weight: .black)).foregroundColor(color)
+                    Spacer()
+                    if showStretch {
+                        let n = Int(s.durationMinutes)
+                        if n > 0 {
+                            HStack(spacing: 2) {
+                                Text("🤸").font(.system(size: 10))
+                                Text("×\(n)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color(red: 0.22, green: 0.75, blue: 0.56))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(color.opacity(0.07))
+                .cornerRadius(6)
+            }
+        }
+    }
+
+    // MARK: - Reflect履歴セクション（展開時）
+
+    private func reflectHistorySection(sessions: [MindfulSession]) -> some View {
+        let timeFmt: DateFormatter = {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+        }()
+        let totalMinutes = sessions.reduce(0.0) { $0 + $1.durationMinutes }
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("💭")
+                    .font(.caption)
+                Text("Reflect")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark)
+                Text("\(sessions.count)回")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoPurple)
+                Spacer()
+                Text("合計 \(Int(totalMinutes))分")
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            ForEach(sessions) { session in
+                HStack(spacing: 8) {
+                    Text(timeFmt.string(from: session.startDate))
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(width: 42, alignment: .leading)
+                    Text(String(format: "%.0f分", session.durationMinutes))
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoPurple)
+                    Spacer()
+                    let stretchCount = Int(session.durationMinutes)
+                    if stretchCount > 0 {
+                        HStack(spacing: 3) {
+                            Text("🤸")
+                                .font(.system(size: 11))
+                            Text("×\(stretchCount)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(red: 0.22, green: 0.75, blue: 0.56))
+                        }
+                    }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.duoPurple.opacity(0.06))
+                .cornerRadius(8)
+            }
+        }
+    }
+
+    // MARK: - 体重計測履歴セクション（展開時）
+
+    private var bodyMassHistorySection: some View {
+        let dateFmt: DateFormatter = {
+            let f = DateFormatter(); f.dateFormat = "M/d(E)"; f.locale = Locale(identifier: "ja_JP"); return f
+        }()
+        let timeFmt: DateFormatter = {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+        }()
+        let recent = Array(healthKit.bodyMassHistory.prefix(7))
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "scalemass.fill")
+                    .font(.caption2)
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                Text("体重計測履歴")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                if let change = healthKit.weeklyBodyMassChange {
+                    let sign = change >= 0 ? "+" : ""
+                    let col: Color = change > 0 ? Color(hex: "#FF9600") : change < 0 ? Color.duoGreen : Color.duoSubtitle
+                    Text("\(sign)\(String(format: "%.1f", change)) kg / 7日")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(col)
+                }
+            }
+
+            ForEach(recent) { record in
+                HStack(spacing: 8) {
+                    Text(dateFmt.string(from: record.measuredAt))
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(width: 70, alignment: .leading)
+                    Text(timeFmt.string(from: record.measuredAt))
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                    Text(String(format: "%.1f kg", record.kg))
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                    let isToday = Calendar.current.isDateInToday(record.measuredAt)
+                    if isToday {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.duoGreen)
+                    }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Calendar.current.isDateInToday(record.measuredAt)
+                    ? Color.duoGreen.opacity(0.07)
+                    : Color(.systemGray6))
+                .cornerRadius(8)
             }
         }
     }
@@ -1707,6 +2043,18 @@ struct DashboardView: View {
                     }
                 }
 
+                // ストレッチ進捗（✓/○）- マインドフルの右横
+                if let goal = goal, slot != .midnight, goal.stretchGoal.enabled {
+                    let stretchDone = (progress?.stretchSetsCompleted ?? 0) >= goal.stretchGoal.stretchMinutes
+                    let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+                    HStack(spacing: 2) {
+                        Text("🤸").font(.caption)
+                        Image(systemName: stretchDone ? "checkmark.circle.fill" : "circle")
+                            .font(.caption2)
+                            .foregroundColor(stretchDone ? stretchColor : Color(.systemGray4))
+                    }
+                }
+
                 // カスタム活動（全項目を✓/○で表示、タップで切り替え）
                 if let goal = goal, let progress = progress {
                     ForEach(goal.customActivities.filter { $0.isEnabled }) { act in
@@ -2011,6 +2359,22 @@ struct DashboardView: View {
             && healthKit.activityStandHours >= healthKit.activityStandGoal
         let isGoal = timeSlotManager.settings.globalGoals.activityEnabled
 
+        let moveProgress   = healthKit.activityMoveGoal > 0
+            ? min(healthKit.activityMoveCalories / healthKit.activityMoveGoal, 1.0) : 0
+        let exerciseProgress = healthKit.activityExerciseGoal > 0
+            ? min(Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal), 1.0) : 0
+        let standProgress  = healthKit.activityStandGoal > 0
+            ? min(Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal), 1.0) : 0
+        let hasAnyGoal = healthKit.activityMoveGoal > 0 || healthKit.activityExerciseGoal > 0 || healthKit.activityStandGoal > 0
+        let activeCount = (healthKit.activityMoveGoal > 0 ? 1 : 0)
+            + (healthKit.activityExerciseGoal > 0 ? 1 : 0)
+            + (healthKit.activityStandGoal > 0 ? 1 : 0)
+        let activityScore = activeCount > 0
+            ? Int((moveProgress + exerciseProgress + standProgress) / Double(activeCount) * 100) : 0
+        let scoreColor: Color = activityScore >= 100 ? Color.duoGreen
+            : activityScore >= 70 ? Color(hex: "#FF9600")
+            : Color(hex: "#FF4B4B")
+
         return Button {
             let schemes = ["x-apple-fitness://", "x-apple-health://"]
             for scheme in schemes {
@@ -2037,6 +2401,16 @@ struct DashboardView: View {
                             .cornerRadius(4)
                     }
                     Spacer()
+                    if hasAnyGoal {
+                        HStack(spacing: 2) {
+                            Text("\(activityScore)")
+                                .font(.system(size: 15, weight: .black, design: .rounded))
+                                .foregroundColor(scoreColor)
+                            Text("%")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(scoreColor)
+                        }
+                    }
                     if isGoal && allRingsDone {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11))
@@ -2093,6 +2467,56 @@ struct DashboardView: View {
                         )
                     }
                     Spacer()
+                    if healthKit.latestBodyMass > 0 || healthKit.latestBodyFatPercentage > 0 {
+                        VStack(alignment: .trailing, spacing: 8) {
+                            if healthKit.latestBodyMass > 0 {
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "scalemass.fill")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(Color(hex: "#1CB0F6"))
+                                        Text("体重")
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundColor(Color.duoSubtitle)
+                                    }
+                                    Text(String(format: "%.1f kg", healthKit.latestBodyMass))
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundColor(Color.duoDark)
+                                    if let change = healthKit.weeklyBodyMassChange {
+                                        let sign = change >= 0 ? "+" : ""
+                                        Text(String(format: "%@%.1f kg/7日", sign, change))
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B")
+                                                : change < -0.05 ? Color.duoGreen
+                                                : Color.duoSubtitle)
+                                    }
+                                }
+                            }
+                            if healthKit.latestBodyFatPercentage > 0 {
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "percent")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(Color(hex: "#CE82FF"))
+                                        Text("体脂肪")
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundColor(Color.duoSubtitle)
+                                    }
+                                    Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundColor(Color.duoDark)
+                                    if let change = healthKit.weeklyBodyFatChange {
+                                        let sign = change >= 0 ? "+" : ""
+                                        Text(String(format: "%@%.1f%%/7日", sign, change))
+                                            .font(.system(size: 8, weight: .semibold))
+                                            .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B")
+                                                : change < -0.05 ? Color.duoGreen
+                                                : Color.duoSubtitle)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .padding(12)
@@ -4490,6 +4914,11 @@ struct DashboardView: View {
 
             // 時間帯別の進捗を再読み込み
             await timeSlotManager.loadTodayProgress()
+
+            // 体重履歴を取得（展開時に表示）
+            if healthKit.isAvailable && healthKit.isAuthorized {
+                await healthKit.fetchBodyMassHistory(days: 7)
+            }
 
             // PFCバランス分析と睡眠スコアを更新
             if healthKit.isAuthorized {

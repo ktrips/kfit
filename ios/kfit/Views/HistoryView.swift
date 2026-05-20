@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @StateObject private var healthKit = HealthKitManager.shared
 
     @State private var history: [DayExercises] = []
     @State private var isLoading = true
@@ -81,6 +82,9 @@ struct HistoryView: View {
                 }
             }
 
+            // 体重計測チェック
+            bodyWeightRow(for: day.date)
+
             Divider()
 
             // セット一覧
@@ -153,6 +157,40 @@ struct HistoryView: View {
         .cornerRadius(10)
     }
 
+    // MARK: - 体重計測行
+    @ViewBuilder
+    private func bodyWeightRow(for dateKey: String) -> some View {
+        if let record = healthKit.bodyMassRecord(for: dateKey) {
+            HStack(spacing: 6) {
+                Text("⚖️").font(.system(size: 12))
+                Text(String(format: "%.1f kg", record.kg))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text(timeString(record.measuredAt))
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.duoGreen)
+                Text("計測済み")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.duoGreen)
+            }
+        } else {
+            HStack(spacing: 6) {
+                Text("⚖️").font(.system(size: 12))
+                Text("体重未計測")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Image(systemName: "circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.4))
+            }
+        }
+    }
+
     private func timeString(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -170,7 +208,10 @@ struct HistoryView: View {
 
     private func loadHistory() async {
         isLoading = true
-        history = await authManager.getRecentExercises(days: 14)
+        async let exercisesTask = authManager.getRecentExercises(days: 14)
+        async let healthTask: () = healthKit.fetchBodyMassHistory(days: 14)
+        history = await exercisesTask
+        await healthTask
         isLoading = false
     }
 }

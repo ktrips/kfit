@@ -541,6 +541,18 @@ struct TimeSlotGoalsView: View {
                 color: Color.duoPurple
             )
 
+            // ストレッチ・ヨガ目標（夜中以外、有効時のみ）
+            if timeSlot != .midnight && goal.stretchGoal.enabled {
+                let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+                goalRow(
+                    icon: "🤸",
+                    label: "ストレッチ・ヨガ",
+                    current: progress.stretchSetsCompleted,
+                    goal: goal.stretchGoal.stretchMinutes,
+                    color: stretchColor
+                )
+            }
+
             // ログ目標
             logGoalRow(logGoal: goal.logGoal, logProgress: progress.logProgress)
 

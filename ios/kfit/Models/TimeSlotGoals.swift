@@ -95,6 +95,13 @@ struct CustomActivity: Codable, Identifiable, Equatable {
     static let study         = CustomActivity(name: "勉強",           emoji: "📖")
 }
 
+// MARK: - ストレッチ・ヨガ目標
+
+struct StretchGoal: Codable, Equatable {
+    var enabled: Bool = false
+    var stretchMinutes: Int = 3     // 目標マインドフルネス時間（分）
+}
+
 // MARK: - 時間帯ごとの目標
 
 struct TimeSlotGoal: Codable, Identifiable {
@@ -103,6 +110,7 @@ struct TimeSlotGoal: Codable, Identifiable {
     var trainingGoal: Int           // トレーニングセット数
     var mindfulnessGoal: Int        // マインドフルネス回数
     var logGoal: LogGoal            // ログ目標
+    var stretchGoal: StretchGoal = StretchGoal() // ストレッチ・ヨガ目標
     var customActivities: [CustomActivity] = [] // カスタムアクティビティ
     var reminderEnabled: Bool       // リマインダー有効
     var reminderTime: Date?         // リマインダー時刻
@@ -140,6 +148,7 @@ struct TimeSlotProgress: Codable, Identifiable {
     var trainingCompleted: Int = 0       // 完了したトレーニングセット数
     var mindfulnessCompleted: Int = 0    // 完了したマインドフルネス回数
     var logProgress: LogProgress = LogProgress()
+    var stretchSetsCompleted: Int = 0    // 完了したストレッチ・ヨガセット数
     var completedActivityIds: Set<String> = [] // 完了したカスタムアクティビティのID
     var lastUpdated: Date = Date()
 
@@ -176,6 +185,12 @@ struct TimeSlotProgress: Codable, Identifiable {
         if goal.logGoal.mindInputRequired {
             totalGoals += 1
             if logProgress.mindInputLogged > 0 { completed += 1 }
+        }
+
+        // ストレッチ・ヨガ（夜中以外）
+        if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 && goal.timeSlot != .midnight {
+            totalGoals += 1
+            if stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { completed += 1 }
         }
 
         // カスタムアクティビティ

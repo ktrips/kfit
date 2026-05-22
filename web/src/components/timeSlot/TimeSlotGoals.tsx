@@ -1,24 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAppStore } from '../../store/appStore';
 import {
   TimeSlot,
-  TimeSlotGoal,
-  TimeSlotProgress,
   DailyTimeSlotSettings,
   DailyTimeSlotProgress,
   TIME_SLOT_INFO,
-  calculateCompletionRate,
-  isFullyCompleted
+  calculateCompletionRate
 } from '../../types/timeSlot';
 import {
   getTodaySettings,
-  getTodayProgress
+  getTodayProgress,
+  recordMindfulnessCompleted,
+  recordStretchCompleted,
+  toggleCustomActivity
 } from '../../services/timeSlotService';
 import TimeSlotCard from './TimeSlotCard';
 import TimeSlotEditModal from './TimeSlotEditModal';
 
 const TimeSlotGoals: React.FC = () => {
-  const { user } = useAuth();
+  const user = useAppStore((state) => state.user);
   const [settings, setSettings] = useState<DailyTimeSlotSettings | null>(null);
   const [progress, setProgress] = useState<DailyTimeSlotProgress | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ const TimeSlotGoals: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="duo-card p-6">
         <div className="flex items-center space-x-4">
           <div className="flex-shrink-0">
             <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center">
@@ -69,17 +69,31 @@ const TimeSlotGoals: React.FC = () => {
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">
+            <h1 className="text-2xl font-black text-duo-dark">
               時間帯別の目標設定
             </h1>
-            <p className="text-sm text-gray-600">
-              1日を4つの時間帯に分けて管理
+            <p className="text-sm text-duo-gray font-bold">
+              1日を5つの時間帯に分けて管理
             </p>
           </div>
         </div>
-        <p className="mt-4 text-sm text-gray-600">
-          朝・昼・午後・夜の時間帯ごとに、トレーニング、マインドフルネス、ログ記録の目標を設定できます。
+        <p className="mt-4 text-sm text-duo-gray font-bold">
+          夜中・朝・昼・午後・夜ごとに、トレーニング、マインドフルネス、ストレッチ、食事kcal、水分ml、カスタム活動を設定できます。
         </p>
+        <div className="grid grid-cols-5 gap-2 mt-4">
+          {Object.values(TimeSlot).map(slot => {
+            const goal = settings.goals.find(g => g.timeSlot === slot);
+            const prog = progress.progress.find(p => p.timeSlot === slot);
+            const pct = goal && prog ? Math.round(calculateCompletionRate(prog, goal) * 100) : 0;
+            return (
+              <div key={slot} className="rounded-xl bg-duo-gray-light p-2 text-center">
+                <div className="text-lg">{TIME_SLOT_INFO[slot].emoji}</div>
+                <div className="text-[10px] font-black text-duo-dark">{TIME_SLOT_INFO[slot].displayName}</div>
+                <div className="text-xs font-black text-duo-green">{pct}%</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Time Slot Cards */}
@@ -97,6 +111,21 @@ const TimeSlotGoals: React.FC = () => {
               goal={goal}
               progress={prog}
               onEdit={() => setEditingSlot(slot)}
+              onAddMindfulness={async () => {
+                if (!user) return;
+                await recordMindfulnessCompleted(user.uid, slot);
+                await loadData();
+              }}
+              onAddStretch={async () => {
+                if (!user) return;
+                await recordStretchCompleted(user.uid, slot, 1);
+                await loadData();
+              }}
+              onToggleCustomActivity={async (activityId) => {
+                if (!user) return;
+                await toggleCustomActivity(user.uid, slot, activityId);
+                await loadData();
+              }}
             />
           );
         })}

@@ -6,12 +6,20 @@ import {
   getWeekLabel, getActiveDaysElapsed,
   type WeeklySetProgress, type CompletedSetRecord,
 } from '../services/firebase';
+import { getGlobalProgress } from '../services/timeSlotService';
+import { getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
+import type { GlobalProgress } from '../services/timeSlotService';
+import type { IntakeSummary, MindMetrics } from '../types/wellness';
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
+  onTimeSlots?: () => void;
+  onIntake?: () => void;
+  onDietGoal?: () => void;
+  onMind?: () => void;
 }
 
 const EXERCISE_EMOJI: Record<string, string> = {
@@ -53,7 +61,22 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan }) => {
+function stressScore(hrv: number): { score: number; label: string; color: string } {
+  if (hrv <= 0) return { score: -1, label: '未入力', color: '#AFAFAF' };
+  let score = 0;
+  if (hrv >= 100) score = 5;
+  else if (hrv >= 80) score = Math.round(5 + ((100 - hrv) / 20) * 10);
+  else if (hrv >= 60) score = Math.round(15 + ((80 - hrv) / 20) * 20);
+  else if (hrv >= 40) score = Math.round(35 + ((60 - hrv) / 20) * 25);
+  else if (hrv >= 20) score = Math.round(60 + ((40 - hrv) / 20) * 20);
+  else score = Math.round(Math.min(95, 80 + ((20 - hrv) / 20) * 15));
+  if (score < 30) return { score, label: '低い', color: '#58CC02' };
+  if (score < 55) return { score, label: '普通', color: '#78C800' };
+  if (score < 75) return { score, label: 'やや高', color: '#FF9600' };
+  return { score, label: '高い', color: '#FF4B4B' };
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onTimeSlots, onIntake, onDietGoal, onMind }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
@@ -69,6 +92,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
+  const [intakeSummary, setIntakeSummary] = useState<IntakeSummary | null>(null);
+  const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
+  const [mindMetrics, setMindMetrics] = useState<MindMetrics | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -76,7 +102,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress, sp, ds, tsc, weekSets] = await Promise.all([
+        const [profile, exercises, goals, progress, sp, ds, tsc, weekSets, intake, global, mind] = await Promise.all([
           getUserProfile(user.uid),
           getTodayExercises(user.uid),
           getWeeklyGoals(user.uid),
@@ -85,6 +111,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           getDailySetGoal(user.uid),
           getTodaySetCount(user.uid),
           getWeeklySetLog(user.uid),
+          getTodayIntakeSummary(user.uid),
+          getGlobalProgress(user.uid),
+          getMindMetrics(user.uid),
         ]);
         if (profile) setUserProfile(profile);
         setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
@@ -99,6 +128,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setSetProgress(sp);
         setDailySets(ds);
         setTodaySetCount(tsc);
+        setIntakeSummary(intake);
+        setGlobalProgress(global);
+        setMindMetrics(mind);
         // 今日分だけフィルタ
         const today = new Date();
         setTodaySets(weekSets.filter(s => {
@@ -173,6 +205,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <p className="text-3xl font-black" style={{ color: '#CE9700' }}>{totalPoints}</p>
             <p className="text-xs font-extrabold uppercase tracking-wide" style={{ color: '#CE9700' }}>今日のXP</p>
           </div>
+        </div>
+
+        {/* iOS parity cards available on Web */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={onDietGoal}
+            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
+          >
+            <p className="text-xs font-black text-duo-gray">GOAL</p>
+            <p className="text-lg font-black text-duo-dark">Diet Goal</p>
+            <p className="text-xs font-bold text-duo-gray mt-1">体重・体脂肪・カロリー計画</p>
+          </button>
+          {(() => {
+            const stress = stressScore(mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0);
+            return (
+              <button
+                onClick={onMind}
+                className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
+              >
+                <p className="text-xs font-black text-duo-gray">MIND</p>
+                <p className="text-lg font-black" style={{ color: stress.color }}>
+                  {stress.score >= 0 ? `${stress.score} / ${stress.label}` : '未入力'}
+                </p>
+                <p className="text-xs font-bold text-duo-gray mt-1">心拍・HRV・ストレス提案</p>
+              </button>
+            );
+          })()}
+          <button
+            onClick={onIntake}
+            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
+          >
+            <p className="text-xs font-black text-duo-gray">FOOD</p>
+            <p className="text-lg font-black text-duo-orange">{intakeSummary?.calories ?? 0} kcal</p>
+            <p className="text-xs font-bold text-duo-gray mt-1">
+              水分 {intakeSummary?.waterMl ?? 0}ml · {intakeSummary?.mealCount ?? 0}食
+            </p>
+          </button>
+          <button
+            onClick={onTimeSlots}
+            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
+          >
+            <p className="text-xs font-black text-duo-gray">TIME SLOT</p>
+            <p className="text-lg font-black text-duo-green">時間帯別目標</p>
+            <p className="text-xs font-bold text-duo-gray mt-1">
+              睡眠 {globalProgress?.sleepScore ?? 0} / PFC {globalProgress?.pfcScore ?? 0}
+            </p>
+          </button>
         </div>
 
         {/* Today's set status — count-based */}

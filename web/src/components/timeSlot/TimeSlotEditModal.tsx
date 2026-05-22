@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAppStore } from '../../store/appStore';
 import {
+  CustomActivity,
   TimeSlot,
   TimeSlotGoal,
   TIME_SLOT_INFO
@@ -19,14 +20,20 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
   timeSlot,
   onClose
 }) => {
-  const { user } = useAuth();
+  const user = useAppStore((state) => state.user);
   const info = TIME_SLOT_INFO[timeSlot];
 
   const [trainingGoal, setTrainingGoal] = useState(1);
   const [mindfulnessGoal, setMindfulnessGoal] = useState(1);
+  const [stretchMinutesGoal, setStretchMinutesGoal] = useState(0);
   const [mealRequired, setMealRequired] = useState(true);
   const [drinkRequired, setDrinkRequired] = useState(true);
+  const [mealKcalGoal, setMealKcalGoal] = useState(500);
+  const [drinkMlGoal, setDrinkMlGoal] = useState(500);
   const [mindInputRequired, setMindInputRequired] = useState(false);
+  const [customActivities, setCustomActivities] = useState<CustomActivity[]>([]);
+  const [newActivityTitle, setNewActivityTitle] = useState('');
+  const [newActivityEmoji, setNewActivityEmoji] = useState('✨');
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState('09:00');
   const [saving, setSaving] = useState(false);
@@ -45,9 +52,13 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
       if (goal) {
         setTrainingGoal(goal.trainingGoal);
         setMindfulnessGoal(goal.mindfulnessGoal);
+        setStretchMinutesGoal(goal.stretchMinutesGoal || 0);
         setMealRequired(goal.logGoal.mealRequired);
         setDrinkRequired(goal.logGoal.drinkRequired);
+        setMealKcalGoal(goal.logGoal.mealKcalGoal || 0);
+        setDrinkMlGoal(goal.logGoal.drinkMlGoal || 0);
         setMindInputRequired(goal.logGoal.mindInputRequired);
+        setCustomActivities(goal.customActivities || []);
         setReminderEnabled(goal.reminderEnabled);
         if (goal.reminderTime) {
           const hours = goal.reminderTime.getHours().toString().padStart(2, '0');
@@ -76,11 +87,15 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
           timeSlot,
           trainingGoal,
           mindfulnessGoal,
+          stretchMinutesGoal,
           logGoal: {
             mealRequired,
             drinkRequired,
+            mealKcalGoal: mealRequired ? mealKcalGoal : 0,
+            drinkMlGoal: drinkRequired ? drinkMlGoal : 0,
             mindInputRequired
           },
+          customActivities,
           reminderEnabled
         };
 
@@ -102,6 +117,22 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  const addCustomActivity = () => {
+    const title = newActivityTitle.trim();
+    if (!title) return;
+    setCustomActivities(current => [
+      ...current,
+      {
+        id: `web-${Date.now()}`,
+        title,
+        emoji: newActivityEmoji.trim() || '✨',
+        targetCount: 1
+      }
+    ]);
+    setNewActivityTitle('');
+    setNewActivityEmoji('✨');
   };
 
   return (
@@ -209,6 +240,38 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
             </p>
           </div>
 
+          {/* Stretch Goal */}
+          <div className="space-y-2">
+            <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+              <span>🤸</span>
+              <span>ストレッチ / Reflect</span>
+            </label>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">目標分数</span>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => setStretchMinutesGoal(Math.max(0, stretchMinutesGoal - 1))}
+                  className="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                  disabled={stretchMinutesGoal <= 0}
+                >
+                  −
+                </button>
+                <span className="text-xl font-bold w-12 text-center">
+                  {stretchMinutesGoal}分
+                </span>
+                <button
+                  onClick={() => setStretchMinutesGoal(Math.min(60, stretchMinutesGoal + 1))}
+                  className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              Webでは手入力のストレッチ分数として記録します。
+            </p>
+          </div>
+
           {/* Log Goals */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700 mb-3">
@@ -228,6 +291,19 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
                   食事記録
                 </span>
               </label>
+              {mealRequired && (
+                <div className="ml-8 flex items-center gap-2">
+                  <span className="text-sm text-gray-600">目標</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={mealKcalGoal}
+                    onChange={e => setMealKcalGoal(Math.max(0, Number(e.target.value)))}
+                    className="w-28 px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <span className="text-sm font-bold text-gray-600">kcal</span>
+                </div>
+              )}
               <label className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
                 <input
                   type="checkbox"
@@ -240,6 +316,20 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
                   飲み物記録
                 </span>
               </label>
+              {drinkRequired && (
+                <div className="ml-8 flex items-center gap-2">
+                  <span className="text-sm text-gray-600">目標</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={50}
+                    value={drinkMlGoal}
+                    onChange={e => setDrinkMlGoal(Math.max(0, Number(e.target.value)))}
+                    className="w-28 px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <span className="text-sm font-bold text-gray-600">ml</span>
+                </div>
+              )}
               <label className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
                 <input
                   type="checkbox"
@@ -256,6 +346,49 @@ const TimeSlotEditModal: React.FC<TimeSlotEditModalProps> = ({
             <p className="text-xs text-gray-500 mt-2">
               この時間帯に記録する必要がある項目をオンにしてください
             </p>
+          </div>
+
+          {/* Custom Activities */}
+          <div className="space-y-3">
+            <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700">
+              <span>✨</span>
+              <span>カスタムアクティビティ</span>
+            </label>
+            <div className="space-y-2">
+              {customActivities.map(activity => (
+                <div key={activity.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="text-sm font-bold text-gray-700">
+                    {activity.emoji} {activity.title}
+                  </span>
+                  <button
+                    onClick={() => setCustomActivities(current => current.filter(item => item.id !== activity.id))}
+                    className="text-xs font-bold text-red-500"
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-[64px_1fr_auto] gap-2">
+              <input
+                value={newActivityEmoji}
+                onChange={e => setNewActivityEmoji(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-center"
+                maxLength={3}
+              />
+              <input
+                value={newActivityTitle}
+                onChange={e => setNewActivityTitle(e.target.value)}
+                placeholder="読書、Duolingo、勉強など"
+                className="px-3 py-2 border border-gray-300 rounded-lg"
+              />
+              <button
+                onClick={addCustomActivity}
+                className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg"
+              >
+                追加
+              </button>
+            </div>
           </div>
 
           {/* Reminder */}

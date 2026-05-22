@@ -12,9 +12,13 @@ import { DailyWorkoutFlow } from './components/DailyWorkoutFlow';
 import { SettingsView } from './components/SettingsView';
 import { AchievementsView } from './components/AchievementsView';
 import { LeaderboardView } from './components/LeaderboardView';
+import TimeSlotGoals from './components/timeSlot/TimeSlotGoals';
+import { IntakeView } from './components/IntakeView';
+import { DietGoalView } from './components/DietGoalView';
+import { MindView } from './components/MindView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'dietGoal' | 'mind';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -136,6 +140,10 @@ function App() {
                     >
                       {[
                         { view: 'dashboard' as View, icon: '🏠', label: 'ホーム' },
+                        { view: 'dietGoal' as View, icon: '🎯', label: 'GOAL' },
+                        { view: 'mind' as View, icon: '🧠', label: 'MIND' },
+                        { view: 'intake' as View, icon: '🍽️', label: '食事・ドリンク' },
+                        { view: 'timeSlots' as View, icon: '🕐', label: '時間帯目標' },
                         { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
                         { view: 'tracker' as View, icon: '💪', label: 'トレーニング' },
                         { view: 'weekly' as View, icon: '🎯', label: '週間目標' },
@@ -195,6 +203,10 @@ function App() {
             onLogWorkout={() => navigate('tracker')}
             onWeeklyGoal={() => navigate('weekly')}
             onWorkoutPlan={() => navigate('plan')}
+            onTimeSlots={() => navigate('timeSlots')}
+            onIntake={() => navigate('intake')}
+            onDietGoal={() => navigate('dietGoal')}
+            onMind={() => navigate('mind')}
           />
         )}
         {currentView === 'workout' && user && (
@@ -226,6 +238,18 @@ function App() {
         )}
         {currentView === 'leaderboard' && user && (
           <LeaderboardView />
+        )}
+        {currentView === 'timeSlots' && user && (
+          <TimeSlotGoals />
+        )}
+        {currentView === 'intake' && user && (
+          <IntakeView />
+        )}
+        {currentView === 'dietGoal' && user && (
+          <DietGoalView />
+        )}
+        {currentView === 'mind' && user && (
+          <MindView />
         )}
       </main>
     </div>

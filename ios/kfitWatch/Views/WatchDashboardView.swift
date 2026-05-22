@@ -809,31 +809,10 @@ struct WatchDashboardView: View {
         let positions = watchFaceNodePositions
         let doneCount = positions.filter { $0.0.isDone }.count
         let totalCount = positions.count
+        let trainingGoal = max(connectivity.totalTrainingGoal, 0)
+        let mindfulnessGoal = max(connectivity.totalMindfulnessGoal, 0)
 
-        return VStack(spacing: 0) {
-            // 日付 + ストリーク（右上、見やすく大きめ）
-            HStack(alignment: .top) {
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(dateStr)
-                        .font(.system(size: 16, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                    if connectivity.streak > 0 {
-                        HStack(spacing: 2) {
-                            Text("🔥").font(.system(size: 15))
-                            Text("\(connectivity.streak)")
-                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                .foregroundColor(.orange)
-                            Text("日")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.75))
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 2)
-
+        return ZStack {
             // 渦巻きタスクレイアウト（中心=朝→外側=夜）
             ZStack {
                 // 渦巻きガイドライン（Canvas でZStack中心を基準に描画）
@@ -880,21 +859,126 @@ struct WatchDashboardView: View {
                 .buttonStyle(.plain)
                 .handGestureShortcut(.primaryAction)
             }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // 進捗テキスト（右下）
-            HStack {
+            // 四隅セクション
+            VStack {
+                HStack(alignment: .top) {
+                    watchFaceCornerSection(
+                        icon: "💪",
+                        title: "TRAIN",
+                        value: "\(connectivity.totalTraining)/\(trainingGoal)",
+                        color: Color(red: 1.0, green: 0.588, blue: 0.0),
+                        horizontalAlignment: .leading,
+                        frameAlignment: .leading,
+                        action: { showFlow = true }
+                    )
+                    Spacer()
+                    watchFaceDateStreakSection(dateStr: dateStr) {
+                        confirmIntake(type: "water", subtype: nil,
+                                      message: "水\(connectivity.waterPerCup)mlを追加しますか？")
+                    }
+                }
                 Spacer()
-                Text(doneCount == totalCount && totalCount > 0
-                     ? "全タスク完了！🎉"
-                     : "\(doneCount)/\(totalCount) 完了")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(doneCount == totalCount ? duoGreen : .white.opacity(0.55))
+                HStack(alignment: .bottom) {
+                    watchFaceCornerSection(
+                        icon: "🧘",
+                        title: "MIND",
+                        value: "\(connectivity.totalMindfulness)/\(mindfulnessGoal)",
+                        color: Color(red: 0.808, green: 0.51, blue: 1.0),
+                        horizontalAlignment: .leading,
+                        frameAlignment: .leading,
+                        action: { openMindfulnessApp() }
+                    )
+                    Spacer()
+                    watchFaceCornerSection(
+                        icon: "✓",
+                        title: "TODAY",
+                        value: "\(doneCount)/\(totalCount)",
+                        color: doneCount == totalCount && totalCount > 0 ? duoGreen : .white.opacity(0.72),
+                        horizontalAlignment: .trailing,
+                        frameAlignment: .trailing,
+                        action: {
+                            confirmIntake(type: "meal", subtype: "dinner",
+                                          message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
+                        }
+                    )
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func watchFaceCornerSection(
+        icon: String,
+        title: String,
+        value: String,
+        color: Color,
+        horizontalAlignment: HorizontalAlignment,
+        frameAlignment: Alignment,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: horizontalAlignment, spacing: 1) {
+                HStack(spacing: 2) {
+                    Text(icon)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                    Text(title)
+                        .font(.system(size: 7, weight: .black, design: .rounded))
+                        .foregroundColor(.white.opacity(0.62))
+                }
+                Text(value)
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .frame(width: 62, alignment: frameAlignment)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.28))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
+            .cornerRadius(9)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func watchFaceDateStreakSection(dateStr: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(dateStr)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                HStack(spacing: 2) {
+                    Text("🔥")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                    Text("\(connectivity.streak)")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundColor(.orange)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+            }
+            .frame(width: 68, alignment: .trailing)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.28))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
+            .cornerRadius(9)
+        }
+        .buttonStyle(.plain)
     }
 
     // 渦巻き配置ノード（内側=朝r≈30 → 外側=夜r≈66）
@@ -969,8 +1053,8 @@ struct WatchDashboardView: View {
             if node.isDone {
                 ZStack {
                     Circle().fill(node.accentColor)
-                        .frame(width: 38, height: 38)
-                    Text(node.emoji).font(.system(size: 26))
+                        .frame(width: 34, height: 34)
+                    Text(node.emoji).font(.system(size: 23))
                 }
             } else {
                 Button {
@@ -988,10 +1072,10 @@ struct WatchDashboardView: View {
                 } label: {
                     ZStack {
                         Circle().fill(Color.black.opacity(0.35))
-                            .frame(width: 38, height: 38)
+                            .frame(width: 34, height: 34)
                         Circle().stroke(node.accentColor.opacity(0.7), lineWidth: 1.5)
-                            .frame(width: 38, height: 38)
-                        Text(node.emoji).font(.system(size: 26))
+                            .frame(width: 34, height: 34)
+                        Text(node.emoji).font(.system(size: 23))
                             .opacity(0.6)
                     }
                 }

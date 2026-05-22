@@ -35,6 +35,10 @@ class WatchHealthKitManager: ObservableObject {
     @Published var activityStandHours: Int = 0
     @Published var activityStandGoal: Int = 12
 
+    private var isFetchingAll = false
+    private var lastFetchAllAt: Date? = nil
+    private let fetchAllTTL: TimeInterval = 30
+
     private init() {}
 
     // MARK: - Authorization
@@ -70,7 +74,7 @@ class WatchHealthKitManager: ObservableObject {
             try await healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead)
             isAuthorized = true
             print("[WatchHealthKit] ✅ Authorization granted")
-            await fetchAllTodayData()
+            await fetchAllTodayData(force: true)
         } catch {
             print("[WatchHealthKit] ⚠️ Authorization error: \(error)")
             isAuthorized = false
@@ -79,7 +83,20 @@ class WatchHealthKitManager: ObservableObject {
 
     // MARK: - Fetch All Data
 
-    func fetchAllTodayData() async {
+    func fetchAllTodayData(force: Bool = false) async {
+        if isFetchingAll {
+            print("[WatchHealthKit] ⏳ fetchAllTodayData already running - skip")
+            return
+        }
+        if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL {
+            print("[WatchHealthKit] ✅ fetchAllTodayData skipped by TTL")
+            return
+        }
+        isFetchingAll = true
+        defer {
+            lastFetchAllAt = Date()
+            isFetchingAll = false
+        }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.fetchTodaySteps() }
             group.addTask { await self.fetchTodayCalories() }

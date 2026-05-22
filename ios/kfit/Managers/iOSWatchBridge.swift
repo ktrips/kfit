@@ -495,6 +495,7 @@ struct WatchSetExercise: Codable {
 }
 
 struct WatchSetData: Codable {
+    let setId: String?
     let exercises: [WatchSetExercise]
     let totalXP: Int
     let totalReps: Int

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, orderBy, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
 
 interface UserProfile {
   uid: string;
@@ -241,8 +241,9 @@ export const recordExercise = async (userId: string, exerciseData: any) => {
   }
 };
 
-interface CompletedExercise {
+export interface CompletedExercise {
   id: string;
+  exerciseId?: string;
   exerciseName: string;
   reps: number;
   points: number;
@@ -688,6 +689,89 @@ export const getTodaySetLog = async (userId: string): Promise<CompletedSetRecord
   });
 };
 
+export interface DashboardData {
+  todayExercises: CompletedExercise[];
+  weeklyGoals: WeeklyGoal[];
+  weeklyProgress: WeeklyProgress;
+  setProgress: WeeklySetProgress;
+  dailySets: number;
+  todaySetCount: number;
+  weeklySetLog: CompletedSetRecord[];
+}
+
+export const getDashboardData = async (userId: string): Promise<DashboardData> => {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const { start: weekStart, end: weekEnd } = getWeekBounds();
+  const weekId = getCurrentWeekId();
+
+  const [weeklyGoalSnap, exerciseSnap, setSnap] = await Promise.all([
+    getDoc(doc(db, 'users', userId, 'weekly-goals', weekId)),
+    getDocs(query(
+      collection(db, 'users', userId, 'completed-exercises'),
+      where('timestamp', '>=', weekStart),
+      where('timestamp', '<=', weekEnd)
+    )),
+    getDocs(query(
+      collection(db, 'users', userId, 'completed-sets'),
+      where('timestamp', '>=', weekStart),
+      where('timestamp', '<=', weekEnd),
+      orderBy('timestamp', 'desc')
+    )),
+  ]);
+
+  const weeklyGoals = weeklyGoalSnap.exists()
+    ? ((weeklyGoalSnap.data().goals as WeeklyGoal[]) ?? [])
+    : [];
+  const dailySets = weeklyGoalSnap.exists() ? (weeklyGoalSnap.data().dailySets ?? 2) : 2;
+
+  const weeklyProgress: WeeklyProgress = {};
+  const todayExercises: CompletedExercise[] = [];
+  exerciseSnap.docs.forEach(d => {
+    const data = d.data();
+    const ts = data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date(data.timestamp);
+    const item = { id: d.id, ...(data as Omit<CompletedExercise, 'id'>), timestamp: ts };
+    const exerciseId = (data.exerciseId as string) ?? '';
+    weeklyProgress[exerciseId] = (weeklyProgress[exerciseId] ?? 0) + (data.reps ?? 0);
+    if (ts >= todayStart && ts <= todayEnd) {
+      todayExercises.push(item);
+    }
+  });
+
+  const setProgress: WeeklySetProgress = { completedSets: setSnap.size, exercises: {} };
+  const weeklySetLog: CompletedSetRecord[] = setSnap.docs.map(d => {
+    const data = d.data();
+    const ts = data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date(data.timestamp);
+    (data.exercises ?? []).forEach((e: SetExercise) => {
+      if (!setProgress.exercises[e.exerciseId]) {
+        setProgress.exercises[e.exerciseId] = { reps: 0, sets: 0, exerciseName: e.exerciseName };
+      }
+      setProgress.exercises[e.exerciseId].reps += e.reps;
+      setProgress.exercises[e.exerciseId].sets += 1;
+    });
+    return {
+      id: d.id,
+      timestamp: ts,
+      exercises: data.exercises ?? [],
+      totalXP: data.totalXP ?? 0,
+      totalReps: data.totalReps ?? 0,
+    };
+  });
+
+  const todaySetCount = weeklySetLog.filter(set => set.timestamp >= todayStart && set.timestamp <= todayEnd).length;
+
+  return {
+    todayExercises,
+    weeklyGoals,
+    weeklyProgress,
+    setProgress,
+    dailySets,
+    todaySetCount,
+    weeklySetLog,
+  };
+};
+
 export const getDailySetGoal = async (userId: string): Promise<number> => {
   const weekId = getCurrentWeekId();
   const snap = await getDoc(doc(db, 'users', userId, 'weekly-goals', weekId));
@@ -722,7 +806,11 @@ export const getLeaderboard = async (_period: string = 'week'): Promise<Leaderbo
   const year = now.getFullYear();
   const leaderboardPeriod = `week-${year}-${String(weekNumber).padStart(2, '0')}`;
 
-  const q = collection(db, 'leaderboards', leaderboardPeriod, 'entries');
+  const q = query(
+    collection(db, 'leaderboards', leaderboardPeriod, 'entries'),
+    orderBy('rank', 'asc'),
+    limit(100)
+  );
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs
     .map(doc => ({
@@ -733,9 +821,7 @@ export const getLeaderboard = async (_period: string = 'week'): Promise<Leaderbo
       points: doc.data().points,
       workouts: doc.data().workouts ?? 0,
       streak: doc.data().streak ?? 0,
-    }))
-    .sort((a, b) => a.rank - b.rank)
-    .slice(0, 100);
+    }));
 };
 
 // ── Daily Calorie Goal ────────────────────────────────────────────────────────

@@ -1,29 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { getMindMetrics, saveMindMetrics } from '../services/wellnessService';
+import { calculateStressScore, type StressScore } from '../utils/stress';
 import type { MindMetrics } from '../types/wellness';
-
-interface StressInfo {
-  score: number;
-  label: string;
-  color: string;
-}
-
-function stressInfo(hrv: number): StressInfo {
-  if (hrv <= 0) return { score: -1, label: '未入力', color: '#AFAFAF' };
-  let score = 0;
-  if (hrv >= 100) score = 5;
-  else if (hrv >= 80) score = Math.round(5 + ((100 - hrv) / 20) * 10);
-  else if (hrv >= 60) score = Math.round(15 + ((80 - hrv) / 20) * 20);
-  else if (hrv >= 40) score = Math.round(35 + ((60 - hrv) / 20) * 25);
-  else if (hrv >= 20) score = Math.round(60 + ((40 - hrv) / 20) * 20);
-  else score = Math.round(Math.min(95, 80 + ((20 - hrv) / 20) * 15));
-
-  if (score < 30) return { score, label: '低い', color: '#58CC02' };
-  if (score < 55) return { score, label: '普通', color: '#78C800' };
-  if (score < 75) return { score, label: 'やや高', color: '#FF9600' };
-  return { score, label: '高い', color: '#FF4B4B' };
-}
 
 export const MindView: React.FC = () => {
   const user = useAppStore((state) => state.user);
@@ -35,8 +14,8 @@ export const MindView: React.FC = () => {
     getMindMetrics(user.uid).then(setMetrics).catch(console.error);
   }, [user]);
 
-  const currentStress = useMemo(() => stressInfo(metrics?.latestHRV ?? 0), [metrics?.latestHRV]);
-  const averageStress = useMemo(() => stressInfo(metrics?.averageHRV || metrics?.latestHRV || 0), [metrics?.averageHRV, metrics?.latestHRV]);
+  const currentStress = useMemo(() => calculateStressScore(metrics?.latestHRV ?? 0), [metrics?.latestHRV]);
+  const averageStress = useMemo(() => calculateStressScore(metrics?.averageHRV || metrics?.latestHRV || 0), [metrics?.averageHRV, metrics?.latestHRV]);
 
   const recommendations = useMemo(() => {
     if (!metrics) return [];
@@ -151,7 +130,7 @@ const Metric: React.FC<{ label: string; value: number; unit: string; color: stri
   </div>
 );
 
-const StressTile: React.FC<{ stress: StressInfo }> = ({ stress }) => (
+const StressTile: React.FC<{ stress: StressScore }> = ({ stress }) => (
   <div className="rounded-2xl p-3 text-center" style={{ background: `${stress.color}18` }}>
     <p className="text-xs font-black text-duo-gray">ストレス</p>
     <p className="text-2xl font-black" style={{ color: stress.color }}>{stress.score >= 0 ? stress.score : '—'}</p>

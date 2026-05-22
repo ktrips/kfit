@@ -494,6 +494,7 @@ struct WatchWorkoutFlowView: View {
         if isLast {
             // 全種目完了 → まとめてセット記録を送信
             let setData = WatchSetData(
+                setId: UUID().uuidString,
                 exercises: allResults,
                 totalXP: totalXP,
                 totalReps: allResults.reduce(0) { $0 + $1.reps },

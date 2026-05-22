@@ -4,6 +4,8 @@ struct MindView: View {
     @Binding var selectedTab: Int
     @StateObject private var healthKit = HealthKitManager.shared
     @Environment(\.openURL) private var openURL
+    @State private var showMindfulnessSession = false
+    @State private var showStretchSession = false
 
     var body: some View {
         NavigationView {
@@ -32,6 +34,35 @@ struct MindView: View {
             }
             .refreshable {
                 await healthKit.fetchAll()
+            }
+            .fullScreenCover(isPresented: $showMindfulnessSession) {
+                MindfulnessSessionView { startDate, endDate in
+                    Task {
+                        let saved = await healthKit.saveMindfulnessSession(startDate: startDate, endDate: endDate)
+                        if saved {
+                            await healthKit.refreshMindfulness()
+                        }
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showStretchSession) {
+                MindfulnessSessionView(
+                    durationSeconds: 180,
+                    title: "3分ストレッチ",
+                    completedButtonTitle: "ストレッチを保存"
+                ) { startDate, endDate in
+                    Task {
+                        let saved = await healthKit.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: 180
+                        )
+                        if saved {
+                            await healthKit.refreshMindfulness()
+                            await TimeSlotManager.shared.syncStretchFromHealthKit()
+                        }
+                    }
+                }
             }
         }
     }
@@ -127,6 +158,14 @@ struct MindView: View {
                     color: Color.duoGreen
                 )
             }
+            largeActionButton(
+                icon: "🫁",
+                title: "1分呼吸タイマー",
+                subtitle: "Hapticに合わせて吸って・吐いて、完了後にHealthKitへ保存",
+                color: Color(hex: "#1CB0F6")
+            ) {
+                showMindfulnessSession = true
+            }
         }
     }
 
@@ -144,6 +183,14 @@ struct MindView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            largeActionButton(
+                icon: "🤸",
+                title: "3分ストレッチ",
+                subtitle: "肩・首・背中をゆるめる3分セッションをHealthKitへ保存",
+                color: Color.duoGreen
+            ) {
+                showStretchSession = true
+            }
         }
     }
 
@@ -194,9 +241,7 @@ struct MindView: View {
     private func handleRecommendationAction(_ action: String) {
         switch action {
         case "mindfulness":
-            if let url = URL(string: "com.apple.mindfulness://") {
-                openURL(url)
-            }
+            showMindfulnessSession = true
         case "fitness":
             selectedTab = 0
         case "intake":
@@ -304,6 +349,49 @@ struct MindView: View {
         .padding(12)
         .background(color.opacity(0.10))
         .cornerRadius(12)
+    }
+
+    private func largeActionButton(
+        icon: String,
+        title: String,
+        subtitle: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(icon)
+                    .font(.system(size: 32))
+                    .frame(width: 48, height: 48)
+                    .background(Color.white.opacity(0.75))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.84))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white.opacity(0.88))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [color, color.opacity(0.72)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(16)
+            .shadow(color: color.opacity(0.25), radius: 6, y: 3)
+        }
+        .buttonStyle(.plain)
     }
 
     private func averageStressMessage(_ stress: MindStressInfo) -> String {

@@ -83,6 +83,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var hasLoadedData: Bool = false
 
     private var session: WCSession?
+    private var lastStatsRequestAt: Date?
+    private var lastStatsRequestScope: String = ""
 
     override init() {
         super.init()
@@ -155,13 +157,21 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     // MARK: - iOS → Watch: stats リクエスト
-    func requestStatsFromiOS() {
+    func requestStatsFromiOS(scope: String = "dashboard") {
         guard let session = session else {
             // セッションがない場合はデフォルト値で表示開始
             isLoading = false
             hasLoadedData = true
             return
         }
+        if let lastStatsRequestAt,
+           lastStatsRequestScope == scope,
+           Date().timeIntervalSince(lastStatsRequestAt) < 5 {
+            print("[WatchConnectivity] request_stats skipped by TTL scope=\(scope)")
+            return
+        }
+        lastStatsRequestAt = Date()
+        lastStatsRequestScope = scope
 
         isLoading = true
 
@@ -176,7 +186,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             return
         }
 
-        session.sendMessage(["action": "request_stats"], replyHandler: nil) { [weak self] error in
+        session.sendMessage(["action": "request_stats", "scope": scope], replyHandler: nil) { [weak self] error in
             Task { @MainActor in
                 self?.isLoading = false
                 self?.hasLoadedData = true
@@ -419,6 +429,7 @@ struct WatchSetExercise: Codable {
 }
 
 struct WatchSetData: Codable {
+    let setId: String
     let exercises: [WatchSetExercise]
     let totalXP: Int
     let totalReps: Int

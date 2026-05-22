@@ -67,9 +67,10 @@ export async function recordMealIntake(
   mealType: MealType,
   calories?: number,
   timeSlot: string = 'web'
-): Promise<void> {
+): Promise<IntakeLog> {
   const defaults = MEAL_DEFAULTS[mealType];
-  await addDoc(collection(db, 'users', userId, 'daily-intake'), {
+  const timestamp = new Date();
+  const payload = {
     type: 'meal',
     mealType,
     label: defaults.label,
@@ -78,8 +79,20 @@ export async function recordMealIntake(
     caffeineMg: 0,
     alcoholGrams: 0,
     timeSlot,
-    timestamp: Timestamp.now(),
-  });
+    timestamp: Timestamp.fromDate(timestamp),
+  };
+  const ref = await addDoc(collection(db, 'users', userId, 'daily-intake'), payload);
+  return {
+    id: ref.id,
+    type: 'meal',
+    label: payload.label,
+    calories: payload.calories,
+    waterMl: 0,
+    caffeineMg: 0,
+    alcoholGrams: 0,
+    timeSlot,
+    timestamp,
+  };
 }
 
 export async function recordDrinkIntake(
@@ -87,10 +100,11 @@ export async function recordDrinkIntake(
   drinkType: DrinkType,
   amount?: number,
   timeSlot: string = 'web'
-): Promise<void> {
+): Promise<IntakeLog> {
   const defaults = DRINK_DEFAULTS[drinkType];
   const multiplier = amount && defaults.waterMl > 0 ? amount / defaults.waterMl : 1;
-  await addDoc(collection(db, 'users', userId, 'daily-intake'), {
+  const timestamp = new Date();
+  const payload = {
     type: 'drink',
     drinkType,
     label: defaults.label,
@@ -99,8 +113,20 @@ export async function recordDrinkIntake(
     caffeineMg: Math.round(defaults.caffeineMg * multiplier),
     alcoholGrams: defaults.alcoholGrams,
     timeSlot,
-    timestamp: Timestamp.now(),
-  });
+    timestamp: Timestamp.fromDate(timestamp),
+  };
+  const ref = await addDoc(collection(db, 'users', userId, 'daily-intake'), payload);
+  return {
+    id: ref.id,
+    type: 'drink',
+    label: payload.label,
+    calories: payload.calories,
+    waterMl: payload.waterMl,
+    caffeineMg: payload.caffeineMg,
+    alcoholGrams: payload.alcoholGrams,
+    timeSlot,
+    timestamp,
+  };
 }
 
 export async function getTodayIntakeSummary(userId: string): Promise<IntakeSummary> {

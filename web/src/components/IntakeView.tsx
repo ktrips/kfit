@@ -50,9 +50,14 @@ export const IntakeView: React.FC = () => {
     const slot = getCurrentTimeSlot();
     setSavingKey(mealType);
     try {
-      await recordMealIntake(user.uid, mealType, defaults.calories, slot);
+      const newLog = await recordMealIntake(user.uid, mealType, defaults.calories, slot);
       await recordMealLog(user.uid, slot, defaults.calories);
-      await load();
+      setSummary(current => current ? {
+        ...current,
+        calories: current.calories + newLog.calories,
+        mealCount: current.mealCount + 1,
+        logs: [newLog, ...current.logs],
+      } : current);
     } finally {
       setSavingKey(null);
     }
@@ -64,9 +69,17 @@ export const IntakeView: React.FC = () => {
     const slot = getCurrentTimeSlot();
     setSavingKey(drinkType);
     try {
-      await recordDrinkIntake(user.uid, drinkType, defaults.waterMl || undefined, slot);
+      const newLog = await recordDrinkIntake(user.uid, drinkType, defaults.waterMl || undefined, slot);
       await recordDrinkLog(user.uid, slot, defaults.waterMl);
-      await load();
+      setSummary(current => current ? {
+        ...current,
+        calories: current.calories + newLog.calories,
+        waterMl: current.waterMl + newLog.waterMl,
+        caffeineMg: current.caffeineMg + newLog.caffeineMg,
+        alcoholGrams: current.alcoholGrams + newLog.alcoholGrams,
+        drinkCount: current.drinkCount + 1,
+        logs: [newLog, ...current.logs],
+      } : current);
     } finally {
       setSavingKey(null);
     }

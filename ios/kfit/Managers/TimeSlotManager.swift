@@ -217,7 +217,7 @@ class TimeSlotManager: ObservableObject {
     // MARK: - 実績の読み込み・更新
 
     /// 今日の時間帯別実績を取得
-    func loadTodayProgress() async {
+    func loadTodayProgress(syncHealthKit: Bool = true) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
 
         let today = Calendar.current.startOfDay(for: Date())
@@ -293,8 +293,9 @@ class TimeSlotManager: ObservableObject {
                 progress = DailyTimeSlotProgress(date: today)
             }
 
-            // HealthKitから最新のワークアウトとスタンド時間を取得
-            await updateGlobalProgressFromHealthKit()
+            if syncHealthKit {
+                await updateGlobalProgressFromHealthKit()
+            }
         } catch {
             print("❌ TimeSlotManager: Failed to load progress: \(error)")
             progress = DailyTimeSlotProgress(date: today)
@@ -306,8 +307,12 @@ class TimeSlotManager: ObservableObject {
         let healthKit = HealthKitManager.shared
         guard healthKit.isAuthorized else { return }
 
-        progress.globalProgress.workoutMinutes = await healthKit.fetchTodayWorkout()
-        progress.globalProgress.standHours = await healthKit.fetchTodayStand()
+        progress.globalProgress.workoutMinutes = healthKit.todayWorkoutMinutes > 0
+            ? healthKit.todayWorkoutMinutes
+            : await healthKit.fetchTodayWorkout()
+        progress.globalProgress.standHours = healthKit.todayStandHours > 0
+            ? healthKit.todayStandHours
+            : await healthKit.fetchTodayStand()
 
         // 睡眠データを更新（ユーザー設定の目標時間を渡して同じ数値をカードと今日の状況で共有）
         let sleepAnalysis = healthKit.analyzeSleepScore(targetHours: Double(settings.globalGoals.sleepHoursGoal))

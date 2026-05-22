@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
-  getTodayExercises, getUserProfile,
-  getWeeklyGoals, getWeeklyProgress,
-  getWeeklySetProgress, getDailySetGoal, getTodaySetCount, getWeeklySetLog,
+  getDashboardData,
   getWeekLabel, getActiveDaysElapsed,
-  type WeeklySetProgress, type CompletedSetRecord,
+  type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress } from '../services/timeSlotService';
 import { getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
+import { calculateStressScore } from '../utils/stress';
 import type { GlobalProgress } from '../services/timeSlotService';
 import type { IntakeSummary, MindMetrics } from '../types/wellness';
 interface DashboardViewProps {
@@ -61,25 +60,9 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-function stressScore(hrv: number): { score: number; label: string; color: string } {
-  if (hrv <= 0) return { score: -1, label: '未入力', color: '#AFAFAF' };
-  let score = 0;
-  if (hrv >= 100) score = 5;
-  else if (hrv >= 80) score = Math.round(5 + ((100 - hrv) / 20) * 10);
-  else if (hrv >= 60) score = Math.round(15 + ((80 - hrv) / 20) * 20);
-  else if (hrv >= 40) score = Math.round(35 + ((60 - hrv) / 20) * 25);
-  else if (hrv >= 20) score = Math.round(60 + ((40 - hrv) / 20) * 20);
-  else score = Math.round(Math.min(95, 80 + ((20 - hrv) / 20) * 15));
-  if (score < 30) return { score, label: '低い', color: '#58CC02' };
-  if (score < 55) return { score, label: '普通', color: '#78C800' };
-  if (score < 75) return { score, label: 'やや高', color: '#FF9600' };
-  return { score, label: '高い', color: '#FF4B4B' };
-}
-
 export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onTimeSlots, onIntake, onDietGoal, onMind }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
-  const setUserProfile = useAppStore((state) => state.setUserProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
   const setStoreWeeklyProgress = useAppStore((s) => s.setWeeklyProgress);
 
@@ -87,7 +70,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [totalPoints, setTotalPoints] = useState(0);
   const [totalCalories, setTotalCalories] = useState(0);
   const [weeklyGoals, setWeeklyGoals] = useState<{ exerciseId: string; exerciseName: string; targetReps: number; dailyReps?: number }[]>([]);
-  const [_weeklyProgress, setWeeklyProgress] = useState<Record<string, number>>({});
   const [setProgress, setSetProgress] = useState<WeeklySetProgress>({ completedSets: 0, exercises: {} });
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
@@ -102,38 +84,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [profile, exercises, goals, progress, sp, ds, tsc, weekSets, intake, global, mind] = await Promise.all([
-          getUserProfile(user.uid),
-          getTodayExercises(user.uid),
-          getWeeklyGoals(user.uid),
-          getWeeklyProgress(user.uid),
-          getWeeklySetProgress(user.uid),
-          getDailySetGoal(user.uid),
-          getTodaySetCount(user.uid),
-          getWeeklySetLog(user.uid),
+        const [dashboard, intake, global, mind] = await Promise.all([
+          getDashboardData(user.uid),
           getTodayIntakeSummary(user.uid),
           getGlobalProgress(user.uid),
           getMindMetrics(user.uid),
         ]);
-        if (profile) setUserProfile(profile);
-        setTotalReps(exercises.reduce((s: number, e: any) => s + (e.reps || 0), 0));
-        setTotalPoints(exercises.reduce((s: number, e: any) => s + (e.points || 0), 0));
+        const exercises = dashboard.todayExercises;
+        setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
+        setTotalPoints(exercises.reduce((s: number, e: CompletedExercise) => s + (e.points || 0), 0));
         setTotalCalories(Math.round(
-          exercises.reduce((s: number, e: any) => s + estimateKcal(e.exerciseId ?? '', e.reps || 0), 0)
+          exercises.reduce((s: number, e: CompletedExercise) => s + estimateKcal(e.exerciseId ?? '', e.reps || 0), 0)
         ));
-        setWeeklyGoals(goals);
-        setWeeklyProgress(progress);
-        setStoreWeeklyGoals(goals);
-        setStoreWeeklyProgress(progress);
-        setSetProgress(sp);
-        setDailySets(ds);
-        setTodaySetCount(tsc);
+        setWeeklyGoals(dashboard.weeklyGoals);
+        setStoreWeeklyGoals(dashboard.weeklyGoals);
+        setStoreWeeklyProgress(dashboard.weeklyProgress);
+        setSetProgress(dashboard.setProgress);
+        setDailySets(dashboard.dailySets);
+        setTodaySetCount(dashboard.todaySetCount);
         setIntakeSummary(intake);
         setGlobalProgress(global);
         setMindMetrics(mind);
         // 今日分だけフィルタ
         const today = new Date();
-        setTodaySets(weekSets.filter(s => {
+        setTodaySets(dashboard.weeklySetLog.filter(s => {
           const d = s.timestamp;
           return d.getFullYear() === today.getFullYear() &&
                  d.getMonth() === today.getMonth() &&
@@ -146,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
       }
     };
     loadData();
-  }, [user, setUserProfile, setStoreWeeklyGoals, setStoreWeeklyProgress]);
+  }, [user, setStoreWeeklyGoals, setStoreWeeklyProgress]);
 
   if (isLoading) {
     return (
@@ -218,7 +192,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <p className="text-xs font-bold text-duo-gray mt-1">体重・体脂肪・カロリー計画</p>
           </button>
           {(() => {
-            const stress = stressScore(mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0);
+            const stress = calculateStressScore(mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0);
             return (
               <button
                 onClick={onMind}

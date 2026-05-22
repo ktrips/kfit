@@ -15,6 +15,7 @@ struct MindfulSession: Identifiable {
         let b = sourceBundleId.lowercased()
         let n = sourceName.lowercased()
         if b.contains("breathe") || n.contains("breathe") { return "Breathe" }
+        if b.contains("kfit") || n.contains("kfit") || n.contains("fitingo") || n.contains("duofit") { return "Breathe" }
         if b.contains("reflect") || n.contains("reflect") { return "Reflect" }
         if b.contains("mindfulness") || b.contains("nanomindfulness") || n == "マインドフルネス" { return "マインドフルネス" }
         if b.contains("headspace") || n.contains("headspace") { return "Headspace" }
@@ -233,6 +234,8 @@ final class HealthKitManager: ObservableObject {
     @Published var todayWaterSamples: [DietarySample] = []  // 水分サンプル（ml）
     @Published var todayMealSamples:  [DietarySample] = []  // 食事カロリーサンプル（kcal）
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
+    private var lastFetchAllAt: Date? = nil
+    private let fetchAllTTL: TimeInterval = 20
 
     // ワークアウト
     @Published var todayWorkoutMinutes: Int = 0         // 今日のワークアウト時間（分）
@@ -324,6 +327,9 @@ final class HealthKitManager: ObservableObject {
         ]
         for id in writeIds {
             if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
+        }
+        if let mindfulness = HKCategoryType.categoryType(forIdentifier: .mindfulSession) {
+            set.insert(mindfulness)
         }
         set.insert(HKWorkoutType.workoutType())
         return set
@@ -445,7 +451,7 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - 全データ取得
 
-    func fetchAll() async {
+    func fetchAll(force: Bool = false) async {
         guard isAvailable else {
             print("[HealthKit] HealthKit not available - skipping fetch")
             return
@@ -454,10 +460,21 @@ final class HealthKitManager: ObservableObject {
             print("[HealthKit] Not authorized - skipping fetch")
             return
         }
+        if isLoading {
+            print("[HealthKit] ⏳ fetchAll already running - skip duplicate")
+            return
+        }
+        if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL {
+            print("[HealthKit] ✅ fetchAll skipped by TTL")
+            return
+        }
 
         print("[HealthKit] 🔄 Fetching all health data...")
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            lastFetchAllAt = Date()
+            isLoading = false
+        }
 
         async let steps    = fetchTodaySteps()
         async let activeCalories = fetchTodayActiveCalories()
@@ -1497,6 +1514,46 @@ final class HealthKitManager: ObservableObject {
         todayMindfulnessSessions = result.sessions
         todayMindfulnessSamples = result.samples
         print("[HealthKit] 🧘 Refreshed mindfulness: \(result.sessions) sessions, \(String(format: "%.1f", result.minutes)) min")
+    }
+
+    /// アプリ内セッションをHealthKitのマインドフルネスとして保存
+    func saveMindfulnessSession(startDate: Date, endDate: Date, durationSeconds: TimeInterval = 60) async -> Bool {
+        guard isAvailable else {
+            print("[HealthKit] ⚠️ HealthKit not available for mindfulness save")
+            return false
+        }
+        guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
+            print("[HealthKit] ⚠️ Mindful session type unavailable")
+            return false
+        }
+
+        if !isAuthorized {
+            await requestAuthorization()
+        }
+
+        let normalizedDuration = max(60, durationSeconds)
+        let normalizedEndDate = startDate.addingTimeInterval(normalizedDuration)
+        let sample = HKCategorySample(
+            type: type,
+            value: HKCategoryValue.notApplicable.rawValue,
+            start: startDate,
+            end: normalizedEndDate,
+            metadata: [
+                HKMetadataKeyWasUserEntered: true,
+                "kfitSessionType": normalizedDuration <= 90 ? "Breathe" : "Stretch"
+            ]
+        )
+
+        return await withCheckedContinuation { continuation in
+            store.save(sample) { success, error in
+                if let error {
+                    print("[HealthKit] ❌ Mindfulness save failed: \(error.localizedDescription)")
+                } else {
+                    print("[HealthKit] ✅ Mindfulness saved: \(success)")
+                }
+                continuation.resume(returning: success)
+            }
+        }
     }
 
     // MARK: - ワークアウト

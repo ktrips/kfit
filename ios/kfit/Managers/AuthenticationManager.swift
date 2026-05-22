@@ -8,6 +8,8 @@ import WidgetKit
 @MainActor
 class AuthenticationManager: ObservableObject {
     static let shared = AuthenticationManager()
+    private static var lastWidgetPayloadHash = ""
+    private static var pendingWidgetReload: DispatchWorkItem?
 
     @Published var isSignedIn = false
     @Published var userProfile: UserProfile?
@@ -346,6 +348,21 @@ class AuthenticationManager: ObservableObject {
     func recordWatchCompletedSet(_ set: WatchSetData) async -> (streak: Int, todayReps: Int, todayXP: Int) {
         guard let userId = Auth.auth().currentUser?.uid else { return (0, 0, 0) }
         let now = set.timestamp
+        if let setId = set.setId {
+            let existing = try? await db.collection("users").document(userId)
+                .collection("completed-sets")
+                .whereField("setId", isEqualTo: setId)
+                .limit(to: 1)
+                .getDocuments()
+            if existing?.documents.isEmpty == false {
+                print("✅ Watch set already recorded, skipping duplicate: \(setId)")
+                let snap = try? await db.collection("users").document(userId).getDocument()
+                let streak = snap?.data()?["streak"] as? Int ?? (userProfile?.streak ?? 0)
+                let totalXP = snap?.data()?["totalPoints"] as? Int ?? (userProfile?.totalPoints ?? 0)
+                let todayReps = cachedTodayExercises.reduce(0) { $0 + $1.reps }
+                return (streak, todayReps, totalXP)
+            }
+        }
 
         // セット構成を取得して目標達成を確認
         let setConfig = await getSetConfiguration()
@@ -360,6 +377,7 @@ class AuthenticationManager: ObservableObject {
                 "points":       $0.points,
             ] }
             let setDoc: [String: Any] = [
+                "setId":      set.setId ?? "\(Int(now.timeIntervalSince1970))-\(set.totalReps)-\(set.totalXP)",
                 "timestamp":  now,
                 "exercises":  exercisesData,
                 "totalXP":    set.totalXP,
@@ -384,7 +402,8 @@ class AuthenticationManager: ObservableObject {
                 "points":       ex.points,
                 "formScore":    85.0,
                 "timestamp":    now,
-                "source":       "watch"
+                "source":       "watch",
+                "setId":        set.setId ?? ""
             ]
             try? await db.collection("users").document(userId)
                 .collection("completed-exercises").addDocument(data: exData)
@@ -1731,9 +1750,30 @@ extension AuthenticationManager {
         let intake = Int(hk.todayIntakeCalories)
         defaults.set(intake - burned, forKey: "calorieBalance")
 
-        defaults.synchronize()
-        WidgetCenter.shared.reloadAllTimelines()
+        let payloadHash = [
+            trainingCompleted, trainingGoal, mindfulnessCompleted, mindfulnessGoal,
+            Int(hk.todayIntakeCalories), mealGoal, Int(hk.todayIntakeWater), drinkGoal,
+            hk.todayWorkoutMinutes, hk.todayStandHours, intake - burned,
+            shared.userProfile?.streak ?? 0, shared.userProfile?.totalPoints ?? 0
+        ].map(String.init).joined(separator: "|")
+
+        guard payloadHash != lastWidgetPayloadHash else {
+            print("[Widget] ✅ syncWidgetData skipped - payload unchanged")
+            return
+        }
+        lastWidgetPayloadHash = payloadHash
+        scheduleWidgetReload()
         print("[Widget] ✅ syncWidgetData: training=\(trainingCompleted)/\(trainingGoal) streak=\(shared.userProfile?.streak ?? 0)")
+    }
+
+    private static func scheduleWidgetReload() {
+        pendingWidgetReload?.cancel()
+        let workItem = DispatchWorkItem {
+            WidgetCenter.shared.reloadAllTimelines()
+            print("[Widget] ✅ reloadAllTimelines debounced")
+        }
+        pendingWidgetReload = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
     }
 }
 

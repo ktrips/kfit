@@ -125,8 +125,11 @@ struct DashboardView: View {
     @State private var pendingIntakeAction: (() -> Void)?  // 保留中の記録アクション
     @State private var confirmMessage = ""  // 確認メッセージ
     @State private var showPhotoLog = false  // フォトログモーダル
+    @State private var showMindfulnessSession = false  // アプリ内呼吸セッション
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
+    @State private var lastWidgetPayloadHash = ""
+    @State private var pendingWidgetReload: DispatchWorkItem?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -233,6 +236,17 @@ struct DashboardView: View {
             IntakeSettingsView().environmentObject(authManager)
         }
         .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
+        .fullScreenCover(isPresented: $showMindfulnessSession) {
+            MindfulnessSessionView { startDate, endDate in
+                Task {
+                    let saved = await healthKit.saveMindfulnessSession(startDate: startDate, endDate: endDate)
+                    if saved {
+                        await healthKit.refreshMindfulness()
+                    }
+                    updateWidgetData()
+                }
+            }
+        }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("キャンセル", role: .cancel) { }
             Button("記録する") {
@@ -1708,7 +1722,7 @@ struct DashboardView: View {
 
             fitingoStartButton
 
-            Button { openWatchMindfulness() } label: {
+            Button { openMindfulness() } label: {
                 HStack(spacing: 8) {
                     ZStack {
                         Circle()
@@ -1721,7 +1735,7 @@ struct DashboardView: View {
                         Text("マインドフルネス")
                             .font(.subheadline).fontWeight(.black)
                             .foregroundColor(Color.duoPurple)
-                        Text("Watchアプリを起動")
+                        Text("1分呼吸セッション")
                             .font(.caption)
                             .foregroundColor(Color.duoPurple.opacity(0.7))
                     }
@@ -4589,54 +4603,6 @@ struct DashboardView: View {
         }
     }
 
-    private func openMindfulnessApp() {
-        // Apple Watchのマインドフルネス（旧Breathe）アプリを起動
-        // URLスキーム: com.apple.NanoMindfulness.watchkitapp://
-        if let url = URL(string: "com.apple.NanoMindfulness.watchkitapp://") {
-            UIApplication.shared.open(url) { success in
-                if !success {
-                    // Watch側のアプリが見つからない場合はiOS側のヘルスケアを開く
-                    if let healthURL = URL(string: "x-apple-health://mindfulness") {
-                        UIApplication.shared.open(healthURL)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Apple Watchのマインドフルネスアプリを直接起動
-    private func openWatchMindfulness() {
-        // Watchアプリを直接起動する複数のURLスキームを試す
-        let urlSchemes = [
-            "com.apple.NanoMindfulness.watchkitapp://",  // マインドフルネス（旧Breathe）
-            "x-apple-health://mindfulness",               // ヘルスケアのマインドフルネス
-            "breathe://"                                   // 旧BreatheアプリのURLスキーム
-        ]
-
-        var openedSuccessfully = false
-
-        for scheme in urlSchemes {
-            if let url = URL(string: scheme) {
-                UIApplication.shared.open(url) { success in
-                    if success && !openedSuccessfully {
-                        openedSuccessfully = true
-                        print("[Mindfulness] Successfully opened: \(scheme)")
-                    }
-                }
-                if openedSuccessfully {
-                    break
-                }
-            }
-        }
-
-        // すべて失敗した場合はヘルスケアアプリを開く
-        if !openedSuccessfully {
-            if let healthURL = URL(string: "x-apple-health://") {
-                UIApplication.shared.open(healthURL)
-            }
-        }
-    }
-
     // MARK: - PFCバランス円グラフ
     private func pfcBalanceChart(_ analysis: PFCBalanceAnalysis) -> some View {
         let totalCalories = Int(healthKit.todayIntakeCalories)
@@ -5246,7 +5212,7 @@ struct DashboardView: View {
         guard healthKit.isAvailable && healthKit.isAuthorized else { return }
         print("⏱ [Widget] Syncing HealthKit data...")
         await healthKit.fetchAll()
-        await timeSlotManager.loadTodayProgress()
+        await timeSlotManager.loadTodayProgress(syncHealthKit: false)
         await timeSlotManager.updateGlobalProgressFromHealthKit()
         updateWidgetData()
     }
@@ -5359,12 +5325,31 @@ struct DashboardView: View {
         sharedDefaults.set(healthKit.todayStandHours, forKey: "standHours")
         sharedDefaults.set(0, forKey: "standGoal")
 
-        // 確実に保存
-        sharedDefaults.synchronize()
+        let payloadHash = [
+            todaySetCount, dailySetGoal, totalReps, authManager.userProfile?.streak ?? 0,
+            totalXP, totalTrainingCompleted, totalTrainingGoal, totalMindfulnessCompleted,
+            totalMindfulnessGoal, totalMealLogged, totalMealGoal, totalDrinkLogged, totalDrinkGoal,
+            calorieBalance, totalPoints, healthKit.todayWorkoutMinutes, healthKit.todayStandHours
+        ].map(String.init).joined(separator: "|")
 
-        print("[Widget] Synced all data to shared UserDefaults")
+        guard payloadHash != lastWidgetPayloadHash else {
+            print("[Widget] Skipped reload - payload unchanged")
+            return
+        }
+        lastWidgetPayloadHash = payloadHash
 
-        WidgetCenter.shared.reloadAllTimelines()
+        print("[Widget] Synced changed data to shared UserDefaults")
+        scheduleWidgetReload()
+    }
+
+    private func scheduleWidgetReload() {
+        pendingWidgetReload?.cancel()
+        let workItem = DispatchWorkItem {
+            WidgetCenter.shared.reloadAllTimelines()
+            print("[Widget] Reloaded timelines")
+        }
+        pendingWidgetReload = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
     }
 
     private func recalcTotals() {
@@ -5377,10 +5362,7 @@ struct DashboardView: View {
     }
 
     private func openMindfulness() {
-        // Apple Watchの呼吸アプリを開く
-        if let url = URL(string: "x-apple-health://mindfulness") {
-            UIApplication.shared.open(url)
-        }
+        showMindfulnessSession = true
     }
 
     /// 指定された時間帯に実行されたセット数をカウント（30分以内のまとまりを1セットとする）
@@ -6007,6 +5989,191 @@ private struct CalorieBalanceBarCard: View {
                 Text("±0g").font(.system(size: 7, weight: .bold)).foregroundColor(Color.duoGreen)
             }
         }
+    }
+}
+
+struct MindfulnessSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onComplete: (Date, Date) -> Void
+    var durationSeconds: Int = 60
+    var title: String = "1分呼吸"
+    var completedButtonTitle: String = "完了して保存"
+
+    @State private var sessionStart = Date()
+    @State private var remainingSeconds: Int
+    @State private var lastBreathPhase = -1
+    @State private var isCompleting = false
+
+    init(
+        durationSeconds: Int = 60,
+        title: String = "1分呼吸",
+        completedButtonTitle: String = "完了して保存",
+        onComplete: @escaping (Date, Date) -> Void
+    ) {
+        self.durationSeconds = durationSeconds
+        self.title = title
+        self.completedButtonTitle = completedButtonTitle
+        self.onComplete = onComplete
+        _remainingSeconds = State(initialValue: durationSeconds)
+    }
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let inhaleHapticTimer = Timer.publish(every: 0.35, on: .main, in: .common).autoconnect()
+
+    private var elapsedSeconds: Int { durationSeconds - remainingSeconds }
+    private var progress: Double { Double(elapsedSeconds) / Double(durationSeconds) }
+    private var breathPhase: Int { elapsedSeconds / 5 }
+    private var isInhale: Bool { breathPhase % 2 == 0 }
+    private var phaseProgress: Double { Double(elapsedSeconds % 5) / 5.0 }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.duoPurple, Color(red: 0.35, green: 0.55, blue: 1.0), Color.duoGreen.opacity(0.85)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                    Text(title)
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundColor(.white.opacity(0.9))
+                    Spacer()
+                    Color.clear.frame(width: 36, height: 36)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+
+                Spacer()
+
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.20), lineWidth: 12)
+                        .frame(width: 230, height: 230)
+
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(Color.white, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 230, height: 230)
+                        .animation(.easeInOut(duration: 0.35), value: progress)
+
+                    Circle()
+                        .fill(Color.white.opacity(0.24))
+                        .frame(width: isInhale ? 138 + 32 * phaseProgress : 170 - 32 * phaseProgress,
+                               height: isInhale ? 138 + 32 * phaseProgress : 170 - 32 * phaseProgress)
+                        .animation(.easeInOut(duration: 1.0), value: remainingSeconds)
+
+                    VStack(spacing: 8) {
+                        Text(isInhale ? "吸って" : "吐いて")
+                            .font(.system(size: 34, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white.opacity(0.82))
+                        Text("\(remainingSeconds)")
+                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .monospacedDigit()
+                    }
+                }
+
+                Text("吸う時は連続Haptic、吐く時は切り替えHapticに合わせて呼吸します。完了するとHealthKitへマインドフルネスとして保存します。")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+
+                Spacer()
+
+                Button {
+                    if remainingSeconds <= 0 {
+                        completeSession()
+                    }
+                } label: {
+                    Text(remainingSeconds > 0 ? "セッション中..." : completedButtonTitle)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundColor(remainingSeconds > 0 ? Color.duoPurple.opacity(0.45) : Color.duoPurple)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(Color.white)
+                        .cornerRadius(18)
+                        .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                }
+                .disabled(remainingSeconds > 0)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 22)
+            }
+        }
+        .onAppear {
+            sessionStart = Date()
+            UIApplication.shared.isIdleTimerDisabled = true
+            playBreathHaptic()
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onReceive(timer) { _ in
+            guard !isCompleting else { return }
+            if remainingSeconds > 0 {
+                remainingSeconds -= 1
+                if breathPhase != lastBreathPhase {
+                    lastBreathPhase = breathPhase
+                    playPhaseChangeHaptic()
+                }
+                if remainingSeconds == 0 {
+                    completeSession()
+                }
+            } else {
+                completeSession()
+            }
+        }
+        .onReceive(inhaleHapticTimer) { _ in
+            guard !isCompleting, remainingSeconds > 0, isInhale else { return }
+            playInhalePulseHaptic()
+        }
+    }
+
+    private func completeSession() {
+        guard !isCompleting else { return }
+        isCompleting = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        onComplete(sessionStart, sessionStart.addingTimeInterval(TimeInterval(durationSeconds)))
+        dismiss()
+    }
+
+    private func playBreathHaptic() {
+        if isInhale {
+            playInhalePulseHaptic()
+        } else {
+            playPhaseChangeHaptic()
+        }
+    }
+
+    private func playInhalePulseHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred(intensity: 0.42)
+    }
+
+    private func playPhaseChangeHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: isInhale ? .light : .medium)
+        generator.prepare()
+        generator.impactOccurred(intensity: isInhale ? 0.55 : 0.80)
     }
 }
 

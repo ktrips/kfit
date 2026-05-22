@@ -5,6 +5,7 @@ import HealthKit
 
 struct HealthView: View {
     @StateObject private var hk = HealthKitManager.shared
+    @StateObject private var tsm = TimeSlotManager.shared
 
     private let timeFmt: DateFormatter = {
         let f = DateFormatter()
@@ -28,18 +29,34 @@ struct HealthView: View {
                         } else if hk.isLoading {
                             loadingCard
                         } else {
+                            let goals = tsm.settings.globalGoals
                             refreshButton
-                            HStack(spacing: 12) {
-                                stepsCard
-                                workoutCard
+                            // アクティビティリングONのとき: 歩数・運動カード表示
+                            if goals.activityEnabled {
+                                HStack(spacing: 12) {
+                                    stepsCard
+                                    workoutCard
+                                }
                             }
                             heartRateCard
                             hrvCard
                             sunlightCard
-                            sleepCard
-                            calorieBalanceCard
-                            weightBodyFatCard
-                            intakeCard
+                            // 睡眠計測ONのとき: 睡眠カード表示
+                            if goals.sleepEnabled {
+                                sleepCard
+                            }
+                            // アクティビティ or 食事計測ONのとき: カロリー収支カード表示
+                            if goals.activityEnabled || goals.pfcEnabled {
+                                calorieBalanceCard
+                            }
+                            // 体重計測ONのとき: 体重・体脂肪カード表示
+                            if goals.weightEnabled {
+                                weightBodyFatCard
+                            }
+                            // 食事計測ONのとき: 摂取データカード表示
+                            if goals.pfcEnabled {
+                                intakeCard
+                            }
                             if !hk.hrSamples.isEmpty { hrHistoryCard }
                             openHealthButton
                         }
@@ -60,6 +77,7 @@ struct HealthView: View {
             if hk.isAuthorized {
                 await hk.fetchAll()
             }
+            await tsm.loadTodaySettings()
         }
     }
 
@@ -354,11 +372,38 @@ struct HealthView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
-    // MARK: - 心拍数カード
+    // MARK: - 心拍・ストレスカード
 
     private var heartRateCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cardTitle(icon: "heart.fill", label: "心拍数",
+        let avgHRV = hk.todayAverageHRV
+        let stressScore: Int = {
+            guard avgHRV > 0 else { return -1 }
+            if avgHRV >= 100 { return 5 }
+            if avgHRV >= 80  { return Int(5  + (100 - avgHRV) / 20 * 10) }
+            if avgHRV >= 60  { return Int(15 + (80  - avgHRV) / 20 * 20) }
+            if avgHRV >= 40  { return Int(35 + (60  - avgHRV) / 20 * 25) }
+            if avgHRV >= 20  { return Int(60 + (40  - avgHRV) / 20 * 20) }
+            return Int(min(95, 80 + (20 - avgHRV) / 20 * 15))
+        }()
+        let stressLabel: String = {
+            if stressScore < 0  { return "—" }
+            if stressScore < 25 { return "低い" }
+            if stressScore < 45 { return "やや低い" }
+            if stressScore < 65 { return "中程度" }
+            if stressScore < 80 { return "やや高い" }
+            return "高い"
+        }()
+        let stressColor: Color = {
+            if stressScore < 0  { return Color.duoSubtitle }
+            if stressScore < 25 { return Color.duoGreen }
+            if stressScore < 45 { return Color(hex: "#58CC02") }
+            if stressScore < 65 { return Color(hex: "#FFD900") }
+            if stressScore < 80 { return Color(hex: "#FF9600") }
+            return Color(hex: "#FF4B4B")
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            cardTitle(icon: "heart.fill", label: "心拍・ストレス",
                       iconColor: Color(hex: "#FF4B4B"))
 
             HStack(spacing: 12) {
@@ -381,6 +426,61 @@ struct HealthView: View {
                     accent: Color(hex: "#1CB0F6")
                 )
             }
+
+            // ストレス指数タイル（常時表示）
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.caption).foregroundColor(stressColor)
+                        Text("ストレス指数")
+                            .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                    }
+                    HStack(alignment: .lastTextBaseline, spacing: 3) {
+                        Text(stressScore >= 0 ? "\(stressScore)" : "—")
+                            .font(.system(.title2, design: .rounded)).fontWeight(.black)
+                            .foregroundColor(stressColor)
+                        if stressScore >= 0 {
+                            Text("/ 100")
+                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    Text(stressLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(stressColor)
+                }
+                .frame(width: 100, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    if stressScore >= 0 {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.gray.opacity(0.12)).frame(height: 8)
+                                Capsule()
+                                    .fill(stressColor)
+                                    .frame(width: geo.size.width * CGFloat(stressScore) / 100, height: 8)
+                            }
+                        }
+                        .frame(height: 8)
+                        HStack {
+                            Text("低").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Spacer()
+                            Text("高").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        }
+                        if avgHRV > 0 {
+                            Text("平均HRV \(Int(avgHRV)) ms")
+                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                        }
+                    } else {
+                        Text("HRVデータなし")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                }
+            }
+            .padding(12)
+            .background(stressColor.opacity(0.08))
+            .cornerRadius(12)
 
             // 心拍ゾーン判定
             if hk.latestHeartRate > 0 {

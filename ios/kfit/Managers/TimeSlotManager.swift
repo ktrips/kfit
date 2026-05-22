@@ -112,6 +112,10 @@ class TimeSlotManager: ObservableObject {
                     globalGoals.pfcEnabled = globalGoalsData["pfcEnabled"] as? Bool ?? false
                     globalGoals.pfcScoreThreshold = globalGoalsData["pfcScoreThreshold"] as? Int ?? 80
                     globalGoals.weightEnabled = globalGoalsData["weightEnabled"] as? Bool ?? false
+                    globalGoals.mealEnabled = globalGoalsData["mealEnabled"] as? Bool ?? true
+                    globalGoals.dailyMealKcal = globalGoalsData["dailyMealKcal"] as? Int ?? 2000
+                    globalGoals.drinkEnabled = globalGoalsData["drinkEnabled"] as? Bool ?? true
+                    globalGoals.dailyDrinkMl = globalGoalsData["dailyDrinkMl"] as? Int ?? 2000
                     if let customGoalsData = globalGoalsData["customGoals"] as? [[String: Any]] {
                         globalGoals.customGoals = customGoalsData.compactMap { g -> CustomDailyGoal? in
                             guard let id = g["id"] as? String,
@@ -123,9 +127,12 @@ class TimeSlotManager: ObservableObject {
                     }
                     settings.globalGoals = globalGoals
                 }
+                // グローバル食事・水分目標をスロットに反映
+                applyGlobalMealDrinkToSlots()
             } else {
                 // デフォルト設定を作成
                 settings = DailyTimeSlotSettings(date: today)
+                applyGlobalMealDrinkToSlots()
                 await saveTodaySettings()
             }
         } catch {
@@ -190,6 +197,10 @@ class TimeSlotManager: ObservableObject {
                 "pfcEnabled": settings.globalGoals.pfcEnabled,
                 "pfcScoreThreshold": settings.globalGoals.pfcScoreThreshold,
                 "weightEnabled": settings.globalGoals.weightEnabled,
+                "mealEnabled": settings.globalGoals.mealEnabled,
+                "dailyMealKcal": settings.globalGoals.dailyMealKcal,
+                "drinkEnabled": settings.globalGoals.drinkEnabled,
+                "dailyDrinkMl": settings.globalGoals.dailyDrinkMl,
                 "customGoals": customGoalsData
             ]
         ]
@@ -322,15 +333,14 @@ class TimeSlotManager: ObservableObject {
         await saveTodayProgress()
     }
 
-    /// ReflectセッションからストレッチをSync（夜中以外）
-    /// 時間帯内のReflect合計分数 = 完了分数
+    /// マインドフルネスセッション（種類不問）から1回で目標分数に達したらストレッチとしてSync
     func syncStretchFromHealthKit() async {
         let hk = HealthKitManager.shared
         guard hk.isAuthorized else { return }
 
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let reflectSessions = hk.todayMindfulnessSamples.filter { $0.sessionTypeLabel == "Reflect" }
+        let allSessions = hk.todayMindfulnessSamples
         var changed = false
 
         for slot in TimeSlot.allCases where slot != .midnight {
@@ -343,11 +353,11 @@ class TimeSlotManager: ObservableObject {
                 ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
                 : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
 
-            let totalMinutes = reflectSessions
-                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
-                .reduce(0.0) { $0 + $1.durationMinutes }
-
-            let newCompleted = Int(totalMinutes)
+            let sessionsInSlot = allSessions.filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
+            let maxSingle = sessionsInSlot.map { $0.durationMinutes }.max() ?? 0.0
+            let target = Double(goal.stretchGoal.stretchMinutes)
+            // 1セッションで目標分数に達していれば達成、未満なら最長セッション分を進捗として使う
+            let newCompleted = maxSingle >= target ? goal.stretchGoal.stretchMinutes : Int(maxSingle)
 
             if prog.stretchSetsCompleted != newCompleted {
                 prog.stretchSetsCompleted = newCompleted
@@ -360,7 +370,7 @@ class TimeSlotManager: ObservableObject {
         }
 
         if changed {
-            print("[TimeSlot] 🤸 Synced stretch from Reflect mindfulness sessions")
+            print("[TimeSlot] 🤸 Synced stretch from single mindfulness session")
         }
     }
 
@@ -568,6 +578,21 @@ class TimeSlotManager: ObservableObject {
             progress = updatedProgress
             await saveTodayProgress()
             print("✅ TimeSlot: CustomActivity \(id) toggled for \(timeSlot.displayName)")
+        }
+    }
+
+    // MARK: - グローバル食事・水分目標をスロットに反映
+
+    func applyGlobalMealDrinkToSlots() {
+        let mealPerSlot = settings.globalGoals.mealEnabled ? settings.globalGoals.dailyMealKcal / 4 : 0
+        let drinkPerSlot = settings.globalGoals.drinkEnabled ? settings.globalGoals.dailyDrinkMl / 4 : 0
+
+        for slot in TimeSlot.allCases {
+            if var goal = settings.goalFor(slot) {
+                goal.logGoal.mealGoal = slot == .midnight ? 0 : mealPerSlot
+                goal.logGoal.drinkGoal = slot == .midnight ? 0 : drinkPerSlot
+                settings.updateGoal(goal)
+            }
         }
     }
 

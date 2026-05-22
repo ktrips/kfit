@@ -11,6 +11,8 @@ struct DietGoalSettings: Codable {
     var startWeight: Double = 0.0
     var startBodyFatPercent: Double = 0.0
     var hasStartStats: Bool = false
+    var useHealthKitForIntake: Bool = false  // ONのとき摂取実績はApple Health値を使用
+    var useHealthKitForBurn: Bool = false    // ONのとき消費実績はApple Health値を使用
 
     var dailyDeficitGoal: Int { dailyIntakeGoal - dailyBurnGoal }
     var weeklyDeficitGoal: Int { dailyDeficitGoal * 7 }
@@ -25,7 +27,9 @@ struct DietGoalSettings: Codable {
         startDate: Date = Date(),
         startWeight: Double = 0.0,
         startBodyFatPercent: Double = 0.0,
-        hasStartStats: Bool = false
+        hasStartStats: Bool = false,
+        useHealthKitForIntake: Bool = false,
+        useHealthKitForBurn: Bool = false
     ) {
         self.targetWeight = targetWeight
         self.targetBodyFatPercent = targetBodyFatPercent
@@ -37,6 +41,8 @@ struct DietGoalSettings: Codable {
         self.startWeight = startWeight
         self.startBodyFatPercent = startBodyFatPercent
         self.hasStartStats = hasStartStats
+        self.useHealthKitForIntake = useHealthKitForIntake
+        self.useHealthKitForBurn = useHealthKitForBurn
     }
 
     // 既存の保存データとの後方互換性（新フィールドがない場合はデフォルト値を使用）
@@ -52,7 +58,9 @@ struct DietGoalSettings: Codable {
         startDate            = (try? c.decode(Date.self,   forKey: .startDate))            ?? Date()
         startWeight          = (try? c.decode(Double.self, forKey: .startWeight))          ?? 0.0
         startBodyFatPercent  = (try? c.decode(Double.self, forKey: .startBodyFatPercent))  ?? 0.0
-        hasStartStats        = (try? c.decode(Bool.self,   forKey: .hasStartStats))        ?? false
+        hasStartStats         = (try? c.decode(Bool.self,   forKey: .hasStartStats))         ?? false
+        useHealthKitForIntake = (try? c.decode(Bool.self,   forKey: .useHealthKitForIntake)) ?? false
+        useHealthKitForBurn   = (try? c.decode(Bool.self,   forKey: .useHealthKitForBurn))   ?? false
     }
 
     static let userDefaultsKey = "kfit_diet_goal_settings"

@@ -50,45 +50,90 @@ struct MainTabView: View {
     @State private var showRecordMenu = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // ホーム
-            NavigationView { DashboardView() }
-                .tabItem { Label("ホーム", systemImage: "house.fill") }
-                .tag(0)
-                .ignoresSafeArea(.keyboard)
-
-            // 記録（中央ボタン）
-            Color.clear
-                .tabItem { Label("記録", systemImage: "plus.circle.fill") }
-                .tag(1)
-
-            // 設定（時間帯別目標を含む）
-            NavigationView { SettingsView() }
-                .tabItem { Label("設定", systemImage: "gearshape.fill") }
-                .tag(2)
-
-            // プラン
-            NavigationView { WorkoutPlanView() }
-                .tabItem { Label("プラン", systemImage: "list.bullet") }
-                .tag(3)
-
-            // その他（More）
-            MoreView()
-                .tabItem { Label("その他", systemImage: "ellipsis.circle.fill") }
-                .tag(4)
-        }
-        .accentColor(Color.duoGreen)
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-        .onChange(of: selectedTab) { oldTab, newTab in
-            if newTab == 1 {
-                showRecordMenu = true
-                selectedTab = 0
+        mainContent
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                compactTabBar
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .fullScreenCover(isPresented: $showRecordMenu) {
+                RecordMenuView(isPresented: $showRecordMenu)
+                    .environmentObject(authManager)
+            }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        switch selectedTab {
+        case 1:  GoalView(selectedTab: $selectedTab)
+        case 2:  MindView(selectedTab: $selectedTab)
+        case 4:  NavigationView { SettingsView() }
+        case 5:  MoreView()
+        default: NavigationView { DashboardView() }.ignoresSafeArea(.keyboard)
         }
-        .fullScreenCover(isPresented: $showRecordMenu) {
-            RecordMenuView(isPresented: $showRecordMenu)
-                .environmentObject(authManager)
+    }
+
+    private var compactTabBar: some View {
+        HStack(spacing: 2) {
+            tabBtn(tag: 0, icon: "house.fill",           label: "FIT")
+            tabBtn(tag: 1, icon: "target",               label: "GOAL")
+            tabBtn(tag: 2, icon: "brain.head.profile",   label: "MIND")
+            recordBtn
+            tabBtn(tag: 4, icon: "gearshape.fill",       label: "設定")
+            tabBtn(tag: 5, icon: "ellipsis.circle.fill", label: "その他")
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.38, green: 0.84, blue: 0.05),
+                         Color(red: 0.20, green: 0.66, blue: 0.00)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .shadow(color: Color.black.opacity(0.15), radius: 6, y: -2)
+    }
+
+    private var recordBtn: some View {
+        Button { showRecordMenu = true } label: {
+            VStack(spacing: 2) {
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 30, height: 30)
+                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(Color(red: 0.22, green: 0.68, blue: 0.0))
+                }
+                Text("記録")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tabBtn(tag: Int, icon: String, label: String) -> some View {
+        let isSelected = selectedTab == tag
+        return Button { selectedTab = tag } label: {
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .foregroundColor(isSelected ? Color(red: 0.22, green: 0.68, blue: 0.0) : .white.opacity(0.88))
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.white : Color.clear)
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
     }
 }
 

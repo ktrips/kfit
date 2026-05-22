@@ -8,8 +8,10 @@ struct HistoryView: View {
     @State private var isLoading = true
 
     private let exerciseEmoji: [String: String] = [
+        "腕立て": "💪", "スクワット": "🏋️", "腹筋": "🔥",
+        "プランク": "🧘", "ランジ": "🦵",
         "push": "💪", "squat": "🏋️", "sit": "🔥",
-        "lunge": "🚶", "burpee": "🔥", "plank": "🧱",
+        "lunge": "🦵", "plank": "🧘",
     ]
 
     var body: some View {

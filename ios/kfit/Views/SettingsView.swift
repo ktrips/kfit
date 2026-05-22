@@ -55,6 +55,7 @@ struct SettingsView: View {
     @State private var showSetEditor = false
     @State private var showSensitivityEditor = false
     @State private var showIntakeSettings = false
+    @State private var showDietGoalSettings = false
     @State private var showLLMSettings = false
     @State private var showAddCustomGoal = false
     @State private var newGoalName = ""
@@ -72,6 +73,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     headerSection
                     permissionBanner
+                    dietGoalSection
                     // 時間帯別の目標（インライン表示）
                     timeSlotGoalsInlineSection
                     setConfigurationSection
@@ -108,6 +110,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showIntakeSettings) {
             IntakeSettingsView()
+        }
+        .sheet(isPresented: $showDietGoalSettings) {
+            NavigationView { DietGoalSettingsView() }
         }
         .sheet(isPresented: $showLLMSettings) {
             NavigationView { LLMSettingsView() }
@@ -225,6 +230,19 @@ struct SettingsView: View {
                     ), in: 50...100, step: 5
                 )
             }
+
+            globalDivider
+
+            // マインドフルネス計測
+            globalToggleRow(
+                emoji: "🧘", label: "マインドフルネスを計測",
+                badge: timeSlotManager.settings.globalGoals.mindfulnessEnabled ? "ON" : nil,
+                badgeColor: Color.duoPurple,
+                isOn: Binding(
+                    get: { timeSlotManager.settings.globalGoals.mindfulnessEnabled },
+                    set: { v in timeSlotManager.settings.globalGoals.mindfulnessEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
+                )
+            )
 
             globalDivider
 
@@ -481,25 +499,6 @@ struct SettingsView: View {
                         Spacer()
                     }
                 }
-
-                slotStepperRow(
-                    emoji: "🍽️", label: "食事目標",
-                    valueText: goal.logGoal.mealGoal == 0 ? "なし" : "\(goal.logGoal.mealGoal)kcal",
-                    valueColor: goal.logGoal.mealGoal > 0 ? Color.duoOrange : Color(.systemGray3),
-                    value: Binding(
-                        get: { goal.logGoal.mealGoal },
-                        set: { v in var g = goal; g.logGoal.mealGoal = v; timeSlotManager.settings.updateGoal(g); Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 0...2000, step: 50
-                )
-                slotStepperRow(
-                    emoji: "💧", label: "水分目標",
-                    valueText: goal.logGoal.drinkGoal == 0 ? "なし" : "\(goal.logGoal.drinkGoal)ml",
-                    valueColor: goal.logGoal.drinkGoal > 0 ? Color.duoBlue : Color(.systemGray3),
-                    value: Binding(
-                        get: { goal.logGoal.drinkGoal },
-                        set: { v in var g = goal; g.logGoal.drinkGoal = v; timeSlotManager.settings.updateGoal(g); Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 0...2000, step: 50
-                )
 
                 customActivityRows(slot: slot, goal: goal)
 
@@ -799,6 +798,46 @@ struct SettingsView: View {
             }
             .background(Color.white)
             .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+    }
+
+    // MARK: - ダイエット目標設定
+
+    private var dietGoalSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "🎯", title: "ダイエット目標",
+                          subtitle: "目標体重・カロリー収支ゴール")
+
+            Button {
+                showDietGoalSettings = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "target")
+                        .font(.title3)
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("目標設定")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        let s = DietGoalManager.shared.settings
+                        let deficit = s.dailyDeficitGoal
+                        if s.targetWeight > 0 {
+                            Text(String(format: "目標 %.1f kg  |  1日収支 %+d kcal", s.targetWeight, deficit))
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                        } else {
+                            Text("目標体重・カロリーゴールを設定")
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+            }
+            .background(Color.white)
+            .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
     }

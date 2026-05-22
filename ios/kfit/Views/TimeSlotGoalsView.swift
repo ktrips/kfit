@@ -261,6 +261,138 @@ struct TimeSlotGoalsView: View {
 
             Divider()
 
+            // 食事カロリー目標（1日合計）
+            Toggle(isOn: Binding(
+                get: { timeSlotManager.settings.globalGoals.mealEnabled },
+                set: { newValue in
+                    timeSlotManager.settings.globalGoals.mealEnabled = newValue
+                    Task { await timeSlotManager.saveTodaySettings() }
+                }
+            )) {
+                HStack(spacing: 8) {
+                    Text("🍱")
+                        .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("食事カロリー目標")
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundColor(Color.duoDark)
+                        Text("1日の合計摂取カロリー目標")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            .tint(Color.duoOrange)
+
+            if timeSlotManager.settings.globalGoals.mealEnabled {
+                HStack {
+                    Text("1日の目標:")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                    Stepper("\(timeSlotManager.settings.globalGoals.dailyMealKcal) kcal",
+                           value: Binding(
+                               get: { timeSlotManager.settings.globalGoals.dailyMealKcal },
+                               set: { newValue in
+                                   timeSlotManager.settings.globalGoals.dailyMealKcal = newValue
+                                   Task { await timeSlotManager.saveTodaySettings() }
+                               }
+                           ),
+                           in: 500...4000,
+                           step: 100)
+                    .font(.subheadline).fontWeight(.bold)
+                }
+                .padding(.leading, 40)
+
+                let totalMealLogged = TimeSlot.allCases.reduce(0) { sum, s in
+                    sum + (timeSlotManager.progress.progressFor(s)?.logProgress.mealLogged ?? 0)
+                }
+                let mealGoal = timeSlotManager.settings.globalGoals.dailyMealKcal
+                if totalMealLogged > 0 {
+                    HStack(spacing: 8) {
+                        Text("今日:")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("\(totalMealLogged) / \(mealGoal) kcal")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(totalMealLogged >= mealGoal ? Color.duoGreen : Color.duoDark)
+                        if totalMealLogged >= mealGoal {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color.duoGreen)
+                                .font(.caption)
+                        }
+                    }
+                    .padding(.leading, 40)
+                }
+            }
+
+            Divider()
+
+            // 水分目標（1日合計）
+            Toggle(isOn: Binding(
+                get: { timeSlotManager.settings.globalGoals.drinkEnabled },
+                set: { newValue in
+                    timeSlotManager.settings.globalGoals.drinkEnabled = newValue
+                    Task { await timeSlotManager.saveTodaySettings() }
+                }
+            )) {
+                HStack(spacing: 8) {
+                    Text("💧")
+                        .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("水分目標")
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundColor(Color.duoDark)
+                        Text("1日の合計水分摂取量目標")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            .tint(Color.duoBlue)
+
+            if timeSlotManager.settings.globalGoals.drinkEnabled {
+                HStack {
+                    Text("1日の目標:")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                    Stepper("\(timeSlotManager.settings.globalGoals.dailyDrinkMl) ml",
+                           value: Binding(
+                               get: { timeSlotManager.settings.globalGoals.dailyDrinkMl },
+                               set: { newValue in
+                                   timeSlotManager.settings.globalGoals.dailyDrinkMl = newValue
+                                   Task { await timeSlotManager.saveTodaySettings() }
+                               }
+                           ),
+                           in: 500...5000,
+                           step: 100)
+                    .font(.subheadline).fontWeight(.bold)
+                }
+                .padding(.leading, 40)
+
+                let totalDrinkLogged = TimeSlot.allCases.reduce(0) { sum, s in
+                    sum + (timeSlotManager.progress.progressFor(s)?.logProgress.drinkLogged ?? 0)
+                }
+                let drinkGoal = timeSlotManager.settings.globalGoals.dailyDrinkMl
+                if totalDrinkLogged > 0 {
+                    HStack(spacing: 8) {
+                        Text("今日:")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("\(totalDrinkLogged) / \(drinkGoal) ml")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(totalDrinkLogged >= drinkGoal ? Color.duoGreen : Color.duoDark)
+                        if totalDrinkLogged >= drinkGoal {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Color.duoGreen)
+                                .font(.caption)
+                        }
+                    }
+                    .padding(.leading, 40)
+                }
+            }
+
+            Divider()
+
             // 体重計測目標
             Toggle(isOn: Binding(
                 get: { timeSlotManager.settings.globalGoals.weightEnabled },
@@ -553,8 +685,10 @@ struct TimeSlotGoalsView: View {
                 )
             }
 
-            // ログ目標
-            logGoalRow(logGoal: goal.logGoal, logProgress: progress.logProgress)
+            // ログ目標（マインド入力のみ。食事・水分は1日全体の目標で管理）
+            if goal.logGoal.mindInputRequired {
+                logGoalRow(logGoal: goal.logGoal, logProgress: progress.logProgress)
+            }
 
             // 編集ボタン
             NavigationLink {
@@ -634,21 +768,13 @@ struct TimeSlotGoalsView: View {
                     .foregroundColor(Color.duoDark)
 
                 HStack(spacing: 8) {
-                    if logGoal.mealRequired {
-                        logBadge(label: "食事", completed: logProgress.mealLogged)
-                    }
-                    if logGoal.drinkRequired {
-                        logBadge(label: "飲み物", completed: logProgress.drinkLogged)
-                    }
-                    if logGoal.mindInputRequired {
-                        logBadge(label: "マインド", completed: logProgress.mindInputLogged)
-                    }
+                    logBadge(label: "マインド", completed: logProgress.mindInputLogged)
                 }
             }
 
             Spacer()
 
-            if logProgress.completedCount >= logGoal.totalRequired {
+            if logProgress.mindInputLogged > 0 {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(Color.duoGreen)
                     .font(.title3)

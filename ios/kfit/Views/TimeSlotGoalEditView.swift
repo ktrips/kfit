@@ -7,8 +7,6 @@ struct TimeSlotGoalEditView: View {
 
     @State private var trainingGoal: Int = 1
     @State private var mindfulnessGoal: Int = 1
-    @State private var mealGoal: Int = 1
-    @State private var drinkGoal: Int = 1
     @State private var mindInputRequired: Bool = false
     // ストレッチ・ヨガ
     @State private var stretchEnabled: Bool = false
@@ -231,9 +229,6 @@ struct TimeSlotGoalEditView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle(icon: "📝", title: "ログ記録")
 
-            logStepperRow(icon: "🍽️", label: "食事目標", value: $mealGoal, color: Color.duoOrange, unit: "kcal", step: 50, max: 2000)
-            logStepperRow(icon: "💧", label: "水分目標", value: $drinkGoal, color: Color.duoBlue, unit: "ml", step: 50, max: 2000)
-
             Toggle(isOn: $mindInputRequired) {
                 HStack(spacing: 8) {
                     Text("💭")
@@ -244,55 +239,11 @@ struct TimeSlotGoalEditView: View {
                 }
             }
             .tint(Color.duoPurple)
-
-            Text("食事: 0=不要、N=この時間帯の目標摂取kcal　水分: 0=不要、N=目標ml")
-                .font(.caption)
-                .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    private func logStepperRow(icon: String, label: String, value: Binding<Int>, color: Color, unit: String = "回", step: Int = 1, max: Int = 10) -> some View {
-        HStack {
-            Text(icon).font(.title3)
-            Text(label)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundColor(Color.duoDark)
-            Spacer()
-            HStack(spacing: 12) {
-                Button {
-                    if value.wrappedValue >= step {
-                        value.wrappedValue -= step
-                    } else {
-                        value.wrappedValue = 0
-                    }
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(value.wrappedValue > 0 ? color : Color(.systemGray4))
-                }
-                .disabled(value.wrappedValue <= 0)
-
-                Text(value.wrappedValue == 0 ? "なし" : "\(value.wrappedValue)\(unit)")
-                    .font(.subheadline).fontWeight(.black)
-                    .foregroundColor(Color.duoDark)
-                    .frame(width: 60)
-
-                Button {
-                    if value.wrappedValue < max {
-                        value.wrappedValue = min(max, value.wrappedValue + step)
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(value.wrappedValue < max ? color : Color(.systemGray4))
-                }
-                .disabled(value.wrappedValue >= max)
-            }
-        }
     }
 
     // MARK: - Reminder Section
@@ -334,8 +285,6 @@ struct TimeSlotGoalEditView: View {
         if let goal = timeSlotManager.settings.goalFor(timeSlot) {
             trainingGoal = goal.trainingGoal
             mindfulnessGoal = goal.mindfulnessGoal
-            mealGoal = goal.logGoal.mealGoal
-            drinkGoal = goal.logGoal.drinkGoal
             mindInputRequired = goal.logGoal.mindInputRequired
             stretchEnabled = goal.stretchGoal.enabled
             stretchMinutes = goal.stretchGoal.stretchMinutes
@@ -347,8 +296,6 @@ struct TimeSlotGoalEditView: View {
         var goal = timeSlotManager.settings.goalFor(timeSlot) ?? TimeSlotGoal(timeSlot: timeSlot)
         goal.trainingGoal = trainingGoal
         goal.mindfulnessGoal = mindfulnessGoal
-        goal.logGoal.mealGoal = mealGoal
-        goal.logGoal.drinkGoal = drinkGoal
         goal.logGoal.mindInputRequired = mindInputRequired
         goal.stretchGoal.enabled = stretchEnabled
         goal.stretchGoal.stretchMinutes = stretchMinutes

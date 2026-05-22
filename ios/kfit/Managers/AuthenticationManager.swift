@@ -581,6 +581,82 @@ class AuthenticationManager: ObservableObject {
         invalidateTodayExercisesCache()
     }
 
+    // MARK: - Weekly Set Counts
+    func fetchWeeklySetCounts() async -> [String: Int] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [:] }
+        var cal = Calendar.current
+        cal.firstWeekday = 2
+        let today = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
+
+        guard let snapshot = try? await db.collection("users").document(userId)
+            .collection("completed-sets")
+            .whereField("timestamp", isGreaterThanOrEqualTo: weekStart)
+            .whereField("timestamp", isLessThan: weekEnd)
+            .getDocuments() else { return [:] }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        var counts: [String: Int] = [:]
+        for doc in snapshot.documents {
+            guard let ts = (doc.data()["timestamp"] as? Timestamp)?.dateValue() else { continue }
+            counts[formatter.string(from: ts), default: 0] += 1
+        }
+        return counts
+    }
+
+    // MARK: - Weekly Intake Data (食事・水分)
+    func fetchWeeklyIntakeData() async -> [String: [String: Int]] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [:] }
+        var cal = Calendar.current
+        cal.firstWeekday = 2
+        let today = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        var result: [String: [String: Int]] = [:]
+
+        if let snap = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("meals").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: weekStart)
+            .whereField("timestamp", isLessThan: weekEnd)
+            .getDocuments() {
+            for doc in snap.documents {
+                let d = doc.data()
+                guard let mealTypeStr = d["mealType"] as? String,
+                      let ts = (d["timestamp"] as? Timestamp)?.dateValue() else { continue }
+                let calories: Int
+                if let c = d["calories"] as? Int { calories = c }
+                else if let c = d["calories"] as? Double { calories = Int(c) }
+                else { continue }
+                let key = fmt.string(from: ts)
+                result[key, default: [:]][mealTypeStr, default: 0] += calories
+            }
+        }
+
+        if let snap = try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("water").collection("logs")
+            .whereField("timestamp", isGreaterThanOrEqualTo: weekStart)
+            .whereField("timestamp", isLessThan: weekEnd)
+            .getDocuments() {
+            for doc in snap.documents {
+                let d = doc.data()
+                guard let ts = (d["timestamp"] as? Timestamp)?.dateValue() else { continue }
+                let amountMl: Int
+                if let a = d["amountMl"] as? Int { amountMl = a }
+                else if let a = d["amountMl"] as? Double { amountMl = Int(a) }
+                else { continue }
+                let key = fmt.string(from: ts)
+                result[key, default: [:]]["waterMl", default: 0] += amountMl
+            }
+        }
+
+        return result
+    }
+
     // MARK: - History
     func getRecentExercises(days: Int = 14) async -> [DayExercises] {
         guard let userId = Auth.auth().currentUser?.uid else { return [] }
@@ -589,41 +665,69 @@ class AuthenticationManager: ObservableObject {
         let end   = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
 
         guard let snapshot = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
+            .collection("completed-sets")
             .whereField("timestamp", isGreaterThanOrEqualTo: start)
             .whereField("timestamp", isLessThan: end)
             .getDocuments() else { return [] }
 
-        var byDay: [String: [CompletedExercise]] = [:]
         let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
+        // Group set entries by day (each entry is a timestamp + parsed exercises)
+        var byDay: [String: [(ts: Date, exercises: [CompletedExercise])]] = [:]
+
         for doc in snapshot.documents {
-            if let ex = try? doc.data(as: CompletedExercise.self) {
-                let key = formatter.string(from: ex.timestamp)
-                byDay[key, default: []].append(ex)
+            let data = doc.data()
+            guard let ts = (data["timestamp"] as? Timestamp)?.dateValue() else { continue }
+            let key = formatter.string(from: ts)
+
+            let exerciseDicts = data["exercises"] as? [[String: Any]] ?? []
+            let exercises: [CompletedExercise] = exerciseDicts.compactMap { exDict in
+                guard let exerciseId = exDict["exerciseId"] as? String,
+                      let exerciseName = exDict["exerciseName"] as? String,
+                      let reps = exDict["reps"] as? Int,
+                      let points = exDict["points"] as? Int else { return nil }
+                return CompletedExercise(id: nil, exerciseId: exerciseId,
+                                        exerciseName: exerciseName, reps: reps,
+                                        points: points, formScore: 0.0, timestamp: ts)
             }
+            byDay[key, default: []].append((ts: ts, exercises: exercises))
         }
 
         var result: [DayExercises] = []
         for i in 0..<days {
             let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: Date())) ?? Date()
             let key = formatter.string(from: date)
-            let exs = byDay[key] ?? []
-            if !exs.isEmpty {
-                let month = calendar.component(.month, from: date)
-                let day   = calendar.component(.day, from: date)
-                let label = i == 0 ? "今日" : i == 1 ? "昨日" : "\(month)/\(day)"
+            guard let entries = byDay[key], !entries.isEmpty else { continue }
 
-                // セット分割（30分間隔でセッションを判定）
-                let sets = buildSetsFromExercises(exs)
+            let month = calendar.component(.month, from: date)
+            let day   = calendar.component(.day, from: date)
+            let label = i == 0 ? "今日" : i == 1 ? "昨日" : "\(month)/\(day)"
 
-                result.append(DayExercises(
-                    date: key,
-                    label: label,
-                    sets: sets,
-                    totalReps: exs.reduce(0) { $0 + $1.reps },
-                    totalPoints: exs.reduce(0) { $0 + $1.points }
-                ))
+            // Build ExerciseSet objects directly from completed-sets entries
+            let sorted = entries.sorted { $0.ts < $1.ts }
+            var amCount = 0, pmCount = 0
+            let sets: [ExerciseSet] = sorted.map { entry in
+                let hour = calendar.component(.hour, from: entry.ts)
+                let isAM = hour < 12
+                let period = isAM ? "午前" : "午後"
+                if isAM { amCount += 1 } else { pmCount += 1 }
+                let setNumber = isAM ? amCount : pmCount
+                return ExerciseSet(
+                    startTime: entry.ts,
+                    period: period,
+                    setNumber: setNumber,
+                    exercises: entry.exercises,
+                    totalReps: entry.exercises.reduce(0) { $0 + $1.reps },
+                    totalPoints: entry.exercises.reduce(0) { $0 + $1.points }
+                )
             }
+
+            result.append(DayExercises(
+                date: key,
+                label: label,
+                sets: sets,
+                totalReps: sets.reduce(0) { $0 + $1.totalReps },
+                totalPoints: sets.reduce(0) { $0 + $1.totalPoints }
+            ))
         }
         return result
     }

@@ -178,7 +178,12 @@ struct WatchWorkoutFlowView: View {
             }
             .padding(.top, 2)
 
-            Text(current.emoji).font(.system(size: 36))
+            if current.exerciseId == "squat" || current.exerciseId == "lunge" {
+                GIFAnimationView()
+                    .frame(width: 70, height: 70)
+            } else {
+                Text(current.emoji).font(.system(size: 36))
+            }
 
             HStack(spacing: 3) {
                 Text(current.name)

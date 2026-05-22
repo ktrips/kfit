@@ -71,21 +71,40 @@ struct ExerciseTrackerView: View {
                 if showCelebration {
                     celebrationView
                 } else {
-                    VStack(spacing: 0) {
-                        header
-                        ScrollView(showsIndicators: false) {
-                            VStack(spacing: 10) {
-                                progressDots
-                                if !completedExercises.isEmpty {
-                                    completedList
-                                }
-                                currentExerciseCard
-                                repCounter
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 10) {
+                            progressDots
+                            if !completedExercises.isEmpty {
+                                completedList
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.top, 4)
-                            .padding(.bottom, geometry.safeAreaInsets.bottom + 70)
+                            currentExerciseCard
+                            repCounter
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.top, geometry.safeAreaInsets.top + 24)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 70)
+                    }
+
+                    // フローティング閉じるボタン
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button {
+                                motionManager.stopDetection()
+                                plankTimer?.invalidate()
+                                isPresented = false
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color(hex: "#555555"))
+                                    .frame(width: 26, height: 26)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Circle())
+                            }
+                        }
+                        .padding(.top, geometry.safeAreaInsets.top + 8)
+                        .padding(.trailing, 14)
+                        Spacer()
                     }
 
                     VStack {
@@ -142,10 +161,19 @@ struct ExerciseTrackerView: View {
         .padding(.vertical, 6)
     }
 
+    private var showsFitingoGIF: Bool {
+        current.id == "squat" || current.id == "lunge"
+    }
+
     // MARK: - 現在の種目カード
     private var currentExerciseCard: some View {
         VStack(spacing: 12) {
-            Text(current.emoji).font(.system(size: 70))
+            if showsFitingoGIF {
+                GIFAnimationView(gifName: "fitingo_workout")
+                    .frame(width: 130, height: 130)
+            } else {
+                Text(current.emoji).font(.system(size: 70))
+            }
             Text(current.name)
                 .font(.title2).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
@@ -157,43 +185,6 @@ struct ExerciseTrackerView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    // MARK: - ヘッダー（コンパクト）
-    private var header: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topTrailing) {
-                HStack(spacing: 3) {
-                    Image("mascot")
-                        .resizable().scaledToFill()
-                        .frame(width: 14, height: 14)
-                        .clipShape(Circle())
-
-                    Text("トレーニング")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color.duoDark)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
-                    motionManager.stopDetection()
-                    plankTimer?.invalidate()
-                    isPresented = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color.duoSubtitle)
-                        .padding(3)
-                        .background(Color.white.opacity(0.8))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, geometry.safeAreaInsets.top > 0 ? geometry.safeAreaInsets.top + 2 : 6)
-            .padding(.bottom, 1)
-            .background(Color.duoBg.opacity(0.95))
-        }
-        .frame(height: 28)
     }
 
     // MARK: - Repカウンター

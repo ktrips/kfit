@@ -173,15 +173,7 @@ struct TimeSlotProgress: Codable, Identifiable {
             }
         }
 
-        // ログ
-        if goal.logGoal.mealGoal > 0 {
-            totalGoals += 1
-            if logProgress.mealLogged >= goal.logGoal.mealGoal { completed += 1 }
-        }
-        if goal.logGoal.drinkGoal > 0 {
-            totalGoals += 1
-            if logProgress.drinkLogged >= goal.logGoal.drinkGoal { completed += 1 }
-        }
+        // ログ（食事・水分は1日全体の目標で管理するため除外）
         if goal.logGoal.mindInputRequired {
             totalGoals += 1
             if logProgress.mindInputLogged > 0 { completed += 1 }
@@ -262,7 +254,12 @@ struct DailyGlobalGoals: Codable {
     var sleepScoreThreshold: Int = 80          // 睡眠スコアの目標（80点以上で達成）
     var pfcEnabled: Bool = false               // PFCバランス目標を使用するか
     var pfcScoreThreshold: Int = 80            // PFCバランススコアの目標（80点以上で達成）
+    var mindfulnessEnabled: Bool = true        // マインドフルネス計測を使用するか
     var weightEnabled: Bool = false            // 体重計測目標を使用するか
+    var mealEnabled: Bool = true               // 食事カロリー目標を使用するか
+    var dailyMealKcal: Int = 2000             // 1日の食事カロリー目標（4時間帯に均等配分）
+    var drinkEnabled: Bool = true              // 水分目標を使用するか
+    var dailyDrinkMl: Int = 2000             // 1日の水分目標ml（4時間帯に均等配分）
     var customGoals: [CustomDailyGoal] = []    // ユーザー定義のカスタム目標
 }
 

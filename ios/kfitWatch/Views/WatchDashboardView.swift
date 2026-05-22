@@ -22,6 +22,16 @@ private func timeString(from date: Date) -> String {
     return formatter.string(from: date)
 }
 
+private struct WatchFaceTaskNode {
+    let id: String
+    let emoji: String
+    let accentColor: Color
+    let isDone: Bool
+    let actionType: String  // "training" | "mindfulness" | "meal" | "water" | "stretch"
+    var mealSubtype: String? = nil
+    var intakeMessage: String = ""
+}
+
 struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @StateObject private var healthKit = WatchHealthKitManager.shared
@@ -792,116 +802,202 @@ struct WatchDashboardView: View {
 
     // MARK: - ウォッチフェイスページ（5ページ目）
     private var watchFacePage: some View {
-        VStack(spacing: 5) {
-            Spacer(minLength: 2)
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "M/d (EEE)"
+        dateFmt.locale = Locale(identifier: "ja_JP")
+        let dateStr = dateFmt.string(from: Date())
+        let positions = watchFaceNodePositions
+        let doneCount = positions.filter { $0.0.isDone }.count
+        let totalCount = positions.count
 
-            // ── 時刻 ──────────────────────────────────────
-            Text(Date(), style: .time)
-                .font(.system(size: 28, weight: .black, design: .rounded))
-                .foregroundColor(.white)
-                .monospacedDigit()
-
-            // ── 日付 + ストリーク ──────────────────────────
-            HStack(spacing: 6) {
-                Text(watchFaceDateString)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.65))
-                if connectivity.streak > 0 {
-                    HStack(spacing: 2) {
-                        Text("🔥").font(.system(size: 10))
-                        Text("\(connectivity.streak)d")
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundColor(.orange)
+        return VStack(spacing: 0) {
+            // 日付 + ストリーク（右上、見やすく大きめ）
+            HStack(alignment: .top) {
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(dateStr)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    if connectivity.streak > 0 {
+                        HStack(spacing: 2) {
+                            Text("🔥").font(.system(size: 15))
+                            Text("\(connectivity.streak)")
+                                .font(.system(size: 16, weight: .black, design: .rounded))
+                                .foregroundColor(.orange)
+                            Text("日")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.75))
+                        }
                     }
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
 
-            // ── アクティビティリング（タップでワークアウト開始）──
-            Button(action: { showFlow = true }) {
-                ZStack {
-                    WatchRingView(
-                        progress: healthKit.activityMoveGoal > 0
-                            ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
-                        color: Color(red: 0.98, green: 0.07, blue: 0.31),
-                        diameter: 90, lineWidth: 11
-                    )
-                    WatchRingView(
-                        progress: healthKit.activityExerciseGoal > 0
-                            ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
-                        color: Color(red: 0.57, green: 0.91, blue: 0.16),
-                        diameter: 64, lineWidth: 11
-                    )
-                    WatchRingView(
-                        progress: healthKit.activityStandGoal > 0
-                            ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
-                        color: Color(red: 0.12, green: 0.89, blue: 0.94),
-                        diameter: 38, lineWidth: 11
-                    )
-                    // 中央：トレーニング進捗
-                    let trainingDone = connectivity.totalTrainingGoal > 0
-                                    && connectivity.totalTraining >= connectivity.totalTrainingGoal
-                    VStack(spacing: 1) {
-                        Text("💪").font(.system(size: 10))
-                        Text("\(connectivity.totalTraining)/\(connectivity.totalTrainingGoal)")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
-                            .foregroundColor(trainingDone ? duoGreen : .white)
+            // 渦巻きタスクレイアウト（中心=朝→外側=夜）
+            ZStack {
+                // 渦巻きガイドライン（Canvas でZStack中心を基準に描画）
+                Canvas { ctx, size in
+                    let cx = size.width / 2, cy = size.height / 2
+                    var path = Path()
+                    let steps = 120
+                    let rStart: Double = 12, rEnd: Double = 69
+                    let θ0 = -90.0 * .pi / 180.0
+                    let totalAngle = 305.0 * .pi / 180.0
+                    for i in 0...steps {
+                        let t = Double(i) / Double(steps)
+                        let r = rStart + (rEnd - rStart) * t
+                        let θ = θ0 + totalAngle * t
+                        let pt = CGPoint(x: cx + r * cos(θ), y: cy + r * sin(θ))
+                        if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                    }
+                    ctx.stroke(path, with: .color(.white.opacity(0.12)),
+                               style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [3, 5]))
+                }
+
+                // タスクノード（内側=朝、外側=夜の渦巻き配置）
+                ForEach(positions.indices, id: \.self) { i in
+                    let (node, deg, r) = positions[i]
+                    let rad = deg * .pi / 180.0
+                    watchFaceNodeView(node)
+                        .offset(x: r * CGFloat(cos(rad)), y: r * CGFloat(sin(rad)))
+                }
+
+                // 中央: マスコット（タップでトレーニング開始）
+                Button { showFlow = true } label: {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(
+                                colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 42, height: 42)
+                        Image("mascot")
+                            .resizable().scaledToFill()
+                            .frame(width: 30, height: 30)
+                            .clipShape(Circle())
                     }
                 }
-                .frame(width: 90, height: 90)
+                .buttonStyle(.plain)
+                .handGestureShortcut(.primaryAction)
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // ── 下部3指標 ──────────────────────────────────
-            HStack(spacing: 5) {
-                watchFaceStat(
-                    icon: "⭐",
-                    value: connectivity.todayXP >= 1000
-                        ? String(format: "%.1fk", Double(connectivity.todayXP) / 1000.0)
-                        : "\(connectivity.todayXP)",
-                    label: "XP"
-                )
-                watchFaceStat(
-                    icon: "❤️",
-                    value: healthKit.averageHeartRate > 0 ? "\(healthKit.averageHeartRate)" : "—",
-                    label: "bpm"
-                )
-                watchFaceStat(
-                    icon: "😴",
-                    value: healthKit.sleepHours > 0
-                        ? String(format: "%.1f", healthKit.sleepHours) : "—",
-                    label: "h"
-                )
+            // 進捗テキスト（右下）
+            HStack {
+                Spacer()
+                Text(doneCount == totalCount && totalCount > 0
+                     ? "全タスク完了！🎉"
+                     : "\(doneCount)/\(totalCount) 完了")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(doneCount == totalCount ? duoGreen : .white.opacity(0.55))
             }
-
-            Spacer(minLength: 2)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 4)
         }
-        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func watchFaceStat(icon: String, value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(icon).font(.system(size: 13))
-            Text(value)
-                .font(.system(size: 12, weight: .black, design: .rounded))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(label)
-                .font(.system(size: 8))
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(Color.white.opacity(0.07))
-        .cornerRadius(8)
+    // 渦巻き配置ノード（内側=朝r≈30 → 外側=夜r≈66）
+    // 朝: 💪🍳💧  昼: 💪🍱💧  午後: 💪🍃🤸💧  夜: 💪🍽️💧🧘
+    private var watchFaceNodePositions: [(WatchFaceTaskNode, Double, Double)] {
+        let trainColor   = Color(red: 1.0,  green: 0.588, blue: 0.0)
+        let mindColor    = Color(red: 0.808, green: 0.51,  blue: 1.0)
+        let waterColor   = Color(red: 0.27,  green: 0.67,  blue: 1.0)
+        let mealColor    = Color(red: 0.345, green: 0.80,  blue: 0.008)
+        let stretchColor = Color(red: 0.3,   green: 0.85,  blue: 0.75)
+
+        let tDone = connectivity.totalTraining
+        let mDone = connectivity.totalMindfulness
+        let water = Int(healthKit.todayDietaryWater)
+        let cals  = Int(healthKit.todayDietaryCalories)
+        let dGoal = max(connectivity.totalDrinkGoal, 1)
+        let mealG = max(connectivity.totalMealGoal, 1)
+
+        // (node, angleDeg, radius)
+        // 朝（内側 r≈30）→ 昼（r≈44）→ 午後（r≈57）→ 夜（外側 r≈66）
+        // 時計回りに流れるよう角度を連続させ、渦巻き感を演出
+        return [
+            // 朝（内側 r=30、上から時計回りへ）
+            (WatchFaceTaskNode(id:"t0", emoji:"💪", accentColor:trainColor,
+                isDone: tDone >= 1, actionType:"training"), -140, 30),
+            (WatchFaceTaskNode(id:"bf", emoji:"🍳", accentColor:mealColor,
+                isDone: cals >= mealG / 3, actionType:"meal", mealSubtype:"breakfast",
+                intakeMessage:"朝食\(connectivity.breakfastCalories)kcalを追加しますか？"), -90, 30),
+            (WatchFaceTaskNode(id:"w0", emoji:"💧", accentColor:waterColor,
+                isDone: water >= dGoal / 4, actionType:"water",
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), -40, 30),
+
+            // 昼（中 r=44、右上から右へ）
+            (WatchFaceTaskNode(id:"t1", emoji:"💪", accentColor:trainColor,
+                isDone: tDone >= 2, actionType:"training"), -15, 44),
+            (WatchFaceTaskNode(id:"ln", emoji:"🍱", accentColor:mealColor,
+                isDone: cals >= mealG * 2 / 3, actionType:"meal", mealSubtype:"lunch",
+                intakeMessage:"昼食\(connectivity.lunchCalories)kcalを追加しますか？"), 20, 44),
+            (WatchFaceTaskNode(id:"w1", emoji:"💧", accentColor:waterColor,
+                isDone: water >= dGoal / 2, actionType:"water",
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 55, 44),
+
+            // 午後（中外 r=57、右下から下へ）
+            (WatchFaceTaskNode(id:"t2", emoji:"💪", accentColor:trainColor,
+                isDone: tDone >= 3, actionType:"training"), 82, 57),
+            (WatchFaceTaskNode(id:"sn", emoji:"🍃", accentColor:mealColor,
+                isDone: false, actionType:"meal", mealSubtype:"snack",
+                intakeMessage:"間食を追加しますか？"), 110, 57),
+            (WatchFaceTaskNode(id:"st", emoji:"🤸", accentColor:stretchColor,
+                isDone: false, actionType:"stretch"), 138, 57),
+            (WatchFaceTaskNode(id:"w2", emoji:"💧", accentColor:waterColor,
+                isDone: water >= dGoal * 3 / 4, actionType:"water",
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 165, 57),
+
+            // 夜（外側 r=66、下から左下へ）
+            (WatchFaceTaskNode(id:"t3", emoji:"💪", accentColor:trainColor,
+                isDone: tDone >= 4, actionType:"training"), 192, 66),
+            (WatchFaceTaskNode(id:"dn", emoji:"🍽️", accentColor:mealColor,
+                isDone: cals >= mealG, actionType:"meal", mealSubtype:"dinner",
+                intakeMessage:"夕食\(connectivity.dinnerCalories)kcalを追加しますか？"), 215, 66),
+            (WatchFaceTaskNode(id:"w3", emoji:"💧", accentColor:waterColor,
+                isDone: water >= dGoal, actionType:"water",
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 66),
+            (WatchFaceTaskNode(id:"md", emoji:"🧘", accentColor:mindColor,
+                isDone: mDone >= 1, actionType:"mindfulness"), 262, 66),
+        ]
     }
 
-    private var watchFaceDateString: String {
-        let f = DateFormatter()
-        f.dateFormat = "M/d (EEE)"
-        f.locale = Locale(identifier: "ja_JP")
-        return f.string(from: Date())
+    // タスクノードビュー（完了=塗りつぶし、未完了=輪郭+タップでアクション）
+    private func watchFaceNodeView(_ node: WatchFaceTaskNode) -> some View {
+        Group {
+            if node.isDone {
+                ZStack {
+                    Circle().fill(node.accentColor)
+                        .frame(width: 38, height: 38)
+                    Text(node.emoji).font(.system(size: 26))
+                }
+            } else {
+                Button {
+                    switch node.actionType {
+                    case "training":  showFlow = true
+                    case "mindfulness": openMindfulnessApp()
+                    case "meal", "water":
+                        if !node.intakeMessage.isEmpty {
+                            confirmIntake(type: node.actionType == "water" ? "water" : "meal",
+                                          subtype: node.mealSubtype,
+                                          message: node.intakeMessage)
+                        }
+                    default: break
+                    }
+                } label: {
+                    ZStack {
+                        Circle().fill(Color.black.opacity(0.35))
+                            .frame(width: 38, height: 38)
+                        Circle().stroke(node.accentColor.opacity(0.7), lineWidth: 1.5)
+                            .frame(width: 38, height: 38)
+                        Text(node.emoji).font(.system(size: 26))
+                            .opacity(0.6)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func ringLegendRow(color: Color, value: String, unit: String) -> some View {

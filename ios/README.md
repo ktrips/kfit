@@ -1,4 +1,4 @@
-# kfit iOS App (v0.9.22)
+# kfit iOS App (v0.9.23)
 
 A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, Firebase backend integration, and AI-powered nutrition analysis.
 
@@ -10,9 +10,11 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 - **Apple Watch Support** - Companion watchOS app with motion detection (20Hz) and haptic feedback
 - **HealthKit Integration** - Read heart rate, activity, sleep, and PFC nutrition data from Apple Health
 - **PFC Balance Analysis** - Score-based protein/fat/carbs balance tracking (0–100 points) with donut chart visualization
-- **Sleep Score Analysis** - Multi-factor sleep quality scoring (0–100 points) based on duration, deep sleep, and REM
+- **Sleep Score Analysis** - Multi-factor sleep quality scoring (0–100 points) based on duration, bedtime, and interruptions
 - **Daily Global Goals** - Set targets for workout, stand, sleep score, and PFC balance score
-- **Photo Log (AI Food Analysis)** - Analyze food photos with OpenAI / Anthropic Claude / Google Gemini 4 Flash
+- **Photo Log (AI Food Analysis)** - Analyze food photos with OpenAI / Anthropic Claude / Google Gemini 2.5 Flash
+- **Diet Goal Tab** - Target weight/body-fat/date, calorie plan, weekly burn/intake trends, and schedule progress
+- **MIND Tab** - Current/average heart rate, HRV-based stress score, and personalized recovery suggestions
 - **AI Training Plans** - Generate personalized workout plans
 - **Weekly Goals** - Set and track weekly exercise targets
 - **History View** - Review past 14 days of workouts
@@ -22,6 +24,10 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 - **HRV Stress Estimation** - Piecewise linear stress score (0–100) from average HRV value
 - **Grouped Training History** - Exercise history grouped by type; tap group to expand individual sets
 - **Time-based Stretch Goal** - Stretch goal measured in minutes (Reflect sessions only); configurable per time slot
+- **Five Time Slots** - Midnight, morning, noon, afternoon, and evening goals with custom activities
+- **Compact Bottom Menu** - Custom tab bar with FIT / GOAL / MIND / Record / Settings / More
+- **Fitingo Adaptive CTA** - Large mascot button changes image, message, and color based on training progress
+- **Fitingo Widgets** - Small/medium/large home widgets with progress-based background color and Fitingo mascot
 - **Weekly Weight/Fat Trend** - ±X kg/7日 and ±X%/7日 shown below current values in activity card
 - **Real-time Sync** - Firebase Firestore syncs with Web and Watch apps
 - **Watch Connectivity** - Bidirectional data sync between iPhone and Apple Watch
@@ -95,6 +101,9 @@ ios/
 │   │   ├── LoginView.swift
 │   │   ├── DashboardView.swift           # PFC円グラフ, 睡眠スコアカード
 │   │   ├── DailyIntakeView.swift         # PFCバランス分析セクション
+│   │   ├── GoalView.swift                # Diet Goal / タイムライン / 週間消費・摂取傾向
+│   │   ├── MindView.swift                # 心拍・HRV・ストレス分析 / 回復提案
+│   │   ├── DietGoalSettingsView.swift    # 体重・体脂肪・カロリー目標設定
 │   │   ├── TimeSlotGoalsView.swift       # 睡眠/PFC目標設定UI
 │   │   ├── ExerciseTrackerView.swift
 │   │   ├── WeeklyGoalView.swift
@@ -195,6 +204,18 @@ xcodebuild -scheme kfit test
 
 ## Recent Updates
 
+### v0.9.23 (2026-05-22)
+- ✅ **下部メニュー刷新**: カスタムタブバーで `FIT` / `GOAL` / `MIND` / `記録` / `設定` / `その他` を表示。記録ボタンは中央寄りの白い丸ボタンとして表示
+- ✅ **MINDタブ追加**: 現在の心拍数・HRV・ストレス状態、1日の平均心拍・平均HRV・平均ストレスを表示し、深呼吸、Reflect/ストレッチ、散歩、マッサージ、水分補給などを提案
+- ✅ **Diet Goalタブ追加**: 目標体重・体脂肪率・目標日・開始値・摂取/消費カロリー目標を設定。スタート/今日/ゴールの体重・体脂肪と差分をタイムライン表示
+- ✅ **Fitingoボタン刷新**: 大型カード内にマスコットを大きく表示。開始時/遅れ/達成に応じて画像・メッセージ・背景色が変化
+- ✅ **ホームヘッダー更新**: `Fitingo` 横に `M/d(E)` 形式の日付を表示。今日の状況カードはヘッダー非表示で上詰め
+- ✅ **時間帯別目標を5区分化**: 夜中(0:00–6:00)を追加し、夜中・朝・昼・午後・夜で管理
+- ✅ **食事/水分目標を数値化**: 食事kcal・水分mlで目標と実績を管理し、日次目標を時間帯へ配分
+- ✅ **カスタムアクティビティ**: 時間帯ごとに任意の習慣を追加し、目標達成に含められるように更新
+- ✅ **Watchダッシュボード拡張**: 摂取記録・メイン・ウェルネス・Health・Watch Face風ページに拡張。Watch Face風ページは日付/連続記録を右上に配置し、タスクアイコンサイズを調整
+- ✅ **Widget刷新**: Fitingoマスコット、日付時刻、進捗色連動背景、目標別進捗リストを表示
+
 ### v0.9.22 (2026-05-20)
 - ✅ **アクティビティスコア**: Move・エクササイズ・スタンド各リングの達成率を平均した総合スコア（0–100%）をアクティビティカードのヘッダーに表示。色分け（緑≥100%、オレンジ≥70%、赤<70%）
 - ✅ **HRVストレス推定**: 平均HRVから区分線形でストレススコア（0–100）を算出し、HealthViewのHRVカードにスコア・レベルラベル・プログレスバーで表示
@@ -214,7 +235,7 @@ xcodebuild -scheme kfit test
 - ✅ **PFC円グラフ**: ダッシュボードにドーナツ型グラフでPFC比率を可視化
 - ✅ **フォトログ改善**: JSON解析ロジック堅牢化（マークダウン・コードブロック除去）
 - ✅ **LLMエラーハンドリング強化**: OpenAI/Anthropic/Google全APIのステータスコード+レスポンスログ
-- ✅ **Gemini 4 Flash対応**: `gemini-4-flash-202603` に更新
+- ✅ **Gemini 2.5 Flash対応**: `gemini-2.5-flash` 系に更新
 - ✅ **UIリファイン**: マスコット画像表示、カロリー収支カラー（赤字=赤、黒字=黄色）
 - ✅ **マインドフルネス**: Apple Watchのマインドフルネスアプリを直接起動
 
@@ -255,7 +276,7 @@ pod 'GoogleSignIn'
 
 ## Version
 
-Current version: **0.9.22** (2026-05-20)
+Current version: **0.9.23** (2026-05-22)
 
 ## License
 

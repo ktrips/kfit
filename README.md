@@ -21,6 +21,10 @@
 | PFCバランス分析 | — | ✅ | — |
 | 睡眠スコア分析 | — | ✅ | — |
 | PFC・睡眠目標設定 | — | ✅ | — |
+| Diet Goal（体重・体脂肪・カロリー計画） | — | ✅ | — |
+| MIND（ストレス分析・回復提案） | — | ✅ | — |
+| 時間帯別目標（夜中/朝/昼/午後/夜） | — | ✅ | ✅ |
+| Reflect連携ストレッチ目標 | — | ✅ | ✅ |
 | 今日のセット表示 | ✅ | ✅ | ✅ |
 | 週間セット目標 | ✅ | ✅ | — |
 | 90日チャレンジ | ✅ | ✅ | — |
@@ -132,9 +136,9 @@ open kfit.xcworkspace
 - SwiftUI + Combine
 - CoreMotion (50Hz加速度計)
 - WatchConnectivity (デバウンス付き)
-- HealthKit (歩数・心拍数・睡眠・PFC栄養素)
+- HealthKit (歩数・心拍数・平均心拍・HRV・睡眠・PFC栄養素)
 - Firebase Auth + Firestore
-- LLM統合: OpenAI / Anthropic / Google Gemini 4 Flash（フォトログAI分析）
+- LLM統合: OpenAI / Anthropic / Google Gemini 2.5 Flash（フォトログAI分析）
 
 ### バックエンド
 - Firebase Authentication
@@ -159,6 +163,8 @@ kfit/
 │
 ├── ios/kfit/
 │   ├── Views/DashboardView.swift      # カロリー目標編集
+│   ├── Views/GoalView.swift           # Diet Goalタイムライン
+│   ├── Views/MindView.swift           # HRVストレス分析・回復提案
 │   ├── Managers/
 │   │   ├── AuthenticationManager.swift   # キャッシュ戦略
 │   │   ├── HealthKitManager.swift        # カロリー計算
@@ -211,6 +217,19 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 新機能
 
+### v0.9.23 (2026-05-22)
+- ✅ **Fitingoホーム刷新**: ヘッダーに `M/d(E)` 形式の日付を表示し、今日の状況カードはヘッダー非表示で上詰め表示
+- ✅ **Fitingoボタン強化**: 大型カード内にマスコットを大きく表示。進捗に応じて通常/JDI/炎マスコットとメッセージ、背景色（グリーン〜シアン → 黄 → オレンジ → 赤）が変化
+- ✅ **下部メニュー刷新**: 標準TabViewからコンパクトなカスタムタブバーへ変更し、`FIT` / `GOAL` / `MIND` / `記録` / `設定` / `その他` を表示
+- ✅ **MINDタブ追加**: 現在/平均の心拍数・HRV・ストレス指数を表示し、深呼吸、Reflect/ストレッチ、散歩、マッサージ、水分補給などの具体的な回復提案を表示
+- ✅ **Diet Goalタブ追加**: 目標体重・目標体脂肪率・目標日・開始値・摂取/消費カロリー目標を設定し、スタート/今日/ゴールの体重・体脂肪・差分をタイムラインで表示
+- ✅ **時間帯別目標の拡張**: 夜中(0–6時)を追加し、夜中/朝/昼/午後/夜の5区分で管理
+- ✅ **食事/水分目標を数値化**: 食事はkcal、水分はmlの目標として管理し、1日目標を時間帯へ配分
+- ✅ **Reflectストレッチ目標**: Apple WatchのReflectセッションを分数でカウントし、ストレッチ目標に反映
+- ✅ **カスタムアクティビティ**: 時間帯ごとに任意の習慣（読書、Duolingo、勉強など）を追加・達成管理
+- ✅ **Watchページ拡張**: 摂取記録/メイン/ウェルネス/Health/Watch Face風ページの5ページ構成に更新。Watch Face風ページは日付・連続記録を右上に表示し、タスクアイコンを見やすく調整
+- ✅ **Widget刷新**: Fitingoアイコン、日付時刻、進捗色連動背景、目標別進捗リストを表示
+
 ### v0.9.21 (2026-05-19)
 - ✅ **睡眠スコア計算式刷新**: 睡眠時間50% + 就寝時刻30% + 睡眠中断20%の3要素に変更
   - 就寝時刻: 24:00以前満点、以降10分毎に−1点
@@ -234,7 +253,7 @@ leaderboards/{weekId}/entries/
 - ✅ **PFC・睡眠目標設定**: 1日全体の目標にPFCスコア・睡眠スコアの目標を追加
 - ✅ **PFC円グラフ** (iOS): ダッシュボードにドーナツ型グラフでPFC比率を可視化
 - ✅ **フォトログ改善**: JSON解析の堅牢化（マークダウン除去）、全LLMのエラーハンドリング強化
-- ✅ **Gemini 4 Flash対応**: Google AIモデルを `gemini-4-flash-202603` に更新
+- ✅ **Gemini 2.5 Flash対応**: Google AIモデルを `gemini-2.5-flash` 系に更新
 - ✅ **UIリファイン**: マスコット画像表示、カロリー収支カラー改善（赤字=赤、黒字=黄色）
 - ✅ **フォトログボタン移動**: ダッシュボードのクイックメニューに統合
 - ✅ **マインドフルネス**: Apple Watchのマインドフルネスアプリを直接起動
@@ -352,4 +371,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Version 0.9.21 — Updated: May 19, 2026*
+*Version 0.9.23 — Updated: May 22, 2026*

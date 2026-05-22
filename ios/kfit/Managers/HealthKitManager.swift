@@ -107,6 +107,42 @@ struct SleepScoreAnalysis {
     var targetHours: Double = 7.0    // 目標睡眠時間（時間）
 }
 
+// MARK: - 週間カロリー記録（日別）
+struct DailyCalorieBalance: Identifiable {
+    let id = UUID()
+    let date: Date
+    let burned: Double    // 消費カロリー（active + resting）
+    let consumed: Double  // 摂取カロリー（dietaryEnergy）
+    var bodyMass: Double?           // kg（その日の最新計測値、なければnil）
+    var bodyFatPercentage: Double?  // %（その日の最新計測値、なければnil）
+    var steps: Int = 0              // 歩数
+    var balance: Int { Int(consumed) - Int(burned) }
+    var dayLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        return f.string(from: date)
+    }
+}
+
+// MARK: - 週間消費カロリー記録（安静時・活動別）
+struct DailyBurnSummary: Identifiable {
+    let id = UUID()
+    let date: Date
+    var activeCalories: Double = 0
+    var restingCalories: Double = 0
+    var exerciseMinutes: Double = 0
+    var setCount: Int = 0
+    var steps: Int = 0
+    var totalCalories: Double { activeCalories + restingCalories }
+    var dayLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        return f.string(from: date)
+    }
+}
+
 // MARK: - 体重記録（日別）
 struct BodyMassRecord: Identifiable {
     let id = UUID()
@@ -173,6 +209,9 @@ final class HealthKitManager: ObservableObject {
     @Published var weeklyBodyMassChange: Double? = nil     // 1週間の体重変動（kg）nil=データ不足
     @Published var weeklyBodyFatChange: Double? = nil      // 1週間の体脂肪変動（%）nil=データ不足
     @Published var bodyMassHistory: [BodyMassRecord] = []  // 日別体重履歴
+    @Published var weeklyCalorieData: [DailyCalorieBalance] = []  // 今週の日別カロリー収支
+    @Published var weeklyBurnData: [DailyBurnSummary] = []       // 今週の日別消費カロリー内訳
+    @Published var weeklyDietarySamples: [DietarySample] = []    // 今週の食事カロリーサンプル（タイムスタンプ付き）
 
     // 摂取データ（Apple Healthから読み取り）
     @Published var todayIntakeCalories: Double = 0      // kcal
@@ -514,6 +553,7 @@ final class HealthKitManager: ObservableObject {
         activityStandGoal       = rings.standGoal
         todayWaterSamples       = await waterSamples
         todayMealSamples        = await mealSamples
+        weeklyCalorieData       = await fetchWeeklyCalories()
 
         print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
@@ -932,6 +972,47 @@ final class HealthKitManager: ObservableObject {
         return bodyMassHistory.first { fmt.string(from: $0.measuredAt) == dateKey }
     }
 
+    // MARK: - 日別体脂肪率履歴
+
+    struct BodyFatRecord: Identifiable {
+        let id = UUID()
+        let measuredAt: Date
+        let percent: Double
+    }
+
+    @Published var bodyFatHistory: [BodyFatRecord] = []
+
+    /// 過去 days 日間の体脂肪率サンプルを取得し、日ごとに最新1件を bodyFatHistory に格納する
+    func fetchBodyFatHistory(days: Int = 30) async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else { return }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: cal.date(byAdding: .day, value: -days, to: Date()) ?? Date())
+        let pred = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { [weak self] _, samples, _ in
+                guard let self, let samples = samples as? [HKQuantitySample] else {
+                    cont.resume(); return
+                }
+                let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                var map: [String: BodyFatRecord] = [:]
+                for s in samples {
+                    let key = fmt.string(from: s.endDate)
+                    map[key] = BodyFatRecord(
+                        measuredAt: s.endDate,
+                        percent: s.quantity.doubleValue(for: .percent()) * 100
+                    )
+                }
+                Task { @MainActor in
+                    self.bodyFatHistory = map.values.sorted { $0.measuredAt < $1.measuredAt }
+                }
+                cont.resume()
+            }
+            store.execute(q)
+        }
+    }
+
     // MARK: - 1週間の体重・体脂肪変動
 
     /// 過去7日間の最古の体重と現在値の差分を返す（データ不足はnil）
@@ -974,6 +1055,126 @@ final class HealthKitManager: ObservableObject {
             }
             store.execute(query)
         }
+    }
+
+    // MARK: - 週間カロリー収支
+
+    /// 指定日時範囲内の最新サンプル値を取得（なければnil）
+    private func fetchLatestSampleInRange(type: HKQuantityType, predicate: NSPredicate, unit: HKUnit) async -> Double? {
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+        return await withCheckedContinuation { cont in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 1, sortDescriptors: [sort]) { _, samples, _ in
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    cont.resume(returning: nil)
+                    return
+                }
+                cont.resume(returning: sample.quantity.doubleValue(for: unit))
+            }
+            store.execute(q)
+        }
+    }
+
+    /// 今週（月〜日）の日別カロリー収支・体重・体脂肪を取得
+    private func fetchWeeklyCalories() async -> [DailyCalorieBalance] {
+        guard let activeType  = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned),
+              let restingType = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned),
+              let intakeType  = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed),
+              let massType    = HKQuantityType.quantityType(forIdentifier: .bodyMass),
+              let fatType     = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage),
+              let stepType    = HKQuantityType.quantityType(forIdentifier: .stepCount)
+        else { return [] }
+
+        var cal = Calendar.current
+        cal.firstWeekday = 2  // 月曜始まり
+        let today = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+
+        var results: [DailyCalorieBalance] = []
+        for i in 0..<7 {
+            guard let dayStart = cal.date(byAdding: .day, value: i, to: weekStart) else { continue }
+            guard dayStart <= today else {
+                results.append(DailyCalorieBalance(date: dayStart, burned: 0, consumed: 0))
+                continue
+            }
+            let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            let pred = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
+
+            let active  = await fetchCumulativeSum(type: activeType,  predicate: pred, unit: .kilocalorie())
+            let resting = await fetchCumulativeSum(type: restingType, predicate: pred, unit: .kilocalorie())
+            let intake  = await fetchCumulativeSum(type: intakeType,  predicate: pred, unit: .kilocalorie())
+            let mass    = await fetchLatestSampleInRange(type: massType, predicate: pred, unit: .gramUnit(with: .kilo))
+            let fat     = await fetchLatestSampleInRange(type: fatType,  predicate: pred, unit: .percent())
+            let stepSum = await fetchCumulativeSum(type: stepType, predicate: pred, unit: .count())
+
+            var entry = DailyCalorieBalance(date: dayStart, burned: active + resting, consumed: intake)
+            entry.bodyMass = mass
+            entry.bodyFatPercentage = fat.map { $0 * 100 }
+            entry.steps = Int(stepSum)
+            results.append(entry)
+        }
+        return results
+    }
+
+    /// 今週（月〜日）の日別消費カロリー内訳（安静時・活動・運動時間）を取得
+    func fetchWeeklyBurnData() async {
+        guard let activeType   = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned),
+              let restingType  = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned),
+              let exerciseType = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime),
+              let stepType     = HKQuantityType.quantityType(forIdentifier: .stepCount)
+        else { return }
+
+        var cal = Calendar.current
+        cal.firstWeekday = 2
+        let today = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+
+        var results: [DailyBurnSummary] = []
+        for i in 0..<7 {
+            guard let dayStart = cal.date(byAdding: .day, value: i, to: weekStart) else { continue }
+            guard dayStart <= today else {
+                results.append(DailyBurnSummary(date: dayStart))
+                continue
+            }
+            let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            let pred = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
+
+            let active   = await fetchCumulativeSum(type: activeType,   predicate: pred, unit: .kilocalorie())
+            let resting  = await fetchCumulativeSum(type: restingType,  predicate: pred, unit: .kilocalorie())
+            let exercise = await fetchCumulativeSum(type: exerciseType, predicate: pred, unit: .minute())
+            let stepSum  = await fetchCumulativeSum(type: stepType,     predicate: pred, unit: .count())
+
+            results.append(DailyBurnSummary(
+                date: dayStart,
+                activeCalories: active,
+                restingCalories: resting,
+                exerciseMinutes: exercise,
+                steps: Int(stepSum)
+            ))
+        }
+        weeklyBurnData = results
+    }
+
+    /// 今週（月〜日）の食事カロリーサンプルを取得（摂取タイミング別スタック用）
+    func fetchWeeklyDietarySamples() async {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        var cal = Calendar.current; cal.firstWeekday = 2
+        let today = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
+        let predicate = HKQuery.predicateForSamples(withStart: weekStart, end: weekEnd, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        let samples: [DietarySample] = await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, raw, _ in
+                let result = (raw as? [HKQuantitySample])?.compactMap { s -> DietarySample? in
+                    let kcal = s.quantity.doubleValue(for: .kilocalorie())
+                    guard kcal > 0 else { return nil }
+                    return DietarySample(startDate: s.startDate, value: kcal)
+                } ?? []
+                continuation.resume(returning: result)
+            }
+            self.store.execute(q)
+        }
+        await MainActor.run { weeklyDietarySamples = samples }
     }
 
     // MARK: - 摂取記録の書き込み

@@ -5,12 +5,18 @@ struct DietGoalSettingsView: View {
     @StateObject private var healthKit = HealthKitManager.shared
     @Environment(\.dismiss) private var dismiss
 
+    @State private var startDate: Date = Date()
+    @State private var startWeight: Double = 65.0
+    @State private var startBodyFat: Double = 20.0
+    @State private var hasStartStats: Bool = false
     @State private var targetWeight: Double = 65.0
     @State private var targetBodyFat: Double = 15.0
     @State private var hasBodyFatTarget: Bool = true
     @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
     @State private var dailyIntakeGoal: Int = 2000
     @State private var dailyBurnGoal: Int = 2200
+    @State private var useHealthKitForIntake: Bool = false
+    @State private var useHealthKitForBurn: Bool = false
     @State private var showAIResult = false
     @State private var savedBanner = false
 
@@ -31,6 +37,7 @@ struct DietGoalSettingsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     currentStatsSection
+                    startSection
                     targetSection
                     calorieGoalSection
                     mealDistributionSection
@@ -83,6 +90,49 @@ struct DietGoalSettingsView: View {
             }
             Text("Apple Healthの最新計測値")
                 .font(.caption).foregroundColor(Color.duoSubtitle)
+        }
+    }
+
+    // MARK: - スタート情報
+
+    private var startSection: some View {
+        card {
+            sectionHeader(icon: "🏁", title: "スタート情報")
+            Text("開始時の情報を入力すると、Diet Goalページで正確な達成度が表示されます")
+                .font(.caption).foregroundColor(Color.duoSubtitle)
+
+            Toggle(isOn: $hasStartStats) {
+                Text("スタート情報を記録する")
+                    .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+            }
+            .tint(Color(hex: "#1CB0F6"))
+
+            if hasStartStats {
+                Divider()
+
+                HStack {
+                    Text("スタート日")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                    Spacer()
+                    DatePicker("", selection: $startDate, in: ...Date(), displayedComponents: .date)
+                        .labelsHidden()
+                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                }
+
+                HStack {
+                    Text("スタート体重")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                    Spacer()
+                    numericStepper(value: $startWeight, step: 0.5, min: 30, max: 200, format: "%.1f kg")
+                }
+
+                HStack {
+                    Text("スタート体脂肪率")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                    Spacer()
+                    numericStepper(value: $startBodyFat, step: 0.5, min: 3, max: 60, format: "%.1f %%")
+                }
+            }
         }
     }
 
@@ -181,29 +231,65 @@ struct DietGoalSettingsView: View {
                 .transition(.opacity)
             }
 
+            // 摂取カロリー
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("摂取カロリー目標")
                         .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                    Text("1日に摂取するカロリー")
+                    Text(useHealthKitForIntake ? "Apple Health実績を使用" : "1日に摂取するカロリー")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                intStepper(value: $dailyIntakeGoal, step: 50, min: 800, max: 5000, unit: "kcal")
+                if useHealthKitForIntake {
+                    HStack(spacing: 4) {
+                        Image(systemName: "heart.fill")
+                            .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
+                        Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
+                    }
+                } else {
+                    intStepper(value: $dailyIntakeGoal, step: 50, min: 800, max: 5000, unit: "kcal")
+                }
             }
+            Toggle(isOn: $useHealthKitForIntake) {
+                HStack(spacing: 5) {
+                    Image(systemName: "heart.fill")
+                        .font(.caption2).foregroundColor(Color(hex: "#FF4B4B"))
+                    Text("Apple Healthで計測")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .tint(Color(hex: "#FF4B4B"))
 
             Divider()
 
+            // 消費カロリー
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("消費カロリー目標")
                         .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                    Text("1日に消費するカロリー")
+                    Text(useHealthKitForBurn ? "Apple Health実績を使用" : "1日に消費するカロリー")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                intStepper(value: $dailyBurnGoal, step: 50, min: 1000, max: 6000, unit: "kcal")
+                if useHealthKitForBurn {
+                    HStack(spacing: 4) {
+                        Image(systemName: "heart.fill")
+                            .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
+                        Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
+                    }
+                } else {
+                    intStepper(value: $dailyBurnGoal, step: 50, min: 1000, max: 6000, unit: "kcal")
+                }
             }
+            Toggle(isOn: $useHealthKitForBurn) {
+                HStack(spacing: 5) {
+                    Image(systemName: "heart.fill")
+                        .font(.caption2).foregroundColor(Color(hex: "#FF4B4B"))
+                    Text("Apple Healthで計測")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .tint(Color(hex: "#FF4B4B"))
         }
     }
 
@@ -452,23 +538,35 @@ struct DietGoalSettingsView: View {
 
     private func loadSettings() {
         let s = manager.settings
+        hasStartStats    = s.hasStartStats
+        startDate        = s.startDate
+        startWeight      = s.startWeight > 0 ? s.startWeight : (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : 65.0)
+        startBodyFat     = s.startBodyFatPercent > 0 ? s.startBodyFatPercent : (healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : 20.0)
         targetWeight     = s.targetWeight
         targetBodyFat    = s.targetBodyFatPercent
         hasBodyFatTarget = s.hasBodyFatTarget
         targetDate       = s.targetDate
-        dailyIntakeGoal  = s.dailyIntakeGoal
-        dailyBurnGoal    = s.dailyBurnGoal
+        dailyIntakeGoal       = s.dailyIntakeGoal
+        dailyBurnGoal         = s.dailyBurnGoal
+        useHealthKitForIntake = s.useHealthKitForIntake
+        useHealthKitForBurn   = s.useHealthKitForBurn
     }
 
     private func save() async {
         // DietGoalManager に保存
         var s = manager.settings
+        s.hasStartStats        = hasStartStats
+        s.startDate            = startDate
+        s.startWeight          = hasStartStats ? startWeight : 0.0
+        s.startBodyFatPercent  = hasStartStats ? startBodyFat : 0.0
         s.targetWeight         = targetWeight
         s.targetBodyFatPercent = targetBodyFat
         s.hasBodyFatTarget     = hasBodyFatTarget
         s.targetDate           = targetDate
         s.dailyIntakeGoal      = dailyIntakeGoal
         s.dailyBurnGoal        = dailyBurnGoal
+        s.useHealthKitForIntake = useHealthKitForIntake
+        s.useHealthKitForBurn   = useHealthKitForBurn
         manager.settings = s
 
         // IntakeSettings の食事カロリーを時間帯別に反映

@@ -7,6 +7,8 @@ import ImageIO
 struct GIFAnimationView: UIViewRepresentable {
     let gifName: String
     var contentMode: UIView.ContentMode = .scaleAspectFit
+    /// 0 = 無限ループ、1以上 = 指定回数再生して最終フレームで停止
+    var loopCount: Int = 0
 
     final class Coordinator {
         weak var imageView: UIImageView?
@@ -21,6 +23,7 @@ struct GIFAnimationView: UIViewRepresentable {
         context.coordinator.imageView = imageView
 
         let name = gifName
+        let loops = loopCount
         DispatchQueue.global(qos: .userInitiated).async {
             guard let url = Bundle.main.url(forResource: name, withExtension: "gif"),
                   let data = try? Data(contentsOf: url),
@@ -46,8 +49,10 @@ struct GIFAnimationView: UIViewRepresentable {
             let animated = UIImage.animatedImage(with: images, duration: totalDuration)
 
             DispatchQueue.main.async {
-                context.coordinator.imageView?.image = animated
-                context.coordinator.imageView?.startAnimating()
+                guard let iv = context.coordinator.imageView else { return }
+                iv.image = animated
+                iv.animationRepeatCount = loops
+                iv.startAnimating()
             }
         }
 
@@ -55,7 +60,7 @@ struct GIFAnimationView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {
-        if uiView.image != nil && !uiView.isAnimating {
+        if uiView.image != nil && !uiView.isAnimating && loopCount == 0 {
             uiView.startAnimating()
         }
     }

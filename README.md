@@ -15,15 +15,17 @@
 | Googleログイン | ✅ | ✅ | — |
 | トレーニング記録（手動） | ✅ | ✅ | ✅ |
 | モーション自動検知 | — | ✅ | ✅ |
+| GIFフォームアニメ（スクワット/ランジ） | — | ✅ | ✅ |
 | カロリー目標トラッキング | ✅ | ✅ | ✅ |
 | カロリー目標カスタマイズ | ✅ | ✅ | — |
 | HealthKit連携 | — | ✅ | ✅ |
 | PFCバランス分析 | — | ✅ | — |
 | 睡眠スコア分析 | — | ✅ | — |
 | PFC・睡眠目標設定 | — | ✅ | — |
-| Diet Goal（体重・体脂肪・カロリー計画） | — | ✅ | — |
-| MIND（ストレス分析・回復提案） | — | ✅ | — |
-| 時間帯別目標（夜中/朝/昼/午後/夜） | — | ✅ | ✅ |
+| 食事・水分記録 | ✅ | ✅ | ✅ |
+| Diet Goal（体重・体脂肪・カロリー計画） | ✅ | ✅ | — |
+| MIND（ストレス分析・回復提案） | ✅ | ✅ | — |
+| 時間帯別目標（夜中/朝/昼/午後/夜） | ✅ | ✅ | ✅ |
 | Reflect連携ストレッチ目標 | — | ✅ | ✅ |
 | 今日のセット表示 | ✅ | ✅ | ✅ |
 | 週間セット目標 | ✅ | ✅ | — |
@@ -156,10 +158,20 @@ kfit/
 │   ├── components/
 │   │   ├── DashboardView.tsx          # メインダッシュボード
 │   │   ├── ExerciseTrackerView.tsx    # 手動入力
+│   │   ├── DailyWorkoutFlow.tsx       # 5種目シーケンシャルフロー
+│   │   ├── MindView.tsx               # HRVストレス分析・回復提案
+│   │   ├── IntakeView.tsx             # 食事・水分記録
+│   │   ├── DietGoalView.tsx           # Diet Goal（体重・カロリー計画）
 │   │   ├── AchievementsView.tsx       # 11種類のバッジ
 │   │   ├── LeaderboardView.tsx        # 週間ランキング
 │   │   └── WeeklyGoalView.tsx         # 週間目標設定
-│   └── services/firebase.ts           # 30秒キャッシュ付き
+│   ├── services/
+│   │   ├── firebase.ts                # 30秒キャッシュ付き
+│   │   ├── timeSlotService.ts         # 時間帯別目標
+│   │   └── wellnessService.ts         # HRV・ストレス計算
+│   └── types/
+│       ├── timeSlot.ts
+│       └── wellness.ts
 │
 ├── ios/kfit/
 │   ├── Views/DashboardView.swift      # カロリー目標編集
@@ -216,6 +228,14 @@ leaderboards/{weekId}/entries/
 ---
 
 ## 🎮 新機能
+
+### v0.10.5 (2026-05-23)
+- ✅ **GIFフォームアニメ**: スクワット・ランジ実施中に正しいフォームのGIFアニメを表示（iOS・Watch）
+- ✅ **GoalView 大幅拡張**: 週間消費/摂取傾向チャート・週間カロリー収支グラフ追加。AIによるカロリー目標逆算（目標体重・期間・体脂肪率から最適摂取kcalを計算）
+- ✅ **DietGoalSettings**: 目標体重・体脂肪率・日付・摂取/消費カロリー目標をまとめて編集する専用設定画面を追加（iOS）
+- ✅ **MindView iOS強化**: 現在/平均の心拍・HRV・ストレス指数に加え、具体的な回復提案をタップ遷移付きで表示
+- ✅ **Web — MIND・食事・Diet Goal**: HRVストレス分析・回復提案（MindView）、食事/水分記録（IntakeView）、Diet Goal管理（DietGoalView）を Web に追加
+- ✅ **Watch ダッシュボード拡張**: ウェルネスページに睡眠・HRV・ストレッチ情報を追加。Watch Face風ページのレイアウト改善
 
 ### v0.9.23 (2026-05-22)
 - ✅ **Fitingoホーム刷新**: ヘッダーに `M/d(E)` 形式の日付を表示し、今日の状況カードはヘッダー非表示で上詰め表示
@@ -371,4 +391,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Version 0.9.23 — Updated: May 22, 2026*
+*Version 0.10.5 — Updated: May 23, 2026*

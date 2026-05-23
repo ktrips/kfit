@@ -312,7 +312,7 @@ struct HelpView: View {
                         HStack(spacing: 12) {
                             Text("ℹ️").font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Fitingo v0.9.21")
+                                Text("Fitingo v0.10.5")
                                     .font(.subheadline).fontWeight(.black)
                                 Text("Web・iOS・Apple Watch 対応")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)

@@ -5614,7 +5614,7 @@ struct DashboardView: View {
     private var trainingVideoButton: some View {
         let currentVideo = currentTrainingVideo
 
-        VStack(spacing: 8) {
+        return VStack(spacing: 8) {
             Button {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                     showTrainingVideo.toggle()

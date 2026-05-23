@@ -5,11 +5,11 @@ import {
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress } from '../services/timeSlotService';
-import { getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
+import { getDietGoalSettings, getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
 import { calculateStressScore } from '../utils/stress';
 import type { GlobalProgress } from '../services/timeSlotService';
-import type { IntakeSummary, MindMetrics } from '../types/wellness';
+import type { DietGoalSettings, IntakeSummary, MindMetrics } from '../types/wellness';
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
@@ -60,7 +60,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onTimeSlots, onIntake, onDietGoal, onMind }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
@@ -77,6 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [intakeSummary, setIntakeSummary] = useState<IntakeSummary | null>(null);
   const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [mindMetrics, setMindMetrics] = useState<MindMetrics | null>(null);
+  const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -84,11 +85,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, intake, global, mind] = await Promise.all([
+        const [dashboard, intake, global, mind, diet] = await Promise.all([
           getDashboardData(user.uid),
           getTodayIntakeSummary(user.uid),
           getGlobalProgress(user.uid),
           getMindMetrics(user.uid),
+          getDietGoalSettings(user.uid),
         ]);
         const exercises = dashboard.todayExercises;
         setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
@@ -105,6 +107,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setIntakeSummary(intake);
         setGlobalProgress(global);
         setMindMetrics(mind);
+        setDietGoal(diet);
         // 今日分だけフィルタ
         const today = new Date();
         setTodaySets(dashboard.weeklySetLog.filter(s => {
@@ -181,51 +184,108 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         </div>
 
-        {/* iOS parity cards available on Web */}
+        {/* 4カード: Diet / Mind / Food / Sleep */}
         <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={onDietGoal}
-            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
-          >
-            <p className="text-xs font-black text-duo-gray">GOAL</p>
-            <p className="text-lg font-black text-duo-dark">Diet Goal</p>
-            <p className="text-xs font-bold text-duo-gray mt-1">体重・体脂肪・カロリー計画</p>
-          </button>
+          {/* Diet card */}
           {(() => {
-            const stress = calculateStressScore(mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0);
+            const cw = dietGoal?.currentWeightKg ?? 0;
+            const gw = dietGoal?.goalWeightKg ?? 0;
+            const hasWeight = cw > 0 && gw > 0;
+            const diff = hasWeight ? cw - gw : 0;
+            const days = (() => {
+              if (!dietGoal?.goalDate) return 0;
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const goal = new Date(dietGoal.goalDate); goal.setHours(0, 0, 0, 0);
+              return Math.max(0, Math.round((goal.getTime() - today.getTime()) / 86400000));
+            })();
             return (
-              <button
-                onClick={onMind}
-                className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
-              >
-                <p className="text-xs font-black text-duo-gray">MIND</p>
-                <p className="text-lg font-black" style={{ color: stress.color }}>
-                  {stress.score >= 0 ? `${stress.score} / ${stress.label}` : '未入力'}
-                </p>
-                <p className="text-xs font-bold text-duo-gray mt-1">心拍・HRV・ストレス提案</p>
-              </button>
+              <div className="duo-card p-4">
+                <p className="text-xs font-black text-duo-gray">DIET</p>
+                {hasWeight ? (
+                  <>
+                    <p className="text-lg font-black text-duo-dark leading-tight mt-0.5">
+                      {cw.toFixed(1)} kg
+                    </p>
+                    <p className="text-xs font-bold mt-1" style={{ color: diff > 0 ? '#FF9600' : '#58CC02' }}>
+                      目標まで {diff > 0 ? `-${diff.toFixed(1)}` : `+${Math.abs(diff).toFixed(1)}`}kg
+                      {days > 0 ? ` · あと${days}日` : ''}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-black text-duo-dark leading-tight mt-0.5">未設定</p>
+                    <p className="text-xs font-bold text-duo-gray mt-1">体重・目標日を設定</p>
+                  </>
+                )}
+              </div>
             );
           })()}
-          <button
-            onClick={onIntake}
-            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
-          >
+
+          {/* Mind card */}
+          {(() => {
+            const hrv = mindMetrics?.averageHRV ?? 0;
+            const stress = calculateStressScore(hrv);
+            const hasData = hrv > 0;
+            return (
+              <div className="duo-card p-4">
+                <p className="text-xs font-black text-duo-gray">MIND</p>
+                {hasData ? (
+                  <>
+                    <p className="text-lg font-black leading-tight mt-0.5" style={{ color: stress.color }}>
+                      HRV {Math.round(hrv)} ms
+                    </p>
+                    <p className="text-xs font-bold mt-1" style={{ color: stress.color }}>
+                      ストレス: {stress.label}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-black text-duo-gray leading-tight mt-0.5">未入力</p>
+                    <p className="text-xs font-bold text-duo-gray mt-1">心拍・HRV・ストレス</p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Food card */}
+          <div className="duo-card p-4">
             <p className="text-xs font-black text-duo-gray">FOOD</p>
-            <p className="text-lg font-black text-duo-orange">{intakeSummary?.calories ?? 0} kcal</p>
+            <p className="text-lg font-black text-duo-orange leading-tight mt-0.5">
+              {intakeSummary?.calories ?? 0} kcal
+            </p>
             <p className="text-xs font-bold text-duo-gray mt-1">
               水分 {intakeSummary?.waterMl ?? 0}ml · {intakeSummary?.mealCount ?? 0}食
             </p>
-          </button>
-          <button
-            onClick={onTimeSlots}
-            className="duo-card p-4 text-left hover:opacity-90 transition-opacity"
-          >
-            <p className="text-xs font-black text-duo-gray">TIME SLOT</p>
-            <p className="text-lg font-black text-duo-green">時間帯別目標</p>
-            <p className="text-xs font-bold text-duo-gray mt-1">
-              睡眠 {globalProgress?.sleepScore ?? 0} / PFC {globalProgress?.pfcScore ?? 0}
-            </p>
-          </button>
+          </div>
+
+          {/* Sleep card */}
+          {(() => {
+            const sh = globalProgress?.sleepHours ?? 0;
+            const ss = globalProgress?.sleepScore ?? 0;
+            const hasSleep = sh > 0;
+            const sleepColor = ss >= 80 ? '#58CC02' : ss >= 60 ? '#FF9600' : ss > 0 ? '#FF4B4B' : '#AFAFAF';
+            return (
+              <div className="duo-card p-4">
+                <p className="text-xs font-black text-duo-gray">SLEEP</p>
+                {hasSleep ? (
+                  <>
+                    <p className="text-lg font-black leading-tight mt-0.5" style={{ color: sleepColor }}>
+                      {sh.toFixed(1)} h
+                    </p>
+                    <p className="text-xs font-bold mt-1" style={{ color: sleepColor }}>
+                      スコア {ss}点
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-black text-duo-gray leading-tight mt-0.5">未取得</p>
+                    <p className="text-xs font-bold text-duo-gray mt-1">iOSから同期</p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Today's set status — count-based */}

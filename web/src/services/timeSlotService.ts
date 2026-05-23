@@ -362,6 +362,7 @@ export async function recordMindInputLog(
 export interface GlobalProgress {
   workoutMinutes: number;
   standHours: number;
+  sleepHours: number;
   sleepScore: number;
   pfcScore: number;
   lastUpdated?: Date;
@@ -383,6 +384,7 @@ export async function getGlobalProgress(userId: string): Promise<GlobalProgress 
       return {
         workoutMinutes: gp.workoutMinutes || 0,
         standHours: gp.standHours || 0,
+        sleepHours: gp.sleepHours || 0,
         sleepScore: gp.sleepScore || 0,
         pfcScore: gp.pfcScore || 0,
         lastUpdated: gp.lastUpdated ? (gp.lastUpdated as Timestamp).toDate() : undefined,

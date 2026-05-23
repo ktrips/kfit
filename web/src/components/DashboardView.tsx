@@ -143,6 +143,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     <div className="min-h-screen bg-duo-gray-light pb-10">
       <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
 
+        {/* Fitingo workout GIF — タップでトレーニング開始 */}
+        <button
+          onClick={onStartWorkout}
+          className="w-full relative overflow-hidden rounded-3xl active:scale-[0.98] transition-transform"
+          style={{ boxShadow: '0 6px 0 #46A302', border: '3px solid #58CC02' }}
+          aria-label="トレーニングを始める"
+        >
+          <img
+            src="/fitingo_workout.gif"
+            alt="Fitingo workout"
+            className="w-full object-cover"
+            style={{ display: 'block', maxHeight: '320px', objectPosition: 'center' }}
+          />
+          {/* オーバーレイ */}
+          <div
+            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 py-4"
+            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)' }}
+          >
+            <span className="text-white font-black text-xl drop-shadow">🏋️ トレーニングを始める</span>
+            <span className="text-white text-xl">›</span>
+          </div>
+        </button>
+
         {/* Welcome banner */}
         <div className="duo-card p-5 flex items-center gap-4">
           <img src="/mascot.png" alt="mascot" className="w-16 h-16 rounded-full object-cover shrink-0" style={{ border: '3px solid #58CC02' }} />

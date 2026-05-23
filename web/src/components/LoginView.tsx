@@ -73,6 +73,19 @@ export const LoginView: React.FC = () => {
           サインインすることで利用規約・プライバシーポリシーに同意したものとみなされます。
         </p>
       </div>
+
+      {/* Workout GIF preview */}
+      <div
+        className="w-full max-w-sm mt-6 overflow-hidden rounded-3xl"
+        style={{ border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}
+      >
+        <img
+          src="/fitingo_workout.gif"
+          alt="Fitingo workout preview"
+          className="w-full object-cover block"
+          style={{ maxHeight: '280px', objectPosition: 'center' }}
+        />
+      </div>
     </div>
   );
 };

@@ -36,6 +36,9 @@ struct Provider: TimelineProvider {
         s.workoutGoal          = ud.integer(forKey: "workoutGoal")
         s.standHours           = ud.integer(forKey: "standHours")
         s.standGoal            = ud.integer(forKey: "standGoal")
+        if let syncedProgress = ud.object(forKey: "progressPercent") as? Int {
+            s.syncedProgressPercent = syncedProgress
+        }
         return s
     }
 }
@@ -64,9 +67,13 @@ struct WidgetStats {
     var workoutGoal: Int = 0
     var standHours: Int = 0
     var standGoal: Int = 0
+    var syncedProgressPercent: Int? = nil
 
-    // iOSヘッダーの progressPercent と同じ計算（バイナリ達成カウント）
+    // iOSホームの「現在までの進捗」と同じ値を優先して表示
     var progressPercent: Int {
+        if let syncedProgressPercent {
+            return min(100, max(0, syncedProgressPercent))
+        }
         var totalGoals = 0
         var completed = 0
         if trainingGoal > 0    { totalGoals += 1; if trainingCompleted >= trainingGoal       { completed += 1 } }

@@ -24,6 +24,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var totalMealGoal: Int = 0
     @Published var totalDrinkLogged: Int = 0
     @Published var totalDrinkGoal: Int = 0
+    @Published var watchFaceTasks: [WatchFaceTaskConfig] = []
 
     // 後方互換性のため残す
     @Published var todaySetCount: Int = 0
@@ -72,6 +73,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var latestBodyFatPercentage: Double = 0.0
     @Published var todayMindfulnessSessions: Int = 0
     @Published var todayMindfulnessMinutes: Double = 0.0
+    @Published var todayWorkoutMinutes: Int = 0
 
     /// iOS アプリ起動シグナルを受信したら true になる → WatchDashboardView が自動遷移
     @Published var shouldAutoStartWorkout: Bool = false
@@ -157,7 +159,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     // MARK: - iOS → Watch: stats リクエスト
-    func requestStatsFromiOS(scope: String = "dashboard") {
+    func requestStatsFromiOS(scope: String = "dashboard", force: Bool = false) {
         guard let session = session else {
             // セッションがない場合はデフォルト値で表示開始
             isLoading = false
@@ -166,6 +168,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
         if let lastStatsRequestAt,
            lastStatsRequestScope == scope,
+           !force,
            Date().timeIntervalSince(lastStatsRequestAt) < 5 {
             print("[WatchConnectivity] request_stats skipped by TTL scope=\(scope)")
             return
@@ -186,7 +189,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             return
         }
 
-        session.sendMessage(["action": "request_stats", "scope": scope], replyHandler: nil) { [weak self] error in
+        session.sendMessage(["action": "request_stats", "scope": scope, "force": force], replyHandler: nil) { [weak self] error in
             Task { @MainActor in
                 self?.isLoading = false
                 self?.hasLoadedData = true
@@ -226,6 +229,10 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["totalMealGoal"] as? Int { self.totalMealGoal = val }
         if let val = message["totalDrinkLogged"] as? Int { self.totalDrinkLogged = val }
         if let val = message["totalDrinkGoal"] as? Int { self.totalDrinkGoal = val }
+        if let data = message["watchFaceTasks"] as? Data,
+           let tasks = try? JSONDecoder().decode([WatchFaceTaskConfig].self, from: data) {
+            self.watchFaceTasks = tasks
+        }
 
         // 後方互換性のため残す
         if let setCount = message["todaySetCount"] as? Int { self.todaySetCount = setCount }
@@ -312,6 +319,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["latestBodyFatPercentage"] as? Double { self.latestBodyFatPercentage = val }
         if let val = message["todayMindfulnessSessions"] as? Int { self.todayMindfulnessSessions = val }
         if let val = message["todayMindfulnessMinutes"] as? Double { self.todayMindfulnessMinutes = val }
+        if let val = message["todayWorkoutMinutes"] as? Int { self.todayWorkoutMinutes = val }
 
         // データ受信完了
         isLoading = false
@@ -434,6 +442,16 @@ struct WatchSetData: Codable {
     let totalXP: Int
     let totalReps: Int
     let timestamp: Date
+}
+
+struct WatchFaceTaskConfig: Codable, Identifiable, Hashable {
+    let id: String
+    let emoji: String
+    let color: String
+    let isDone: Bool
+    let actionType: String
+    let mealSubtype: String?
+    let intakeMessage: String
 }
 
 // MARK: - Watch用の完了記録

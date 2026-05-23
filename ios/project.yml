@@ -20,7 +20,10 @@ targets:
       - path: kfit
         excludes:
           - "**/*.plist"
+          - "Images/**"
       - path: kfit/GoogleService-Info.plist
+        buildPhase: resources
+      - path: kfit/Images
         buildPhase: resources
       - path: kfit/Assets.xcassets
     info:

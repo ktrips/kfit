@@ -42,6 +42,7 @@ struct WatchDashboardView: View {
     @State private var pendingIntakeSubtype: String? = nil  // 保留中の摂取サブタイプ
     @State private var intakeConfirmMessage = ""  // 確認メッセージ
     @State private var doubleTapCount = 0  // ダブルタップカウント（デバッグ用）
+    @State private var isManualRefreshing = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -65,13 +66,13 @@ struct WatchDashboardView: View {
                     mainDashboard
                         .tag(1)
 
-                    wellnessPage
+                    watchFacePage
                         .tag(2)
 
-                    healthDataPage
+                    wellnessPage
                         .tag(3)
 
-                    watchFacePage
+                    healthDataPage
                         .tag(4)
                 }
                 .tabViewStyle(.page)
@@ -126,17 +127,36 @@ struct WatchDashboardView: View {
             confirmIntake(type: "water", subtype: nil,
                         message: "水\(connectivity.waterPerCup)mlを追加しますか？")
         }
-        // ウェルネスページの場合は、データを更新
+        // ウォッチフェイスページの場合は、ワークアウトを開始
         else if selectedTab == 2 {
-            Task { await healthKit.fetchAllTodayData() }
+            showFlow = true
         }
         // ヘルスデータページの場合は、データを更新
         else if selectedTab == 3 {
-            Task { await healthKit.fetchAllTodayData() }
+            refreshNow(scope: "wellness")
         }
-        // ウォッチフェイスページの場合は、ワークアウトを開始
+        // ヘルスデータページの場合は、データを更新
         else if selectedTab == 4 {
-            showFlow = true
+            refreshNow(scope: "health")
+        }
+    }
+
+    private func refreshNow(scope: String = "dashboard") {
+        guard !isManualRefreshing else { return }
+        isManualRefreshing = true
+        WKInterfaceDevice.current().play(.click)
+        Task {
+            if !healthKit.isAuthorized {
+                await healthKit.requestAuthorization()
+            } else {
+                await healthKit.fetchAllTodayData(force: true)
+            }
+            connectivity.requestStatsFromiOS(scope: scope, force: true)
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            await MainActor.run {
+                isManualRefreshing = false
+                WKInterfaceDevice.current().play(.success)
+            }
         }
     }
 
@@ -145,30 +165,42 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
                 // ── ヘッダー：食事／ドリンク入力状況（Apple Health実績）──────────────────────
-                HStack(spacing: 0) {
-                    Button {
-                        confirmIntake(type: "meal", subtype: "breakfast",
-                                      message: "朝食\(connectivity.breakfastCalories)kcalを追加しますか？")
-                    } label: {
-                        WatchStatItem(
-                            icon: "🍽️",
-                            value: "\(Int(healthKit.todayDietaryCalories))k",
-                            label: "食事kcal ＋",
-                            isCompleted: connectivity.totalMealGoal > 0 && Int(healthKit.todayDietaryCalories) >= connectivity.totalMealGoal
-                        )
+                ZStack {
+                    HStack(spacing: 0) {
+                        Button {
+                            confirmIntake(type: "meal", subtype: "breakfast",
+                                          message: "朝食\(connectivity.breakfastCalories)kcalを追加しますか？")
+                        } label: {
+                            WatchStatItem(
+                                icon: "🍽️",
+                                value: "\(Int(healthKit.todayDietaryCalories))k",
+                                label: "食事kcal ＋",
+                                isCompleted: connectivity.totalMealGoal > 0 && Int(healthKit.todayDietaryCalories) >= connectivity.totalMealGoal
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
+                        Button {
+                            confirmIntake(type: "water", subtype: nil,
+                                          message: "水\(connectivity.waterPerCup)mlを追加しますか？")
+                        } label: {
+                            WatchStatItem(
+                                icon: "💧",
+                                value: "\(Int(healthKit.todayDietaryWater))ml",
+                                label: "水分ml ＋",
+                                isCompleted: connectivity.totalDrinkGoal > 0 && Int(healthKit.todayDietaryWater) >= connectivity.totalDrinkGoal
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
-                    Button {
-                        confirmIntake(type: "water", subtype: nil,
-                                      message: "水\(connectivity.waterPerCup)mlを追加しますか？")
-                    } label: {
-                        WatchStatItem(
-                            icon: "💧",
-                            value: "\(Int(healthKit.todayDietaryWater))ml",
-                            label: "水分ml ＋",
-                            isCompleted: connectivity.totalDrinkGoal > 0 && Int(healthKit.todayDietaryWater) >= connectivity.totalDrinkGoal
-                        )
+
+                    Button { refreshNow(scope: "intake") } label: {
+                        Image(systemName: isManualRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white.opacity(0.55))
+                            .frame(width: 22, height: 18)
+                            .background(Color.black.opacity(0.16))
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -263,24 +295,36 @@ struct WatchDashboardView: View {
 
     // MARK: - メインダッシュボード（2ページ目）
     private var mainDashboard: some View {
-        ScrollView(showsIndicators: false) {
+        return ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
 
                 // ── トレーニング／カスタム目標（マインドフルネス）────────────────
-                HStack(spacing: 0) {
-                    WatchStatItem(
-                        icon: "💪",
-                        value: "\(connectivity.totalTraining)/\(connectivity.totalTrainingGoal)",
-                        label: "トレーニング",
-                        isCompleted: connectivity.totalTraining >= connectivity.totalTrainingGoal && connectivity.totalTrainingGoal > 0
-                    )
-                    Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
-                    WatchStatItem(
-                        icon: "🧘",
-                        value: "\(connectivity.totalMindfulness)/\(connectivity.totalMindfulnessGoal)",
-                        label: "マインドフル",
-                        isCompleted: connectivity.totalMindfulness >= connectivity.totalMindfulnessGoal && connectivity.totalMindfulnessGoal > 0
-                    )
+                ZStack {
+                    HStack(spacing: 0) {
+                        WatchStatItem(
+                            icon: "💪",
+                            value: "\(connectivity.totalTraining)/\(connectivity.totalTrainingGoal)",
+                            label: "トレーニング",
+                            isCompleted: connectivity.totalTraining >= connectivity.totalTrainingGoal && connectivity.totalTrainingGoal > 0
+                        )
+                        Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 32)
+                        WatchStatItem(
+                            icon: "🧘",
+                            value: "\(connectivity.totalMindfulness)/\(connectivity.totalMindfulnessGoal)",
+                            label: "マインドフル",
+                            isCompleted: connectivity.totalMindfulness >= connectivity.totalMindfulnessGoal && connectivity.totalMindfulnessGoal > 0
+                        )
+                    }
+
+                    Button { refreshNow(scope: "dashboard") } label: {
+                        Image(systemName: isManualRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white.opacity(0.55))
+                            .frame(width: 22, height: 18)
+                            .background(Color.black.opacity(0.16))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 8)
                 .background(Color.white.opacity(0.08))
@@ -811,6 +855,7 @@ struct WatchDashboardView: View {
         let totalCount = positions.count
         let trainingGoal = max(connectivity.totalTrainingGoal, 0)
         let mindfulnessGoal = max(connectivity.totalMindfulnessGoal, 0)
+        let spiralScale = watchFaceSpiralMetrics(for: totalCount)
 
         return ZStack {
             // 渦巻きタスクレイアウト（中心=朝→外側=夜）
@@ -820,9 +865,10 @@ struct WatchDashboardView: View {
                     let cx = size.width / 2, cy = size.height / 2
                     var path = Path()
                     let steps = 120
-                    let rStart: Double = 12, rEnd: Double = 69
-                    let θ0 = -90.0 * .pi / 180.0
-                    let totalAngle = 305.0 * .pi / 180.0
+                    let rStart: Double = 12
+                    let rEnd = spiralScale.endRadius + 3
+                    let θ0 = spiralScale.startAngle * .pi / 180.0
+                    let totalAngle = spiralScale.totalAngle * .pi / 180.0
                     for i in 0...steps {
                         let t = Double(i) / Double(steps)
                         let r = rStart + (rEnd - rStart) * t
@@ -909,6 +955,20 @@ struct WatchDashboardView: View {
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
+
+            VStack {
+                Spacer()
+                Button { refreshNow(scope: "watchFace") } label: {
+                    Image(systemName: isManualRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(width: 22, height: 16)
+                        .background(Color.black.opacity(0.18))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 2)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -990,6 +1050,40 @@ struct WatchDashboardView: View {
         let mealColor    = Color(red: 0.345, green: 0.80,  blue: 0.008)
         let stretchColor = Color(red: 0.3,   green: 0.85,  blue: 0.75)
 
+        func color(for key: String) -> Color {
+            switch key {
+            case "training": return trainColor
+            case "mind": return mindColor
+            case "water": return waterColor
+            case "meal": return mealColor
+            case "stretch": return stretchColor
+            default: return .white.opacity(0.72)
+            }
+        }
+
+        if !connectivity.watchFaceTasks.isEmpty {
+            let count = max(connectivity.watchFaceTasks.count, 1)
+            let metrics = watchFaceSpiralMetrics(for: count)
+            return connectivity.watchFaceTasks.enumerated().map { index, config in
+                let t = count == 1 ? 0.0 : Double(index) / Double(count - 1)
+                let angle = metrics.startAngle + (metrics.totalAngle * t)
+                let radius = metrics.startRadius + ((metrics.endRadius - metrics.startRadius) * t)
+                return (
+                    WatchFaceTaskNode(
+                        id: config.id,
+                        emoji: config.emoji,
+                        accentColor: color(for: config.color),
+                        isDone: config.isDone,
+                        actionType: config.actionType,
+                        mealSubtype: config.mealSubtype,
+                        intakeMessage: config.intakeMessage
+                    ),
+                    angle,
+                    radius
+                )
+            }
+        }
+
         let tDone = connectivity.totalTraining
         let mDone = connectivity.totalMindfulness
         let water = Int(healthKit.todayDietaryWater)
@@ -1047,6 +1141,19 @@ struct WatchDashboardView: View {
         ]
     }
 
+    private func watchFaceSpiralMetrics(for count: Int) -> (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) {
+        switch count {
+        case 0...12:
+            return (-140, 402, 30, 66)
+        case 13...18:
+            return (-150, 500, 26, 72)
+        case 19...24:
+            return (-160, 610, 22, 76)
+        default:
+            return (-170, 730, 20, 80)
+        }
+    }
+
     // タスクノードビュー（完了=塗りつぶし、未完了=輪郭+タップでアクション）
     private func watchFaceNodeView(_ node: WatchFaceTaskNode) -> some View {
         Group {
@@ -1061,6 +1168,7 @@ struct WatchDashboardView: View {
                     switch node.actionType {
                     case "training":  showFlow = true
                     case "mindfulness": openMindfulnessApp()
+                    case "stretch": openMindfulnessApp()
                     case "meal", "water":
                         if !node.intakeMessage.isEmpty {
                             confirmIntake(type: node.actionType == "water" ? "water" : "meal",

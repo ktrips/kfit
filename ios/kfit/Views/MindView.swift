@@ -3,9 +3,11 @@ import SwiftUI
 struct MindView: View {
     @Binding var selectedTab: Int
     @StateObject private var healthKit = HealthKitManager.shared
+    @StateObject private var timeSlotManager = TimeSlotManager.shared
     @Environment(\.openURL) private var openURL
     @State private var showMindfulnessSession = false
     @State private var showStretchSession = false
+    @State private var showMindfulHistory = false
 
     var body: some View {
         NavigationView {
@@ -15,6 +17,7 @@ struct MindView: View {
                     VStack(spacing: 16) {
                         headerSection
                         currentStressCard
+                        sleepScoreCard
                         averageStressCard
                         suggestionsCard
                         Spacer(minLength: 40)
@@ -26,6 +29,7 @@ struct MindView: View {
             }
             .navigationBarHidden(true)
             .task {
+                await timeSlotManager.loadTodaySettings()
                 if healthKit.isAvailable && !healthKit.isAuthorized {
                     await healthKit.requestAuthorization()
                 } else {
@@ -36,9 +40,18 @@ struct MindView: View {
                 await healthKit.fetchAll()
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
-                MindfulnessSessionView { startDate, endDate in
+                MindfulnessSessionView(
+                    durationSeconds: 60,
+                    title: "1分瞑想",
+                    completedButtonTitle: "Breatheとして保存"
+                ) { startDate, endDate in
                     Task {
-                        let saved = await healthKit.saveMindfulnessSession(startDate: startDate, endDate: endDate)
+                        let saved = await healthKit.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: 60,
+                            sessionType: "Breathe"
+                        )
                         if saved {
                             await healthKit.refreshMindfulness()
                         }
@@ -55,7 +68,8 @@ struct MindView: View {
                         let saved = await healthKit.saveMindfulnessSession(
                             startDate: startDate,
                             endDate: endDate,
-                            durationSeconds: 180
+                            durationSeconds: 180,
+                            sessionType: "Reflect"
                         )
                         if saved {
                             await healthKit.refreshMindfulness()
@@ -159,13 +173,14 @@ struct MindView: View {
                 )
             }
             largeActionButton(
-                icon: "🫁",
+                icon: "🧘",
                 title: "1分呼吸タイマー",
                 subtitle: "Hapticに合わせて吸って・吐いて、完了後にHealthKitへ保存",
                 color: Color(hex: "#1CB0F6")
             ) {
                 showMindfulnessSession = true
             }
+            mindfulHistorySection
         }
     }
 
@@ -190,6 +205,389 @@ struct MindView: View {
                 color: Color.duoGreen
             ) {
                 showStretchSession = true
+            }
+        }
+    }
+
+    private var mindfulHistorySection: some View {
+        let sessions = healthKit.todayMindfulnessSamples
+            .filter { ["Breathe", "Reflect"].contains($0.sessionTypeLabel) }
+            .sorted { $0.startDate > $1.startDate }
+        let totalMinutes = sessions.reduce(0.0) { $0 + $1.durationMinutes }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showMindfulHistory.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text("🧘")
+                        .font(.system(size: 18))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("マインドフル履歴")
+                            .font(.system(size: 13, weight: .black, design: .rounded))
+                            .foregroundColor(Color.duoDark)
+                        Text("\(sessions.count)回 / \(formatMindfulMinutes(totalMinutes))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: showMindfulHistory ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Color.duoPurple.opacity(0.75))
+                }
+                .padding(12)
+                .background(Color.duoPurple.opacity(0.08))
+                .cornerRadius(16)
+            }
+            .buttonStyle(.plain)
+
+            if showMindfulHistory {
+                VStack(alignment: .leading, spacing: 8) {
+                    if sessions.isEmpty {
+                        Text("今日のBreathe / Reflectの記録はまだありません。")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color.duoSubtitle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color.duoBg)
+                            .cornerRadius(12)
+                    } else {
+                        ForEach(sessions) { session in
+                            mindfulHistoryRow(session)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func mindfulHistoryRow(_ session: MindfulSession) -> some View {
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        let typeColor: Color = session.sessionTypeLabel == "Reflect" ? Color.duoPurple : Color(hex: "#1CB0F6")
+
+        return HStack(spacing: 9) {
+            Text(session.sessionEmoji)
+                .font(.system(size: 18))
+                .frame(width: 30, height: 30)
+                .background(typeColor.opacity(0.14))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.sessionTypeLabel)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoDark)
+                Text("\(timeFormatter.string(from: session.startDate)) 実施")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            Spacer()
+
+            Text(formatMindfulMinutes(session.durationMinutes))
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundColor(typeColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(typeColor.opacity(0.12))
+                .cornerRadius(10)
+        }
+        .padding(10)
+        .background(Color.duoBg)
+        .cornerRadius(12)
+    }
+
+    private func formatMindfulMinutes(_ minutes: Double) -> String {
+        if minutes < 1 {
+            return "\(Int(minutes * 60))秒"
+        }
+        if abs(minutes.rounded() - minutes) < 0.05 {
+            return "\(Int(minutes.rounded()))分"
+        }
+        return String(format: "%.1f分", minutes)
+    }
+
+    private var sleepScoreCard: some View {
+        let analysis = healthKit.analyzeSleepScore(
+            targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal)
+        )
+
+        return Button {
+            if let url = URL(string: "x-apple-health://SleepAnalysis") {
+                openURL(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 7) {
+                    Image(systemName: "bed.double.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
+                    Text("昨晩の睡眠")
+                        .font(.headline.weight(.black))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    sleepSectionTitle("睡眠スコア情報", icon: "moon.zzz.fill", color: sleepScoreColor(analysis.score))
+
+                    if analysis.score > 0 {
+                        HStack(alignment: .center, spacing: 8) {
+                            SleepScoreRingView(sleep: analysis)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                sleepBulletRow(
+                                    color: Color(red: 0.44, green: 0.52, blue: 0.90),
+                                    label: "睡眠時間",
+                                    value: "\(analysis.durationScore)/50",
+                                    note: String(format: "%.1fh/%.0fh", analysis.totalHours, analysis.targetHours)
+                                )
+                                sleepBulletRow(
+                                    color: Color(red: 0.22, green: 0.80, blue: 0.72),
+                                    label: "就寝時刻",
+                                    value: "\(analysis.bedtimeScore)/30",
+                                    note: {
+                                        if let t = analysis.firstSleepTime {
+                                            let f = DateFormatter()
+                                            f.dateFormat = "H:mm"
+                                            return f.string(from: t)
+                                        }
+                                        return "—"
+                                    }()
+                                )
+                                sleepBulletRow(
+                                    color: Color(red: 0.95, green: 0.48, blue: 0.40),
+                                    label: "睡眠中断",
+                                    value: "\(analysis.interruptionScore)/20",
+                                    note: analysis.awakeHours < 0.1 ? "なし" : String(format: "%.0f分", analysis.awakeHours * 60)
+                                )
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    } else {
+                        HStack(alignment: .bottom, spacing: 2) {
+                            Text(healthKit.lastNightTotalHours > 0 ? String(format: "%.1f", healthKit.lastNightTotalHours) : "—")
+                                .font(.system(size: 19, weight: .black))
+                                .foregroundColor(healthKit.lastNightTotalHours >= 7.0 ? Color.duoGreen : Color.duoOrange)
+                            Text("h")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.bottom, 1)
+                            Spacer()
+                        }
+                    }
+
+                    if !healthKit.sleepSegments.isEmpty {
+                        sleepStageBar
+                    }
+
+                    sleepInsightMessage(sleepScoreInsight(analysis), color: sleepScoreColor(analysis.score))
+                }
+
+                sleepVitalsSection(healthKit.sleepVitals)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .cornerRadius(18)
+            .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sleepVitalsSection(_ vitals: SleepVitalsAnalysis) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sleepSectionTitle("睡眠中のバイタル情報", icon: "waveform.path.ecg", color: Color(hex: "#1CB0F6"))
+
+            HStack(spacing: 6) {
+                sleepVitalTile(
+                    label: "心拍",
+                    value: vitals.averageHeartRate > 0 ? "\(Int(vitals.averageHeartRate))" : "—",
+                    unit: "bpm",
+                    color: sleepHeartRateColor(vitals.averageHeartRate)
+                )
+                sleepVitalTile(
+                    label: "呼吸",
+                    value: vitals.averageRespiratoryRate > 0 ? String(format: "%.1f", vitals.averageRespiratoryRate) : "—",
+                    unit: "回/分",
+                    color: sleepRespiratoryColor(vitals.averageRespiratoryRate)
+                )
+                sleepVitalTile(
+                    label: "酸素",
+                    value: vitals.averageOxygenSaturation > 0 ? "\(Int(vitals.averageOxygenSaturation))" : "—",
+                    unit: "%",
+                    color: sleepOxygenColor(vitals.minimumOxygenSaturation > 0 ? vitals.minimumOxygenSaturation : vitals.averageOxygenSaturation)
+                )
+            }
+
+            if vitals.hasData {
+                Text(vitals.minimumOxygenSaturation > 0 ? "最低酸素レベル: \(Int(vitals.minimumOxygenSaturation))%" : "酸素レベルの最低値は未取得です")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            if vitals.hasData {
+                ForEach(sleepVitalsInsights(vitals), id: \.self) { message in
+                    let isAlert = vitals.alertMessages.contains(message)
+                    sleepInsightMessage(message, color: isAlert ? Color.duoRed : Color.duoGreen, isAlert: isAlert)
+                }
+            } else {
+                sleepInsightMessage("睡眠中のバイタルデータがまだありません。Apple Watchを装着して睡眠すると、心拍・呼吸・酸素レベルを確認できます。", color: Color.duoSubtitle)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func sleepVitalTile(label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                Text(unit)
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.10))
+        .cornerRadius(9)
+    }
+
+    private func sleepSectionTitle(_ title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundColor(Color.duoDark)
+            Spacer()
+        }
+    }
+
+    private func sleepInsightMessage(_ message: String, color: Color, isAlert: Bool = false) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: isAlert ? "exclamationmark.triangle.fill" : "lightbulb.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(color)
+            Text(message)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(color)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(8)
+        .background(color.opacity(0.10))
+        .cornerRadius(8)
+    }
+
+    private func sleepScoreInsight(_ analysis: SleepScoreAnalysis) -> String {
+        guard analysis.score > 0 else {
+            return "睡眠データがまだ十分にありません。Apple Watchを装着して寝ると、睡眠時間・就寝時刻・中断を分析できます。"
+        }
+        if analysis.durationScore < 35 {
+            return "睡眠時間が目標より短めです。就寝を30分早める、夕方以降のカフェインを控えるなどで回復時間を増やしましょう。"
+        }
+        if analysis.bedtimeScore < 20 {
+            return "就寝時刻が遅めです。寝る前の画面時間を減らし、同じ時間にベッドへ入る習慣を作るとスコアが安定します。"
+        }
+        if analysis.interruptionScore < 14 {
+            return "睡眠中の覚醒が多めです。寝室の温度・光・音を整え、アルコールや遅い食事を控えると改善しやすいです。"
+        }
+        if analysis.score >= 80 {
+            return "昨晩の睡眠は良好です。今日も同じ就寝リズムを保つと、ストレス回復が安定しやすくなります。"
+        }
+        return "大きな異常はありませんが、睡眠時間・就寝時刻・中断のうち弱い項目を1つだけ整えると改善しやすいです。"
+    }
+
+    private func sleepVitalsInsights(_ vitals: SleepVitalsAnalysis) -> [String] {
+        var messages = vitals.alertMessages
+        if messages.isEmpty {
+            if vitals.averageOxygenSaturation >= 94 || vitals.averageHeartRate > 0 || vitals.averageRespiratoryRate > 0 {
+                messages.append("睡眠中のバイタルに大きな注意点はありません。今の睡眠環境を維持しつつ、起床後の体調も合わせて確認しましょう。")
+            }
+        }
+        if vitals.averageHeartRate > 0 && vitals.averageHeartRate > 80 {
+            messages.append("睡眠中の心拍が高めです。寝る前の強い運動・飲酒・カフェイン・ストレス負荷を少し下げると落ち着きやすいです。")
+        }
+        if vitals.averageRespiratoryRate > 0 && vitals.averageRespiratoryRate > 20 {
+            messages.append("呼吸数がやや高めです。鼻詰まり、寝室の乾燥、疲労感がないか確認し、就寝前にゆっくり呼吸を整えましょう。")
+        }
+        if vitals.minimumOxygenSaturation > 0 && vitals.minimumOxygenSaturation < 94 {
+            messages.append("酸素レベルが低めの時間があります。横向き寝、寝室の換気、鼻呼吸のしやすさを確認してください。気になる症状があれば医療機関に相談しましょう。")
+        }
+        return Array(messages.prefix(3))
+    }
+
+    private var sleepStageBar: some View {
+        let segments = healthKit.sleepSegments
+        let total = segments.reduce(0.0) { $0 + $1.durationHours }
+
+        return VStack(alignment: .leading, spacing: 4) {
+            if total > 0 {
+                GeometryReader { geo in
+                    HStack(spacing: 1) {
+                        ForEach(segments) { seg in
+                            let width = max(2, geo.size.width * CGFloat(seg.durationHours / total))
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color(hex: seg.stage.color))
+                                .frame(width: width, height: 14)
+                        }
+                    }
+                }
+                .frame(height: 14)
+
+                HStack(spacing: 10) {
+                    ForEach([
+                        (SleepSegment.SleepStage.deep, "深い"),
+                        (.rem, "REM"),
+                        (.core, "コア"),
+                        (.awake, "覚醒"),
+                    ], id: \.0.rawValue) { stage, label in
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(Color(hex: stage.color))
+                                .frame(width: 6, height: 6)
+                            Text(label)
+                                .font(.system(size: 9))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func sleepBulletRow(color: Color, label: String, value: String, note: String = "") -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Group {
+                if note.isEmpty {
+                    Text("\(label): \(value)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.duoDark)
+                } else {
+                    Text("\(label): \(value) ")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.duoDark)
+                    + Text("(\(note))")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.duoSubtitle)
+                }
             }
         }
     }
@@ -335,6 +733,94 @@ struct MindView: View {
         .padding(.vertical, 10)
         .background(stress.color.opacity(0.12))
         .cornerRadius(12)
+    }
+
+    private func sleepScoreColor(_ score: Int) -> Color {
+        switch score {
+        case 90...100: return .duoGreen
+        case 80..<90:  return Color(red: 0.4, green: 0.8, blue: 0.2)
+        case 70..<80:  return Color(red: 0.451, green: 0.369, blue: 0.937)
+        case 50..<70:  return .duoOrange
+        default:       return .duoRed
+        }
+    }
+
+    private func sleepHeartRateColor(_ value: Double) -> Color {
+        guard value > 0 else { return Color.duoSubtitle }
+        return (value < 40 || value > 100) ? Color.duoRed : Color.duoGreen
+    }
+
+    private func sleepRespiratoryColor(_ value: Double) -> Color {
+        guard value > 0 else { return Color.duoSubtitle }
+        return (value < 10 || value > 24) ? Color.duoRed : Color.duoGreen
+    }
+
+    private func sleepOxygenColor(_ value: Double) -> Color {
+        guard value > 0 else { return Color.duoSubtitle }
+        if value < 90 { return Color.duoRed }
+        if value < 94 { return Color.duoOrange }
+        return Color.duoGreen
+    }
+
+    private struct SleepScoreRingView: View {
+        let sleep: SleepScoreAnalysis
+        var size: CGFloat = 52
+
+        private var lineWidth: CGFloat { size * 0.11 }
+        private let gap: Double = 0.018
+
+        private let durationColor = Color(red: 0.44, green: 0.52, blue: 0.90)
+        private let bedtimeColor = Color(red: 0.22, green: 0.80, blue: 0.72)
+        private let interruptionColor = Color(red: 0.95, green: 0.48, blue: 0.40)
+
+        private var durationExtent: Double { 0.50 - gap }
+        private var bedtimeExtent: Double { 0.30 - gap }
+        private var interruptionExtent: Double { 0.20 - gap }
+
+        private var durationRatio: Double { min(Double(sleep.durationScore) / 50.0, 1.0) }
+        private var bedtimeRatio: Double { min(Double(sleep.bedtimeScore) / 30.0, 1.0) }
+        private var interruptionRatio: Double { min(Double(sleep.interruptionScore) / 20.0, 1.0) }
+
+        private var scoreColor: Color {
+            switch sleep.score {
+            case 90...100: return Color(red: 0.27, green: 0.76, blue: 0.20)
+            case 80..<90:  return Color(red: 0.27, green: 0.76, blue: 0.20)
+            case 70..<80:  return Color(red: 0.45, green: 0.37, blue: 0.94)
+            case 50..<70:  return Color(red: 1.00, green: 0.60, blue: 0.00)
+            default:       return Color(red: 0.95, green: 0.25, blue: 0.25)
+            }
+        }
+
+        var body: some View {
+            ZStack {
+                ZStack {
+                    Circle().trim(from: 0.0, to: durationExtent)
+                        .stroke(durationColor.opacity(0.18), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                    if durationRatio > 0.001 {
+                        Circle().trim(from: 0.0, to: durationExtent * durationRatio)
+                            .stroke(durationColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    }
+                    Circle().trim(from: 0.50, to: 0.50 + bedtimeExtent)
+                        .stroke(bedtimeColor.opacity(0.18), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                    if bedtimeRatio > 0.001 {
+                        Circle().trim(from: 0.50, to: 0.50 + bedtimeExtent * bedtimeRatio)
+                            .stroke(bedtimeColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    }
+                    Circle().trim(from: 0.80, to: 0.80 + interruptionExtent)
+                        .stroke(interruptionColor.opacity(0.18), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                    if interruptionRatio > 0.001 {
+                        Circle().trim(from: 0.80, to: 0.80 + interruptionExtent * interruptionRatio)
+                            .stroke(interruptionColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    }
+                }
+                .rotationEffect(.degrees(-30))
+
+                Text("\(sleep.score)")
+                    .font(.system(size: size * 0.30, weight: .black, design: .rounded))
+                    .foregroundColor(scoreColor)
+            }
+            .frame(width: size, height: size)
+        }
     }
 
     private func suggestionBanner(icon: String, text: String, color: Color) -> some View {

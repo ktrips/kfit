@@ -9,14 +9,17 @@ struct MindfulSession: Identifiable {
     let durationMinutes: Double
     let sourceName: String
     let sourceBundleId: String
+    let sessionTypeHint: String?
 
     /// ソースから判定した種別ラベル
     var sessionTypeLabel: String {
+        if sessionTypeHint == "Breathe" { return "Breathe" }
+        if sessionTypeHint == "Reflect" { return "Reflect" }
         let b = sourceBundleId.lowercased()
         let n = sourceName.lowercased()
         if b.contains("breathe") || n.contains("breathe") { return "Breathe" }
-        if b.contains("kfit") || n.contains("kfit") || n.contains("fitingo") || n.contains("duofit") { return "Breathe" }
         if b.contains("reflect") || n.contains("reflect") { return "Reflect" }
+        if b.contains("kfit") || n.contains("kfit") || n.contains("fitingo") || n.contains("duofit") { return "Breathe" }
         if b.contains("mindfulness") || b.contains("nanomindfulness") || n == "マインドフルネス" { return "マインドフルネス" }
         if b.contains("headspace") || n.contains("headspace") { return "Headspace" }
         if b.contains("calm") || n.contains("calm") { return "Calm" }
@@ -106,6 +109,33 @@ struct SleepScoreAnalysis {
     var firstSleepTime: Date? = nil  // 最初に眠った時刻
     var awakeHours: Double = 0       // 覚醒時間（時間）
     var targetHours: Double = 7.0    // 目標睡眠時間（時間）
+}
+
+struct SleepVitalsAnalysis {
+    let averageHeartRate: Double
+    let averageRespiratoryRate: Double
+    let averageOxygenSaturation: Double
+    let minimumOxygenSaturation: Double
+
+    var hasData: Bool {
+        averageHeartRate > 0 || averageRespiratoryRate > 0 || averageOxygenSaturation > 0 || minimumOxygenSaturation > 0
+    }
+
+    var alertMessages: [String] {
+        var messages: [String] = []
+        if averageHeartRate > 0 && (averageHeartRate < 40 || averageHeartRate > 100) {
+            messages.append("睡眠中の心拍数が通常範囲から外れています")
+        }
+        if averageRespiratoryRate > 0 && (averageRespiratoryRate < 10 || averageRespiratoryRate > 24) {
+            messages.append("睡眠中の呼吸数が通常範囲から外れています")
+        }
+        if minimumOxygenSaturation > 0 && minimumOxygenSaturation < 90 {
+            messages.append("睡眠中の酸素レベルが90%未満まで低下しています")
+        } else if averageOxygenSaturation > 0 && averageOxygenSaturation < 94 {
+            messages.append("睡眠中の平均酸素レベルが低めです")
+        }
+        return messages
+    }
 }
 
 // MARK: - 週間カロリー記録（日別）
@@ -201,6 +231,12 @@ final class HealthKitManager: ObservableObject {
     @Published var lastNightTotalHours: Double         = 0
     @Published var lastNightDeepHours:  Double         = 0
     @Published var sleepSegments:       [SleepSegment] = []
+    @Published var sleepVitals = SleepVitalsAnalysis(
+        averageHeartRate: 0,
+        averageRespiratoryRate: 0,
+        averageOxygenSaturation: 0,
+        minimumOxygenSaturation: 0
+    )
 
     // 体重・体脂肪
     @Published var latestBodyMass: Double = 0              // kg
@@ -276,6 +312,8 @@ final class HealthKitManager: ObservableObject {
             .heartRate,
             .restingHeartRate,
             .heartRateVariabilitySDNN,  // 心拍変動
+            .respiratoryRate,       // 呼吸数
+            .oxygenSaturation,      // 血中酸素ウェルネス
             .stepCount,
             .activeEnergyBurned,
             .basalEnergyBurned,     // 安静時カロリー（基礎代謝）
@@ -521,6 +559,7 @@ final class HealthKitManager: ObservableObject {
         lastNightTotalHours = sleepResult.total
         lastNightDeepHours  = sleepResult.deep
         sleepSegments       = sleepResult.segments
+        sleepVitals         = await fetchSleepVitals(segments: sleepResult.segments)
         latestBodyMass          = await bodyMass
         latestBodyFatPercentage = await bodyFat
         todayBodyMassMeasurements = await bodyMassCount
@@ -869,6 +908,90 @@ final class HealthKitManager: ObservableObject {
             }
             store.execute(q)
         }
+    }
+
+    private func fetchDiscreteAverage(type: HKQuantityType, predicate: NSPredicate, unit: HKUnit) async -> Double {
+        await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: .discreteAverage
+            ) { _, result, _ in
+                continuation.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func fetchMinimumSampleValue(type: HKQuantityType, predicate: NSPredicate, unit: HKUnit) async -> Double {
+        await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                let values = (samples as? [HKQuantitySample])?.map { $0.quantity.doubleValue(for: unit) } ?? []
+                continuation.resume(returning: values.min() ?? 0)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func fetchDiscreteAverage(type: HKQuantityType?, predicate: NSPredicate, unit: HKUnit) async -> Double {
+        guard let type else { return 0 }
+        return await fetchDiscreteAverage(type: type, predicate: predicate, unit: unit)
+    }
+
+    private func fetchMinimumSampleValue(type: HKQuantityType?, predicate: NSPredicate, unit: HKUnit) async -> Double {
+        guard let type else { return 0 }
+        return await fetchMinimumSampleValue(type: type, predicate: predicate, unit: unit)
+    }
+
+    private func fetchSleepVitals(segments: [SleepSegment]) async -> SleepVitalsAnalysis {
+        let asleepSegments = segments.filter { segment in
+            switch segment.stage {
+            case .deep, .rem, .core, .unknown:
+                return true
+            case .awake, .inBed:
+                return false
+            }
+        }
+        guard let start = asleepSegments.map(\.start).min(),
+              let end = asleepSegments.map(\.end).max(),
+              start < end else {
+            return SleepVitalsAnalysis(
+                averageHeartRate: 0,
+                averageRespiratoryRate: 0,
+                averageOxygenSaturation: 0,
+                minimumOxygenSaturation: 0
+            )
+        }
+
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate)
+        let respiratoryType = HKQuantityType.quantityType(forIdentifier: .respiratoryRate)
+        let oxygenType = HKQuantityType.quantityType(forIdentifier: .oxygenSaturation)
+
+        async let heart = fetchDiscreteAverage(
+            type: heartType,
+            predicate: predicate,
+            unit: HKUnit.count().unitDivided(by: .minute())
+        )
+        async let respiratory = fetchDiscreteAverage(
+            type: respiratoryType,
+            predicate: predicate,
+            unit: HKUnit.count().unitDivided(by: .minute())
+        )
+        async let oxygenAverage = fetchDiscreteAverage(type: oxygenType, predicate: predicate, unit: .percent()) * 100
+        async let oxygenMinimum = fetchMinimumSampleValue(type: oxygenType, predicate: predicate, unit: .percent()) * 100
+
+        return await SleepVitalsAnalysis(
+            averageHeartRate: heart,
+            averageRespiratoryRate: respiratory,
+            averageOxygenSaturation: oxygenAverage,
+            minimumOxygenSaturation: oxygenMinimum
+        )
     }
 
     // MARK: - 体重・体脂肪の取得
@@ -1495,7 +1618,8 @@ final class HealthKitManager: ObservableObject {
                         startDate: sample.startDate,
                         durationMinutes: duration,
                         sourceName: sample.sourceRevision.source.name,
-                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier
+                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+                        sessionTypeHint: sample.metadata?["kfitSessionType"] as? String
                     ))
                 }
 
@@ -1517,7 +1641,12 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// アプリ内セッションをHealthKitのマインドフルネスとして保存
-    func saveMindfulnessSession(startDate: Date, endDate: Date, durationSeconds: TimeInterval = 60) async -> Bool {
+    func saveMindfulnessSession(
+        startDate: Date,
+        endDate: Date,
+        durationSeconds: TimeInterval = 60,
+        sessionType: String = "Breathe"
+    ) async -> Bool {
         guard isAvailable else {
             print("[HealthKit] ⚠️ HealthKit not available for mindfulness save")
             return false
@@ -1533,6 +1662,7 @@ final class HealthKitManager: ObservableObject {
 
         let normalizedDuration = max(60, durationSeconds)
         let normalizedEndDate = startDate.addingTimeInterval(normalizedDuration)
+        let normalizedSessionType = sessionType == "Reflect" ? "Reflect" : "Breathe"
         let sample = HKCategorySample(
             type: type,
             value: HKCategoryValue.notApplicable.rawValue,
@@ -1540,7 +1670,7 @@ final class HealthKitManager: ObservableObject {
             end: normalizedEndDate,
             metadata: [
                 HKMetadataKeyWasUserEntered: true,
-                "kfitSessionType": normalizedDuration <= 90 ? "Breathe" : "Stretch"
+                "kfitSessionType": normalizedSessionType
             ]
         )
 

@@ -25,8 +25,7 @@ struct GIFAnimationView: UIViewRepresentable {
         let name = gifName
         let loops = loopCount
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let url = Bundle.main.url(forResource: name, withExtension: "gif"),
-                  let data = try? Data(contentsOf: url),
+            guard let data = findGIFData(named: name),
                   let source = CGImageSourceCreateWithData(data as CFData, nil)
             else { return }
 
@@ -46,17 +45,50 @@ struct GIFAnimationView: UIViewRepresentable {
             }
 
             guard !images.isEmpty else { return }
-            let animated = UIImage.animatedImage(with: images, duration: totalDuration)
 
             DispatchQueue.main.async {
                 guard let iv = context.coordinator.imageView else { return }
-                iv.image = animated
+                iv.image = images.first
+                iv.animationImages = images
+                iv.animationDuration = totalDuration
                 iv.animationRepeatCount = loops
                 iv.startAnimating()
             }
         }
 
         return imageView
+    }
+
+    private func findGIFData(named name: String) -> Data? {
+        if let asset = NSDataAsset(name: name) {
+            return asset.data
+        }
+        guard let url = findGIFURL(named: name) else {
+            return nil
+        }
+        return try? Data(contentsOf: url)
+    }
+
+    private func findGIFURL(named name: String) -> URL? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "gif", subdirectory: "Images") {
+            return url
+        }
+        if let url = Bundle.main.url(forResource: name, withExtension: "gif") {
+            return url
+        }
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: Bundle.main.bundleURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            return nil
+        }
+
+        let targetFileName = "\(name).gif"
+        for case let url as URL in enumerator where url.lastPathComponent == targetFileName {
+            return url
+        }
+        return nil
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {

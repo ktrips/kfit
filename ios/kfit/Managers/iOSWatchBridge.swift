@@ -105,8 +105,14 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
             // ③ stats リクエスト（Watch 起動時）
             if (message["action"] as? String) == "request_stats" {
+                let force = message["force"] as? Bool ?? false
                 let profile = AuthenticationManager.shared.userProfile
                 Task {
+                    if force {
+                        lastStatsSendTime = nil
+                        await HealthKitManager.shared.fetchAll(force: true)
+                        await TimeSlotManager.shared.loadTodayProgress(syncHealthKit: false)
+                    }
                     let todayExercises = await AuthenticationManager.shared.getTodayExercises()
                     let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
                     let todayXP = todayExercises.reduce(0) { $0 + $1.points }
@@ -291,6 +297,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
         // フォールバック: UserDefaults にデータがない場合はリアルタイム計算
         let timeSlotManager = TimeSlotManager.shared
+        await timeSlotManager.loadTodaySettings()
         await timeSlotManager.loadTodayProgress()
         let todayExercises = await AuthenticationManager.shared.getTodayExercises()
         let calendar = Calendar.current
@@ -381,6 +388,11 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["totalDrinkLogged"] = timeSlotProgress.totalDrinkLogged
             payload["totalDrinkGoal"] = timeSlotProgress.totalDrinkGoal
 
+            let watchFaceTasks = await buildWatchFaceTasks()
+            if let data = try? JSONEncoder().encode(watchFaceTasks) {
+                payload["watchFaceTasks"] = data
+            }
+
             // 後方互換性: セット数も送信
             let todaySetCount = await AuthenticationManager.shared.getTodaySetCount()
             let dailySetGoal = await AuthenticationManager.shared.getDailySetGoal()
@@ -464,8 +476,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["latestBodyFatPercentage"] = healthKit.latestBodyFatPercentage
             payload["todayMindfulnessSessions"] = healthKit.todayMindfulnessSessions
             payload["todayMindfulnessMinutes"] = healthKit.todayMindfulnessMinutes
+            payload["todayWorkoutMinutes"] = healthKit.todayWorkoutMinutes
 
-            print("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), mindfulness=\(healthKit.todayMindfulnessSessions)")
+            print("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), workout=\(healthKit.todayWorkoutMinutes), mindfulness=\(healthKit.todayMindfulnessSessions)")
 
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
@@ -473,6 +486,117 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 try? session.updateApplicationContext(payload)
             }
         }
+    }
+
+    private func buildWatchFaceTasks() async -> [WatchFaceTaskConfigForWatch] {
+        let timeSlotManager = TimeSlotManager.shared
+        await timeSlotManager.loadTodaySettings()
+        await timeSlotManager.loadTodayProgress(syncHealthKit: false)
+
+        func mealSubtype(for slot: TimeSlot) -> String {
+            switch slot {
+            case .midnight: return "snack"
+            case .morning: return "breakfast"
+            case .noon: return "lunch"
+            case .afternoon: return "snack"
+            case .evening: return "dinner"
+            }
+        }
+
+        func mealEmoji(for slot: TimeSlot) -> String {
+            switch slot {
+            case .midnight: return "🍃"
+            case .morning: return "🍳"
+            case .noon: return "🍱"
+            case .afternoon: return "🍃"
+            case .evening: return "🍽️"
+            }
+        }
+
+        var tasks: [WatchFaceTaskConfigForWatch] = []
+        for slot in TimeSlot.allCases {
+            guard let goal = timeSlotManager.settings.goalFor(slot),
+                  let progress = timeSlotManager.progress.progressFor(slot) else { continue }
+            let prefix = slot.rawValue
+
+            if goal.trainingGoal > 0 {
+                for index in 1...goal.trainingGoal {
+                    tasks.append(WatchFaceTaskConfigForWatch(
+                        id: "\(prefix)-training-\(index)",
+                        emoji: "💪",
+                        color: "training",
+                        isDone: progress.trainingCompleted >= index,
+                        actionType: "training",
+                        mealSubtype: nil,
+                        intakeMessage: ""
+                    ))
+                }
+            }
+
+            if goal.logGoal.mealGoal > 0 {
+                let subtype = mealSubtype(for: slot)
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-meal",
+                    emoji: mealEmoji(for: slot),
+                    color: "meal",
+                    isDone: progress.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    actionType: "meal",
+                    mealSubtype: subtype,
+                    intakeMessage: "\(slot.displayName)の食事を追加しますか？"
+                ))
+            }
+
+            if goal.logGoal.drinkGoal > 0 {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-drink",
+                    emoji: "💧",
+                    color: "water",
+                    isDone: progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    actionType: "water",
+                    mealSubtype: nil,
+                    intakeMessage: "水を追加しますか？"
+                ))
+            }
+
+            if goal.mindfulnessGoal > 0 {
+                for index in 1...goal.mindfulnessGoal {
+                    tasks.append(WatchFaceTaskConfigForWatch(
+                        id: "\(prefix)-mindfulness-\(index)",
+                        emoji: "🧘",
+                        color: "mind",
+                        isDone: progress.mindfulnessCompleted >= index,
+                        actionType: "mindfulness",
+                        mealSubtype: nil,
+                        intakeMessage: ""
+                    ))
+                }
+            }
+
+            if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 && slot != .midnight {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-stretch",
+                    emoji: "🤸",
+                    color: "stretch",
+                    isDone: progress.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes,
+                    actionType: "stretch",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+
+            for activity in goal.customActivities where activity.isEnabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-custom-\(activity.id)",
+                    emoji: activity.emoji,
+                    color: "custom",
+                    isDone: progress.completedActivityIds.contains(activity.id),
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+        }
+        return tasks
     }
 }
 
@@ -521,4 +645,14 @@ struct TimeSlotProgressData {
     let totalMealGoal: Int
     let totalDrinkLogged: Int
     let totalDrinkGoal: Int
+}
+
+struct WatchFaceTaskConfigForWatch: Codable {
+    let id: String
+    let emoji: String
+    let color: String
+    let isDone: Bool
+    let actionType: String
+    let mealSubtype: String?
+    let intakeMessage: String
 }

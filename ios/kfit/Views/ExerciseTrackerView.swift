@@ -45,6 +45,7 @@ struct ExerciseTrackerView: View {
     @State private var plankSeconds = 0
     @State private var plankTimer: Timer?
     @State private var pulseAnimation = false
+    @State private var showWorkoutGIF = true
 
     /// セット内の記録済み種目
     @State private var completedExercises: [(id: String, name: String, emoji: String, reps: Int, points: Int)] = []
@@ -54,6 +55,21 @@ struct ExerciseTrackerView: View {
     }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
     private var isPlankSelected: Bool { current.id == "plank" }
+
+    private var currentWorkoutGIFName: String {
+        switch current.id {
+        case "squat", "lunge":
+            return "fitingo_wo_range"
+        case "pushup", "situp":
+            return "fItingo_wo_pushups"
+        case "legraise", "leg-raise", "legs":
+            return "fitingo_wo_legs"
+        case "burpee":
+            return "fitingo_wo_burpee"
+        default:
+            return "fitingo_workout"
+        }
+    }
 
     private var currentReps: Int {
         if isPlankSelected { return plankSeconds }
@@ -161,19 +177,38 @@ struct ExerciseTrackerView: View {
         .padding(.vertical, 6)
     }
 
-    private var showsFitingoGIF: Bool {
-        current.id == "squat" || current.id == "lunge"
-    }
-
     // MARK: - 現在の種目カード
     private var currentExerciseCard: some View {
         VStack(spacing: 12) {
-            if showsFitingoGIF {
-                GIFAnimationView(gifName: "fitingo_workout")
-                    .frame(width: 130, height: 130)
-            } else {
-                Text(current.emoji).font(.system(size: 70))
+            Text(current.emoji)
+                .font(.system(size: 70))
+
+            if showWorkoutGIF {
+                GIFAnimationView(gifName: currentWorkoutGIFName)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 170)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showWorkoutGIF.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: showWorkoutGIF ? "checkmark.square.fill" : "square")
+                    Text("動画GIFを再生")
+                }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(showWorkoutGIF ? Color.duoGreen : Color.duoBlue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background((showWorkoutGIF ? Color.duoGreen : Color.duoBlue).opacity(0.12))
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+
             Text(current.name)
                 .font(.title2).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
@@ -559,6 +594,7 @@ struct ExerciseTrackerView: View {
             manualRepCount = 0
             plankSeconds = 0
             pulseAnimation = false
+            showWorkoutGIF = true
             startCurrentExercise()
         }
     }

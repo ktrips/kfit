@@ -302,7 +302,7 @@ struct LargeWidgetView: View {
                     )
                     largeHeaderCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
                 }
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
                 .background(Color.white.opacity(0.15))
                 .cornerRadius(12)
 
@@ -351,13 +351,13 @@ struct LargeWidgetView: View {
 
     private func largeHeaderCell(icon: String, value: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(icon).font(.system(size: 22))
+            Text(icon).font(.system(size: 40))
             Text(value)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.system(size: 32, weight: .black, design: .rounded))
                 .foregroundColor(.white)
-                .lineLimit(1).minimumScaleFactor(0.5)
+                .lineLimit(1).minimumScaleFactor(0.42)
             Text(sub)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.white.opacity(0.85))
         }
         .frame(maxWidth: .infinity)

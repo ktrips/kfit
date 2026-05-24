@@ -36,6 +36,8 @@ struct WatchDashboardView: View {
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @StateObject private var healthKit = WatchHealthKitManager.shared
     @State private var showFlow = false
+    @State private var showBreatheFlow = false
+    @State private var showStretchFlow = false
     @State private var selectedTab = 1  // 初期表示は真ん中（今日のメニュー）
     @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
     @State private var pendingIntakeType: String = ""  // 保留中の摂取タイプ
@@ -43,6 +45,7 @@ struct WatchDashboardView: View {
     @State private var intakeConfirmMessage = ""  // 確認メッセージ
     @State private var doubleTapCount = 0  // ダブルタップカウント（デバッグ用）
     @State private var isManualRefreshing = false
+    @State private var lastHealthRefreshByScope: [String: Date] = [:]
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -81,6 +84,12 @@ struct WatchDashboardView: View {
         .fullScreenCover(isPresented: $showFlow) {
             WatchWorkoutFlowView(isPresented: $showFlow)
         }
+        .fullScreenCover(isPresented: $showBreatheFlow) {
+            WatchBreatheFlowView(isPresented: $showBreatheFlow)
+        }
+        .fullScreenCover(isPresented: $showStretchFlow) {
+            WatchStretchFlowView(isPresented: $showStretchFlow)
+        }
         .alert(intakeConfirmMessage, isPresented: $showIntakeConfirm) {
             Button("キャンセル", role: .cancel) { }
             Button("記録する") {
@@ -98,6 +107,9 @@ struct WatchDashboardView: View {
                 connectivity.shouldAutoStartWorkout = false
             }
         }
+        .onChange(of: selectedTab) { tab in
+            refreshForSelectedTab(tab)
+        }
         // 起動時に最新 stats を iOS に問い合わせる & HealthKit データ取得
         .onAppear {
             // 最新のApplicationContextを確認（iOSアプリが起動していない場合用）
@@ -105,7 +117,11 @@ struct WatchDashboardView: View {
             // iOSアプリが起動している場合はリアルタイムでリクエスト
             connectivity.requestStatsFromiOS()
             Task {
-                await healthKit.requestAuthorization()
+                if !healthKit.isAuthorized {
+                    await healthKit.requestAuthorization()
+                } else {
+                    await healthKit.fetchDashboardData()
+                }
             }
         }
     }
@@ -146,17 +162,62 @@ struct WatchDashboardView: View {
         isManualRefreshing = true
         WKInterfaceDevice.current().play(.click)
         Task {
-            if !healthKit.isAuthorized {
-                await healthKit.requestAuthorization()
-            } else {
-                await healthKit.fetchAllTodayData(force: true)
-            }
+            await refreshHealthData(scope: scope, force: true)
             connectivity.requestStatsFromiOS(scope: scope, force: true)
             try? await Task.sleep(nanoseconds: 900_000_000)
             await MainActor.run {
                 isManualRefreshing = false
                 WKInterfaceDevice.current().play(.success)
             }
+        }
+    }
+
+    private func refreshForSelectedTab(_ tab: Int) {
+        switch tab {
+        case 0:
+            Task { await refreshHealthData(scope: "intake") }
+            connectivity.requestStatsFromiOS(scope: "intake")
+        case 2:
+            Task { await refreshHealthData(scope: "watchFace") }
+            connectivity.requestStatsFromiOS(scope: "watchFace")
+        case 3:
+            Task { await refreshHealthData(scope: "wellness") }
+            connectivity.requestStatsFromiOS(scope: "wellness")
+        case 4:
+            Task { await refreshHealthData(scope: "health") }
+            connectivity.requestStatsFromiOS(scope: "health")
+        default:
+            Task { await refreshHealthData(scope: "dashboard") }
+            connectivity.requestStatsFromiOS(scope: "dashboard")
+        }
+    }
+
+    private func refreshHealthData(scope: String, force: Bool = false) async {
+        if !force,
+           let lastRefresh = lastHealthRefreshByScope[scope],
+           Date().timeIntervalSince(lastRefresh) < healthRefreshTTL(for: scope) {
+            return
+        }
+        if !healthKit.isAuthorized {
+            await healthKit.requestAuthorization()
+        } else {
+            await healthKit.fetchData(scope: scope, force: force)
+        }
+        await MainActor.run {
+            lastHealthRefreshByScope[scope] = Date()
+        }
+    }
+
+    private func healthRefreshTTL(for scope: String) -> TimeInterval {
+        switch scope {
+        case "intake":
+            return 15
+        case "watchFace":
+            return 15
+        case "wellness", "health":
+            return 25
+        default:
+            return 20
         }
     }
 
@@ -384,6 +445,9 @@ struct WatchDashboardView: View {
                     }
                     .buttonStyle(.plain)
 
+                    stretchButton
+                    mindfulnessHistorySection
+
                     // ── スワイプヒント ────────────────────
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -496,26 +560,9 @@ struct WatchDashboardView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 10) {
 
-                // ── ヘッダー：心拍数 / HRV ────────────────────
+                // ── 心拍数 / HRV / ストレス ────────────────────
                 let stress = stressInfo(hrv: healthKit.latestHRV)
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("🫀").font(.system(size: 18))
-                        Text("ウェルネス")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                        Spacer()
-                        Button {
-                            Task { await healthKit.fetchAllTodayData() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14))
-                                .foregroundColor(duoGreen)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // 心拍数 + HRV
+                ZStack(alignment: .topTrailing) {
                     HStack(spacing: 0) {
                         VStack(spacing: 3) {
                             Text("❤️").font(.system(size: 20))
@@ -542,43 +589,39 @@ struct WatchDashboardView: View {
                             Text("ms HRV").font(.system(size: 9)).foregroundColor(.gray)
                         }
                         .frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(10)
-                }
-                .padding(12)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(14)
-                .onAppear {
-                    Task { await healthKit.fetchAllTodayData() }
-                }
 
-                // ── ストレス度合い ────────────────────
-                HStack(spacing: 12) {
-                    Text(stress.emoji).font(.system(size: 28))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("ストレス度合い")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white.opacity(0.8))
-                        Text(stress.label)
-                            .font(.system(size: 18, weight: .black))
-                            .foregroundColor(stress.color)
-                        if healthKit.latestHRV > 0 {
-                            Text("HRV \(String(format: "%.0f", healthKit.latestHRV))ms から推定")
-                                .font(.system(size: 9))
-                                .foregroundColor(.gray)
-                        } else {
-                            Text("HRVデータ取得中...")
-                                .font(.system(size: 9))
-                                .foregroundColor(.gray)
+                        Rectangle()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 1, height: 44)
+
+                        VStack(spacing: 3) {
+                            Text(stress.emoji).font(.system(size: 20))
+                            Text(stress.label)
+                                .font(.system(size: 16, weight: .black))
+                                .foregroundColor(stress.color)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            Text("ストレス").font(.system(size: 9)).foregroundColor(.gray)
                         }
+                        .frame(maxWidth: .infinity)
                     }
-                    Spacer()
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 6)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(12)
+
+                    Button {
+                        Task { await refreshHealthData(scope: "wellness", force: true) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white.opacity(0.72))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                    .padding(.trailing, 4)
                 }
-                .padding(12)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(14)
 
                 // ── マインドフルネスボタン ────────────────────
                 Button {
@@ -611,6 +654,9 @@ struct WatchDashboardView: View {
                 }
                 .buttonStyle(.plain)
 
+                stretchButton
+                mindfulnessHistorySection
+
                 Spacer(minLength: 8)
             }
             .padding(.horizontal, 8)
@@ -618,20 +664,100 @@ struct WatchDashboardView: View {
         }
     }
 
-    // MARK: - マインドフルネスアプリを開く
-    private func openMindfulnessApp() {
-        // マインドフルネス（旧Breathe）アプリのURL
-        if let url = URL(string: "com.apple.mindfulness://") {
-            openURL(url)
-            print("[Watch] 🧘 Opening Mindfulness app")
-        } else {
-            // フォールバック: HealthKitに直接記録
-            Task {
-                await healthKit.saveMindfulnessSession(durationMinutes: 1)
-                await healthKit.fetchTodayMindfulness()
-                print("[Watch] 🧘 Mindfulness session recorded (fallback)")
+    private var stretchButton: some View {
+        Button {
+            showStretchFlow = true
+        } label: {
+            VStack(spacing: 5) {
+                Text("🤸").font(.system(size: 30))
+                Text("3分ストレッチ")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                Text("Reflectとして保存")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.35, green: 0.80, blue: 0.55), Color(red: 0.10, green: 0.62, blue: 0.75)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var mindfulnessHistorySection: some View {
+        let samples = healthKit.todayMindfulnessSamples.sorted { $0.startDate > $1.startDate }
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text("🧘").font(.system(size: 11))
+                Text("今日のマインドフル")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+                Spacer()
+                Text("\(samples.count)件")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
+            if samples.isEmpty {
+                Text("まだ記録はありません")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(samples.prefix(4)) { session in
+                    mindfulnessHistoryRow(session)
+                }
             }
         }
+        .padding(7)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func mindfulnessHistoryRow(_ session: WatchMindfulnessSession) -> some View {
+        HStack(spacing: 5) {
+            Text(session.emoji).font(.system(size: 12))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(session.typeLabel)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(.white)
+                Text(session.sourceLabel)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.52))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text(formatMindfulMinutes(session.durationMinutes))
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(session.typeLabel == "Reflect" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(7)
+    }
+
+    private func formatMindfulMinutes(_ minutes: Double) -> String {
+        if minutes < 1 {
+            return "\(Int(minutes * 60))秒"
+        }
+        if abs(minutes.rounded() - minutes) < 0.05 {
+            return "\(Int(minutes.rounded()))分"
+        }
+        return String(format: "%.1f分", minutes)
+    }
+
+    // MARK: - 1分Breatheセッションを開始
+    private func openMindfulnessApp() {
+        showBreatheFlow = true
     }
 
     // MARK: - マインドフルネス記録（未使用 - 念のため残す）
@@ -685,10 +811,6 @@ struct WatchDashboardView: View {
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(10)
                 .padding(.bottom, 4)
-                .onAppear {
-                    connectivity.requestStatsFromiOS()
-                    Task { await healthKit.fetchAllTodayData() }
-                }
 
                 // ── 今日のApple Health ──────────────────────
                 if healthKit.isAuthorized {
@@ -701,7 +823,7 @@ struct WatchDashboardView: View {
                             Spacer()
                             Button {
                                 Task {
-                                    await healthKit.fetchAllTodayData()
+                                    await refreshHealthData(scope: "health", force: true)
                                 }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
@@ -769,7 +891,7 @@ struct WatchDashboardView: View {
                                 .foregroundColor(.white.opacity(0.9))
                             Spacer()
                             Button {
-                                Task { await healthKit.fetchAllTodayData() }
+                                Task { await refreshHealthData(scope: "intake", force: true) }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 14))
@@ -1156,28 +1278,28 @@ struct WatchDashboardView: View {
 
     // タスクノードビュー（完了=塗りつぶし、未完了=輪郭+タップでアクション）
     private func watchFaceNodeView(_ node: WatchFaceTaskNode) -> some View {
-        Group {
-            if node.isDone {
-                ZStack {
-                    Circle().fill(node.accentColor)
-                        .frame(width: 34, height: 34)
-                    Text(node.emoji).font(.system(size: 23))
+        Button {
+            switch node.actionType {
+            case "training":  showFlow = true
+            case "mindfulness": openMindfulnessApp()
+            case "stretch": showStretchFlow = true
+            case "meal", "water":
+                if !node.intakeMessage.isEmpty {
+                    confirmIntake(type: node.actionType == "water" ? "water" : "meal",
+                                  subtype: node.mealSubtype,
+                                  message: node.intakeMessage)
                 }
-            } else {
-                Button {
-                    switch node.actionType {
-                    case "training":  showFlow = true
-                    case "mindfulness": openMindfulnessApp()
-                    case "stretch": openMindfulnessApp()
-                    case "meal", "water":
-                        if !node.intakeMessage.isEmpty {
-                            confirmIntake(type: node.actionType == "water" ? "water" : "meal",
-                                          subtype: node.mealSubtype,
-                                          message: node.intakeMessage)
-                        }
-                    default: break
+            default: break
+            }
+        } label: {
+            Group {
+                if node.isDone {
+                    ZStack {
+                        Circle().fill(node.accentColor)
+                            .frame(width: 34, height: 34)
+                        Text(node.emoji).font(.system(size: 23))
                     }
-                } label: {
+                } else {
                     ZStack {
                         Circle().fill(Color.black.opacity(0.35))
                             .frame(width: 34, height: 34)
@@ -1187,9 +1309,9 @@ struct WatchDashboardView: View {
                             .opacity(0.6)
                     }
                 }
-                .buttonStyle(.plain)
             }
         }
+        .buttonStyle(.plain)
     }
 
     private func ringLegendRow(color: Color, value: String, unit: String) -> some View {
@@ -1201,6 +1323,356 @@ struct WatchDashboardView: View {
             Text(unit)
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.6))
+        }
+    }
+}
+
+private struct WatchBreatheFlowView: View {
+    @Binding var isPresented: Bool
+    @StateObject private var healthKit = WatchHealthKitManager.shared
+    @State private var elapsedSeconds = 0
+    @State private var isSaving = false
+    @State private var didComplete = false
+    @State private var inhaleHapticTask: Task<Void, Never>?
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private var cycleSecond: Int { elapsedSeconds % 13 }
+    private var isInhaling: Bool { cycleSecond < 6 }
+    private var cue: String { isInhaling ? "ゆっくり吸う" : "ゆっくり吐く" }
+    private var remainingSeconds: Int { max(0, 60 - elapsedSeconds) }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.20, green: 0.48, blue: 0.95), Color(red: 0.50, green: 0.35, blue: 0.95)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            BreathingBackground(isInhaling: isInhaling, color: .white)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Breathe")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(.white.opacity(0.75))
+                    Spacer()
+                    Button { isPresented = false } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                BreathingRelaxAnimation(isInhaling: isInhaling)
+                    .frame(width: 86, height: 62)
+
+                Text(cue)
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text("呼吸に意識を向ける")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.75))
+
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.22), lineWidth: 7)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(elapsedSeconds) / 60.0)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(remainingSeconds)s")
+                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 58, height: 58)
+
+                if isSaving {
+                    ProgressView().tint(.white)
+                }
+            }
+            .padding(10)
+        }
+        .onAppear {
+            WKInterfaceDevice.current().play(.start)
+            startInhaleHaptics()
+        }
+        .onDisappear {
+            inhaleHapticTask?.cancel()
+        }
+        .onReceive(timer) { _ in
+            guard !didComplete else { return }
+            elapsedSeconds += 1
+            if elapsedSeconds % 13 == 0 {
+                startInhaleHaptics()
+            }
+            if elapsedSeconds >= 60 {
+                completeBreathe()
+            }
+        }
+    }
+
+    private func startInhaleHaptics() {
+        inhaleHapticTask?.cancel()
+        inhaleHapticTask = Task {
+            for _ in 0..<24 {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(.click)
+                }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+    }
+
+    private func completeBreathe() {
+        didComplete = true
+        isSaving = true
+        inhaleHapticTask?.cancel()
+        playCompletionHaptic()
+        Task {
+            await healthKit.saveMindfulnessSession(durationMinutes: 1, sessionType: "Breathe")
+            await healthKit.fetchTodayMindfulness()
+            await MainActor.run {
+                isSaving = false
+                isPresented = false
+            }
+        }
+    }
+
+    private func playCompletionHaptic() {
+        Task {
+            for index in 0..<4 {
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(index % 2 == 0 ? .notification : .success)
+                }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
+        }
+    }
+}
+
+private struct BreathingRelaxAnimation: View {
+    let isInhaling: Bool
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .stroke(Color.white.opacity(0.18 - Double(index) * 0.04), lineWidth: 2)
+                    .scaleEffect(isInhaling ? CGFloat(1.10 + Double(index) * 0.22) : CGFloat(0.74 + Double(index) * 0.14))
+                    .animation(.easeInOut(duration: isInhaling ? 5.8 : 6.8), value: isInhaling)
+            }
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.95), Color.white.opacity(0.25)],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 36
+                    )
+                )
+                .scaleEffect(isInhaling ? 1.08 : 0.72)
+                .animation(.easeInOut(duration: isInhaling ? 5.8 : 6.8), value: isInhaling)
+            Text("🧘")
+                .font(.system(size: 26))
+        }
+    }
+}
+
+private struct BreathingBackground: View {
+    let isInhaling: Bool
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [color.opacity(0.28), color.opacity(0.06), .clear],
+                        center: .center,
+                        startRadius: 8,
+                        endRadius: 95
+                    )
+                )
+                .frame(width: 190, height: 190)
+                .scaleEffect(isInhaling ? 1.38 : 0.68)
+                .blur(radius: 2)
+                .offset(y: 8)
+
+            Circle()
+                .stroke(color.opacity(0.18), lineWidth: 2)
+                .frame(width: 138, height: 138)
+                .scaleEffect(isInhaling ? 1.55 : 0.78)
+                .offset(y: 8)
+        }
+        .animation(.easeInOut(duration: isInhaling ? 5.8 : 6.8), value: isInhaling)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct WatchStretchFlowView: View {
+    @Binding var isPresented: Bool
+    @StateObject private var healthKit = WatchHealthKitManager.shared
+    @State private var elapsedSeconds = 0
+    @State private var isSaving = false
+    @State private var didComplete = false
+    @State private var inhaleHapticTask: Task<Void, Never>?
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let poses: [(emoji: String, title: String, cue: String)] = [
+        ("🙆", "首・肩をゆるめる", "息を吸って肩を上げ、吐きながら力を抜く"),
+        ("🧍", "背中を伸ばす", "胸を開いて、背中をゆっくり伸ばす"),
+        ("🤸", "脚と腰をほぐす", "片脚ずつ軽く伸ばして、呼吸を続ける"),
+    ]
+
+    private var phaseIndex: Int { min(elapsedSeconds / 60, poses.count - 1) }
+    private var currentPose: (emoji: String, title: String, cue: String) { poses[phaseIndex] }
+    private var secondsInPhase: Int { elapsedSeconds % 60 }
+    private var remainingSeconds: Int { max(0, 180 - elapsedSeconds) }
+    private var breathCycleSecond: Int { secondsInPhase % 13 }
+    private var isInhaling: Bool { breathCycleSecond < 6 }
+    private var breathCue: String { isInhaling ? "ゆっくり吸う" : "ゆっくり吐く" }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.12, green: 0.62, blue: 0.76), Color(red: 0.35, green: 0.80, blue: 0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            BreathingBackground(isInhaling: isInhaling, color: .white)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Reflect")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(.white.opacity(0.75))
+                    Spacer()
+                    Button {
+                        isPresented = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(currentPose.emoji)
+                    .font(.system(size: 42))
+
+                VStack(spacing: 3) {
+                    Text("\(phaseIndex + 1)/3")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundColor(.white.opacity(0.75))
+                    Text(currentPose.title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                    Text(currentPose.cue)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.78))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.22), lineWidth: 7)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(elapsedSeconds) / 180.0)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: 0) {
+                        Text(breathCue)
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundColor(.white)
+                        Text("\(remainingSeconds)s")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                }
+                .frame(width: 72, height: 72)
+
+                if isSaving {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Text("Hapticに合わせて呼吸")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.72))
+                }
+            }
+            .padding(10)
+        }
+        .onAppear {
+            WKInterfaceDevice.current().play(.start)
+            startInhaleHaptics()
+        }
+        .onDisappear {
+            inhaleHapticTask?.cancel()
+        }
+        .onReceive(timer) { _ in
+            guard !didComplete else { return }
+            elapsedSeconds += 1
+            playBreathingHapticIfNeeded()
+            if elapsedSeconds >= 180 {
+                completeStretch()
+            }
+        }
+    }
+
+    private func playBreathingHapticIfNeeded() {
+        if elapsedSeconds % 13 == 0 {
+            startInhaleHaptics()
+        }
+        if elapsedSeconds % 60 == 0 {
+            WKInterfaceDevice.current().play(.success)
+        }
+    }
+
+    private func startInhaleHaptics() {
+        inhaleHapticTask?.cancel()
+        inhaleHapticTask = Task {
+            for _ in 0..<24 {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(.click)
+                }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+    }
+
+    private func completeStretch() {
+        didComplete = true
+        isSaving = true
+        inhaleHapticTask?.cancel()
+        playCompletionHaptic()
+        Task {
+            await healthKit.saveMindfulnessSession(durationMinutes: 3, sessionType: "Reflect")
+            await healthKit.fetchTodayMindfulness()
+            await MainActor.run {
+                isSaving = false
+                isPresented = false
+            }
+        }
+    }
+
+    private func playCompletionHaptic() {
+        Task {
+            for index in 0..<4 {
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(index % 2 == 0 ? .notification : .success)
+                }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
         }
     }
 }

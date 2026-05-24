@@ -85,8 +85,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var hasLoadedData: Bool = false
 
     private var session: WCSession?
-    private var lastStatsRequestAt: Date?
-    private var lastStatsRequestScope: String = ""
+    private var lastStatsRequestAtByScope: [String: Date] = [:]
 
     override init() {
         super.init()
@@ -166,25 +165,22 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             hasLoadedData = true
             return
         }
-        if let lastStatsRequestAt,
-           lastStatsRequestScope == scope,
+        let requestTTL = statsRequestTTL(for: scope)
+        if let lastStatsRequestAt = lastStatsRequestAtByScope[scope],
            !force,
-           Date().timeIntervalSince(lastStatsRequestAt) < 5 {
+           Date().timeIntervalSince(lastStatsRequestAt) < requestTTL {
             print("[WatchConnectivity] request_stats skipped by TTL scope=\(scope)")
             return
         }
-        lastStatsRequestAt = Date()
-        lastStatsRequestScope = scope
+        lastStatsRequestAtByScope[scope] = Date()
 
-        isLoading = true
+        isLoading = !hasLoadedData
 
         guard session.isReachable else {
             // iOSアプリが起動していない場合は5秒でタイムアウト
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                if self?.isLoading == true {
-                    self?.isLoading = false
-                    self?.hasLoadedData = true
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                self?.isLoading = false
+                self?.hasLoadedData = true
             }
             return
         }
@@ -196,12 +192,25 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
         }
 
-        // タイムアウト保険（10秒）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+        // iOSからのstatsは別メッセージで届くため、起動画面を通信待ちで塞がない
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             if self?.isLoading == true {
                 self?.isLoading = false
                 self?.hasLoadedData = true
             }
+        }
+    }
+
+    private func statsRequestTTL(for scope: String) -> TimeInterval {
+        switch scope {
+        case "intake":
+            return 8
+        case "watchFace":
+            return 10
+        case "wellness", "health":
+            return 20
+        default:
+            return 12
         }
     }
 

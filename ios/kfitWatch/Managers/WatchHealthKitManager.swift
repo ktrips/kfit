@@ -1,6 +1,40 @@
 import HealthKit
 import Foundation
 
+struct WatchMindfulnessSession: Identifiable {
+    let id = UUID()
+    let startDate: Date
+    let durationMinutes: Double
+    let sourceName: String
+    let sourceBundleId: String
+    let sessionTypeHint: String?
+
+    var typeLabel: String {
+        if sessionTypeHint == "Reflect" { return "Reflect" }
+        if sessionTypeHint == "Breathe" { return "Breathe" }
+        if durationMinutes >= 2.5 && durationMinutes <= 3.5 { return "Reflect" }
+        let source = "\(sourceName) \(sourceBundleId)".lowercased()
+        if source.contains("reflect") { return "Reflect" }
+        if source.contains("breathe") { return "Breathe" }
+        return "マインドフルネス"
+    }
+
+    var sourceLabel: String {
+        let source = "\(sourceName) \(sourceBundleId)".lowercased()
+        if source.contains("kfit") || source.contains("fitingo") || source.contains("kfitappduo") {
+            return "kfit"
+        }
+        if source.contains("com.apple") || source.contains("mindfulness") || source.contains("breathe") {
+            return "標準アプリ"
+        }
+        return sourceName
+    }
+
+    var emoji: String {
+        typeLabel == "Reflect" ? "💭" : "🧘"
+    }
+}
+
 /// Apple Watch用のHealthKitマネージャー
 ///
 /// Watch側で直接HealthKitからデータを取得して表示する。
@@ -19,6 +53,7 @@ class WatchHealthKitManager: ObservableObject {
     @Published var latestBodyMass: Double = 0.0
     @Published var latestBodyFatPercentage: Double = 0.0
     @Published var todayMindfulnessSessions: Int = 0
+    @Published var todayMindfulnessSamples: [WatchMindfulnessSession] = []
     @Published var todayWorkoutMinutes: Int = 0  // 今日のワークアウト時間（分）
     @Published var todayStandHours: Int = 0      // 今日のスタンド時間（時間）
     @Published var latestHRV: Double = 0.0             // 最新の心拍変動（ms）
@@ -37,6 +72,7 @@ class WatchHealthKitManager: ObservableObject {
 
     private var isFetchingAll = false
     private var lastFetchAllAt: Date? = nil
+    private var lastScopedFetchAt: [String: Date] = [:]
     private let fetchAllTTL: TimeInterval = 30
 
     private init() {}
@@ -49,32 +85,38 @@ class WatchHealthKitManager: ObservableObject {
             return
         }
 
-        let typesToRead: Set<HKObjectType> = [
-            HKObjectType.quantityType(forIdentifier: .stepCount)!,
-            HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!,
-            HKObjectType.quantityType(forIdentifier: .heartRate)!,
-            HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!,
-            HKObjectType.quantityType(forIdentifier: .bodyMass)!,
-            HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
-            HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
-            HKObjectType.quantityType(forIdentifier: .appleExerciseTime)!,
-            HKObjectType.categoryType(forIdentifier: .appleStandHour)!,
-            HKObjectType.quantityType(forIdentifier: .dietaryEnergyConsumed)!,
-            HKObjectType.quantityType(forIdentifier: .dietaryWater)!,
-            HKObjectType.quantityType(forIdentifier: .dietaryCaffeine)!,
-            HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)!,
-            HKObjectType.activitySummaryType(),
-        ]
+        var typesToRead = Set<HKObjectType>()
+        [
+            HKQuantityTypeIdentifier.stepCount,
+            .activeEnergyBurned,
+            .heartRate,
+            .bodyMass,
+            .bodyFatPercentage,
+            .appleExerciseTime,
+            .dietaryEnergyConsumed,
+            .dietaryWater,
+            .dietaryCaffeine,
+            .heartRateVariabilitySDNN
+        ].compactMap { HKObjectType.quantityType(forIdentifier: $0) }
+            .forEach { typesToRead.insert($0) }
+        [
+            HKCategoryTypeIdentifier.sleepAnalysis,
+            .mindfulSession,
+            .appleStandHour
+        ].compactMap { HKObjectType.categoryType(forIdentifier: $0) }
+            .forEach { typesToRead.insert($0) }
+        typesToRead.insert(HKObjectType.activitySummaryType())
 
-        let typesToWrite: Set<HKSampleType> = [
-            HKObjectType.categoryType(forIdentifier: .mindfulSession)!,
-        ]
+        var typesToWrite = Set<HKSampleType>()
+        if let mindful = HKObjectType.categoryType(forIdentifier: .mindfulSession) {
+            typesToWrite.insert(mindful)
+        }
 
         do {
             try await healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead)
             isAuthorized = true
             print("[WatchHealthKit] ✅ Authorization granted")
-            await fetchAllTodayData(force: true)
+            await fetchDashboardData(force: true)
         } catch {
             print("[WatchHealthKit] ⚠️ Authorization error: \(error)")
             isAuthorized = false
@@ -114,6 +156,102 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchLatestHRV() }
             group.addTask { await self.fetchActivitySummary() }
         }
+    }
+
+    func fetchDashboardData(force: Bool = false) async {
+        guard beginScopedFetch("dashboard", force: force, ttl: 20) else { return }
+        defer { finishScopedFetch("dashboard") }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchTodaySteps() }
+            group.addTask { await self.fetchTodayCalories() }
+            group.addTask { await self.fetchAverageHeartRate() }
+            group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayMindfulness() }
+            group.addTask { await self.fetchActivitySummary() }
+        }
+    }
+
+    func fetchIntakeData(force: Bool = false) async {
+        guard beginScopedFetch("intake", force: force, ttl: 15) else { return }
+        defer { finishScopedFetch("intake") }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchTodayDietaryCalories() }
+            group.addTask { await self.fetchTodayDietaryWater() }
+            group.addTask { await self.fetchTodayDietaryCaffeine() }
+            group.addTask { await self.fetchTodayDietaryAlcohol() }
+        }
+    }
+
+    func fetchWellnessData(force: Bool = false) async {
+        guard beginScopedFetch("wellness", force: force, ttl: 20) else { return }
+        defer { finishScopedFetch("wellness") }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchAverageHeartRate() }
+            group.addTask { await self.fetchLatestHRV() }
+            group.addTask { await self.fetchSleepHours() }
+            group.addTask { await self.fetchTodayMindfulness() }
+            group.addTask { await self.fetchTodayWorkoutMinutes() }
+        }
+    }
+
+    func fetchHealthData(force: Bool = false) async {
+        guard beginScopedFetch("health", force: force, ttl: 25) else { return }
+        defer { finishScopedFetch("health") }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchTodaySteps() }
+            group.addTask { await self.fetchTodayCalories() }
+            group.addTask { await self.fetchAverageHeartRate() }
+            group.addTask { await self.fetchSleepHours() }
+            group.addTask { await self.fetchLatestBodyMass() }
+            group.addTask { await self.fetchLatestBodyFatPercentage() }
+            group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayStandHours() }
+            group.addTask { await self.fetchActivitySummary() }
+        }
+    }
+
+    func fetchWatchFaceData(force: Bool = false) async {
+        guard beginScopedFetch("watchFace", force: force, ttl: 15) else { return }
+        defer { finishScopedFetch("watchFace") }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchTodayMindfulness() }
+            group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayDietaryCalories() }
+            group.addTask { await self.fetchTodayDietaryWater() }
+        }
+    }
+
+    func fetchData(scope: String, force: Bool = false) async {
+        switch scope {
+        case "intake":
+            await fetchIntakeData(force: force)
+        case "wellness":
+            await fetchWellnessData(force: force)
+        case "health":
+            await fetchHealthData(force: force)
+        case "watchFace":
+            await fetchWatchFaceData(force: force)
+        default:
+            await fetchDashboardData(force: force)
+        }
+    }
+
+    private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval) -> Bool {
+        if isFetchingAll {
+            print("[WatchHealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
+            return false
+        }
+        if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < ttl {
+            print("[WatchHealthKit] ✅ \(scope) fetch skipped by TTL")
+            return false
+        }
+        isFetchingAll = true
+        return true
+    }
+
+    private func finishScopedFetch(_ scope: String) {
+        lastScopedFetchAt[scope] = Date()
+        isFetchingAll = false
     }
 
     // MARK: - Steps
@@ -302,8 +440,18 @@ class WatchHealthKitManager: ObservableObject {
                     print("[WatchHealthKit] Mindfulness query error: \(error)")
                     return
                 }
-                let count = samples?.count ?? 0
+                let mindfulSamples = ((samples as? [HKCategorySample]) ?? []).map { sample in
+                    WatchMindfulnessSession(
+                        startDate: sample.startDate,
+                        durationMinutes: sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
+                        sourceName: sample.sourceRevision.source.name,
+                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+                        sessionTypeHint: sample.metadata?["kfitSessionType"] as? String
+                    )
+                }
+                let count = mindfulSamples.count
                 self?.todayMindfulnessSessions = count
+                self?.todayMindfulnessSamples = mindfulSamples
                 print("[WatchHealthKit] 🧘 Mindfulness sessions: \(count)")
             }
         }
@@ -470,7 +618,7 @@ class WatchHealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
-    func saveMindfulnessSession(durationMinutes: Int) async {
+    func saveMindfulnessSession(durationMinutes: Int, sessionType: String = "Breathe") async {
         guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
             print("[WatchHealthKit] ⚠️ Mindfulness type not available")
             return
@@ -478,17 +626,22 @@ class WatchHealthKitManager: ObservableObject {
 
         let now = Date()
         let startDate = now.addingTimeInterval(-Double(durationMinutes * 60))
+        let normalizedSessionType = sessionType == "Reflect" ? "Reflect" : "Breathe"
 
         let sample = HKCategorySample(
             type: mindfulType,
             value: HKCategoryValue.notApplicable.rawValue,
             start: startDate,
-            end: now
+            end: now,
+            metadata: [
+                HKMetadataKeyWasUserEntered: true,
+                "kfitSessionType": normalizedSessionType
+            ]
         )
 
         do {
             try await healthStore.save(sample)
-            print("[WatchHealthKit] ✅ Mindfulness session saved: \(durationMinutes) min")
+            print("[WatchHealthKit] ✅ Mindfulness session saved: \(durationMinutes) min, type=\(normalizedSessionType)")
             // iOS側に通知してTimeSlotManagerとWatchの表示を即座に同期
             WatchConnectivityManager.shared.sendMindfulnessCompleted()
         } catch {

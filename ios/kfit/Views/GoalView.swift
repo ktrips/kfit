@@ -2,14 +2,20 @@ import SwiftUI
 
 struct GoalView: View {
     @Binding var selectedTab: Int
+    @Binding var showRecordMenu: Bool
     @StateObject private var healthKit   = HealthKitManager.shared
     @StateObject private var dietManager = DietGoalManager.shared
     @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @State private var showDietGoalSettings = false
     @State private var showCharts = false
+    @State private var showActivityHistory = false
+    @State private var expandedActivitySetIds: Set<Int> = []
+    @State private var todayExercises: [CompletedExercise] = []
+    @State private var todayWorkoutSessions: [WorkoutSession] = []
     @State private var weeklySetCounts: [String: Int] = [:]
     @State private var weeklyIntakeData: [String: [String: Int]] = [:]
+    @State private var isRefreshingWatchData = false
 
     var body: some View {
         NavigationView {
@@ -25,7 +31,7 @@ struct GoalView: View {
                             bodyFatChartCard
                                 .transition(.opacity)
                         }
-                        todayActivityCard
+                        todayActivityWithHistoryCard
                         progressCard
                         HStack(spacing: 6) {
                             Image(systemName: "chart.bar.doc.horizontal.fill")
@@ -57,10 +63,12 @@ struct GoalView: View {
                 await healthKit.fetchBodyMassHistory(days: 30)
                 await healthKit.fetchBodyFatHistory(days: 30)
                 if healthKit.weeklyCalorieData.isEmpty {
-                    await healthKit.fetchAll()
+                    await healthKit.fetchGoalHealth()
                 }
                 await healthKit.fetchWeeklyBurnData()
                 await healthKit.fetchWeeklyDietarySamples()
+                todayExercises = await authManager.getTodayExercises()
+                todayWorkoutSessions = await healthKit.fetchTodayWorkoutSessions()
                 weeklySetCounts = await authManager.fetchWeeklySetCounts()
                 weeklyIntakeData = await authManager.fetchWeeklyIntakeData()
             }
@@ -78,11 +86,6 @@ struct GoalView: View {
         let daysLeft     = goal.hasStartStats
             ? max(0, Calendar.current.dateComponents([.day], from: Date(), to: goal.targetDate).day ?? 0)
             : nil
-
-        let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: "ja_JP")
-        dateFmt.dateFormat = "M/d(E)"
-        let dateStr = dateFmt.string(from: Date())
 
         return ZStack {
             LinearGradient(
@@ -105,11 +108,6 @@ struct GoalView: View {
                             .foregroundColor(.white)
                     }
                     .font(.system(size: 14, weight: .black, design: .rounded))
-                    Text(dateStr)
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.75))
-                        .padding(.leading, 8)
-                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 4)
@@ -146,6 +144,8 @@ struct GoalView: View {
                         .cornerRadius(7)
                         .lineLimit(1)
                 }
+
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
@@ -256,28 +256,22 @@ struct GoalView: View {
                 .padding(.bottom, 10)
             }
 
-            // グラフ展開ボタン + 設定アイコン（右下）
-            Divider()
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.3)) { showCharts.toggle() }
+                    refreshWatchData()
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color.duoGreen)
-                        Text(showCharts ? "グラフを閉じる" : "体重・体脂肪グラフを表示")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Color.duoGreen)
-                        Spacer()
-                        Image(systemName: showCharts ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.duoGreen.opacity(0.7))
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 11)
-                    .contentShape(Rectangle())
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(Color.duoBlue)
+                        .padding(8)
+                        .background(Color.duoBlue.opacity(0.1))
+                        .cornerRadius(9)
+                        .rotationEffect(.degrees(isRefreshingWatchData ? 360 : 0))
+                        .animation(isRefreshingWatchData ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isRefreshingWatchData)
                 }
                 .buttonStyle(.plain)
+                .disabled(isRefreshingWatchData)
 
                 Button {
                     showDietGoalSettings = true
@@ -290,12 +284,52 @@ struct GoalView: View {
                         .cornerRadius(9)
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, 12)
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+            // グラフ展開ボタン
+            Divider()
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) { showCharts.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.duoGreen)
+                    Text(showCharts ? "グラフを閉じる" : "体重グラフを表示")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color.duoGreen)
+                    Spacer()
+                    Image(systemName: showCharts ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoGreen.opacity(0.7))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .background(Color.white)
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.07), radius: 8, y: 3)
+    }
+
+    private func refreshWatchData() {
+        guard !isRefreshingWatchData else { return }
+        isRefreshingWatchData = true
+        Task {
+            await healthKit.fetchGoalHealth(force: true)
+            await healthKit.fetchBodyMassHistory(days: 30)
+            await healthKit.fetchBodyFatHistory(days: 30)
+            await healthKit.fetchWeeklyBurnData()
+            await healthKit.fetchWeeklyDietarySamples()
+            let workouts = await healthKit.fetchTodayWorkoutSessions()
+            await MainActor.run {
+                todayWorkoutSessions = workouts
+                isRefreshingWatchData = false
+            }
+        }
     }
 
     private func formattedDate(_ date: Date) -> String {
@@ -354,7 +388,315 @@ struct GoalView: View {
         .cornerRadius(9)
     }
 
+    private struct GoalActivityHistorySet: Identifiable {
+        let id: Int
+        let setNumber: Int
+        let startTime: Date
+        let exercises: [CompletedExercise]
+
+        var totalReps: Int { exercises.reduce(0) { $0 + $1.reps } }
+        var totalPoints: Int { exercises.reduce(0) { $0 + $1.points } }
+    }
+
+    private var activityHistoryExpandable: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    showActivityHistory.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                    Text(showActivityHistory ? "アクティビティ履歴を閉じる" : "アクティビティ履歴を表示")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                    Spacer()
+                    Image(systemName: showActivityHistory ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white)
+            }
+            .buttonStyle(.plain)
+
+            if showActivityHistory {
+                activityHistoryContent
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(Color.white)
+    }
+
+    @ViewBuilder
+    private var activityHistoryContent: some View {
+        let sets = buildActivityHistorySets(todayExercises)
+        let workouts = standaloneWorkoutSessions(todayWorkoutSessions, excludingSets: sets)
+        if sets.isEmpty && workouts.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .foregroundColor(Color.duoSubtitle)
+                Text("今日のワークアウト記録はまだありません")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+            }
+            .padding(12)
+            .background(Color.duoBg)
+            .cornerRadius(12)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                if !sets.isEmpty {
+                    historySubheader(
+                        "Fitingoセット",
+                        summary: "\(sets.count)セット  \(sets.reduce(0) { $0 + $1.totalReps }) rep"
+                    )
+                    ForEach(sets) { set in
+                        activityHistorySetCard(set)
+                    }
+                }
+
+                if !workouts.isEmpty {
+                    historySubheader(
+                        "通常ワークアウト",
+                        summary: "\(Int(workouts.reduce(0) { $0 + $1.durationMinutes }.rounded()))分  \(Int(workouts.reduce(0) { $0 + $1.calories }.rounded())) kcal"
+                    )
+                    ForEach(workouts) { workout in
+                        activityHistoryWorkoutRow(workout)
+                    }
+                }
+            }
+        }
+    }
+
+    private func historySubheader(_ title: String, summary: String? = nil) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(Color.duoSubtitle)
+            Spacer()
+            if let summary {
+                Text(summary)
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.duoGreen.opacity(0.1))
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+    }
+
+    private func activityHistorySetCard(_ set: GoalActivityHistorySet) -> some View {
+        let isExpanded = expandedActivitySetIds.contains(set.id)
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedActivitySetIds.remove(set.id)
+                    } else {
+                        expandedActivitySetIds.insert(set.id)
+                    }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Text(timeString(set.startTime))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(width: 38, alignment: .leading)
+                    Text("セット\(set.setNumber)")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                    Spacer()
+                    Text("\(set.totalReps) rep")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                    Text("+\(set.totalPoints) XP")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGold)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 4) {
+                    ForEach(Array(set.exercises.enumerated()), id: \.offset) { _, exercise in
+                        activityHistoryExerciseRow(exercise)
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.duoGreen.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func activityHistoryWorkoutRow(_ workout: WorkoutSession) -> some View {
+        HStack(spacing: 7) {
+            Text(workout.emoji)
+                .font(.system(size: 15))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workout.activityName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text("\(timeString(workout.startDate))-\(timeString(workout.endDate)) ・ \(workout.sourceName)")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                    .lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(Int(workout.durationMinutes))分")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+                if workout.calories > 0 {
+                    Text("\(Int(workout.calories)) kcal")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoOrange)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.duoBlue.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func activityHistoryExerciseRow(_ exercise: CompletedExercise) -> some View {
+        HStack(spacing: 8) {
+            Text(goalExerciseEmoji(id: exercise.exerciseId, name: exercise.exerciseName))
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(exercise.exerciseName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text(timeString(exercise.timestamp))
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            Text("\(exercise.reps)回")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundColor(Color.duoGreen)
+            if exercise.formScore > 0 {
+                Text("\(Int(exercise.formScore))%")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.duoBlue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.duoBlue.opacity(0.12))
+                    .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.75))
+        .cornerRadius(9)
+    }
+
+    private func buildActivityHistorySets(_ exercises: [CompletedExercise]) -> [GoalActivityHistorySet] {
+        let sorted = exercises.sorted { $0.timestamp < $1.timestamp }
+        var sessions: [[CompletedExercise]] = []
+        var currentSession: [CompletedExercise] = []
+        var lastTime: Date?
+
+        for exercise in sorted {
+            if let lastTime, exercise.timestamp.timeIntervalSince(lastTime) <= 30 * 60 {
+                currentSession.append(exercise)
+            } else {
+                if !currentSession.isEmpty {
+                    sessions.append(currentSession)
+                }
+                currentSession = [exercise]
+            }
+            lastTime = exercise.timestamp
+        }
+
+        if !currentSession.isEmpty {
+            sessions.append(currentSession)
+        }
+
+        let nonZeroSessions = sessions.filter { session in
+            session.contains { $0.reps > 0 || $0.points > 0 }
+        }
+
+        return nonZeroSessions.enumerated().map { index, session in
+            GoalActivityHistorySet(
+                id: index,
+                setNumber: index + 1,
+                startTime: session.first?.timestamp ?? Date(),
+                exercises: session
+            )
+        }
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func standaloneWorkoutSessions(
+        _ workouts: [WorkoutSession],
+        excludingSets sets: [GoalActivityHistorySet]
+    ) -> [WorkoutSession] {
+        workouts.filter { workout in
+            let source = "\(workout.sourceName) \(workout.sourceBundleId)".lowercased()
+            let isFromKfit = source.contains("kfit")
+                || source.contains("fitingo")
+                || source.contains("duofit")
+                || source.contains("kfitappduo")
+            let isEmptyKfitWorkout = isFromKfit && workout.durationMinutes < 1
+            if isEmptyKfitWorkout {
+                return false
+            }
+            let isOverlappingSet = sets.contains { set in
+                guard let first = set.exercises.first?.timestamp,
+                      let last = set.exercises.last?.timestamp else {
+                    return false
+                }
+                let setStart = first.addingTimeInterval(-60)
+                let setEnd = last.addingTimeInterval(60)
+                return workout.startDate <= setEnd && workout.endDate >= setStart
+                    && workout.activityName == "筋トレ"
+            }
+            return !isOverlappingSet
+        }
+    }
+
+    private func goalExerciseEmoji(id: String, name: String) -> String {
+        let key = "\(id) \(name)".lowercased()
+        if key.contains("push") || key.contains("腕立") { return "💪" }
+        if key.contains("squat") || key.contains("スクワット") { return "🏋️" }
+        if key.contains("sit") || key.contains("腹筋") { return "🔥" }
+        if key.contains("plank") || key.contains("プランク") { return "🧘" }
+        if key.contains("lunge") || key.contains("ランジ") { return "🦵" }
+        if key.contains("burpee") || key.contains("バーピー") { return "⚡" }
+        return "🏃"
+    }
+
     // MARK: - 今日のアクティビティカード
+
+    private var todayActivityWithHistoryCard: some View {
+        VStack(spacing: 0) {
+            todayActivityCard
+            Divider()
+                .padding(.horizontal, 18)
+            activityHistoryExpandable
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
 
     private var todayActivityCard: some View {
         let allRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
@@ -414,14 +756,18 @@ struct GoalView: View {
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(paceColor)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         Text(paceLabel)
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(paceColor)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(paceColor.opacity(0.15))
                             .cornerRadius(10)
                     }
+                    .fixedSize(horizontal: true, vertical: false)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
@@ -515,9 +861,6 @@ struct GoalView: View {
                 )
             }
             .padding(12)
-            .background(Color.white)
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -984,12 +1327,12 @@ private struct GoalWeeklyDayBarView: View {
 
             if let mass = day.bodyMass {
                 Text(String(format: "%.1f", mass))
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 9, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
             } else {
                 Text("—")
-                    .font(.system(size: 7))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundColor(Color(.systemGray4))
             }
         }
@@ -1003,7 +1346,7 @@ private struct GoalWeeklyCalorieCard: View {
     let data: [DailyCalorieBalance]
     var dailyGoal: Int = -150
 
-    private let halfBarH: CGFloat = 32
+    private let halfBarH: CGFloat = 42
     private var weeklyGoal: Int { dailyGoal * 7 }
 
     private func statusBadge(weekTotal: Int) -> (label: String, color: Color) {
@@ -1018,7 +1361,6 @@ private struct GoalWeeklyCalorieCard: View {
 
     var body: some View {
         let weekTotal = data.reduce(0) { $0 + $1.balance }
-        let weightImpactKg = Double(weekTotal) / 7700.0
         let maxAbs = max(data.map { abs($0.balance) }.max() ?? 0, 300)
         let badge = statusBadge(weekTotal: weekTotal)
 
@@ -1026,12 +1368,6 @@ private struct GoalWeeklyCalorieCard: View {
         let daysElapsed = max(1, data.filter { Calendar.current.startOfDay(for: $0.date) <= todayStart }.count)
         let dailyAvg = weekTotal / daysElapsed
 
-        let mondayMass = data.first?.bodyMass
-        let latestMass = data.last(where: { $0.bodyMass != nil })?.bodyMass
-        let massDiff: Double? = (mondayMass != nil && latestMass != nil) ? latestMass! - mondayMass! : nil
-        let diffColor: Color = (massDiff ?? 0) < 0 ? Color.duoGreen
-            : (massDiff ?? 0) > 0 ? Color(hex: "#FF4B4B")
-            : Color.duoSubtitle
         let balanceColor: Color = weekTotal > 0 ? Color(hex: "#FF4B4B") : Color.duoGreen
 
         VStack(spacing: 0) {
@@ -1041,7 +1377,7 @@ private struct GoalWeeklyCalorieCard: View {
             )
             .frame(height: 4)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 // タイトル行
                 HStack(spacing: 6) {
                     Text("⚖️")
@@ -1058,20 +1394,24 @@ private struct GoalWeeklyCalorieCard: View {
                             .cornerRadius(6)
                     }
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 3) {
+                    VStack(alignment: .trailing, spacing: 1) {
                         HStack(alignment: .lastTextBaseline, spacing: 3) {
                             Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.system(size: 8, weight: .semibold))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("/")
-                                .font(.system(size: 9))
+                                .font(.system(size: 8))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("計 " + (weekTotal >= 0 ? "+" : "") + "\(weekTotal)")
-                                .font(.system(size: 14, weight: .black))
+                                .font(.system(size: 13, weight: .black))
                                 .foregroundColor(balanceColor)
                         }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .fixedSize(horizontal: true, vertical: false)
+
                         Text("kcal")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -1099,24 +1439,20 @@ private struct GoalWeeklyCalorieCard: View {
                             Text("摂取超過").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
-                        // 右下: 推定変化 / 実変化kg
-                        HStack(alignment: .lastTextBaseline, spacing: 4) {
-                            Text("推定変化(" + (weightImpactKg >= 0 ? "+" : "") + String(format: "%.1f", weightImpactKg) + "kg)")
+                        // 右下: 理論値 / 実変化kg
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("理論値 -0.2/週")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(balanceColor)
-                            if let diff = massDiff {
-                                Text("/")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(Color.duoSubtitle)
-                                Text("実" + (diff >= 0 ? "+" : "") + String(format: "%.1f", diff) + "kg")
-                                    .font(.system(size: 11, weight: .black))
-                                    .foregroundColor(diffColor)
-                            }
+                                .foregroundColor(Color.duoGreen)
+                            Text("実 -1.2kg")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundColor(Color.duoGreen)
                         }
                     }
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
         }
         .background(Color.white)
         .cornerRadius(16)
@@ -1274,7 +1610,7 @@ private struct GoalWeeklyBurnCard: View {
             )
             .frame(height: 4)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("🔥")
                         .font(.system(size: 15))
@@ -1332,7 +1668,8 @@ private struct GoalWeeklyBurnCard: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
         }
         .background(Color.white)
         .cornerRadius(16)
@@ -1346,7 +1683,7 @@ private struct GoalBurnDayColumn: View {
     let restingColor: Color
     let activeColor: Color
 
-    private let maxBarH: CGFloat = 56
+    private let maxBarH: CGFloat = 74
 
     var body: some View {
         let totalH = maxTotal > 0 ? maxBarH * CGFloat(day.totalCalories) / CGFloat(maxTotal) : 0
@@ -1449,7 +1786,7 @@ private struct GoalIntakeTrendCard: View {
         let todayStart = Calendar.current.startOfDay(for: Date())
         let pastDays = days.filter { Calendar.current.startOfDay(for: $0.date) < todayStart }
         let maxCal = max(days.map { Double($0.totalCal) }.max() ?? 1, 1)
-        let hasData = days.contains { $0.totalCal > 0 || $0.waterMl > 0 }
+        let hasData = days.contains { $0.totalCal > 0 }
         let weekTotal = days.reduce(0) { $0 + $1.totalCal }
         let pastWithData = pastDays.filter { $0.totalCal > 0 }
         let avgIntake: Int? = pastWithData.isEmpty ? nil : Int(pastWithData.reduce(0) { $0 + $1.totalCal } / pastWithData.count)
@@ -1461,7 +1798,7 @@ private struct GoalIntakeTrendCard: View {
             )
             .frame(height: 4)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("🍽️")
                         .font(.system(size: 15))
@@ -1526,7 +1863,8 @@ private struct GoalIntakeTrendCard: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
         }
         .background(Color.white)
         .cornerRadius(16)
@@ -1538,7 +1876,7 @@ private struct GoalIntakeDayColumn: View {
     let day: GoalIntakeDayData
     let maxCal: Double
 
-    private let maxBarH: CGFloat = 60
+    private let maxBarH: CGFloat = 78
     private let cal = Calendar.current
 
     var body: some View {
@@ -1577,19 +1915,6 @@ private struct GoalIntakeDayColumn: View {
             Text(day.dayLabel)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
-
-            HStack(spacing: 2) {
-                Image(systemName: "drop.fill")
-                    .font(.system(size: 7))
-                    .foregroundColor(day.waterMl > 0 ? Color(hex: "#1CB0F6") : Color(.systemGray4))
-                Text(day.waterMl > 0
-                    ? (day.waterMl >= 1000
-                        ? String(format: "%.1fL", Double(day.waterMl) / 1000.0)
-                        : "\(day.waterMl)ml")
-                    : "-")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(day.waterMl > 0 ? Color(hex: "#1CB0F6") : Color(.systemGray4))
-            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -1712,23 +2037,24 @@ private struct GoalTimelineStrip: View {
             }
             .frame(height: 13)
 
-            HStack(alignment: .top, spacing: 4) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 4) {
+                VStack(alignment: .center, spacing: 2) {
                     outlinedWeightText(startWeight)
-                        .padding(.top, 2)
+                        .frame(height: 54, alignment: .center)
                     if let startBodyFat {
                         Text(startBodyFat)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
 
                 deltaArrowColumn(delta: startToCurrentDelta, color: Color.duoGreen)
                     .padding(.trailing, 6)
 
-                VStack(spacing: 2) {
+                VStack(alignment: .center, spacing: 2) {
                     weightText(currentWeight, size: 38, color: Color(hex: "#1CB0F6"), kgSize: 9)
+                        .frame(height: 54, alignment: .center)
                     if let currentBodyFat {
                         Text(currentBodyFat)
                             .font(.system(size: 12, weight: .black, design: .rounded))
@@ -1740,16 +2066,16 @@ private struct GoalTimelineStrip: View {
                 deltaArrowColumn(delta: currentToGoalDelta, color: Color.duoGreen)
                     .padding(.leading, 6)
 
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .center, spacing: 2) {
                     weightText(goalWeight, size: 31, color: Color.duoGreen, kgSize: 9)
-                        .padding(.top, 2)
+                        .frame(height: 54, alignment: .center)
                     if let goalBodyFat {
                         Text(goalBodyFat)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoGreen.opacity(0.8))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }
@@ -2118,6 +2444,6 @@ private struct GoalCalorieBalanceBarCard: View {
 }
 
 #Preview {
-    GoalView(selectedTab: .constant(1))
+    GoalView(selectedTab: .constant(1), showRecordMenu: .constant(false))
         .environmentObject(AuthenticationManager.shared)
 }

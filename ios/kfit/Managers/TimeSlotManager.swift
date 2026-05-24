@@ -111,6 +111,7 @@ class TimeSlotManager: ObservableObject {
                     globalGoals.sleepScoreThreshold = globalGoalsData["sleepScoreThreshold"] as? Int ?? 80
                     globalGoals.pfcEnabled = globalGoalsData["pfcEnabled"] as? Bool ?? false
                     globalGoals.pfcScoreThreshold = globalGoalsData["pfcScoreThreshold"] as? Int ?? 80
+                    globalGoals.mindfulnessEnabled = globalGoalsData["mindfulnessEnabled"] as? Bool ?? true
                     globalGoals.weightEnabled = globalGoalsData["weightEnabled"] as? Bool ?? false
                     globalGoals.mealEnabled = globalGoalsData["mealEnabled"] as? Bool ?? true
                     globalGoals.dailyMealKcal = globalGoalsData["dailyMealKcal"] as? Int ?? 2000
@@ -196,6 +197,7 @@ class TimeSlotManager: ObservableObject {
                 "sleepScoreThreshold": settings.globalGoals.sleepScoreThreshold,
                 "pfcEnabled": settings.globalGoals.pfcEnabled,
                 "pfcScoreThreshold": settings.globalGoals.pfcScoreThreshold,
+                "mindfulnessEnabled": settings.globalGoals.mindfulnessEnabled,
                 "weightEnabled": settings.globalGoals.weightEnabled,
                 "mealEnabled": settings.globalGoals.mealEnabled,
                 "dailyMealKcal": settings.globalGoals.dailyMealKcal,
@@ -295,6 +297,8 @@ class TimeSlotManager: ObservableObject {
 
             if syncHealthKit {
                 await updateGlobalProgressFromHealthKit()
+            } else {
+                await syncMealProgressFromDietGoal(saveProgress: false)
             }
         } catch {
             print("❌ TimeSlotManager: Failed to load progress: \(error)")
@@ -305,7 +309,11 @@ class TimeSlotManager: ObservableObject {
     /// HealthKitから1日全体の実績を更新
     func updateGlobalProgressFromHealthKit() async {
         let healthKit = HealthKitManager.shared
-        guard healthKit.isAuthorized else { return }
+        guard healthKit.isAuthorized else {
+            await syncMealProgressFromDietGoal(saveProgress: false)
+            await saveTodayProgress()
+            return
+        }
 
         progress.globalProgress.workoutMinutes = healthKit.todayWorkoutMinutes > 0
             ? healthKit.todayWorkoutMinutes
@@ -328,7 +336,7 @@ class TimeSlotManager: ObservableObject {
 
         progress.globalProgress.lastUpdated = Date()
 
-        // HealthKitの水分・食事サンプルを時間帯別進捗に反映
+        // HealthKitの水分・食事サンプル、またはダイエット目標の自動摂取を時間帯別進捗に反映
         await syncIntakeFromHealthKit()
 
         // ReflectセッションからストレッチセットをSync
@@ -386,6 +394,11 @@ class TimeSlotManager: ObservableObject {
 
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
+        syncMealGoalFromDietGoal()
+        let useHealthKitForMeal = DietGoalManager.shared.settings.useHealthKitForIntake
+        if useHealthKitForMeal {
+            await hk.fetchIntakeHealth()
+        }
         var changed = false
 
         for slot in TimeSlot.allCases {
@@ -397,15 +410,17 @@ class TimeSlotManager: ObservableObject {
                 : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
 
             let waterInSlot = hk.todayWaterSamples
-                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd && $0.value >= 200 }
+                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
                 .reduce(0.0) { $0 + $1.value }
 
             let mealInSlot = hk.todayMealSamples
-                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd && $0.value >= 400 }
+                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
                 .reduce(0.0) { $0 + $1.value }
 
-            let newDrink = Int(waterInSlot)
-            let newMeal  = Int(mealInSlot)
+            let newDrink = max(prog.logProgress.drinkLogged, Int(waterInSlot))
+            let newMeal = useHealthKitForMeal
+                ? Int(mealInSlot)
+                : scheduledMealLogged(for: slot, now: Date())
 
             if prog.logProgress.drinkLogged != newDrink || prog.logProgress.mealLogged != newMeal {
                 prog.logProgress.drinkLogged = newDrink
@@ -420,6 +435,46 @@ class TimeSlotManager: ObservableObject {
 
         if changed {
             print("[TimeSlot] 💧🍽️ Synced water/meal intake from HealthKit to time slots")
+        }
+    }
+
+    /// ダイエット目標の摂取カロリー設定を時間帯目標へ反映
+    func syncMealGoalFromDietGoal() {
+        let dietSettings = DietGoalManager.shared.settings
+        settings.globalGoals.mealEnabled = true
+        settings.globalGoals.dailyMealKcal = dietSettings.dailyIntakeGoal
+        applyGlobalMealDrinkToSlots()
+    }
+
+    /// Apple Healthを使わない場合は、到達済み時間帯の食事カロリーを自動実績として反映
+    func syncMealProgressFromDietGoal(saveProgress: Bool = true) async {
+        syncMealGoalFromDietGoal()
+        if DietGoalManager.shared.settings.useHealthKitForIntake {
+            await syncIntakeFromHealthKit()
+            if saveProgress {
+                await saveTodayProgress()
+            }
+            return
+        }
+
+        var changed = false
+        let now = Date()
+
+        for slot in TimeSlot.allCases {
+            guard var prog = progress.progressFor(slot) else { continue }
+            let newMeal = scheduledMealLogged(for: slot, now: now)
+            if prog.logProgress.mealLogged != newMeal {
+                prog.logProgress.mealLogged = newMeal
+                prog.lastUpdated = now
+                var updated = progress
+                updated.updateProgress(prog)
+                progress = updated
+                changed = true
+            }
+        }
+
+        if changed && saveProgress {
+            await saveTodayProgress()
         }
     }
 
@@ -589,16 +644,43 @@ class TimeSlotManager: ObservableObject {
     // MARK: - グローバル食事・水分目標をスロットに反映
 
     func applyGlobalMealDrinkToSlots() {
-        let mealPerSlot = settings.globalGoals.mealEnabled ? settings.globalGoals.dailyMealKcal / 4 : 0
         let drinkPerSlot = settings.globalGoals.drinkEnabled ? settings.globalGoals.dailyDrinkMl / 4 : 0
 
         for slot in TimeSlot.allCases {
             if var goal = settings.goalFor(slot) {
-                goal.logGoal.mealGoal = slot == .midnight ? 0 : mealPerSlot
+                goal.logGoal.mealGoal = mealGoal(for: slot)
                 goal.logGoal.drinkGoal = slot == .midnight ? 0 : drinkPerSlot
                 settings.updateGoal(goal)
             }
         }
+    }
+
+    private func mealGoal(for slot: TimeSlot) -> Int {
+        guard settings.globalGoals.mealEnabled else { return 0 }
+        let total = settings.globalGoals.dailyMealKcal
+        let morning = Int(Double(total) * 0.20)
+        let noon = Int(Double(total) * 0.30)
+        let afternoon = Int(Double(total) * 0.10)
+
+        switch slot {
+        case .midnight:
+            return 0
+        case .morning:
+            return morning
+        case .noon:
+            return noon
+        case .afternoon:
+            return afternoon
+        case .evening:
+            return total - morning - noon - afternoon
+        }
+    }
+
+    private func scheduledMealLogged(for slot: TimeSlot, now: Date) -> Int {
+        guard slot != .midnight else { return 0 }
+        let today = Calendar.current.startOfDay(for: now)
+        let slotStart = Calendar.current.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
+        return now >= slotStart ? mealGoal(for: slot) : 0
     }
 
     // MARK: - ヘルパー

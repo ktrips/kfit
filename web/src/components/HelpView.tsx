@@ -82,7 +82,7 @@ const sections: Section[] = [
     title: 'iOSアプリ・Apple Watch',
     content: (
       <div className="space-y-2 text-sm font-bold text-duo-gray">
-        <p>DuoFit は Web のほか iOS / Apple Watch アプリでも使えます。</p>
+        <p>Fitingo は Web のほか iOS / Apple Watch アプリでも使えます。</p>
         <ul className="list-disc list-inside space-y-1">
           <li>
             <strong className="text-duo-dark">iOSアプリ</strong>：
@@ -125,7 +125,7 @@ export const HelpView: React.FC = () => {
           <img src="/mascot.png" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
           <div>
             <h2 className="text-2xl font-black text-duo-dark">ヘルプ・使い方</h2>
-            <p className="text-duo-gray font-bold text-sm">DuoFit の使い方ガイド</p>
+            <p className="text-duo-gray font-bold text-sm">Fitingo の使い方ガイド</p>
           </div>
         </div>
 
@@ -167,7 +167,7 @@ export const HelpView: React.FC = () => {
         <div className="duo-card p-4 flex items-center gap-3">
           <span className="text-2xl shrink-0">ℹ️</span>
           <div className="flex-1">
-            <p className="font-black text-duo-dark text-sm">DuoFit</p>
+            <p className="font-black text-duo-dark text-sm">Fitingo</p>
             <p className="text-duo-gray font-bold text-xs">
               Web・iOS・Apple Watch 対応 ／ Firebase バックエンド
             </p>

@@ -76,7 +76,8 @@ const REMINDER_ITEMS: ReminderItem[] = [
   },
 ];
 
-const SETTINGS_KEY = 'duofit_settings';
+const SETTINGS_KEY = 'fitingo_settings';
+const LEGACY_SETTINGS_KEY = 'duofit_settings';
 
 function buildDefaults(): AppSettings {
   const reminders: Record<string, ReminderSetting> = {};
@@ -96,7 +97,7 @@ function buildDefaults(): AppSettings {
 
 function loadSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(SETTINGS_KEY) ?? localStorage.getItem(LEGACY_SETTINGS_KEY);
     if (!raw) return buildDefaults();
     return { ...buildDefaults(), ...JSON.parse(raw) };
   } catch {
@@ -241,7 +242,7 @@ export const SettingsView: React.FC = () => {
 
   const testNotification = () => {
     if (permStatus !== 'granted') return;
-    new Notification('💪 DuoFit テスト通知', {
+    new Notification('💪 Fitingo テスト通知', {
       body: '通知は正常に動作しています！',
       icon: '/mascot.png',
     });
@@ -376,7 +377,7 @@ export const SettingsView: React.FC = () => {
           <div className="px-5 pt-5 pb-3 border-b border-gray-100">
             <p className="font-black text-duo-dark text-base">📱 連動起動</p>
             <p className="text-duo-gray font-bold text-xs mt-0.5">
-              他のアプリや操作と連動してDuoFitを起動
+              他のアプリや操作と連動してFitingoを起動
             </p>
           </div>
 
@@ -415,7 +416,7 @@ export const SettingsView: React.FC = () => {
                   <div className="min-w-0">
                     <p className="font-extrabold text-duo-dark text-sm">Duolingo と連動</p>
                     <p className="text-duo-gray font-bold text-xs">
-                      Duolingoを開いたときにDuoFitも通知で促す
+                      Duolingoを開いたときにFitingoも通知で促す
                     </p>
                   </div>
                 </div>
@@ -434,7 +435,7 @@ export const SettingsView: React.FC = () => {
                   style={{ background: '#FFF8E1', border: '1px solid #FFD900' }}>
                   <span className="text-xs mt-0.5">💡</span>
                   <p className="text-xs font-bold" style={{ color: '#7a5800' }}>
-                    iOSのショートカットAppで「Duolingoを開く → DuoFitを開く」の自動化を設定してください。iOS設定画面で案内します。
+                    iOSのショートカットAppで「Duolingoを開く → Fitingoを開く」の自動化を設定してください。iOS設定画面で案内します。
                   </p>
                 </div>
               )}
@@ -479,7 +480,7 @@ export const SettingsView: React.FC = () => {
                 '「オートメーション」タブ → 「＋」をタップ',
                 '「App」を選択 → 連動したいアプリを選ぶ',
                 '「開いたとき」を選択して次へ',
-                '「アクションを追加」→「URLを開く」→ duofit:// を入力',
+                '「アクションを追加」→「URLを開く」→ fitingo:// を入力',
                 '「完了」で保存',
               ].map((step, i) => (
                 <li key={i} className="flex items-start gap-2">

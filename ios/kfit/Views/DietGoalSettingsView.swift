@@ -240,14 +240,15 @@ struct DietGoalSettingsView: View {
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                if useHealthKitForIntake {
-                    HStack(spacing: 4) {
-                        Image(systemName: "heart.fill")
-                            .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
-                        Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
+                HStack(spacing: 8) {
+                    kcalInputField(value: $dailyIntakeGoal, minValue: 800, maxValue: 5000)
+                    if useHealthKitForIntake {
+                        HStack(spacing: 4) {
+                            Image(systemName: "heart.fill")
+                                .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
+                            Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
+                        }
                     }
-                } else {
-                    intStepper(value: $dailyIntakeGoal, step: 50, min: 800, max: 5000, unit: "kcal")
                 }
             }
             Toggle(isOn: $useHealthKitForIntake) {
@@ -525,6 +526,30 @@ struct DietGoalSettingsView: View {
         }
     }
 
+    private func kcalInputField(value: Binding<Int>, minValue: Int, maxValue: Int) -> some View {
+        HStack(spacing: 4) {
+            TextField("2000", value: Binding(
+                get: { value.wrappedValue },
+                set: { newValue in
+                    value.wrappedValue = Swift.min(Swift.max(newValue, minValue), maxValue)
+                }
+            ), format: .number)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.trailing)
+            .font(.subheadline.weight(.black))
+            .foregroundColor(Color.duoDark)
+            .frame(width: 62)
+
+            Text("kcal")
+                .font(.caption.weight(.bold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
+    }
+
     private func summaryItem(label: String, value: String, unit: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(value).font(.system(size: 14, weight: .black)).foregroundColor(color)
@@ -577,6 +602,10 @@ struct DietGoalSettingsView: View {
         intakeSettings.dinnerCalories    = eveningKcal
         intakeSettings.dailyCalorieGoal  = dailyIntakeGoal
         await AuthenticationManager.shared.saveIntakeSettings(intakeSettings)
+
+        TimeSlotManager.shared.syncMealGoalFromDietGoal()
+        await TimeSlotManager.shared.saveTodaySettings()
+        await TimeSlotManager.shared.syncMealProgressFromDietGoal()
 
         withAnimation { savedBanner = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

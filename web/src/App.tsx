@@ -87,8 +87,8 @@ function App() {
               onClick={() => navigate('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
-              <img src="/mascot.png" alt="DuoFit" className="w-9 h-9 rounded-full object-cover" />
-              <span className="text-2xl font-black text-duo-green tracking-tight">DuoFit</span>
+              <img src="/mascot.png" alt="Fitingo" className="w-9 h-9 rounded-full object-cover" />
+              <span className="text-2xl font-black text-duo-green tracking-tight">Fitingo</span>
             </button>
 
             {/* Right side: Training shortcut + hamburger */}
@@ -118,12 +118,12 @@ function App() {
               <div className="relative">
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
-                  className="w-10 h-10 flex flex-col items-center justify-center gap-1.5 rounded-xl hover:bg-duo-gray-light transition-all"
+                  className="w-9 h-9 flex flex-col items-center justify-center gap-1 rounded-xl hover:bg-duo-gray-light transition-all"
                   aria-label="メニュー"
                 >
-                  <span className="block w-5 h-0.5 bg-duo-dark rounded-full transition-all" />
-                  <span className="block w-5 h-0.5 bg-duo-dark rounded-full transition-all" />
-                  <span className="block w-5 h-0.5 bg-duo-dark rounded-full transition-all" />
+                  <span className="block w-4 h-0.5 bg-duo-dark rounded-full transition-all" />
+                  <span className="block w-4 h-0.5 bg-duo-dark rounded-full transition-all" />
+                  <span className="block w-4 h-0.5 bg-duo-dark rounded-full transition-all" />
                 </button>
 
                 {menuOpen && (

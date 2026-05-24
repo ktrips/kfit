@@ -43,6 +43,7 @@ private let reminderItems: [ReminderMeta] = [
 // MARK: - SettingsView
 
 struct SettingsView: View {
+    @Binding var selectedTab: Int
     @StateObject private var notif = NotificationManager.shared
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @State private var watchAutoLaunch = iOSWatchBridge.isWatchAutoLaunchEnabled
@@ -60,6 +61,12 @@ struct SettingsView: View {
     @State private var showAddCustomGoal = false
     @State private var newGoalName = ""
     @State private var newGoalEmoji = "⭐"
+    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitTabVisible = true
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = false
+    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindTabVisible = false
+    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logTabVisible = true
+    @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
+    @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
     // 時間帯別カスタム活動
     @State private var activeActivitySlot: TimeSlot? = nil
     @State private var newActivityName = ""
@@ -71,9 +78,8 @@ struct SettingsView: View {
             Color.duoBg.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
-                    headerSection
+                    tabMenuSettingsSection
                     permissionBanner
-                    dietGoalSection
                     // 時間帯別の目標（インライン表示）
                     timeSlotGoalsInlineSection
                     setConfigurationSection
@@ -90,9 +96,10 @@ struct SettingsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 20)
             }
+
+            closeSettingsFloatingButton
         }
-        .navigationTitle("設定")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .task {
             await refreshPermStatus()
             setConfiguration = await AuthenticationManager.shared.getSetConfiguration()
@@ -130,30 +137,304 @@ struct SettingsView: View {
 
     // MARK: - Header
 
-    private var headerSection: some View {
-        HStack(spacing: 12) {
-            Image("mascot")
-                .resizable().scaledToFill()
-                .frame(width: 52, height: 52)
+    private var closeSettingsFloatingButton: some View {
+        Button {
+            closeSettings()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .black))
+                .foregroundColor(Color.duoGreen)
+                .frame(width: 40, height: 40)
+                .background(Color.white)
                 .clipShape(Circle())
-                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 2))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("設定")
-                    .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
-                Text("通知・連動起動のカスタマイズ")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
-            }
-            Spacer()
+                .shadow(color: Color.black.opacity(0.14), radius: 8, y: 4)
         }
-        .padding(.top, 4)
+        .buttonStyle(.plain)
+        .padding(.top, 12)
+        .padding(.trailing, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func closeSettings() {
+        if let tab = MainMenuTab(rawValue: defaultTabRaw), tabVisible(tab) {
+            selectedTab = tab.rawValue
+        } else {
+            selectedTab = enabledConfigurableTabs.first?.rawValue ?? MainMenuTab.fit.rawValue
+        }
+    }
+
+    // MARK: - メニューのカスタマイズ
+
+    private var orderedConfigurableTabs: [MainMenuTab] {
+        MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
+    }
+
+    private var enabledConfigurableTabs: [MainMenuTab] {
+        let enabled = orderedConfigurableTabs.filter { tabVisible($0) }
+        return enabled.isEmpty ? [.fit] : enabled
+    }
+
+    private var tabMenuSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(icon: "rectangle.grid.1x2.fill",
+                          title: "メニューのカスタマイズ",
+                          subtitle: "表示するタブ・初期表示・並び順")
+
+            VStack(spacing: 0) {
+                ForEach(Array(orderedConfigurableTabs.enumerated()), id: \.element.id) { index, tab in
+                    tabVisibilityRow(tab: tab, index: index)
+                    if tab == .goal && goalTabVisible {
+                        goalTabSettingsButton
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 12)
+                    }
+                    if index < orderedConfigurableTabs.count - 1 {
+                        Divider().padding(.leading, 52)
+                    }
+                }
+                Divider().padding(.leading, 52)
+                logTabVisibilityRow
+            }
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "house.circle.fill")
+                        .font(.system(size: 17, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("デフォルトタブ")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("アプリ起動時・設定を閉じた後に戻る画面")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(enabledConfigurableTabs) { tab in
+                        defaultTabOption(tab)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
+        }
+    }
+
+    private func defaultTabOption(_ tab: MainMenuTab) -> some View {
+        let isSelected = defaultTabBinding.wrappedValue == tab.rawValue
+        return Button {
+            defaultTabRaw = tab.rawValue
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 17, weight: .black))
+                Text(tab.label)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+            }
+            .foregroundColor(isSelected ? .white : Color.duoGreen)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(isSelected ? Color.duoGreen : Color.duoGreen.opacity(0.09))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? Color.duoGreen : Color.duoGreen.opacity(0.18), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var goalTabSettingsButton: some View {
+        Button {
+            showDietGoalSettings = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "target")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundColor(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Color.duoGreen)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("GOAL目標設定")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("体重・体脂肪・カロリー目標")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(10)
+            .background(Color.duoGreen.opacity(0.08))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var logTabVisibilityRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color.duoGreen)
+                .frame(width: 32, height: 32)
+                .background(Color.duoGreen.opacity(0.10))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("LOGタブ")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text("記録メニューを下部に表示")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $logTabVisible)
+                .labelsHidden()
+                .tint(Color.duoGreen)
+        }
+        .padding(12)
+    }
+
+    private var defaultTabBinding: Binding<Int> {
+        Binding(
+            get: {
+                if let tab = MainMenuTab(rawValue: defaultTabRaw), tabVisible(tab) {
+                    return tab.rawValue
+                }
+                return enabledConfigurableTabs.first?.rawValue ?? MainMenuTab.fit.rawValue
+            },
+            set: { defaultTabRaw = $0 }
+        )
+    }
+
+    private func tabVisibilityRow(tab: MainMenuTab, index: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: tab.icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color.duoGreen)
+                .frame(width: 32, height: 32)
+                .background(Color.duoGreen.opacity(0.10))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tab.settingsLabel)
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text(defaultTabBinding.wrappedValue == tab.rawValue ? "デフォルト表示" : "下部メニューに表示")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Button {
+                    moveTab(tab, direction: -1)
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(index == 0 ? Color.gray.opacity(0.35) : Color.duoGreen)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .disabled(index == 0)
+
+                Button {
+                    moveTab(tab, direction: 1)
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(index == orderedConfigurableTabs.count - 1 ? Color.gray.opacity(0.35) : Color.duoGreen)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .disabled(index == orderedConfigurableTabs.count - 1)
+            }
+
+            Toggle("", isOn: tabVisibleBinding(tab))
+                .labelsHidden()
+                .tint(Color.duoGreen)
+        }
+        .padding(12)
+    }
+
+    private func tabVisible(_ tab: MainMenuTab) -> Bool {
+        switch tab {
+        case .fit: return fitTabVisible
+        case .goal: return goalTabVisible
+        case .mind: return mindTabVisible
+        }
+    }
+
+    private func tabVisibleBinding(_ tab: MainMenuTab) -> Binding<Bool> {
+        Binding(
+            get: { tabVisible(tab) },
+            set: { newValue in
+                setTabVisible(tab, newValue)
+            }
+        )
+    }
+
+    private func setTabVisible(_ tab: MainMenuTab, _ newValue: Bool) {
+        let currentlyEnabledCount = MainMenuTab.allCases.filter { tabVisible($0) }.count
+        if !newValue && currentlyEnabledCount <= 1 {
+            return
+        }
+
+        switch tab {
+        case .fit: fitTabVisible = newValue
+        case .goal: goalTabVisible = newValue
+        case .mind: mindTabVisible = newValue
+        }
+
+        UserDefaults.standard.set(newValue, forKey: MainMenuTabPreferences.visibleKey(for: tab))
+
+        let enabledTabs = orderedConfigurableTabs.filter { currentTab in
+            currentTab == tab ? newValue : tabVisible(currentTab)
+        }
+        if let defaultTab = MainMenuTab(rawValue: defaultTabRaw),
+           !enabledTabs.contains(defaultTab) {
+            defaultTabRaw = enabledTabs.first?.rawValue ?? MainMenuTab.fit.rawValue
+        }
+    }
+
+    private func moveTab(_ tab: MainMenuTab, direction: Int) {
+        var tabs = orderedConfigurableTabs
+        guard let currentIndex = tabs.firstIndex(of: tab) else { return }
+        let newIndex = currentIndex + direction
+        guard tabs.indices.contains(newIndex) else { return }
+        tabs.swapAt(currentIndex, newIndex)
+        tabOrderRaw = MainMenuTabPreferences.storedOrder(from: tabs)
     }
 
     // MARK: - 時間帯別目標（インライン）
 
     private var timeSlotGoalsInlineSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "clock.fill", title: "時間帯別の目標",
-                          subtitle: "夜中・朝・昼・午後・夜ごとに設定")
+            HStack(alignment: .center, spacing: 8) {
+                sectionHeader(icon: "clock.fill", title: "時間帯別の目標",
+                              subtitle: "夜中・朝・昼・午後・夜ごとに設定")
+                Spacer(minLength: 8)
+                smallDefaultButton {
+                    resetTimeSlotGoalsToDefault()
+                }
+            }
 
             if timeSlotManager.isLoading {
                 ProgressView()
@@ -191,6 +472,9 @@ struct SettingsView: View {
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
+                smallDefaultButton {
+                    resetGlobalGoalsToDefault()
+                }
             }
             .padding(.bottom, 14)
 
@@ -301,6 +585,41 @@ struct SettingsView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
+    private func smallDefaultButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 9, weight: .black))
+                Text("初期値")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+            }
+            .foregroundColor(Color.duoSubtitle)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color(.systemGray6))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(Color(.systemGray4).opacity(0.5), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func resetGlobalGoalsToDefault() {
+        timeSlotManager.settings.globalGoals = DailyGlobalGoals()
+        timeSlotManager.applyGlobalMealDrinkToSlots()
+        Task { await timeSlotManager.saveTodaySettings() }
+    }
+
+    private func resetTimeSlotGoalsToDefault() {
+        let globalGoals = timeSlotManager.settings.globalGoals
+        timeSlotManager.settings = DailyTimeSlotSettings(date: timeSlotManager.settings.date)
+        timeSlotManager.settings.globalGoals = globalGoals
+        timeSlotManager.applyGlobalMealDrinkToSlots()
+        Task { await timeSlotManager.saveTodaySettings() }
+    }
+
     private var globalDivider: some View {
         Divider().padding(.vertical, 10)
     }
@@ -336,9 +655,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(color.opacity(0.10))
                 .cornerRadius(6)
-            Stepper("", value: value, in: range, step: step)
-                .labelsHidden()
-                .fixedSize()
+            settingsStepperControls(value: value, range: range, step: step, color: color)
         }
         .padding(.leading, 40)
         .padding(.bottom, 4)
@@ -369,10 +686,53 @@ struct SettingsView: View {
                 .padding(.horizontal, 9).padding(.vertical, 3)
                 .background(valueColor.opacity(0.12))
                 .cornerRadius(7)
-            Stepper("", value: value, in: range, step: step)
-                .labelsHidden()
-                .fixedSize()
+            settingsStepperControls(value: value, range: range, step: step, color: valueColor)
         }
+    }
+
+    private func settingsStepperControls(value: Binding<Int>, range: ClosedRange<Int>, step: Int, color: Color) -> some View {
+        HStack(spacing: 6) {
+            settingsStepperButton(
+                systemName: "minus",
+                isEnabled: value.wrappedValue > range.lowerBound,
+                color: color
+            ) {
+                value.wrappedValue = max(range.lowerBound, value.wrappedValue - step)
+            }
+
+            settingsStepperButton(
+                systemName: "plus",
+                isEnabled: value.wrappedValue < range.upperBound,
+                color: color
+            ) {
+                value.wrappedValue = min(range.upperBound, value.wrappedValue + step)
+            }
+        }
+        .padding(2)
+        .background(color.opacity(0.08))
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(color.opacity(0.16), lineWidth: 0.8)
+        )
+    }
+
+    private func settingsStepperButton(systemName: String, isEnabled: Bool, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(isEnabled ? color : Color(.systemGray2))
+                .frame(width: 25, height: 25)
+                .background(isEnabled ? Color.white.opacity(0.92) : Color(.systemGray6))
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(isEnabled ? color.opacity(0.22) : Color(.systemGray4).opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: color.opacity(isEnabled ? 0.10 : 0.0), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
     }
 
     private func timeSlotCardInline(slot: TimeSlot, goal: TimeSlotGoal, progress: TimeSlotProgress) -> some View {
@@ -544,31 +904,51 @@ struct SettingsView: View {
 
         if gg.sleepEnabled {
             // 目標時間
-            HStack {
+            HStack(spacing: 8) {
                 Text("目標時間:").font(.caption).foregroundColor(Color.duoSubtitle)
-                Stepper("\(gg.sleepHoursGoal)時間以上",
-                        value: Binding(
-                            get: { gg.sleepHoursGoal },
-                            set: { v in
-                                timeSlotManager.settings.globalGoals.sleepHoursGoal = v
-                                Task { await timeSlotManager.saveTodaySettings() }
-                            }
-                        ), in: 1...12, step: 1)
-                .font(.subheadline).fontWeight(.bold)
+                Spacer()
+                Text("\(gg.sleepHoursGoal)時間以上")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoPurple)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.duoPurple.opacity(0.10))
+                    .cornerRadius(6)
+                settingsStepperControls(
+                    value: Binding(
+                        get: { gg.sleepHoursGoal },
+                        set: { v in
+                            timeSlotManager.settings.globalGoals.sleepHoursGoal = v
+                            Task { await timeSlotManager.saveTodaySettings() }
+                        }
+                    ),
+                    range: 1...12,
+                    step: 1,
+                    color: Color.duoPurple
+                )
             }.padding(.leading, 36)
 
             // 目標スコア
-            HStack {
+            HStack(spacing: 8) {
                 Text("目標スコア:").font(.caption).foregroundColor(Color.duoSubtitle)
-                Stepper("\(gg.sleepScoreThreshold)点以上",
-                        value: Binding(
-                            get: { gg.sleepScoreThreshold },
-                            set: { v in
-                                timeSlotManager.settings.globalGoals.sleepScoreThreshold = v
-                                Task { await timeSlotManager.saveTodaySettings() }
-                            }
-                        ), in: 50...100, step: 5)
-                .font(.subheadline).fontWeight(.bold)
+                Spacer()
+                Text("\(gg.sleepScoreThreshold)点以上")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(Color.duoPurple)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.duoPurple.opacity(0.10))
+                    .cornerRadius(6)
+                settingsStepperControls(
+                    value: Binding(
+                        get: { gg.sleepScoreThreshold },
+                        set: { v in
+                            timeSlotManager.settings.globalGoals.sleepScoreThreshold = v
+                            Task { await timeSlotManager.saveTodaySettings() }
+                        }
+                    ),
+                    range: 50...100,
+                    step: 5,
+                    color: Color.duoPurple
+                )
             }.padding(.leading, 36)
 
             // 昨夜の実績
@@ -1161,14 +1541,12 @@ struct SettingsView: View {
                 for (_, sensitivity) in motionSensitivity {
                     await AuthenticationManager.shared.saveMotionSensitivity(sensitivity)
                 }
-            }
-
-            if permStatus == .authorized { notif.scheduleAllDaily() }
-            withAnimation { savedBanner = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                withAnimation {
-                    savedBanner = false
-                    dismiss() // ホーム画面に戻る
+                await MainActor.run {
+                    if permStatus == .authorized { notif.scheduleAllDaily() }
+                    withAnimation {
+                        savedBanner = true
+                        closeSettings()
+                    }
                 }
             }
         } label: {
@@ -1471,5 +1849,5 @@ struct SensitivityRowEditor: View {
 }
 
 #Preview {
-    NavigationView { SettingsView() }
+    NavigationView { SettingsView(selectedTab: .constant(4)) }
 }

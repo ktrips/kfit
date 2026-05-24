@@ -5,11 +5,10 @@ import {
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress } from '../services/timeSlotService';
-import { getDietGoalSettings, getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
+import { getDietGoalSettings, getTodayIntakeSummary } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
-import { calculateStressScore } from '../utils/stress';
 import type { GlobalProgress } from '../services/timeSlotService';
-import type { DietGoalSettings, IntakeSummary, MindMetrics } from '../types/wellness';
+import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
@@ -60,7 +59,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
@@ -76,7 +75,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
   const [intakeSummary, setIntakeSummary] = useState<IntakeSummary | null>(null);
   const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
-  const [mindMetrics, setMindMetrics] = useState<MindMetrics | null>(null);
   const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,11 +83,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, intake, global, mind, diet] = await Promise.all([
+        const [dashboard, intake, global, diet] = await Promise.all([
           getDashboardData(user.uid),
           getTodayIntakeSummary(user.uid),
           getGlobalProgress(user.uid),
-          getMindMetrics(user.uid),
           getDietGoalSettings(user.uid),
         ]);
         const exercises = dashboard.todayExercises;
@@ -106,7 +103,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setTodaySetCount(dashboard.todaySetCount);
         setIntakeSummary(intake);
         setGlobalProgress(global);
-        setMindMetrics(mind);
         setDietGoal(diet);
         // 今日分だけフィルタ
         const today = new Date();
@@ -207,110 +203,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         </div>
 
-        {/* 4カード: Diet / Mind / Food / Sleep */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Diet card */}
-          {(() => {
-            const cw = dietGoal?.currentWeightKg ?? 0;
-            const gw = dietGoal?.goalWeightKg ?? 0;
-            const hasWeight = cw > 0 && gw > 0;
-            const diff = hasWeight ? cw - gw : 0;
-            const days = (() => {
-              if (!dietGoal?.goalDate) return 0;
-              const today = new Date(); today.setHours(0, 0, 0, 0);
-              const goal = new Date(dietGoal.goalDate); goal.setHours(0, 0, 0, 0);
-              return Math.max(0, Math.round((goal.getTime() - today.getTime()) / 86400000));
-            })();
-            return (
-              <div className="duo-card p-4">
-                <p className="text-xs font-black text-duo-gray">DIET</p>
-                {hasWeight ? (
-                  <>
-                    <p className="text-lg font-black text-duo-dark leading-tight mt-0.5">
-                      {cw.toFixed(1)} kg
-                    </p>
-                    <p className="text-xs font-bold mt-1" style={{ color: diff > 0 ? '#FF9600' : '#58CC02' }}>
-                      目標まで {diff > 0 ? `-${diff.toFixed(1)}` : `+${Math.abs(diff).toFixed(1)}`}kg
-                      {days > 0 ? ` · あと${days}日` : ''}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg font-black text-duo-dark leading-tight mt-0.5">未設定</p>
-                    <p className="text-xs font-bold text-duo-gray mt-1">体重・目標日を設定</p>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Mind card */}
-          {(() => {
-            const hrv = mindMetrics?.averageHRV ?? 0;
-            const stress = calculateStressScore(hrv);
-            const hasData = hrv > 0;
-            return (
-              <div className="duo-card p-4">
-                <p className="text-xs font-black text-duo-gray">MIND</p>
-                {hasData ? (
-                  <>
-                    <p className="text-lg font-black leading-tight mt-0.5" style={{ color: stress.color }}>
-                      HRV {Math.round(hrv)} ms
-                    </p>
-                    <p className="text-xs font-bold mt-1" style={{ color: stress.color }}>
-                      ストレス: {stress.label}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg font-black text-duo-gray leading-tight mt-0.5">未入力</p>
-                    <p className="text-xs font-bold text-duo-gray mt-1">心拍・HRV・ストレス</p>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Food card */}
-          <div className="duo-card p-4">
-            <p className="text-xs font-black text-duo-gray">FOOD</p>
-            <p className="text-lg font-black text-duo-orange leading-tight mt-0.5">
-              {intakeSummary?.calories ?? 0} kcal
-            </p>
-            <p className="text-xs font-bold text-duo-gray mt-1">
-              水分 {intakeSummary?.waterMl ?? 0}ml · {intakeSummary?.mealCount ?? 0}食
-            </p>
-          </div>
-
-          {/* Sleep card */}
-          {(() => {
-            const sh = globalProgress?.sleepHours ?? 0;
-            const ss = globalProgress?.sleepScore ?? 0;
-            const hasSleep = sh > 0;
-            const sleepColor = ss >= 80 ? '#58CC02' : ss >= 60 ? '#FF9600' : ss > 0 ? '#FF4B4B' : '#AFAFAF';
-            return (
-              <div className="duo-card p-4">
-                <p className="text-xs font-black text-duo-gray">SLEEP</p>
-                {hasSleep ? (
-                  <>
-                    <p className="text-lg font-black leading-tight mt-0.5" style={{ color: sleepColor }}>
-                      {sh.toFixed(1)} h
-                    </p>
-                    <p className="text-xs font-bold mt-1" style={{ color: sleepColor }}>
-                      スコア {ss}点
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg font-black text-duo-gray leading-tight mt-0.5">未取得</p>
-                    <p className="text-xs font-bold text-duo-gray mt-1">iOSから同期</p>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-
         {/* Today's set status — count-based */}
         {todaySetCount === 0 ? (
           <div className="duo-card p-6">
@@ -384,59 +276,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* Weekly set progress mini card */}
-        {(() => {
-          const weeklyTarget = dailySets * 5;
-          const activeDays = getActiveDaysElapsed();
-          const expectedNow = dailySets * activeDays;
-          const done = setProgress.completedSets;
-          const pct = weeklyTarget > 0 ? Math.min((done / weeklyTarget) * 100, 100) : 0;
-          const onTrack = expectedNow > 0 && done >= expectedNow;
-          return (
-            <div
-              className="duo-card p-5 cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={onWeeklyGoal}
-              style={onTrack ? { borderColor: '#58CC02', boxShadow: '0 4px 0 #46A302' } : {}}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-black text-duo-dark">🎯 週間セット目標</h2>
-                <span className="text-duo-gray font-bold text-xs">📅 {getWeekLabel()}</span>
-              </div>
-              <div className="flex items-end gap-2 mb-2">
-                <span
-                  className="text-3xl font-black leading-none"
-                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
-                >
-                  {done}
-                </span>
-                <span className="font-bold text-duo-gray text-base mb-0.5">/ {weeklyTarget} セット</span>
-                <span
-                  className="ml-auto font-black text-base"
-                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
-                >
-                  {Math.round(pct)}%
-                </span>
-              </div>
-              <div className="duo-progress-bar" style={{ height: '10px' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${pct}%`,
-                    background: onTrack
-                      ? 'linear-gradient(90deg, #58CC02, #91E62A)'
-                      : 'linear-gradient(90deg, #FFD900, #FF9600)',
-                  }}
-                />
-              </div>
-              <p className="text-duo-gray font-bold text-xs mt-2">
-                {onTrack ? '✅ ペース通り！' : `今日まで目標 ${expectedNow} セット`}
-                {'  '}
-                <span className="underline text-duo-green">詳細 →</span>
-              </p>
-            </div>
-          );
-        })()}
-
         {/* Today's set details */}
         {todaySets.length > 0 && (
           <div className="duo-card p-5">
@@ -492,6 +331,168 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             </div>
           </div>
         )}
+
+        {/* Diet goal card */}
+        {(() => {
+          const cw = dietGoal?.currentWeightKg ?? 0;
+          const gw = dietGoal?.goalWeightKg ?? 0;
+          const sw = dietGoal?.startWeightKg ?? 0;
+          const currentBodyFat = dietGoal?.currentBodyFatPercent ?? 0;
+          const goalBodyFat = dietGoal?.goalBodyFatPercent ?? 0;
+          const intakeGoal = dietGoal?.dailyIntakeKcalGoal ?? 0;
+          const burnGoal = dietGoal?.dailyBurnKcalGoal ?? 0;
+          const intake = intakeSummary?.calories ?? 0;
+          const dailyBalance = intake - burnGoal;
+          const hasWeight = cw > 0 && gw > 0;
+          const remainingKg = hasWeight ? cw - gw : 0;
+          const totalWeightDelta = sw - gw;
+          const completedWeightDelta = sw - cw;
+          const weightPct = Math.min(100, Math.max(0, totalWeightDelta !== 0 ? (completedWeightDelta / totalWeightDelta) * 100 : 0));
+          const days = (() => {
+            if (!dietGoal?.goalDate) return 0;
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const goal = new Date(dietGoal.goalDate); goal.setHours(0, 0, 0, 0);
+            return Math.max(0, Math.round((goal.getTime() - today.getTime()) / 86400000));
+          })();
+
+          return (
+            <button
+              onClick={onDietGoal}
+              className="duo-card p-5 w-full text-left hover:opacity-90 active:scale-[0.98] transition-all"
+              style={{ borderColor: '#CE82FF', boxShadow: '0 4px 0 #A15FD4' }}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <p className="text-xs font-black text-duo-gray tracking-wider">DIET</p>
+                  <h2 className="text-xl font-black text-duo-dark leading-tight">ダイエット目標</h2>
+                  <p className="text-xs font-bold text-duo-gray mt-1">
+                    {hasWeight ? `目標まで ${remainingKg > 0 ? '-' : '+'}${Math.abs(remainingKg).toFixed(1)}kg` : '体重・体脂肪・カロリー計画を設定'}
+                    {days > 0 ? ` · あと${days}日` : ''}
+                  </p>
+                </div>
+                <span className="font-black text-lg" style={{ color: '#CE82FF' }}>GOAL ›</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-2xl p-3" style={{ background: '#F3E8FF' }}>
+                  <p className="text-[10px] font-black text-duo-gray">現在</p>
+                  <p className="text-lg font-black text-duo-dark">{cw > 0 ? `${cw.toFixed(1)}kg` : '—'}</p>
+                  <p className="text-[10px] font-bold text-duo-gray">体脂肪 {currentBodyFat > 0 ? `${currentBodyFat.toFixed(1)}%` : '—'}</p>
+                </div>
+                <div className="rounded-2xl p-3" style={{ background: '#E8F5E9' }}>
+                  <p className="text-[10px] font-black text-duo-gray">ゴール</p>
+                  <p className="text-lg font-black text-duo-green">{gw > 0 ? `${gw.toFixed(1)}kg` : '—'}</p>
+                  <p className="text-[10px] font-bold text-duo-gray">体脂肪 {goalBodyFat > 0 ? `${goalBodyFat.toFixed(1)}%` : '—'}</p>
+                </div>
+                <div className="rounded-2xl p-3" style={{ background: '#FFF3E0' }}>
+                  <p className="text-[10px] font-black text-duo-gray">今日の収支</p>
+                  <p className="text-lg font-black" style={{ color: dailyBalance <= 0 ? '#58CC02' : '#FF9600' }}>
+                    {dailyBalance >= 0 ? '+' : ''}{dailyBalance}
+                  </p>
+                  <p className="text-[10px] font-bold text-duo-gray">kcal</p>
+                </div>
+              </div>
+
+              <div className="duo-progress-bar mb-3" style={{ height: '10px' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${weightPct}%`,
+                    background: 'linear-gradient(90deg, #CE82FF, #58CC02)',
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold text-duo-gray">
+                <div>摂取: <span className="font-black text-duo-orange">{intake}</span> / {intakeGoal || '—'} kcal</div>
+                <div>消費目標: <span className="font-black text-duo-green">{burnGoal || '—'}</span> kcal</div>
+              </div>
+            </button>
+          );
+        })()}
+
+        {/* Sleep card */}
+        {(() => {
+          const sh = globalProgress?.sleepHours ?? 0;
+          const ss = globalProgress?.sleepScore ?? 0;
+          const hasSleep = sh > 0;
+          const sleepColor = ss >= 80 ? '#58CC02' : ss >= 60 ? '#FF9600' : ss > 0 ? '#FF4B4B' : '#AFAFAF';
+          return (
+            <div className="duo-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-black text-duo-dark">😴 SLEEP</h2>
+                <span className="text-duo-gray font-bold text-xs">iOS同期</span>
+              </div>
+              {hasSleep ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl p-4" style={{ background: '#EEF2FF' }}>
+                    <p className="text-xs font-black text-duo-gray">睡眠時間</p>
+                    <p className="text-2xl font-black" style={{ color: sleepColor }}>{sh.toFixed(1)} h</p>
+                  </div>
+                  <div className="rounded-2xl p-4" style={{ background: '#E8F5E9' }}>
+                    <p className="text-xs font-black text-duo-gray">睡眠スコア</p>
+                    <p className="text-2xl font-black" style={{ color: sleepColor }}>{ss} 点</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-duo-gray font-bold text-sm">睡眠データはまだ取得されていません。</p>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Weekly set progress mini card */}
+        {(() => {
+          const weeklyTarget = dailySets * 5;
+          const activeDays = getActiveDaysElapsed();
+          const expectedNow = dailySets * activeDays;
+          const done = setProgress.completedSets;
+          const pct = weeklyTarget > 0 ? Math.min((done / weeklyTarget) * 100, 100) : 0;
+          const onTrack = expectedNow > 0 && done >= expectedNow;
+          return (
+            <div
+              className="duo-card p-5 cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={onWeeklyGoal}
+              style={onTrack ? { borderColor: '#58CC02', boxShadow: '0 4px 0 #46A302' } : {}}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-black text-duo-dark">🎯 週間セット目標</h2>
+                <span className="text-duo-gray font-bold text-xs">📅 {getWeekLabel()}</span>
+              </div>
+              <div className="flex items-end gap-2 mb-2">
+                <span
+                  className="text-3xl font-black leading-none"
+                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
+                >
+                  {done}
+                </span>
+                <span className="font-bold text-duo-gray text-base mb-0.5">/ {weeklyTarget} セット</span>
+                <span
+                  className="ml-auto font-black text-base"
+                  style={{ color: onTrack ? '#46A302' : '#CE9700' }}
+                >
+                  {Math.round(pct)}%
+                </span>
+              </div>
+              <div className="duo-progress-bar" style={{ height: '10px' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${pct}%`,
+                    background: onTrack
+                      ? 'linear-gradient(90deg, #58CC02, #91E62A)'
+                      : 'linear-gradient(90deg, #FFD900, #FF9600)',
+                  }}
+                />
+              </div>
+              <p className="text-duo-gray font-bold text-xs mt-2">
+                {onTrack ? '✅ ペース通り！' : `今日まで目標 ${expectedNow} セット`}
+                {'  '}
+                <span className="underline text-duo-green">詳細 →</span>
+              </p>
+            </div>
+          );
+        })()}
 
         {/* 90-day goal */}
         <div className="duo-card p-5">

@@ -5,6 +5,73 @@ import GoogleSignIn
 import UserNotifications
 import WatchConnectivity
 
+enum MainMenuTab: Int, CaseIterable, Identifiable {
+    case fit = 0
+    case goal = 1
+    case mind = 2
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .fit: return "FIT"
+        case .goal: return "GOAL"
+        case .mind: return "MIND"
+        }
+    }
+
+    var settingsLabel: String {
+        switch self {
+        case .fit: return "FITタブ"
+        case .goal: return "GOALタブ"
+        case .mind: return "MINDタブ"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .fit: return "house.fill"
+        case .goal: return "target"
+        case .mind: return "brain.head.profile"
+        }
+    }
+}
+
+enum MainMenuTabPreferences {
+    static let fitVisibleKey = "mainTab.fit.visible"
+    static let goalVisibleKey = "mainTab.goal.visible"
+    static let mindVisibleKey = "mainTab.mind.visible"
+    static let logVisibleKey = "mainTab.log.visible"
+    static let defaultTabKey = "mainTab.default"
+    static let orderKey = "mainTab.order"
+
+    static let defaultOrder = [MainMenuTab.fit, .goal, .mind]
+
+    static func visibleKey(for tab: MainMenuTab) -> String {
+        switch tab {
+        case .fit: return fitVisibleKey
+        case .goal: return goalVisibleKey
+        case .mind: return mindVisibleKey
+        }
+    }
+
+    static func orderedTabs(from storedOrder: String) -> [MainMenuTab] {
+        var result = storedOrder
+            .split(separator: ",")
+            .compactMap { Int($0).flatMap(MainMenuTab.init(rawValue:)) }
+
+        for tab in defaultOrder where !result.contains(tab) {
+            result.append(tab)
+        }
+
+        return result.filter { defaultOrder.contains($0) }
+    }
+
+    static func storedOrder(from tabs: [MainMenuTab]) -> String {
+        tabs.map { String($0.rawValue) }.joined(separator: ",")
+    }
+}
+
 @main
 struct kfitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
@@ -36,6 +103,9 @@ struct kfitApp: App {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
                 // Watchに最新データを送信
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+                Task {
+                    await authManager.performEndOfDayCalorieTopUpIfNeeded()
+                }
             } else if newPhase == .background {
                 // バックグラウンド移行時もWatchに最新データを送信（ApplicationContext経由）
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
@@ -48,41 +118,162 @@ struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
+    @State private var isTabBarHidden = false
+    @State private var tabBarHideWorkItem: DispatchWorkItem?
+    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
+    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
+    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
+    @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
+    @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
     var body: some View {
-        mainContent
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                compactTabBar
-            }
+        ZStack(alignment: .bottom) {
+            mainContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            bottomRevealZone
+
+            tabBarRevealHandle
+
+            compactTabBar
+                .offset(y: isTabBarHidden ? 76 : 0)
+                .opacity(isTabBarHidden ? 0 : 1)
+                .allowsHitTesting(!isTabBarHidden)
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
+        }
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .fullScreenCover(isPresented: $showRecordMenu) {
                 RecordMenuView(isPresented: $showRecordMenu)
                     .environmentObject(authManager)
             }
+            .onAppear {
+                selectedTab = defaultVisibleTab.rawValue
+                normalizeSelection()
+                scheduleTabBarAutoHide()
+                checkEndOfDayCalorieTopUp()
+            }
+            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                checkEndOfDayCalorieTopUp()
+            }
+            .onChange(of: fitVisible) { _, _ in normalizeSelection() }
+            .onChange(of: goalVisible) { _, _ in normalizeSelection() }
+            .onChange(of: mindVisible) { _, _ in normalizeSelection() }
+            .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
+            .onChange(of: tabOrderRaw) { _, _ in normalizeSelection() }
     }
 
     @ViewBuilder
     private var mainContent: some View {
         switch selectedTab {
-        case 1:  GoalView(selectedTab: $selectedTab)
-        case 2:  MindView(selectedTab: $selectedTab)
-        case 4:  NavigationView { SettingsView() }
+        case 1:  GoalView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+        case 2:  MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+        case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
         case 5:  MoreView()
-        default: NavigationView { DashboardView() }.ignoresSafeArea(.keyboard)
+        default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
         }
+    }
+
+    private var orderedPrimaryTabs: [MainMenuTab] {
+        MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
+    }
+
+    private var visiblePrimaryTabs: [MainMenuTab] {
+        let visible = orderedPrimaryTabs.filter { isVisible($0) }
+        return visible.isEmpty ? [.fit] : visible
+    }
+
+    private var defaultVisibleTab: MainMenuTab {
+        if let preferred = MainMenuTab(rawValue: defaultTabRaw), isVisible(preferred) {
+            return preferred
+        }
+        return visiblePrimaryTabs.first ?? .fit
+    }
+
+    private func isVisible(_ tab: MainMenuTab) -> Bool {
+        switch tab {
+        case .fit: return fitVisible
+        case .goal: return goalVisible
+        case .mind: return mindVisible
+        }
+    }
+
+    private func normalizeSelection() {
+        if selectedTab == 4 || selectedTab == 5 { return }
+        guard let current = MainMenuTab(rawValue: selectedTab), isVisible(current) else {
+            selectedTab = defaultVisibleTab.rawValue
+            return
+        }
+    }
+
+    private var bottomRevealZone: some View {
+        Color.clear
+            .frame(height: 34)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in
+                        if value.translation.height < -4 {
+                            revealTabBar()
+                        } else if value.translation.height > 10 {
+                            hideTabBarNow()
+                        }
+                    }
+            )
+            .onTapGesture {
+                revealTabBar()
+            }
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var tabBarRevealHandle: some View {
+        Button {
+            revealTabBar()
+        } label: {
+            Capsule()
+                .fill(Color.duoGreen.opacity(0.42))
+                .frame(width: 48, height: 5)
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.45), lineWidth: 0.7)
+                )
+                .shadow(color: Color.black.opacity(0.12), radius: 3, y: 1)
+                .padding(.horizontal, 28)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
+                .background(Color.black.opacity(0.001))
+        }
+        .buttonStyle(.plain)
+        .opacity(isTabBarHidden ? 1 : 0)
+        .scaleEffect(isTabBarHidden ? 1 : 0.82)
+        .allowsHitTesting(isTabBarHidden)
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    if value.translation.height < -4 {
+                        revealTabBar()
+                    }
+                }
+        )
+        .padding(.bottom, 0)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var compactTabBar: some View {
         HStack(spacing: 2) {
-            tabBtn(tag: 0, icon: "house.fill",           label: "FIT")
-            tabBtn(tag: 1, icon: "target",               label: "GOAL")
-            tabBtn(tag: 2, icon: "brain.head.profile",   label: "MIND")
-            recordBtn
-            tabBtn(tag: 4, icon: "gearshape.fill",       label: "設定")
-            tabBtn(tag: 5, icon: "ellipsis.circle.fill", label: "その他")
+            ForEach(visiblePrimaryTabs) { tab in
+                tabBtn(tag: tab.rawValue, icon: tab.icon, label: tab.label)
+            }
+            if logVisible {
+                recordBtn
+            }
+            tabBtn(tag: 4, icon: "gearshape.fill",       label: "SETUP")
+            tabBtn(tag: 5, icon: "ellipsis.circle.fill", label: "MORE...")
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 5)
+        .padding(.top, 3)
+        .padding(.bottom, 3)
         .background(
             LinearGradient(
                 colors: [Color(red: 0.38, green: 0.84, blue: 0.05),
@@ -92,22 +283,36 @@ struct MainTabView: View {
             )
         )
         .shadow(color: Color.black.opacity(0.15), radius: 6, y: -2)
+        .gesture(
+            DragGesture(minimumDistance: 8)
+                .onEnded { value in
+                    if value.translation.height > 12 {
+                        hideTabBarNow()
+                    } else {
+                        scheduleTabBarAutoHide()
+                    }
+                }
+        )
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var recordBtn: some View {
-        Button { showRecordMenu = true } label: {
-            VStack(spacing: 2) {
+        Button {
+            revealTabBar()
+            showRecordMenu = true
+        } label: {
+            VStack(spacing: 1) {
                 ZStack {
                     Circle()
                         .fill(.white)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 24, height: 24)
                         .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
                     Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .black))
+                        .font(.system(size: 12, weight: .black))
                         .foregroundColor(Color(red: 0.22, green: 0.68, blue: 0.0))
                 }
-                Text("記録")
-                    .font(.system(size: 8, weight: .bold))
+                Text("LOG")
+                    .font(.system(size: 7, weight: .bold))
                     .foregroundColor(.white)
             }
             .frame(maxWidth: .infinity)
@@ -117,21 +322,114 @@ struct MainTabView: View {
 
     private func tabBtn(tag: Int, icon: String, label: String) -> some View {
         let isSelected = selectedTab == tag
-        return Button { selectedTab = tag } label: {
-            VStack(spacing: 2) {
+        return Button {
+            selectedTab = tag
+            revealTabBar()
+        } label: {
+            VStack(spacing: 1) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 7, weight: .bold))
             }
             .foregroundColor(isSelected ? Color(red: 0.22, green: 0.68, blue: 0.0) : .white.opacity(0.88))
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
             .padding(.horizontal, 4)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(isSelected ? Color.white : Color.clear)
             )
             .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func revealTabBar() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            isTabBarHidden = false
+        }
+        scheduleTabBarAutoHide()
+    }
+
+    private func hideTabBarNow() {
+        tabBarHideWorkItem?.cancel()
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            isTabBarHidden = true
+        }
+    }
+
+    private func scheduleTabBarAutoHide() {
+        tabBarHideWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                isTabBarHidden = true
+            }
+        }
+        tabBarHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
+    }
+
+    private func checkEndOfDayCalorieTopUp() {
+        Task {
+            await authManager.performEndOfDayCalorieTopUpIfNeeded()
+        }
+    }
+}
+
+struct HeaderNavigationMenu: View {
+    @Binding var selectedTab: Int
+    @Binding var showRecordMenu: Bool
+    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
+    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
+    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
+    @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
+
+    private var visiblePrimaryTabs: [MainMenuTab] {
+        let ordered = MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
+        let visible = ordered.filter { tab in
+            switch tab {
+            case .fit: return fitVisible
+            case .goal: return goalVisible
+            case .mind: return mindVisible
+            }
+        }
+        return visible.isEmpty ? [.fit] : visible
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(visiblePrimaryTabs) { tab in
+                Button {
+                    selectedTab = tab.rawValue
+                } label: {
+                    Label(tab.label, systemImage: tab.icon)
+                }
+            }
+            if logVisible {
+                Button {
+                    showRecordMenu = true
+                } label: {
+                    Label("LOG", systemImage: "plus.circle.fill")
+                }
+            }
+            Button {
+                selectedTab = 4
+            } label: {
+                Label("SETUP", systemImage: "gearshape.fill")
+            }
+            Button {
+                selectedTab = 5
+            } label: {
+                Label("MORE...", systemImage: "ellipsis.circle.fill")
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(.white)
+                .frame(width: 26, height: 26)
+                .background(Color.white.opacity(0.18))
+                .clipShape(Circle())
         }
         .buttonStyle(.plain)
     }

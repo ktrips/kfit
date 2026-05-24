@@ -1,4 +1,4 @@
-# kfit Web App (v0.4.13)
+# Fitingo Web App (v0.4.13)
 
 A React-based web application for tracking fitness habits with Duolingo-like gamification.
 

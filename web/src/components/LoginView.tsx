@@ -22,7 +22,7 @@ export const LoginView: React.FC = () => {
         <div className="relative mb-4">
           <img
             src="/mascot.png"
-            alt="DuoFit マスコット"
+            alt="Fitingo マスコット"
             className="w-40 h-40 rounded-full object-cover drop-shadow-2xl"
             style={{ border: '4px solid #58CC02', boxShadow: '0 8px 0 #46A302' }}
           />
@@ -32,7 +32,7 @@ export const LoginView: React.FC = () => {
             style={{ background: 'radial-gradient(circle, #FF9600, #FF4500)' }}
           />
         </div>
-        <h1 className="text-6xl font-black text-duo-green tracking-tight mb-1">DuoFit</h1>
+        <h1 className="text-6xl font-black text-duo-green tracking-tight mb-1">Fitingo</h1>
         <p className="text-duo-dark font-bold text-xl">筋トレを、習慣に。毎日楽しく！💪</p>
       </div>
 

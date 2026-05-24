@@ -3,7 +3,11 @@ import SwiftUI
 struct RecordMenuView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var authManager: AuthenticationManager
+    @StateObject private var healthKit = HealthKitManager.shared
     @State private var showWorkoutTracker = false
+    @State private var showPhotoLog = false
+    @State private var showMindfulnessSession = false
+    @State private var showStretchSession = false
     @State private var todayIntake = TodayIntakeSummary()
     @State private var showConfirmAlert = false
     @State private var pendingRecordAction: (() async -> Void)?
@@ -40,6 +44,27 @@ struct RecordMenuView: View {
                             showWorkoutTracker = true
                         }
 
+                        // マインドフルネス記録
+                        VStack(spacing: 12) {
+                            Text("マインドフル記録")
+                                .font(.headline).fontWeight(.bold)
+                                .foregroundColor(Color.duoDark)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack(spacing: 12) {
+                                quickRecordButton(emoji: "🧘", label: "1分瞑想", color: Color.duoPurple) {
+                                    showMindfulnessSession = true
+                                }
+                                quickRecordButton(emoji: "🤸", label: "3分ストレッチ", color: Color.duoBlue) {
+                                    showStretchSession = true
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(Color.white)
+                        .cornerRadius(16)
+                        .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+
                         // 食事記録
                         VStack(spacing: 12) {
                             Text("食事記録")
@@ -51,17 +76,17 @@ struct RecordMenuView: View {
                             HStack(spacing: 12) {
                                 quickRecordButton(emoji: "🌅", label: "朝食", color: Color.duoOrange) {
                                     confirmMessage = "朝食 400kcal を記録しますか？"
-                                    pendingRecordAction = { await authManager.recordMeal(mealType: .breakfast) }
+                                    pendingRecordAction = { await recordMealAndTimeSlot(.breakfast) }
                                     showConfirmAlert = true
                                 }
                                 quickRecordButton(emoji: "🍱", label: "昼食", color: Color.duoOrange) {
                                     confirmMessage = "昼食 600kcal を記録しますか？"
-                                    pendingRecordAction = { await authManager.recordMeal(mealType: .lunch) }
+                                    pendingRecordAction = { await recordMealAndTimeSlot(.lunch) }
                                     showConfirmAlert = true
                                 }
                                 quickRecordButton(emoji: "🍽️", label: "夕食", color: Color.duoOrange) {
                                     confirmMessage = "夕食 800kcal を記録しますか？"
-                                    pendingRecordAction = { await authManager.recordMeal(mealType: .dinner) }
+                                    pendingRecordAction = { await recordMealAndTimeSlot(.dinner) }
                                     showConfirmAlert = true
                                 }
                             }
@@ -70,6 +95,8 @@ struct RecordMenuView: View {
                         .background(Color.white)
                         .cornerRadius(16)
                         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+
+                        photoLogButton
 
                         // 水分・その他（行2: スナック・ドリンク・アルコール）
                         VStack(spacing: 12) {
@@ -82,7 +109,7 @@ struct RecordMenuView: View {
                                 // スナック
                                 quickRecordButton(emoji: "🍫", label: "スナック", color: Color.duoOrange) {
                                     confirmMessage = "スナック 100kcal を記録しますか？"
-                                    pendingRecordAction = { await authManager.recordMeal(mealType: .snack) }
+                                    pendingRecordAction = { await recordMealAndTimeSlot(.snack) }
                                     showConfirmAlert = true
                                 }
 
@@ -90,12 +117,12 @@ struct RecordMenuView: View {
                                 Menu {
                                     Button("💧 水（200ml）") {
                                         confirmMessage = "水 200ml を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordWater() }
+                                        pendingRecordAction = { await recordWaterAndTimeSlot() }
                                         showConfirmAlert = true
                                     }
                                     Button("☕ コーヒー（150ml）") {
                                         confirmMessage = "コーヒー 150ml (カフェイン90mg) を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordCoffee() }
+                                        pendingRecordAction = { await recordCoffeeAndTimeSlot() }
                                         showConfirmAlert = true
                                     }
                                 } label: {
@@ -106,22 +133,22 @@ struct RecordMenuView: View {
                                 Menu {
                                     Button("🍺 ビール") {
                                         confirmMessage = "ビール 350ml (アルコール14g) を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordAlcohol(alcoholType: .beer) }
+                                        pendingRecordAction = { await recordAlcoholAndTimeSlot(.beer) }
                                         showConfirmAlert = true
                                     }
                                     Button("🍷 ワイン") {
                                         confirmMessage = "ワイン 120ml (アルコール11.5g) を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordAlcohol(alcoholType: .wine) }
+                                        pendingRecordAction = { await recordAlcoholAndTimeSlot(.wine) }
                                         showConfirmAlert = true
                                     }
                                     Button("🥃 酎ハイ") {
                                         confirmMessage = "酎ハイ 350ml (アルコール19.6g) を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordAlcohol(alcoholType: .chuhai) }
+                                        pendingRecordAction = { await recordAlcoholAndTimeSlot(.chuhai) }
                                         showConfirmAlert = true
                                     }
                                     Button("🚫 ノンアル") {
                                         confirmMessage = "ノンアルコール 0g を記録しますか？"
-                                        pendingRecordAction = { await authManager.recordAlcohol(alcoholType: .nonAlcoholic) }
+                                        pendingRecordAction = { await recordAlcoholAndTimeSlot(.nonAlcoholic) }
                                         showConfirmAlert = true
                                     }
                                 } label: {
@@ -155,6 +182,53 @@ struct RecordMenuView: View {
             ExerciseTrackerView(isPresented: $showWorkoutTracker)
                 .environmentObject(authManager)
         }
+        .fullScreenCover(isPresented: $showPhotoLog, onDismiss: {
+            Task {
+                todayIntake = await authManager.getTodayIntakeSummary()
+            }
+        }) {
+            PhotoLogView()
+        }
+        .fullScreenCover(isPresented: $showMindfulnessSession) {
+            MindfulnessSessionView(
+                durationSeconds: 60,
+                title: "1分瞑想",
+                completedButtonTitle: "Breatheとして保存"
+            ) { startDate, endDate in
+                Task {
+                    let saved = await healthKit.saveMindfulnessSession(
+                        startDate: startDate,
+                        endDate: endDate,
+                        durationSeconds: 60,
+                        sessionType: "Breathe"
+                    )
+                    if saved {
+                        await healthKit.refreshMindfulness()
+                    }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showStretchSession) {
+            MindfulnessSessionView(
+                durationSeconds: 180,
+                title: "3分ストレッチ",
+                completedButtonTitle: "Reflectとして保存",
+                sessionVideos: StretchSessionVideo.defaultStretchVideos
+            ) { startDate, endDate in
+                Task {
+                    let saved = await healthKit.saveMindfulnessSession(
+                        startDate: startDate,
+                        endDate: endDate,
+                        durationSeconds: 180,
+                        sessionType: "Reflect"
+                    )
+                    if saved {
+                        await healthKit.refreshMindfulness()
+                        await TimeSlotManager.shared.syncStretchFromHealthKit()
+                    }
+                }
+            }
+        }
         .onAppear {
             Task {
                 todayIntake = await authManager.getTodayIntakeSummary()
@@ -170,6 +244,79 @@ struct RecordMenuView: View {
                 }
             }
         }
+    }
+
+    private func currentTimeSlot() -> TimeSlot {
+        TimeSlot.current()
+    }
+
+    private func recordMealAndTimeSlot(_ mealType: MealType) async {
+        let settings = await authManager.getIntakeSettings()
+        let calories = settings.caloriesFor(mealType: mealType)
+        await TimeSlotManager.shared.recordMealLog(at: currentTimeSlot(), calories: calories)
+        await authManager.recordMeal(mealType: mealType)
+    }
+
+    private func recordWaterAndTimeSlot() async {
+        let settings = await authManager.getIntakeSettings()
+        await TimeSlotManager.shared.recordDrinkLog(at: currentTimeSlot(), ml: settings.waterPerCup)
+        await authManager.recordWater()
+    }
+
+    private func recordCoffeeAndTimeSlot() async {
+        let settings = await authManager.getIntakeSettings()
+        await TimeSlotManager.shared.recordDrinkLog(at: currentTimeSlot(), ml: settings.coffeePerCup)
+        await authManager.recordCoffee()
+    }
+
+    private func recordAlcoholAndTimeSlot(_ alcoholType: AlcoholType) async {
+        if let setting = (await authManager.getIntakeSettings()).settingFor(alcoholType: alcoholType) {
+            await TimeSlotManager.shared.recordDrinkLog(at: currentTimeSlot(), ml: setting.amountMl)
+        }
+        await authManager.recordAlcohol(alcoholType: alcoholType)
+    }
+
+    private var photoLogButton: some View {
+        Button {
+            showPhotoLog = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.24))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 24, weight: .black))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("フォトログ")
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("写真からカロリーとPFCをAI分析")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white.opacity(0.88))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white.opacity(0.92))
+            }
+            .padding(18)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#FF9600"), Color(hex: "#FF4B4B")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(18)
+            .shadow(color: Color(hex: "#FF9600").opacity(0.25), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - カテゴリーカード

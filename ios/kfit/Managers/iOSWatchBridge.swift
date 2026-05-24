@@ -12,6 +12,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
     // パフォーマンス最適化: デバウンス
     private var lastStatsSendTime: Date?
+    private var lastStatsPayloadSignature: String?
     private let statsDebounceInterval: TimeInterval = 2.0 // 2秒以内の重複送信を防ぐ
 
     private override init() {
@@ -96,10 +97,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 print("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
+                let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                 let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                let dailySets = await AuthenticationManager.shared.getDailySets()
                 sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
-                                 todaySets: dailySets.amSets + dailySets.pmSets, todayExercises: todayExercises)
+                                 todaySets: summary.completedSets, todayExercises: todayExercises)
                 return
             }
 
@@ -110,19 +111,21 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 Task {
                     if force {
                         lastStatsSendTime = nil
-                        await HealthKitManager.shared.fetchAll(force: true)
+                        lastStatsPayloadSignature = nil
+                        await HealthKitManager.shared.fetchWatchSnapshotHealth(force: true)
                         await TimeSlotManager.shared.loadTodayProgress(syncHealthKit: false)
+                    } else {
+                        await HealthKitManager.shared.fetchWatchSnapshotHealth()
                     }
+                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                     let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                    let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
-                    let todayXP = todayExercises.reduce(0) { $0 + $1.points }
-                    let dailySets = await AuthenticationManager.shared.getDailySets()
                     self.sendStatsToWatch(
                         streak:    profile?.streak ?? 0,
-                        todayReps: todayReps,
-                        todayXP:   todayXP,
-                        todaySets: dailySets.amSets + dailySets.pmSets,
-                        todayExercises: todayExercises
+                        todayReps: summary.exerciseReps,
+                        todayXP:   summary.exercisePoints,
+                        todaySets: summary.completedSets,
+                        todayExercises: todayExercises,
+                        force: force
                     )
                 }
                 return
@@ -147,10 +150,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         print("[iOSWatchBridge] ✅ Recorded \(needed) mindfulness to \(currentSlot.displayName)")
                     }
                     let profile = AuthenticationManager.shared.userProfile
+                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                     let exercises = await AuthenticationManager.shared.getTodayExercises()
-                    let reps = exercises.reduce(0) { $0 + $1.reps }
-                    let xp   = exercises.reduce(0) { $0 + $1.points }
-                    self.sendStatsToWatch(streak: profile?.streak ?? 0, todayReps: reps, todayXP: xp, todayExercises: exercises)
+                    self.sendStatsToWatch(streak: profile?.streak ?? 0, todayReps: summary.exerciseReps, todayXP: summary.exercisePoints, todaySets: summary.completedSets, todayExercises: exercises)
                 }
                 return
             }
@@ -176,28 +178,32 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     case "meal":
                         if let mealTypeStr = subtype {
                             if let mealType = MealType(rawValue: mealTypeStr) {
-                                await AuthenticationManager.shared.recordMeal(mealType: mealType)
                                 let calories = IntakeSettings.defaultSettings.caloriesFor(mealType: mealType)
                                 await TimeSlotManager.shared.recordMealLog(at: timeSlot, calories: calories)
+                                await AuthenticationManager.shared.recordMeal(mealType: mealType)
                                 print("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) \(calories)kcal at \(timeSlot.displayName)")
                             }
                         }
                     case "water", "coffee", "alcohol":
                         let drinkMl: Int
                         if type == "water" {
-                            await AuthenticationManager.shared.recordWater()
                             drinkMl = IntakeSettings.defaultSettings.waterPerCup
                         } else if type == "coffee" {
-                            await AuthenticationManager.shared.recordCoffee()
                             drinkMl = IntakeSettings.defaultSettings.coffeePerCup
                         } else if let alcoholTypeStr = subtype,
                                   let alcoholType = AlcoholType(rawValue: alcoholTypeStr) {
-                            await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
                             drinkMl = alcoholType.amountMl
                         } else {
                             drinkMl = 200
                         }
                         await TimeSlotManager.shared.recordDrinkLog(at: timeSlot, ml: drinkMl)
+                        if type == "water" {
+                            await AuthenticationManager.shared.recordWater()
+                        } else if type == "coffee" {
+                            await AuthenticationManager.shared.recordCoffee()
+                        } else if let alcoholType = AlcoholType(rawValue: subtype ?? "") {
+                            await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
+                        }
                         print("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) \(drinkMl)ml at \(timeSlot.displayName)")
                     default:
                         break
@@ -211,13 +217,13 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
                     // 最新データをWatchに送信
                     let profile = AuthenticationManager.shared.userProfile
+                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                     let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                    let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
-                    let todayXP = todayExercises.reduce(0) { $0 + $1.points }
                     self.sendStatsToWatch(
                         streak: profile?.streak ?? 0,
-                        todayReps: todayReps,
-                        todayXP: todayXP,
+                        todayReps: summary.exerciseReps,
+                        todayXP: summary.exercisePoints,
+                        todaySets: summary.completedSets,
                         todayExercises: todayExercises
                     )
                 }
@@ -240,10 +246,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             if let setData = applicationContext["pendingCompletedSet"] as? Data,
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
+                let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                 let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                let dailySets = await AuthenticationManager.shared.getDailySets()
                 sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
-                                 todaySets: dailySets.amSets + dailySets.pmSets, todayExercises: todayExercises)
+                                 todaySets: summary.completedSets, todayExercises: todayExercises)
             }
         }
     }
@@ -252,15 +258,13 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     func notifyWatchAfterDirectRecord() {
         Task {
             let profile = AuthenticationManager.shared.userProfile
+            let summary = await AuthenticationManager.shared.getTodayActivitySummary()
             let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-            let todayReps = todayExercises.reduce(0) { $0 + $1.reps }
-            let todayXP   = todayExercises.reduce(0) { $0 + $1.points }
-            let dailySets = await AuthenticationManager.shared.getDailySets()
             sendStatsToWatch(
                 streak: profile?.streak ?? 0,
-                todayReps: todayReps,
-                todayXP: todayXP,
-                todaySets: dailySets.amSets + dailySets.pmSets,
+                todayReps: summary.exerciseReps,
+                todayXP: summary.exercisePoints,
+                todaySets: summary.completedSets,
                 todayExercises: todayExercises
             )
         }
@@ -351,17 +355,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     }
 
     // iOS → Watch: 更新後の数値を送信
-    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todaySets: Int = 0, todayExercises: [CompletedExercise] = []) {
+    private func sendStatsToWatch(streak: Int, todayReps: Int, todayXP: Int, todaySets: Int = 0, todayExercises: [CompletedExercise] = [], force: Bool = false) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
-
-        // デバウンス: 2秒以内の重複送信を防ぐ
-        if let lastSend = lastStatsSendTime, Date().timeIntervalSince(lastSend) < statsDebounceInterval {
-            print("[iOSWatchBridge] Stats送信スキップ（デバウンス）")
-            return
-        }
-        lastStatsSendTime = Date()
 
         var payload: [String: Any] = [
             "streak":    streak,
@@ -430,18 +427,18 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             }
 
             // 摂取データを含める
-            let intakeData = await AuthenticationManager.shared.getTodayIntakeSummary()
+            let summary = await AuthenticationManager.shared.getTodayActivitySummary()
             let intakeGoals = await AuthenticationManager.shared.getIntakeSettings()
-            payload["intakeCalories"] = intakeData.totalCalories
+            payload["intakeCalories"] = summary.intakeCalories
             payload["intakeCaloriesGoal"] = intakeGoals.dailyCalorieGoal
-            payload["intakeWater"] = intakeData.totalWaterMl
+            payload["intakeWater"] = summary.intakeWaterMl
             payload["intakeWaterGoal"] = intakeGoals.dailyWaterGoal
-            payload["intakeCaffeine"] = intakeData.totalCaffeineMg
+            payload["intakeCaffeine"] = summary.intakeCaffeineMg
             payload["intakeCaffeineLimit"] = intakeGoals.dailyCaffeineLimit
-            payload["intakeAlcohol"] = intakeData.totalAlcoholG
+            payload["intakeAlcohol"] = summary.intakeAlcoholG
             payload["intakeAlcoholLimit"] = intakeGoals.dailyAlcoholLimit
 
-            print("[iOSWatchBridge] 📤 Sending intake data to Watch: cal=\(intakeData.totalCalories), water=\(intakeData.totalWaterMl)ml, caffeine=\(intakeData.totalCaffeineMg)mg, alcohol=\(String(format: "%.1f", intakeData.totalAlcoholG))g")
+            print("[iOSWatchBridge] 📤 Sending intake data to Watch: cal=\(summary.intakeCalories), water=\(summary.intakeWaterMl)ml, caffeine=\(summary.intakeCaffeineMg)mg, alcohol=\(String(format: "%.1f", summary.intakeAlcoholG))g")
 
             // 摂取記録のデフォルト設定を含める（Watch用）
             payload["breakfastCalories"] = intakeGoals.breakfastCalories
@@ -462,7 +459,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             }
 
             // ログ入力状態を含める
-            payload["todayMealLogged"] = !intakeData.meals.isEmpty
+            payload["todayMealLogged"] = summary.mealCount > 0
 
             // HealthKitデータを含める
             let healthKit = HealthKitManager.shared
@@ -480,6 +477,21 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
             print("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), workout=\(healthKit.todayWorkoutMinutes), mindfulness=\(healthKit.todayMindfulnessSessions)")
 
+            let signature = self.statsPayloadSignature(for: payload)
+            if !force,
+               let lastSend = self.lastStatsSendTime,
+               Date().timeIntervalSince(lastSend) < self.statsDebounceInterval,
+               signature == self.lastStatsPayloadSignature {
+                print("[iOSWatchBridge] Stats送信スキップ（デバウンス）")
+                return
+            }
+            if !force, signature == self.lastStatsPayloadSignature {
+                print("[iOSWatchBridge] Stats送信スキップ（差分なし）")
+                return
+            }
+            self.lastStatsPayloadSignature = signature
+            self.lastStatsSendTime = Date()
+
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
             } else {
@@ -488,10 +500,60 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    private func statsPayloadSignature(for payload: [String: Any]) -> String {
+        payload.keys.sorted().map { key in
+            "\(key)=\(signatureValue(payload[key]))"
+        }.joined(separator: "|")
+    }
+
+    private func signatureValue(_ value: Any?) -> String {
+        switch value {
+        case let value as Data:
+            return value.base64EncodedString()
+        case let value as Date:
+            return String(format: "%.0f", value.timeIntervalSince1970)
+        case let value as Double:
+            return String(format: "%.3f", value)
+        case let value as Float:
+            return String(format: "%.3f", value)
+        case let value as NSNumber:
+            return value.stringValue
+        case let value as String:
+            return value
+        case let value as Bool:
+            return value ? "true" : "false"
+        case .none:
+            return "nil"
+        default:
+            return String(describing: value)
+        }
+    }
+
     private func buildWatchFaceTasks() async -> [WatchFaceTaskConfigForWatch] {
         let timeSlotManager = TimeSlotManager.shared
         await timeSlotManager.loadTodaySettings()
-        await timeSlotManager.loadTodayProgress(syncHealthKit: false)
+        await timeSlotManager.loadTodayProgress(syncHealthKit: true)
+        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+        let calendar = Calendar.current
+
+        func countSets(in slot: TimeSlot) -> Int {
+            let slotExercises = todayExercises.filter { exercise in
+                let hour = calendar.component(.hour, from: exercise.timestamp)
+                return hour >= slot.startHour && hour < slot.endHour
+            }.sorted { $0.timestamp < $1.timestamp }
+
+            var setCount = 0
+            var lastTime: Date?
+            for exercise in slotExercises {
+                if let lastTime, exercise.timestamp.timeIntervalSince(lastTime) <= 30 * 60 {
+                    // 同じ30分内の種目は同一セットとして扱う
+                } else {
+                    setCount += 1
+                }
+                lastTime = exercise.timestamp
+            }
+            return setCount
+        }
 
         func mealSubtype(for slot: TimeSlot) -> String {
             switch slot {
@@ -520,12 +582,13 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             let prefix = slot.rawValue
 
             if goal.trainingGoal > 0 {
+                let setsCompleted = countSets(in: slot)
                 for index in 1...goal.trainingGoal {
                     tasks.append(WatchFaceTaskConfigForWatch(
                         id: "\(prefix)-training-\(index)",
                         emoji: "💪",
                         color: "training",
-                        isDone: progress.trainingCompleted >= index,
+                        isDone: setsCompleted >= index,
                         actionType: "training",
                         mealSubtype: nil,
                         intakeMessage: ""
@@ -533,28 +596,24 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 }
             }
 
-            if goal.logGoal.mealGoal > 0 {
+            if goal.logGoal.mealGoal > 0 || goal.logGoal.drinkGoal > 0 {
                 let subtype = mealSubtype(for: slot)
+                let mealDone = goal.logGoal.mealGoal > 0
+                    && progress.logProgress.mealLogged >= goal.logGoal.mealGoal
+                let drinkDone = goal.logGoal.drinkGoal > 0
+                    && progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal
+                let nextActionType = !mealDone && goal.logGoal.mealGoal > 0 ? "meal" : "water"
+                let nextMessage = nextActionType == "meal"
+                    ? "\(slot.displayName)の食事を追加しますか？"
+                    : "\(slot.displayName)の水分を追加しますか？"
                 tasks.append(WatchFaceTaskConfigForWatch(
-                    id: "\(prefix)-meal",
-                    emoji: mealEmoji(for: slot),
+                    id: "\(prefix)-intake",
+                    emoji: "🍽️",
                     color: "meal",
-                    isDone: progress.logProgress.mealLogged >= goal.logGoal.mealGoal,
-                    actionType: "meal",
-                    mealSubtype: subtype,
-                    intakeMessage: "\(slot.displayName)の食事を追加しますか？"
-                ))
-            }
-
-            if goal.logGoal.drinkGoal > 0 {
-                tasks.append(WatchFaceTaskConfigForWatch(
-                    id: "\(prefix)-drink",
-                    emoji: "💧",
-                    color: "water",
-                    isDone: progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
-                    actionType: "water",
-                    mealSubtype: nil,
-                    intakeMessage: "水を追加しますか？"
+                    isDone: mealDone || drinkDone,
+                    actionType: nextActionType,
+                    mealSubtype: nextActionType == "meal" ? subtype : nil,
+                    intakeMessage: nextMessage
                 ))
             }
 

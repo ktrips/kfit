@@ -174,6 +174,14 @@ struct TimeSlotProgress: Codable, Identifiable {
         }
 
         // ログ（食事・水分は1日全体の目標で管理するため除外）
+        if goal.logGoal.mealGoal > 0 {
+            totalGoals += 1
+            if logProgress.mealLogged >= goal.logGoal.mealGoal { completed += 1 }
+        }
+        if goal.logGoal.drinkGoal > 0 {
+            totalGoals += 1
+            if logProgress.drinkLogged >= goal.logGoal.drinkGoal { completed += 1 }
+        }
         if goal.logGoal.mindInputRequired {
             totalGoals += 1
             if logProgress.mindInputLogged > 0 { completed += 1 }

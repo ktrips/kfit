@@ -2,12 +2,15 @@ import SwiftUI
 
 struct MindView: View {
     @Binding var selectedTab: Int
+    @Binding var showRecordMenu: Bool
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @Environment(\.openURL) private var openURL
     @State private var showMindfulnessSession = false
     @State private var showStretchSession = false
     @State private var showMindfulHistory = false
+    @State private var showHRVHelp = false
+    @State private var isRefreshingHealthData = false
 
     var body: some View {
         NavigationView {
@@ -17,8 +20,8 @@ struct MindView: View {
                     VStack(spacing: 16) {
                         headerSection
                         currentStressCard
-                        sleepScoreCard
                         averageStressCard
+                        sleepScoreCard
                         suggestionsCard
                         Spacer(minLength: 40)
                     }
@@ -28,16 +31,19 @@ struct MindView: View {
                 }
             }
             .navigationBarHidden(true)
+            .sheet(isPresented: $showHRVHelp) {
+                HRVStressHelpView()
+            }
             .task {
                 await timeSlotManager.loadTodaySettings()
                 if healthKit.isAvailable && !healthKit.isAuthorized {
                     await healthKit.requestAuthorization()
                 } else {
-                    await healthKit.fetchAll()
+                    await healthKit.fetchMindHealth()
                 }
             }
             .refreshable {
-                await healthKit.fetchAll()
+                await healthKit.fetchMindHealth(force: true)
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
                 MindfulnessSessionView(
@@ -62,7 +68,8 @@ struct MindView: View {
                 MindfulnessSessionView(
                     durationSeconds: 180,
                     title: "3分ストレッチ",
-                    completedButtonTitle: "ストレッチを保存"
+                    completedButtonTitle: "Reflectとして保存",
+                    sessionVideos: StretchSessionVideo.defaultStretchVideos
                 ) { startDate, endDate in
                     Task {
                         let saved = await healthKit.saveMindfulnessSession(
@@ -84,11 +91,6 @@ struct MindView: View {
     private var headerSection: some View {
         let avgHRV = healthKit.todayAvgHRV > 0 ? healthKit.todayAvgHRV : healthKit.latestHRV
         let stress = stressInfo(avgHRV)
-        let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: "ja_JP")
-        dateFmt.dateFormat = "M/d(E)"
-        let dateStr = dateFmt.string(from: Date())
-
         return ZStack {
             LinearGradient(
                 colors: [Color(hex: "#6D5DF6"), Color(hex: "#1CB0F6")],
@@ -106,33 +108,35 @@ struct MindView: View {
                     Text("ingo").foregroundColor(.white)
                 }
                 .font(.system(size: 12, weight: .black, design: .rounded))
-                Text(dateStr)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.70))
 
                 Spacer()
 
-                // 右: HRV数値 + ステータスラベル
+                // 右: 平均HRV + 英語ステータス
                 if healthKit.isLoading {
                     ProgressView().tint(.white).scaleEffect(0.65)
                 } else {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         if avgHRV > 0 {
+                            Text("平均HRV")
+                                .font(.system(size: 7, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.72))
                             Text("\(Int(avgHRV))")
                                 .font(.system(size: 13, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
+                                .foregroundColor(stress.color)
                         }
                         if stress.score >= 0 {
-                            Text(stressStatusLabel(stress.score))
+                            Text(stress.englishLabel == "Elevated" ? "Elev" : stress.englishLabel)
                                 .font(.system(size: 10, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
+                                .foregroundColor(stress.color)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .background(.white.opacity(0.20))
+                                .background(stress.color.opacity(0.18))
                                 .cornerRadius(7)
                         }
                     }
                 }
+
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
@@ -140,20 +144,15 @@ struct MindView: View {
         .cornerRadius(12)
     }
 
-    private func stressStatusLabel(_ score: Int) -> String {
-        switch score {
-        case ..<20: return "Great"
-        case ..<40: return "Good"
-        case ..<60: return "Normal"
-        case ..<80: return "Low"
-        default:    return "Bad"
-        }
-    }
-
     private var currentStressCard: some View {
         let stress = stressInfo(healthKit.latestHRV)
         return card {
-            cardTitle("現在のストレス", icon: "heart.fill", color: stress.color)
+            cardTitleWithHelp(
+                "現在のストレスレベル",
+                icon: "heart.fill",
+                color: stress.color,
+                showsRefresh: true
+            )
             HStack(spacing: 10) {
                 metricTile(label: "心拍数", value: healthKit.latestHeartRate > 0 ? "\(Int(healthKit.latestHeartRate))" : "—", unit: "bpm", color: Color(hex: "#FF4B4B"))
                 metricTile(label: "HRV", value: healthKit.latestHRV > 0 ? "\(Int(healthKit.latestHRV))" : "—", unit: "ms", color: Color.duoGreen)
@@ -174,12 +173,13 @@ struct MindView: View {
             }
             largeActionButton(
                 icon: "🧘",
-                title: "1分呼吸タイマー",
-                subtitle: "Hapticに合わせて吸って・吐いて、完了後にHealthKitへ保存",
+                title: "1分瞑想タイマー",
+                subtitle: "自分の呼吸に集中して1分瞑想でリラックスする",
                 color: Color(hex: "#1CB0F6")
             ) {
                 showMindfulnessSession = true
             }
+            hrvTrendAlways
             mindfulHistorySection
         }
     }
@@ -188,16 +188,52 @@ struct MindView: View {
         let avgHRV = healthKit.todayAvgHRV > 0 ? healthKit.todayAvgHRV : healthKit.latestHRV
         let stress = stressInfo(avgHRV)
         return card {
-            cardTitle("1日の平均", icon: "waveform.path.ecg", color: stress.color)
+            cardTitleWithHelp(
+                "今日のまとめ",
+                icon: "waveform.path.ecg",
+                color: stress.color,
+                showsRefresh: true
+            )
             HStack(spacing: 10) {
-                metricTile(label: "平均心拍", value: healthKit.todayAvgHeartRate > 0 ? "\(Int(healthKit.todayAvgHeartRate))" : "—", unit: "bpm", color: Color(hex: "#FF4B4B"))
-                metricTile(label: "平均HRV", value: avgHRV > 0 ? "\(Int(avgHRV))" : "—", unit: "ms", color: Color.duoGreen)
+                metricTile(
+                    label: "平均心拍",
+                    value: healthKit.todayAvgHeartRate > 0 ? "\(Int(healthKit.todayAvgHeartRate))" : "—",
+                    unit: "bpm",
+                    color: Color(hex: "#FF4B4B")
+                )
+                metricTile(
+                    label: "平均HRV",
+                    value: avgHRV > 0 ? "\(Int(avgHRV))" : "—",
+                    unit: "ms",
+                    color: Color.duoGreen
+                )
                 stressTile(stress)
             }
-            Text(averageStressMessage(stress))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 10) {
+                mindSummaryMetricCard(
+                    icon: "bed.double.fill",
+                    label: "睡眠時間",
+                    value: formatSleepHours(healthKit.lastNightTotalHours),
+                    color: Color(red: 0.451, green: 0.369, blue: 0.937)
+                )
+                mindSummaryMetricCard(
+                    icon: "sun.max.fill",
+                    label: "日光下時間",
+                    value: formatMinutes(Int(healthKit.todayDaylightMinutes)),
+                    color: Color(hex: "#FFCC00")
+                )
+                mindSummaryMetricCard(
+                    icon: "figure.run",
+                    label: "運動時間",
+                    value: formatMinutes(healthKit.todayWorkoutMinutes),
+                    color: Color(hex: "#1CB0F6")
+                )
+            }
+            suggestionBanner(
+                icon: "🌿",
+                text: holisticStressImprovementMessage(stress),
+                color: stress.color
+            )
             largeActionButton(
                 icon: "🤸",
                 title: "3分ストレッチ",
@@ -206,47 +242,74 @@ struct MindView: View {
             ) {
                 showStretchSession = true
             }
+            weeklyHRVAverageSection
         }
+    }
+
+    private var weeklyHRVAverageSection: some View {
+        VStack(spacing: 10) {
+            WeeklyHRVAverageChart(days: healthKit.weeklyHRVAverages)
+                .frame(height: 132)
+                .padding(10)
+                .background(Color.white)
+                .cornerRadius(14)
+        }
+        .padding(10)
+        .background(Color.duoBg)
+        .cornerRadius(14)
+    }
+
+    private var hrvTrendAlways: some View {
+        VStack(spacing: 10) {
+            HRVTrendChart(samples: healthKit.hrvSamples)
+                .frame(height: 126)
+                .padding(10)
+                .background(Color.white)
+                .cornerRadius(14)
+        }
+        .padding(10)
+        .background(Color.duoBg)
+        .cornerRadius(14)
     }
 
     private var mindfulHistorySection: some View {
         let sessions = healthKit.todayMindfulnessSamples
-            .filter { ["Breathe", "Reflect"].contains($0.sessionTypeLabel) }
             .sorted { $0.startDate > $1.startDate }
         let totalMinutes = sessions.reduce(0.0) { $0 + $1.durationMinutes }
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     showMindfulHistory.toggle()
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Text("🧘")
-                        .font(.system(size: 18))
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color.duoGreen)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("マインドフル履歴")
+                        Text(showMindfulHistory ? "マインドフルを閉じる" : "マインドフル履歴を表示")
                             .font(.system(size: 13, weight: .black, design: .rounded))
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(Color.duoGreen)
                         Text("\(sessions.count)回 / \(formatMindfulMinutes(totalMinutes))")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
-                    Image(systemName: showMindfulHistory ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Color.duoPurple.opacity(0.75))
+                    Image(systemName: showMindfulHistory ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(Color.duoGreen)
                 }
-                .padding(12)
-                .background(Color.duoPurple.opacity(0.08))
-                .cornerRadius(16)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.white)
             }
             .buttonStyle(.plain)
 
             if showMindfulHistory {
                 VStack(alignment: .leading, spacing: 8) {
                     if sessions.isEmpty {
-                        Text("今日のBreathe / Reflectの記録はまだありません。")
+                        Text("今日のマインドフルネス記録はまだありません。")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -259,9 +322,17 @@ struct MindView: View {
                         }
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.duoGreen.opacity(0.12), lineWidth: 1)
+        )
     }
 
     private func mindfulHistoryRow(_ session: MindfulSession) -> some View {
@@ -269,35 +340,35 @@ struct MindView: View {
         timeFormatter.dateFormat = "HH:mm"
         let typeColor: Color = session.sessionTypeLabel == "Reflect" ? Color.duoPurple : Color(hex: "#1CB0F6")
 
-        return HStack(spacing: 9) {
+        return HStack(spacing: 8) {
             Text(session.sessionEmoji)
-                .font(.system(size: 18))
-                .frame(width: 30, height: 30)
+                .font(.system(size: 15))
+                .frame(width: 26, height: 26)
                 .background(typeColor.opacity(0.14))
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.sessionTypeLabel)
-                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .font(.system(size: 11, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
                 Text("\(timeFormatter.string(from: session.startDate)) 実施")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
             }
 
             Spacer()
 
             Text(formatMindfulMinutes(session.durationMinutes))
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: 11, weight: .black, design: .rounded))
                 .foregroundColor(typeColor)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.vertical, 3)
                 .background(typeColor.opacity(0.12))
                 .cornerRadius(10)
         }
-        .padding(10)
+        .padding(8)
         .background(Color.duoBg)
-        .cornerRadius(12)
+        .cornerRadius(10)
     }
 
     private func formatMindfulMinutes(_ minutes: Double) -> String {
@@ -308,6 +379,84 @@ struct MindView: View {
             return "\(Int(minutes.rounded()))分"
         }
         return String(format: "%.1f分", minutes)
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        if minutes <= 0 { return "—" }
+        if minutes < 60 { return "\(minutes)分" }
+        return "\(minutes / 60)時間\(minutes % 60)分"
+    }
+
+    private func formatSleepHours(_ hours: Double) -> String {
+        guard hours > 0 else { return "—" }
+        let totalMinutes = Int((hours * 60).rounded())
+        return formatMinutes(totalMinutes)
+    }
+
+    private func holisticStressImprovementMessage(_ stress: MindStressInfo) -> String {
+        let sleepHours = healthKit.lastNightTotalHours
+        let daylight = Int(healthKit.todayDaylightMinutes)
+        let exercise = healthKit.todayWorkoutMinutes
+
+        if sleepHours > 0 && sleepHours < 6 {
+            return "昨晩の睡眠が短めです。今日はカフェインを控えめにして、寝る前の画面時間を減らすと回復しやすくなります。"
+        }
+        if daylight < 20 {
+            return "日光下時間が少なめです。午前中か昼に5〜10分だけ外へ出ると、体内時計とストレス回復を整えやすくなります。"
+        }
+        if exercise < 20 {
+            return "運動時間が少なめです。軽い散歩やストレッチを10分足すと、HRVと気分の回復につながりやすいです。"
+        }
+        if stress.score >= 55 {
+            return "睡眠・日光・運動はある程度取れています。今日は1分瞑想や3分ストレッチで、首肩の緊張を落としてみましょう。"
+        }
+        return "睡眠・日光・運動のバランスは良好です。今のリズムを保ちつつ、短い休憩をこまめに入れましょう。"
+    }
+
+    private func mindDailyMetricTile(icon: String, label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .black))
+                .foregroundColor(color)
+                .frame(width: 30, height: 30)
+                .background(color.opacity(0.14))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+                Text(value)
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoDark)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .cornerRadius(12)
+    }
+
+    private func mindSummaryMetricCard(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(color)
+            Text(value)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundColor(Color.duoDark)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(color.opacity(0.10))
+        .cornerRadius(12)
     }
 
     private var sleepScoreCard: some View {
@@ -699,7 +848,58 @@ struct MindView: View {
         }
     }
 
-    private func metricTile(label: String, value: String, unit: String, color: Color) -> some View {
+    private func cardTitleWithHelp(_ title: String, icon: String, color: Color, showsRefresh: Bool = false) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(color)
+            Text(title)
+                .font(.headline.weight(.black))
+                .foregroundColor(Color.duoDark)
+            Spacer()
+            if showsRefresh {
+                Button {
+                    refreshMindHealthData()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 28, height: 28)
+                        .background(Color.duoGreen.opacity(0.10))
+                        .clipShape(Circle())
+                        .rotationEffect(.degrees(isRefreshingHealthData ? 360 : 0))
+                        .animation(isRefreshingHealthData ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isRefreshingHealthData)
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshingHealthData)
+            }
+            Button {
+                showHRVHelp = true
+            } label: {
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.75))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func refreshMindHealthData() {
+        guard !isRefreshingHealthData else { return }
+        isRefreshingHealthData = true
+        Task {
+            if healthKit.isAvailable && !healthKit.isAuthorized {
+                await healthKit.requestAuthorization()
+            } else {
+                await healthKit.fetchMindHealth(force: true)
+            }
+            await MainActor.run {
+                isRefreshingHealthData = false
+            }
+        }
+    }
+
+    private func metricTile(label: String, value: String, unit: String, detail: String? = nil, color: Color) -> some View {
         VStack(spacing: 3) {
             Text(label)
                 .font(.system(size: 10, weight: .bold))
@@ -710,6 +910,14 @@ struct MindView: View {
             Text(unit)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .padding(.top, 1)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -717,17 +925,27 @@ struct MindView: View {
         .cornerRadius(12)
     }
 
-    private func stressTile(_ stress: MindStressInfo) -> some View {
+    private func stressTile(_ stress: MindStressInfo, detail: String? = nil) -> some View {
         VStack(spacing: 3) {
             Text("ストレス")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
-            Text(stress.score >= 0 ? "\(stress.score)" : "—")
-                .font(.system(size: 24, weight: .black, design: .rounded))
-                .foregroundColor(stress.color)
             Text(stress.label)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 20, weight: .black, design: .rounded))
                 .foregroundColor(stress.color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(stress.englishLabel)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundColor(stress.color)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundColor(stress.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .padding(.top, 1)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -892,7 +1110,7 @@ struct MindView: View {
 
     private func stressInfo(_ hrv: Double) -> MindStressInfo {
         guard hrv > 0 else {
-            return MindStressInfo(score: -1, label: "—", color: Color.duoSubtitle)
+            return MindStressInfo(score: -1, label: "不明", englishLabel: "Unknown", color: Color.duoSubtitle)
         }
         let score: Int = {
             if hrv >= 100 { return 5 }
@@ -903,10 +1121,10 @@ struct MindView: View {
             return Int(min(95, 80 + (20 - hrv) / 20 * 15))
         }()
         switch score {
-        case ..<30: return MindStressInfo(score: score, label: "低い", color: Color.duoGreen)
-        case ..<55: return MindStressInfo(score: score, label: "普通", color: Color(red: 0.4, green: 0.75, blue: 0.1))
-        case ..<75: return MindStressInfo(score: score, label: "やや高", color: Color.duoOrange)
-        default:    return MindStressInfo(score: score, label: "高い", color: Color(hex: "#FF4B4B"))
+        case ..<30: return MindStressInfo(score: score, label: "低い", englishLabel: "Low", color: Color.duoGreen)
+        case ..<55: return MindStressInfo(score: score, label: "普通", englishLabel: "Normal", color: Color(red: 0.4, green: 0.75, blue: 0.1))
+        case ..<75: return MindStressInfo(score: score, label: "やや高", englishLabel: "Elevated", color: Color.duoOrange)
+        default:    return MindStressInfo(score: score, label: "高い", englishLabel: "High", color: Color(hex: "#FF4B4B"))
         }
     }
 }
@@ -914,7 +1132,324 @@ struct MindView: View {
 private struct MindStressInfo {
     let score: Int
     let label: String
+    let englishLabel: String
     let color: Color
+}
+
+private struct HRVTrendChart: View {
+    let samples: [HRVSample]
+
+    private var sortedSamples: [HRVSample] {
+        samples.sorted { $0.date < $1.date }
+    }
+
+    var body: some View {
+        let data = sortedSamples
+        let values = data.map(\.value)
+        let minValue = max(0, (values.min() ?? 0) - 5)
+        let hrvLowerLimit = 20.0
+        let maxValue = max((values.max() ?? 80) + 5, minValue + 20, hrvLowerLimit + 10)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("今日のHRV推移")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                if let latest = data.last {
+                    Text("\(Int(latest.value)) ms")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+
+            if data.count < 2 {
+                VStack(spacing: 6) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle.opacity(0.55))
+                    Text("今日のHRVサンプルがまだ少ないです")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let height = geo.size.height
+                    let range = max(maxValue - minValue, 1)
+                    let startOfDay = Calendar.current.startOfDay(for: Date())
+
+                    ZStack {
+                        ForEach(0..<4, id: \.self) { index in
+                            let y = height * CGFloat(index) / 3
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: y))
+                                path.addLine(to: CGPoint(x: width, y: y))
+                            }
+                            .stroke(Color(.systemGray5), lineWidth: 0.7)
+                        }
+
+                        if hrvLowerLimit >= minValue && hrvLowerLimit <= maxValue {
+                            let limitY = height * (1 - CGFloat((hrvLowerLimit - minValue) / range))
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: limitY))
+                                path.addLine(to: CGPoint(x: width, y: limitY))
+                            }
+                            .stroke(Color(hex: "#FF4B4B"), style: StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
+
+                            Text("20ms")
+                                .font(.system(size: 8, weight: .black, design: .rounded))
+                                .foregroundColor(Color(hex: "#FF4B4B"))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.85))
+                                .clipShape(Capsule())
+                                .position(x: width - 22, y: max(10, limitY - 10))
+                        }
+
+                        Path { path in
+                            for (index, sample) in data.enumerated() {
+                                let dayProgress = min(max(sample.date.timeIntervalSince(startOfDay) / 86_400.0, 0), 1)
+                                let x = width * CGFloat(dayProgress)
+                                let y = height * (1 - CGFloat((sample.value - minValue) / range))
+                                if index == 0 {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color.duoGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                        ForEach(Array(data.enumerated()), id: \.element.id) { _, sample in
+                            let dayProgress = min(max(sample.date.timeIntervalSince(startOfDay) / 86_400.0, 0), 1)
+                            let x = width * CGFloat(dayProgress)
+                            let y = height * (1 - CGFloat((sample.value - minValue) / range))
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 7, height: 7)
+                                .overlay(Circle().stroke(Color.duoGreen, lineWidth: 2))
+                                .position(x: x, y: y)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Text("0:00")
+                Spacer()
+                Text("12:00")
+                Spacer()
+                Text("24:00")
+            }
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(Color.duoSubtitle)
+        }
+    }
+}
+
+private struct WeeklyHRVAverageChart: View {
+    let days: [DailyHRVAverage]
+    private let lowerLimit = 20.0
+
+    private var validDays: [DailyHRVAverage] {
+        days.filter { $0.value > 0 }.sorted { $0.date < $1.date }
+    }
+
+    private var sortedDays: [DailyHRVAverage] {
+        days.sorted { $0.date < $1.date }
+    }
+
+    var body: some View {
+        let data = sortedDays
+        let values = validDays.map(\.value)
+        let minValue = max(0, min(values.min() ?? lowerLimit, lowerLimit) - 5)
+        let maxValue = max(values.max() ?? 60, lowerLimit + 10, minValue + 20)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("過去7日のHRV平均")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("赤ラインはストレス高めの目安 20ms")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                if let latest = validDays.last {
+                    Text("\(Int(latest.value)) ms")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(latest.value < lowerLimit ? Color(hex: "#FF4B4B") : Color.duoGreen)
+                }
+            }
+
+            if validDays.count < 2 {
+                VStack(spacing: 6) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle.opacity(0.55))
+                    Text("過去7日のHRV平均データがまだ少ないです")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let height = geo.size.height
+                    let range = max(maxValue - minValue, 1)
+                    let xStep = data.count > 1 ? width / CGFloat(data.count - 1) : 0
+
+                    ZStack {
+                        ForEach(0..<4, id: \.self) { index in
+                            let y = height * CGFloat(index) / 3
+                            Path { path in
+                                path.move(to: CGPoint(x: 0, y: y))
+                                path.addLine(to: CGPoint(x: width, y: y))
+                            }
+                            .stroke(Color(.systemGray5), lineWidth: 0.7)
+                        }
+
+                        let limitY = height * (1 - CGFloat((lowerLimit - minValue) / range))
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: limitY))
+                            path.addLine(to: CGPoint(x: width, y: limitY))
+                        }
+                        .stroke(Color(hex: "#FF4B4B"), style: StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
+
+                        Text("20ms")
+                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .foregroundColor(Color(hex: "#FF4B4B"))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.9))
+                            .clipShape(Capsule())
+                            .position(x: width - 22, y: max(10, limitY - 10))
+
+                        Path { path in
+                            var hasStarted = false
+                            for (index, day) in data.enumerated() where day.value > 0 {
+                                let x = CGFloat(index) * xStep
+                                let y = height * (1 - CGFloat((day.value - minValue) / range))
+                                if !hasStarted {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                    hasStarted = true
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(Color.duoGreen, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                        ForEach(Array(data.enumerated()), id: \.element.id) { index, day in
+                            if day.value > 0 {
+                                let x = CGFloat(index) * xStep
+                                let y = height * (1 - CGFloat((day.value - minValue) / range))
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 7, height: 7)
+                                    .overlay(Circle().stroke(day.value < lowerLimit ? Color(hex: "#FF4B4B") : Color.duoGreen, lineWidth: 2))
+                                    .position(x: x, y: y)
+                            }
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                ForEach(data) { day in
+                    Text(dayLabel(day.date))
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "E"
+        return formatter.string(from: date)
+    }
+}
+
+private struct HRVStressHelpView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    helpSection(
+                        title: "HRVとは",
+                        text: "HRV（心拍変動）は、心拍と心拍の間隔のゆらぎです。一般的にはHRVが高いほど回復力やリラックス状態が高く、低いほど疲労・緊張・ストレスが出やすい状態と考えます。"
+                    )
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("この画面の判定基準")
+                            .font(.headline.weight(.black))
+                            .foregroundColor(Color.duoDark)
+                        thresholdRow("低い / Low", detail: "HRV 60ms以上", color: Color.duoGreen)
+                        thresholdRow("普通 / Normal", detail: "HRV 40〜59ms", color: Color(red: 0.4, green: 0.75, blue: 0.1))
+                        thresholdRow("やや高 / Elevated", detail: "HRV 20〜39ms", color: Color.duoOrange)
+                        thresholdRow("高い / High", detail: "HRV 20ms未満", color: Color(hex: "#FF4B4B"))
+                    }
+                    .padding(14)
+                    .background(Color.white)
+                    .cornerRadius(16)
+
+                    helpSection(
+                        title: "見方のポイント",
+                        text: "HRVは個人差が大きいため、1回の数値だけで判断せず、自分の普段の平均からの変化を見るのが大切です。睡眠不足、飲酒、疲労、体調不良でも低くなることがあります。"
+                    )
+                }
+                .padding(16)
+            }
+            .background(Color.duoBg.ignoresSafeArea())
+            .navigationTitle("HRVとストレス")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+        }
+    }
+
+    private func helpSection(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline.weight(.black))
+                .foregroundColor(Color.duoDark)
+            Text(text)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(Color.white)
+        .cornerRadius(16)
+    }
+
+    private func thresholdRow(_ label: String, detail: String, color: Color) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(label)
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(color)
+            Spacer()
+            Text(detail)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+    }
 }
 
 private struct MindRecommendation: Identifiable {

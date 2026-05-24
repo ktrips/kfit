@@ -88,6 +88,8 @@ struct ActivityRingView: View {
 }
 
 struct DashboardView: View {
+    @Binding var selectedTab: Int
+    @Binding var showRecordMenu: Bool
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var habitManager = HabitStackManager.shared
     @StateObject private var healthKit    = HealthKitManager.shared
@@ -263,7 +265,8 @@ struct DashboardView: View {
             MindfulnessSessionView(
                 durationSeconds: 180,
                 title: "3分ストレッチ",
-                completedButtonTitle: "Reflectとして保存"
+                completedButtonTitle: "Reflectとして保存",
+                sessionVideos: StretchSessionVideo.defaultStretchVideos
             ) { startDate, endDate in
                 Task {
                     let saved = await healthKit.saveMindfulnessSession(
@@ -494,11 +497,6 @@ struct DashboardView: View {
                         Text("ingo").foregroundColor(.white)
                     }
                     .font(.system(size: 16, weight: .black, design: .rounded))
-                    Text(formatHeaderDate(Date()))
-                        .font(.system(size: 9, design: .rounded))
-                        .fontWeight(.bold)
-                        .foregroundColor(.white.opacity(0.75))
-                        .padding(.leading, 10)
                 }
 
                 Spacer()
@@ -527,7 +525,8 @@ struct DashboardView: View {
                             .foregroundColor(.white)
                     }
                 }
-                .padding(.trailing, 24)
+
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -617,7 +616,7 @@ struct DashboardView: View {
         if totalMealGoal > 0 {
             enabledGoalCount += 1
             let expectedMeal = dayFraction > 0 ? Double(totalMealGoal) * dayFraction : 1.0
-            sumProgress += min(1.0, Double(Int(healthKit.todayIntakeCalories)) / expectedMeal)
+            sumProgress += min(1.0, Double(effectiveMealLogged) / expectedMeal)
         }
         if totalDrinkGoal > 0 {
             enabledGoalCount += 1
@@ -640,10 +639,23 @@ struct DashboardView: View {
     }
 
     private var calorieBalance: Int {
-        let consumed = todayIntake.totalCalories
+        let consumed = effectiveIntakeCalories
         let burned = Int(healthKit.todayActiveCalories + healthKit.todayRestingCalories)
         // Apple Health方式: 摂取 − 消費（プラス = 摂取過多, マイナス = 消費超過）
         return consumed - burned
+    }
+
+    private var effectiveMealLogged: Int {
+        if dietGoalManager.settings.useHealthKitForIntake {
+            return Int(healthKit.todayIntakeCalories)
+        }
+        return TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.mealLogged ?? 0)
+        }
+    }
+
+    private var effectiveIntakeCalories: Int {
+        dietGoalManager.settings.useHealthKitForIntake ? Int(healthKit.todayIntakeCalories) : effectiveMealLogged
     }
 
     // MARK: - ヘッダー（コンパクト・最上段固定）
@@ -667,7 +679,7 @@ struct DashboardView: View {
         let totalMindfulnessGoal = completedSlots.reduce(0) { sum, slot in
             sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
         }
-        let totalMealLogged = Int(healthKit.todayIntakeCalories)
+        let totalMealLogged = effectiveMealLogged
         let totalMealGoal = completedSlots.reduce(0) { sum, slot in
             sum + (timeSlotManager.settings.goalFor(slot)?.logGoal.mealGoal ?? 0)
         }
@@ -703,7 +715,7 @@ struct DashboardView: View {
 
         let progressPercent = todayCurrentProgressPercent
         let totalConsumed = healthKit.todayTotalCalories
-        let intake = Double(todayIntake.totalCalories)
+        let intake = Double(effectiveIntakeCalories)
         let balance = intake - totalConsumed
 
         return GeometryReader { geometry in
@@ -744,6 +756,11 @@ struct DashboardView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                 }
+
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                    .padding(.top, geometry.safeAreaInsets.top + 8)
+                    .padding(.trailing, 10)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .frame(height: geometry.safeAreaInsets.top + 50)
         }
@@ -787,8 +804,8 @@ struct DashboardView: View {
             sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
         }
 
-        // 食事・水分はApple Healthを正として使用（マインドフルネスと同様）
-        let totalMealLogged = Int(healthKit.todayIntakeCalories)
+        // 食事は設定に応じてApple Healthまたはダイエット目標の自動実績を使用
+        let totalMealLogged = effectiveMealLogged
         let totalMealGoal = completedSlots.reduce(0) { sum, slot in
             sum + (timeSlotManager.settings.goalFor(slot)?.logGoal.mealGoal ?? 0)
         }
@@ -830,7 +847,7 @@ struct DashboardView: View {
 
         // カロリー収支を計算
         let totalConsumed = healthKit.todayTotalCalories
-        let intake = Double(todayIntake.totalCalories)
+        let intake = Double(effectiveIntakeCalories)
         let balance = intake - totalConsumed
         let isPositive = balance > 0
 
@@ -984,9 +1001,9 @@ struct DashboardView: View {
             }
         }
 
-        // マインドフルネス・食事・水分はApple Healthを正として使用
+        // 食事は設定に応じてApple Healthまたはダイエット目標の自動実績を使用
         totalMindfulness = healthKit.todayMindfulnessSessions
-        totalMealLogged = Int(healthKit.todayIntakeCalories)
+        totalMealLogged = effectiveMealLogged
         totalDrinkLogged = Int(healthKit.todayIntakeWater)
 
         // ストレッチ目標：現時点の時間帯まで（実績は全時間帯累計）
@@ -2564,7 +2581,7 @@ struct DashboardView: View {
                     // 更新ボタン
                     Button {
                         Task {
-                            await healthKit.fetchAll()
+                            await healthKit.fetchDashboardHealth(force: true)
                             await loadData()
                         }
                     } label: {
@@ -2804,13 +2821,17 @@ struct DashboardView: View {
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundColor(paceColor)
                             }
+                            .fixedSize(horizontal: true, vertical: false)
                             Text(paceLabel)
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(paceColor)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(paceColor.opacity(0.15))
                                 .cornerRadius(10)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
@@ -3355,7 +3376,7 @@ struct DashboardView: View {
     private var calorieBalanceBarCard: some View {
         CalorieBalanceBarCard(
             totalConsumed: healthKit.todayTotalCalories,
-            intake: Double(todayIntake.totalCalories),
+            intake: Double(effectiveIntakeCalories),
             latestBodyMass: healthKit.latestBodyMass,
             latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
             weeklyBodyMassChange: healthKit.weeklyBodyMassChange,
@@ -3366,7 +3387,7 @@ struct DashboardView: View {
     // MARK: - 旧カロリー収支カード（削除予定）
     private var calorieBalanceCard: some View {
         let totalConsumed = healthKit.todayTotalCalories  // 安静時＋アクティブ
-        let intake = Double(todayIntake.totalCalories)
+        let intake = Double(effectiveIntakeCalories)
         let balance = intake - totalConsumed
         let isPositive = balance > 0
         let absBalance = abs(balance)
@@ -3617,7 +3638,7 @@ struct DashboardView: View {
                     icon: "flame.fill",
                     iconColor: Color.duoOrange,
                     label: "摂取カロリー",
-                    value: Double(todayIntake.totalCalories),
+                    value: Double(effectiveIntakeCalories),
                     goal: Double(intakeGoals.dailyCalorieGoal),
                     unit: "kcal",
                     formatValue: { "\(Int($0))" },
@@ -4656,7 +4677,7 @@ struct DashboardView: View {
                 }
                 // 権限取得後、データを必ず取得
                 if healthKit.isAuthorized {
-                    await healthKit.fetchAll()
+                    await healthKit.fetchDashboardHealth()
                 }
             }
         }
@@ -4664,7 +4685,7 @@ struct DashboardView: View {
             // 画面表示時にも再取得（最新データ確保）
             if healthKit.isAvailable && healthKit.isAuthorized {
                 Task {
-                    await healthKit.fetchAll()
+                    await healthKit.fetchDashboardHealth()
                 }
             }
         }
@@ -5217,6 +5238,7 @@ struct DashboardView: View {
 
             // 時間帯別の進捗を再読み込み
             await timeSlotManager.loadTodayProgress()
+            todayIntake.totalCalories = effectiveIntakeCalories
 
             // 体重履歴を取得（展開時に表示）
             if healthKit.isAvailable && healthKit.isAuthorized {
@@ -5305,7 +5327,7 @@ struct DashboardView: View {
     private func periodicWidgetSync() async {
         guard healthKit.isAvailable && healthKit.isAuthorized else { return }
         print("⏱ [Widget] Syncing HealthKit data...")
-        await healthKit.fetchAll()
+        await healthKit.fetchDashboardHealth()
         await timeSlotManager.loadTodayProgress(syncHealthKit: false)
         await timeSlotManager.updateGlobalProgressFromHealthKit()
         updateWidgetData()
@@ -5387,9 +5409,9 @@ struct DashboardView: View {
             }
         }
 
-        // マインドフルネス・食事・水分はApple Healthを正として使用（dailySetsCardと同じ）
+        // 食事は設定に応じてApple Healthまたはダイエット目標の自動実績を使用
         totalMindfulnessCompleted = healthKit.todayMindfulnessSessions
-        totalMealLogged = Int(healthKit.todayIntakeCalories)
+        totalMealLogged = effectiveMealLogged
         totalDrinkLogged = Int(healthKit.todayIntakeWater)
 
         sharedDefaults.set(totalTrainingCompleted, forKey: "trainingCompleted")
@@ -5404,7 +5426,7 @@ struct DashboardView: View {
 
         // カロリー収支を計算して保存（摂取 - 消費）Apple Health方式
         let totalBurned = Int(healthKit.todayRestingCalories + healthKit.todayActiveCalories)
-        let totalIntake = todayIntake.totalCalories
+        let totalIntake = effectiveIntakeCalories
         let calorieBalance = totalIntake - totalBurned
         sharedDefaults.set(calorieBalance, forKey: "calorieBalance")
 
@@ -5596,7 +5618,7 @@ struct DashboardView: View {
 
     private var trainingVideoPlaylist: [(name: String, gifName: String)] {
         [
-            ("スクワット", "fitingo_wo_range"),
+            ("スクワット", "fitingo_wo_squat"),
             ("腕立て", "fItingo_wo_pushups"),
             ("腹筋", "fItingo_wo_pushups"),
             ("ランジ", "fitingo_wo_range"),
@@ -5632,10 +5654,13 @@ struct DashboardView: View {
                         Text(showTrainingVideo ? "トレーニング動画を閉じる" : "トレーニング動画を見る")
                             .font(.system(size: 13, weight: .black, design: .rounded))
                             .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
                         Text(showTrainingVideo ? "再生中: \(currentVideo.name)" : "スクワットから順番に再生")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
                     }
+                    .layoutPriority(1)
 
                     Spacer()
 
@@ -5663,6 +5688,7 @@ struct DashboardView: View {
                         Text(currentVideo.name)
                             .font(.system(size: 13, weight: .black, design: .rounded))
                             .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
                         Spacer()
                         Text("\((trainingVideoIndex % trainingVideoPlaylist.count) + 1)/\(trainingVideoPlaylist.count)")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -5670,13 +5696,20 @@ struct DashboardView: View {
                     }
                     .padding(.horizontal, 4)
 
-                    GIFAnimationView(gifName: currentVideo.gifName)
-                        .id(currentVideo.gifName)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 210)
-                        .background(Color.black.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    GeometryReader { geo in
+                        GIFAnimationView(gifName: currentVideo.gifName)
+                            .id(currentVideo.gifName)
+                            .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
+                            .background(Color.black.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .clipped()
+                    }
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(Color.white.opacity(0.7))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
@@ -6200,6 +6233,22 @@ private struct CalorieBalanceBarCard: View {
     }
 }
 
+struct StretchSessionVideo: Identifiable {
+    let id: String
+    let name: String
+    let gifName: String
+
+    init(name: String, gifName: String) {
+        self.id = gifName
+        self.name = name
+        self.gifName = gifName
+    }
+
+    static let defaultStretchVideos: [StretchSessionVideo] = [
+        StretchSessionVideo(name: "仰向けツイスト", gifName: "fitingo_st_twist")
+    ]
+}
+
 struct MindfulnessSessionView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -6207,21 +6256,25 @@ struct MindfulnessSessionView: View {
     var durationSeconds: Int = 60
     var title: String = "1分呼吸"
     var completedButtonTitle: String = "完了して保存"
+    var sessionVideos: [StretchSessionVideo] = []
 
     @State private var sessionStart = Date()
     @State private var remainingSeconds: Int
     @State private var lastBreathPhase = -1
     @State private var isCompleting = false
+    @State private var selectedVideoIndex = 0
 
     init(
         durationSeconds: Int = 60,
         title: String = "1分呼吸",
         completedButtonTitle: String = "完了して保存",
+        sessionVideos: [StretchSessionVideo] = [],
         onComplete: @escaping (Date, Date) -> Void
     ) {
         self.durationSeconds = durationSeconds
         self.title = title
         self.completedButtonTitle = completedButtonTitle
+        self.sessionVideos = Array(sessionVideos.prefix(3))
         self.onComplete = onComplete
         _remainingSeconds = State(initialValue: durationSeconds)
     }
@@ -6234,6 +6287,10 @@ struct MindfulnessSessionView: View {
     private var breathPhase: Int { elapsedSeconds / 5 }
     private var isInhale: Bool { breathPhase % 2 == 0 }
     private var phaseProgress: Double { Double(elapsedSeconds % 5) / 5.0 }
+    private var selectedVideo: StretchSessionVideo? {
+        guard !sessionVideos.isEmpty else { return nil }
+        return sessionVideos[min(selectedVideoIndex, sessionVideos.count - 1)]
+    }
 
     var body: some View {
         ZStack {
@@ -6300,6 +6357,10 @@ struct MindfulnessSessionView: View {
                     }
                 }
 
+                if !sessionVideos.isEmpty {
+                    stretchVideoCard
+                }
+
                 Text("吸う時は連続Haptic、吐く時は切り替えHapticに合わせて呼吸します。完了するとHealthKitへマインドフルネスとして保存します。")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white.opacity(0.85))
@@ -6356,6 +6417,51 @@ struct MindfulnessSessionView: View {
         }
     }
 
+    private var stretchVideoCard: some View {
+        VStack(spacing: 10) {
+            if let video = selectedVideo {
+                ZStack(alignment: .topLeading) {
+                    GIFAnimationView(gifName: video.gifName)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 150)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+
+                    Text(video.name)
+                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.black.opacity(0.35))
+                        .clipShape(Capsule())
+                        .padding(10)
+                }
+            }
+
+            if sessionVideos.count > 1 {
+                HStack(spacing: 8) {
+                    ForEach(sessionVideos.indices, id: \.self) { index in
+                        Button {
+                            selectedVideoIndex = index
+                        } label: {
+                            Text(sessionVideos[index].name)
+                                .font(.system(size: 11, weight: .black, design: .rounded))
+                                .foregroundColor(index == selectedVideoIndex ? Color.duoPurple : .white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(index == selectedVideoIndex ? Color.white : Color.white.opacity(0.16))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .padding(.horizontal, 24)
+    }
+
     private func completeSession() {
         guard !isCompleting else { return }
         isCompleting = true
@@ -6386,6 +6492,6 @@ struct MindfulnessSessionView: View {
 }
 
 #Preview {
-    DashboardView()
+    DashboardView(selectedTab: .constant(0), showRecordMenu: .constant(false))
         .environmentObject(AuthenticationManager.shared)
 }

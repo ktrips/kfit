@@ -48,7 +48,7 @@ struct DailyIntakeView: View {
                     Button {
                         Task {
                             isRefreshingHealth = true
-                            await healthKit.fetchAll()
+                            await healthKit.fetchIntakeHealth(force: true)
                             isRefreshingHealth = false
                         }
                     } label: {
@@ -354,7 +354,7 @@ struct DailyIntakeView: View {
     private func loadData() async {
         isLoading = true
         todaySummary = await authManager.getTodayIntakeSummary()
-        await healthKit.fetchAll()
+        await healthKit.fetchIntakeHealth()
         pfcAnalysis = healthKit.analyzePFCBalance()
         isLoading = false
     }

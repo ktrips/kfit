@@ -9,11 +9,12 @@ export interface AISettings {
   model?: string;
 }
 
-const STORAGE_KEY = 'kfit.aiSettings';
+const STORAGE_KEY = 'fitingo.aiSettings';
+const LEGACY_STORAGE_KEY = 'kfit.aiSettings';
 
 export function getAISettings(): AISettings | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as AISettings) : null;
   } catch {
     return null;
@@ -246,11 +247,12 @@ export async function generateWorkoutPlan(
 
 // ── 生成プランのローカル保存 ───────────────────────────────────────────────────
 
-const PLANS_KEY = 'kfit.aiPlans';
+const PLANS_KEY = 'fitingo.aiPlans';
+const LEGACY_PLANS_KEY = 'kfit.aiPlans';
 
 export function getSavedPlans(): AIGeneratedPlan[] {
   try {
-    return JSON.parse(localStorage.getItem(PLANS_KEY) ?? '[]') as AIGeneratedPlan[];
+    return JSON.parse(localStorage.getItem(PLANS_KEY) ?? localStorage.getItem(LEGACY_PLANS_KEY) ?? '[]') as AIGeneratedPlan[];
   } catch {
     return [];
   }

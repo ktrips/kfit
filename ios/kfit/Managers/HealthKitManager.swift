@@ -15,6 +15,7 @@ struct MindfulSession: Identifiable {
     var sessionTypeLabel: String {
         if sessionTypeHint == "Breathe" { return "Breathe" }
         if sessionTypeHint == "Reflect" { return "Reflect" }
+        if durationMinutes >= 2.5 && durationMinutes <= 3.5 { return "Reflect" }
         let b = sourceBundleId.lowercased()
         let n = sourceName.lowercased()
         if b.contains("breathe") || n.contains("breathe") { return "Breathe" }
@@ -28,8 +29,8 @@ struct MindfulSession: Identifiable {
 
     var sessionEmoji: String {
         switch sessionTypeLabel {
-        case "Breathe":         return "🫁"
-        case "Reflect":         return "💭"
+        case "Breathe":         return "🧘"
+        case "Reflect":         return "🤸"
         case "マインドフルネス": return "🧘"
         case "Headspace":       return "🟠"
         case "Calm":            return "🌊"
@@ -48,6 +49,30 @@ struct HRSample: Identifiable {
     let id   = UUID()
     let date: Date
     let bpm:  Double
+}
+
+struct HRVSample: Identifiable {
+    let id = UUID()
+    let date: Date
+    let value: Double
+}
+
+struct DailyHRVAverage: Identifiable {
+    let id = UUID()
+    let date: Date
+    let value: Double
+}
+
+struct WorkoutSession: Identifiable {
+    let id = UUID()
+    let startDate: Date
+    let endDate: Date
+    let durationMinutes: Double
+    let activityName: String
+    let emoji: String
+    let calories: Double
+    let sourceName: String
+    let sourceBundleId: String
 }
 
 struct SleepSegment: Identifiable {
@@ -226,6 +251,8 @@ final class HealthKitManager: ObservableObject {
     @Published var todayAvgHeartRate: Double     = 0  // 今日の平均心拍数
     @Published var todayAvgHRV:       Double     = 0  // 今日の平均HRV
     @Published var hrSamples:         [HRSample] = []
+    @Published var hrvSamples:        [HRVSample] = []
+    @Published var weeklyHRVAverages: [DailyHRVAverage] = []
 
     // 睡眠
     @Published var lastNightTotalHours: Double         = 0
@@ -271,6 +298,7 @@ final class HealthKitManager: ObservableObject {
     @Published var todayMealSamples:  [DietarySample] = []  // 食事カロリーサンプル（kcal）
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
     private var lastFetchAllAt: Date? = nil
+    private var lastScopedFetchAt: [String: Date] = [:]
     private let fetchAllTTL: TimeInterval = 20
 
     // ワークアウト
@@ -523,6 +551,7 @@ final class HealthKitManager: ObservableObject {
         async let avgHR    = fetchTodayAverageHeartRate()
         async let avgHRV   = fetchTodayAverageHRV()
         async let hrList   = fetchTodayHRSamples()
+        async let hrvList  = fetchTodayHRVSamples()
         async let sleep    = fetchLastNightSleep()
         async let bodyMass = fetchLatestBodyMass()
         async let bodyFat  = fetchLatestBodyFatPercentage()
@@ -555,6 +584,7 @@ final class HealthKitManager: ObservableObject {
         todayAvgHeartRate   = await avgHR
         todayAvgHRV         = await avgHRV
         hrSamples           = await hrList
+        hrvSamples          = await hrvList
         let sleepResult     = await sleep
         lastNightTotalHours = sleepResult.total
         lastNightDeepHours  = sleepResult.deep
@@ -612,6 +642,217 @@ final class HealthKitManager: ObservableObject {
         weeklyCalorieData       = await fetchWeeklyCalories()
 
         print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
+    }
+
+    func fetchDashboardHealth(force: Bool = false) async {
+        guard beginScopedFetch("dashboard", force: force) else { return }
+        defer { finishScopedFetch("dashboard") }
+
+        async let steps = fetchTodaySteps()
+        async let activeCalories = fetchTodayActiveCalories()
+        async let restingCalories = fetchTodayRestingCalories()
+        async let latHR = fetchLatestHeartRate()
+        async let avgHR = fetchTodayAverageHeartRate()
+        async let mindfulness = fetchTodayMindfulness()
+        async let exerciseMinutes = fetchTodayExerciseMinutes()
+        async let activityRings = fetchTodayActivitySummary()
+        async let waterSamples = fetchTodayWaterSamplesRaw()
+        async let mealSamples = fetchTodayMealSamplesRaw()
+
+        todaySteps = await steps
+        todayActiveCalories = await activeCalories
+        todayRestingCalories = await restingCalories
+        todayTotalCalories = todayActiveCalories + todayRestingCalories
+        todayCalories = todayActiveCalories
+        latestHeartRate = await latHR
+        todayAvgHeartRate = await avgHR
+        applyMindfulnessResult(await mindfulness)
+        todayWorkoutMinutes = await exerciseMinutes
+        let rings = await activityRings
+        activityMoveCalories = rings.moveCalories
+        activityMoveGoal = rings.moveGoal
+        activityExerciseMinutes = rings.exerciseMinutes
+        activityExerciseGoal = rings.exerciseGoal
+        activityStandHours = rings.standHours
+        activityStandGoal = rings.standGoal
+        todayWaterSamples = await waterSamples
+        todayMealSamples = await mealSamples
+    }
+
+    func fetchMindHealth(force: Bool = false) async {
+        guard beginScopedFetch("mind", force: force) else { return }
+        defer { finishScopedFetch("mind") }
+
+        async let latHR = fetchLatestHeartRate()
+        async let restHR = fetchRestingHeartRate()
+        async let hrv = fetchLatestHRV()
+        async let avgHR = fetchTodayAverageHeartRate()
+        async let avgHRV = fetchTodayAverageHRV()
+        async let hrList = fetchTodayHRSamples()
+        async let hrvList = fetchTodayHRVSamples()
+        async let weeklyHRV = fetchWeeklyHRVAverages()
+        async let sleep = fetchLastNightSleep()
+        async let mindfulness = fetchTodayMindfulness()
+        async let daylight = fetchTodayDaylight()
+        async let exerciseMinutes = fetchTodayExerciseMinutes()
+
+        latestHeartRate = await latHR
+        restingHeartRate = await restHR
+        latestHRV = await hrv
+        todayAvgHeartRate = await avgHR
+        todayAvgHRV = await avgHRV
+        hrSamples = await hrList
+        hrvSamples = await hrvList
+        weeklyHRVAverages = await weeklyHRV
+        let sleepResult = await sleep
+        lastNightTotalHours = sleepResult.total
+        lastNightDeepHours = sleepResult.deep
+        sleepSegments = sleepResult.segments
+        sleepVitals = await fetchSleepVitals(segments: sleepResult.segments)
+        applyMindfulnessResult(await mindfulness)
+        todayDaylightMinutes = await daylight
+        todayWorkoutMinutes = await exerciseMinutes
+    }
+
+    func fetchGoalHealth(force: Bool = false) async {
+        guard beginScopedFetch("goal", force: force) else { return }
+        defer { finishScopedFetch("goal") }
+
+        async let activeCalories = fetchTodayActiveCalories()
+        async let restingCalories = fetchTodayRestingCalories()
+        async let bodyMass = fetchLatestBodyMass()
+        async let bodyFat = fetchLatestBodyFatPercentage()
+        async let bodyMassCount = fetchTodayBodyMassMeasurements()
+        async let todayBM = fetchTodayBodyMassRecord()
+        async let bodyMassChange = fetchWeeklyBodyMassChange()
+        async let bodyFatChange = fetchWeeklyBodyFatChange()
+        async let intakeCal = fetchTodayIntakeCalories()
+        async let intakeWater = fetchTodayIntakeWater()
+        async let activityRings = fetchTodayActivitySummary()
+        async let weeklyCalories = fetchWeeklyCalories()
+
+        todayActiveCalories = await activeCalories
+        todayRestingCalories = await restingCalories
+        todayTotalCalories = todayActiveCalories + todayRestingCalories
+        todayCalories = todayActiveCalories
+        latestBodyMass = await bodyMass
+        latestBodyFatPercentage = await bodyFat
+        todayBodyMassMeasurements = await bodyMassCount
+        todayBodyMassRecord = await todayBM
+        weeklyBodyMassChange = await bodyMassChange
+        weeklyBodyFatChange = await bodyFatChange
+        todayIntakeCalories = await intakeCal
+        todayIntakeWater = await intakeWater
+        let rings = await activityRings
+        activityMoveCalories = rings.moveCalories
+        activityMoveGoal = rings.moveGoal
+        activityExerciseMinutes = rings.exerciseMinutes
+        activityExerciseGoal = rings.exerciseGoal
+        activityStandHours = rings.standHours
+        activityStandGoal = rings.standGoal
+        weeklyCalorieData = await weeklyCalories
+    }
+
+    func fetchIntakeHealth(force: Bool = false) async {
+        guard beginScopedFetch("intake", force: force) else { return }
+        defer { finishScopedFetch("intake") }
+
+        async let intakeCal = fetchTodayIntakeCalories()
+        async let intakeWater = fetchTodayIntakeWater()
+        async let intakeCaffeine = fetchTodayIntakeCaffeine()
+        async let intakeAlcohol = fetchTodayIntakeAlcohol()
+        async let intakeProtein = fetchTodayIntakeProtein()
+        async let intakeFat = fetchTodayIntakeFat()
+        async let intakeCarbs = fetchTodayIntakeCarbs()
+        async let waterSamples = fetchTodayWaterSamplesRaw()
+        async let mealSamples = fetchTodayMealSamplesRaw()
+
+        todayIntakeCalories = await intakeCal
+        todayIntakeWater = await intakeWater
+        todayIntakeCaffeine = await intakeCaffeine
+        todayIntakeAlcohol = await intakeAlcohol
+        todayIntakeProtein = await intakeProtein
+        todayIntakeFat = await intakeFat
+        todayIntakeCarbs = await intakeCarbs
+        todayWaterSamples = await waterSamples
+        todayMealSamples = await mealSamples
+    }
+
+    func fetchWatchSnapshotHealth(force: Bool = false) async {
+        guard beginScopedFetch("watch", force: force, ttl: 10) else { return }
+        defer { finishScopedFetch("watch") }
+
+        async let steps = fetchTodaySteps()
+        async let activeCalories = fetchTodayActiveCalories()
+        async let restingCalories = fetchTodayRestingCalories()
+        async let latHR = fetchLatestHeartRate()
+        async let sleep = fetchLastNightSleep()
+        async let bodyMass = fetchLatestBodyMass()
+        async let bodyFat = fetchLatestBodyFatPercentage()
+        async let mindfulness = fetchTodayMindfulness()
+        async let exerciseMinutes = fetchTodayExerciseMinutes()
+
+        todaySteps = await steps
+        todayActiveCalories = await activeCalories
+        todayRestingCalories = await restingCalories
+        todayTotalCalories = todayActiveCalories + todayRestingCalories
+        todayCalories = todayActiveCalories
+        latestHeartRate = await latHR
+        let sleepResult = await sleep
+        lastNightTotalHours = sleepResult.total
+        lastNightDeepHours = sleepResult.deep
+        sleepSegments = sleepResult.segments
+        latestBodyMass = await bodyMass
+        latestBodyFatPercentage = await bodyFat
+        applyMindfulnessResult(await mindfulness)
+        todayWorkoutMinutes = await exerciseMinutes
+    }
+
+    private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval? = nil) -> Bool {
+        guard isAvailable else {
+            print("[HealthKit] HealthKit not available - skipping \(scope) fetch")
+            return false
+        }
+        guard isAuthorized else {
+            print("[HealthKit] Not authorized - skipping \(scope) fetch")
+            return false
+        }
+        if isLoading {
+            print("[HealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
+            return false
+        }
+        let scopeTTL = ttl ?? fetchAllTTL
+        if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < scopeTTL {
+            print("[HealthKit] ✅ \(scope) fetch skipped by TTL")
+            return false
+        }
+        isLoading = true
+        return true
+    }
+
+    private func finishScopedFetch(_ scope: String) {
+        lastScopedFetchAt[scope] = Date()
+        isLoading = false
+    }
+
+    private func applyMindfulnessResult(_ mindfulnessResult: (minutes: Double, sessions: Int, samples: [MindfulSession])) {
+        todayMindfulnessMinutes = mindfulnessResult.minutes
+        todayMindfulnessSamples = mindfulnessResult.samples
+        let newSessions = mindfulnessResult.sessions
+
+        if newSessions > previousMindfulnessSessions && previousMindfulnessSessions > 0 {
+            let timeSlot = TimeSlot.current()
+            let diff = newSessions - previousMindfulnessSessions
+            Task {
+                for _ in 0..<diff {
+                    await TimeSlotManager.shared.recordMindfulnessCompleted(at: timeSlot)
+                }
+            }
+            print("[HealthKit] 🧘 Mindfulness sessions increased by \(diff), updated time slot: \(timeSlot.displayName)")
+        }
+
+        todayMindfulnessSessions = newSessions
+        previousMindfulnessSessions = newSessions
     }
 
     // MARK: - 歩数
@@ -718,6 +959,53 @@ final class HealthKitManager: ObservableObject {
             }
             store.execute(q)
         }
+    }
+
+    private func fetchTodayHRVSamples() async -> [HRVSample] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return [] }
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let unit  = HKUnit.secondUnit(with: .milli)
+
+        return await withCheckedContinuation { cont in
+            let q = HKSampleQuery(
+                sampleType: type,
+                predicate: pred,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+            ) { _, samples, _ in
+                let list = (samples as? [HKQuantitySample] ?? []).map {
+                    HRVSample(date: $0.startDate, value: $0.quantity.doubleValue(for: unit))
+                }
+                cont.resume(returning: list)
+            }
+            store.execute(q)
+        }
+    }
+
+    private func fetchWeeklyHRVAverages() async -> [DailyHRVAverage] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return [] }
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let unit = HKUnit.secondUnit(with: .milli)
+
+        var days: [DailyHRVAverage] = []
+        for offset in stride(from: 6, through: 0, by: -1) {
+            guard let dayStart = calendar.date(byAdding: .day, value: -offset, to: today),
+                  let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+                continue
+            }
+            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
+            let average = await withCheckedContinuation { cont in
+                let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, result, _ in
+                    cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+                }
+                store.execute(query)
+            }
+            days.append(DailyHRVAverage(date: dayStart, value: average))
+        }
+        return days
     }
 
     // MARK: - 昨夜の睡眠
@@ -1320,19 +1608,22 @@ final class HealthKitManager: ObservableObject {
     // MARK: - 摂取記録の書き込み
 
     /// 食事カロリーを Apple Health に記録
-    func saveDietaryEnergy(calories: Double, timestamp: Date) async {
+    @discardableResult
+    func saveDietaryEnergy(calories: Double, timestamp: Date, metadata: [String: Any]? = nil) async -> Bool {
         guard isAvailable, isAuthorized else {
             print("[HealthKit] ⚠️ Not authorized - skipping dietary energy save")
-            return
+            return false
         }
-        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return false }
         let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: calories)
-        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
         do {
             try await store.save(sample)
             print("[HealthKit] ✅ Saved dietary energy: \(calories)kcal")
+            return true
         } catch {
             print("[HealthKit] ❌ 食事記録エラー: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1405,6 +1696,17 @@ final class HealthKitManager: ObservableObject {
         let startOfDay = calendar.startOfDay(for: now)
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
 
+        return await fetchDietaryEnergyCalories(predicate: predicate)
+    }
+
+    func fetchDietaryEnergyCalories(start: Date, end: Date) async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return 0 }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return await fetchDietaryEnergyCalories(predicate: predicate, type: type)
+    }
+
+    private func fetchDietaryEnergyCalories(predicate: NSPredicate, type: HKQuantityType? = nil) async -> Double {
+        guard let type = type ?? HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return 0 }
         return await withCheckedContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
                 if let sum = result?.sumQuantity() {
@@ -1716,6 +2018,59 @@ final class HealthKitManager: ObservableObject {
                 continuation.resume(returning: Int(totalMinutes))
             }
             store.execute(query)
+        }
+    }
+
+    func fetchTodayWorkoutSessions() async -> [WorkoutSession] {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKWorkoutType.workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sort]
+            ) { _, samples, _ in
+                guard let workouts = samples as? [HKWorkout] else {
+                    continuation.resume(returning: [])
+                    return
+                }
+
+                let sessions = workouts.map { workout in
+                    let meta = self.workoutDisplayMeta(for: workout.workoutActivityType)
+                    return WorkoutSession(
+                        startDate: workout.startDate,
+                        endDate: workout.endDate,
+                        durationMinutes: workout.duration / 60.0,
+                        activityName: meta.name,
+                        emoji: meta.emoji,
+                        calories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
+                        sourceName: workout.sourceRevision.source.name,
+                        sourceBundleId: workout.sourceRevision.source.bundleIdentifier
+                    )
+                }
+                continuation.resume(returning: sessions)
+            }
+            store.execute(query)
+        }
+    }
+
+    private func workoutDisplayMeta(for type: HKWorkoutActivityType) -> (name: String, emoji: String) {
+        switch type {
+        case .walking: return ("散歩", "🚶")
+        case .running: return ("ラン", "🏃")
+        case .cycling: return ("自転車", "🚴")
+        case .swimming: return ("泳ぎ", "🏊")
+        case .functionalStrengthTraining, .traditionalStrengthTraining: return ("筋トレ", "💪")
+        case .yoga: return ("ヨガ", "🧘")
+        case .hiking: return ("ハイキング", "🥾")
+        case .dance: return ("ダンス", "💃")
+        case .cooldown: return ("クールダウン", "🧊")
+        default: return ("ワークアウト", "🏃")
         }
     }
 

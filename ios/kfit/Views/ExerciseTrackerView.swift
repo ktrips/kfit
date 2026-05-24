@@ -45,7 +45,7 @@ struct ExerciseTrackerView: View {
     @State private var plankSeconds = 0
     @State private var plankTimer: Timer?
     @State private var pulseAnimation = false
-    @State private var showWorkoutGIF = true
+    @State private var showWorkoutGIF = false
 
     /// セット内の記録済み種目
     @State private var completedExercises: [(id: String, name: String, emoji: String, reps: Int, points: Int)] = []
@@ -58,7 +58,9 @@ struct ExerciseTrackerView: View {
 
     private var currentWorkoutGIFName: String {
         switch current.id {
-        case "squat", "lunge":
+        case "squat":
+            return "fitingo_wo_squat"
+        case "lunge":
             return "fitingo_wo_range"
         case "pushup", "situp":
             return "fItingo_wo_pushups"
@@ -179,16 +181,21 @@ struct ExerciseTrackerView: View {
 
     // MARK: - 現在の種目カード
     private var currentExerciseCard: some View {
-        VStack(spacing: 12) {
-            Text(current.emoji)
-                .font(.system(size: 70))
+        VStack(spacing: showWorkoutGIF ? 10 : 12) {
+            if !showWorkoutGIF {
+                Text(current.emoji)
+                    .font(.system(size: 70))
+            }
 
-            if showWorkoutGIF {
-                GIFAnimationView(gifName: currentWorkoutGIFName)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 170)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            VStack(spacing: 3) {
+                Text(current.name)
+                    .font(showWorkoutGIF ? .title3 : .title2)
+                    .fontWeight(.black)
+                    .foregroundColor(Color.duoGreen)
+                Text(isPlankSelected ? "目標: \(current.target) 秒" : "目標: \(current.target) 回")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color.duoSubtitle)
             }
 
             Button {
@@ -209,14 +216,37 @@ struct ExerciseTrackerView: View {
             }
             .buttonStyle(.plain)
 
-            Text(current.name)
-                .font(.title2).fontWeight(.black)
-                .foregroundColor(Color.duoGreen)
-            Text(isPlankSelected ? "目標: \(current.target) 秒" : "目標: \(current.target) 回")
-                .font(.caption).foregroundColor(Color.duoSubtitle)
+            if showWorkoutGIF {
+                VStack(spacing: 8) {
+                    HStack(alignment: .lastTextBaseline, spacing: 4) {
+                        Text("\(currentReps)")
+                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .foregroundColor(currentReps > 0 ? Color.duoGreen : Color.duoDark)
+                        Text(isPlankSelected ? "秒" : "reps")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                        Text(currentWorkoutGIFName)
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+
+                    GeometryReader { geo in
+                        GIFAnimationView(gifName: currentWorkoutGIFName)
+                            .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
+                            .background(Color.black.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .clipped()
+                    }
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+                .padding(.horizontal, 8)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
+        .padding(.horizontal, showWorkoutGIF ? 4 : 0)
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
@@ -594,7 +624,7 @@ struct ExerciseTrackerView: View {
             manualRepCount = 0
             plankSeconds = 0
             pulseAnimation = false
-            showWorkoutGIF = true
+            showWorkoutGIF = false
             startCurrentExercise()
         }
     }

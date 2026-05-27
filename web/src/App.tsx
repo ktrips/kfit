@@ -14,11 +14,12 @@ import { AchievementsView } from './components/AchievementsView';
 import { LeaderboardView } from './components/LeaderboardView';
 import TimeSlotGoals from './components/timeSlot/TimeSlotGoals';
 import { IntakeView } from './components/IntakeView';
+import { FoodView } from './components/FoodView';
 import { DietGoalView } from './components/DietGoalView';
 import { MindView } from './components/MindView';
 import { signOutUser } from './services/firebase';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'dietGoal' | 'mind';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind';
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -142,6 +143,7 @@ function App() {
                         { view: 'dashboard' as View, icon: '🏠', label: 'ホーム' },
                         { view: 'dietGoal' as View, icon: '🎯', label: 'GOAL' },
                         { view: 'mind' as View, icon: '🧠', label: 'MIND' },
+                        { view: 'food' as View, icon: '🍴', label: 'Food（栄養管理）' },
                         { view: 'intake' as View, icon: '🍽️', label: '食事・ドリンク' },
                         { view: 'timeSlots' as View, icon: '🕐', label: '時間帯目標' },
                         { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
@@ -203,8 +205,7 @@ function App() {
             onLogWorkout={() => navigate('tracker')}
             onWeeklyGoal={() => navigate('weekly')}
             onWorkoutPlan={() => navigate('plan')}
-            onTimeSlots={() => navigate('timeSlots')}
-            onIntake={() => navigate('intake')}
+            onFood={() => navigate('food')}
             onDietGoal={() => navigate('dietGoal')}
             onMind={() => navigate('mind')}
           />
@@ -244,6 +245,9 @@ function App() {
         )}
         {currentView === 'intake' && user && (
           <IntakeView />
+        )}
+        {currentView === 'food' && user && (
+          <FoodView />
         )}
         {currentView === 'dietGoal' && user && (
           <DietGoalView />

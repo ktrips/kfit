@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import { getDietGoalSettings, saveDietGoalSettings } from '../services/wellnessService';
-import type { DietGoalSettings } from '../types/wellness';
+import { getDietGoalSettings, getTodayIntakeSummary, saveDietGoalSettings } from '../services/wellnessService';
+import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 
 function formatKg(value: number): string {
   return `${value.toFixed(1).replace('.0', '')}kg`;
@@ -21,11 +21,15 @@ function daysBetween(start: string, end: string): number {
 export const DietGoalView: React.FC = () => {
   const user = useAppStore((state) => state.user);
   const [settings, setSettings] = useState<DietGoalSettings | null>(null);
+  const [intake, setIntake] = useState<IntakeSummary | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    getDietGoalSettings(user.uid).then(setSettings).catch(console.error);
+    Promise.all([
+      getDietGoalSettings(user.uid),
+      getTodayIntakeSummary(user.uid),
+    ]).then(([s, i]) => { setSettings(s); setIntake(i); }).catch(console.error);
   }, [user]);
 
   const updateNumber = (key: keyof DietGoalSettings, value: string) => {
@@ -56,9 +60,21 @@ export const DietGoalView: React.FC = () => {
   const currentToGoal = settings.goalWeightKg - settings.currentWeightKg;
   const totalDays = daysBetween(settings.startDate, settings.goalDate);
   const elapsedDays = daysBetween(settings.startDate, new Date().toISOString().split('T')[0]);
+  const remainingDays = daysBetween(new Date().toISOString().split('T')[0], settings.goalDate);
   const schedulePct = totalDays > 0 ? Math.min(100, Math.round((elapsedDays / totalDays) * 100)) : 0;
   const weightPct = settings.startWeightKg !== settings.goalWeightKg
     ? Math.min(100, Math.max(0, Math.round(((settings.startWeightKg - settings.currentWeightKg) / (settings.startWeightKg - settings.goalWeightKg)) * 100)))
+    : 0;
+
+  // カロリー収支
+  const todayCalories = intake?.calories ?? 0;
+  const burnGoal = settings.dailyBurnKcalGoal ?? 0;
+  const intakeGoal = settings.dailyIntakeKcalGoal ?? 0;
+  const dailyBalance = todayCalories - burnGoal;
+  const calPct = intakeGoal > 0 ? Math.min(100, Math.round((todayCalories / intakeGoal) * 100)) : 0;
+  // 目標体重まで必要な週次カロリー赤字（7700kcal ≈ 1kg脂肪）
+  const weeklyDeficitNeeded = remainingDays > 0 && currentToGoal < 0
+    ? Math.round((Math.abs(currentToGoal) * 7700) / (remainingDays / 7))
     : 0;
 
   return (
@@ -87,6 +103,64 @@ export const DietGoalView: React.FC = () => {
           <p className="mt-4 text-center font-black text-duo-green">
             食事記録を続けよう！
           </p>
+        </div>
+
+        {/* カロリー収支カード */}
+        <div className="duo-card p-5">
+          <h2 className="text-lg font-black text-duo-dark mb-4">🔥 今日のカロリー収支</h2>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="rounded-2xl p-3 text-center" style={{ background: '#FFF3E0' }}>
+              <p className="text-[10px] font-black text-duo-gray">摂取</p>
+              <p className="text-xl font-black" style={{ color: '#FF9600' }}>{todayCalories}</p>
+              <p className="text-[9px] font-bold text-duo-gray">/ {intakeGoal || '—'} kcal</p>
+            </div>
+            <div className="rounded-2xl p-3 text-center" style={{ background: '#E8F5E9' }}>
+              <p className="text-[10px] font-black text-duo-gray">消費目標</p>
+              <p className="text-xl font-black text-duo-green">{burnGoal || '—'}</p>
+              <p className="text-[9px] font-bold text-duo-gray">kcal</p>
+            </div>
+            <div className="rounded-2xl p-3 text-center" style={{ background: dailyBalance <= 0 ? '#E8F5E9' : '#FFF3E0' }}>
+              <p className="text-[10px] font-black text-duo-gray">収支</p>
+              <p className="text-xl font-black" style={{ color: dailyBalance <= 0 ? '#58CC02' : '#FF9600' }}>
+                {dailyBalance >= 0 ? '+' : ''}{dailyBalance}
+              </p>
+              <p className="text-[9px] font-bold text-duo-gray">kcal</p>
+            </div>
+          </div>
+          {intakeGoal > 0 && (
+            <>
+              <div className="duo-progress-bar mb-2" style={{ height: 8 }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${calPct}%`, background: calPct >= 100 ? '#FF4B4B' : '#FF9600' }}
+                />
+              </div>
+              <p className="text-xs font-bold text-duo-gray text-right mb-3">{calPct}% 摂取</p>
+            </>
+          )}
+          {weeklyDeficitNeeded > 0 && (
+            <div className="rounded-xl px-3 py-2 flex items-start gap-2" style={{ background: '#E3F2FD', border: '1.5px solid #1CB0F6' }}>
+              <span className="text-sm mt-0.5">📊</span>
+              <p className="text-xs font-bold" style={{ color: '#0a6c96' }}>
+                目標達成に必要な週次カロリー赤字: <span className="font-black">{weeklyDeficitNeeded.toLocaleString()} kcal/週</span>
+                {remainingDays > 0 && ` · 残り${remainingDays}日`}
+              </p>
+            </div>
+          )}
+          {currentToGoal > 0 && (
+            <div className="mt-2 rounded-xl px-3 py-2 flex items-start gap-2" style={{ background: '#FFF8E1', border: '1.5px solid #FFD900' }}>
+              <span className="text-sm mt-0.5">💡</span>
+              <p className="text-xs font-bold" style={{ color: '#7a5800' }}>
+                目標体重より <span className="font-black">+{currentToGoal.toFixed(1)}kg</span> 多い状態です。食事記録と有酸素運動を継続しましょう。
+              </p>
+            </div>
+          )}
+          {currentToGoal <= 0 && settings.currentWeightKg > 0 && (
+            <div className="mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#D7FFB8', border: '1.5px solid #58CC02' }}>
+              <span className="text-sm">🎉</span>
+              <p className="text-xs font-bold text-duo-green">目標体重を達成しています！</p>
+            </div>
+          )}
         </div>
 
         <div className="duo-card p-5">

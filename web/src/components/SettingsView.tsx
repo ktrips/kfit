@@ -51,6 +51,14 @@ const REMINDER_ITEMS: ReminderItem[] = [
     defaultMinute: 0,
   },
   {
+    id: 'noonReminder',
+    label: '昼のリマインダー',
+    description: 'お昼の時間帯のトレーニングを促す',
+    emoji: '☀️',
+    defaultHour: 12,
+    defaultMinute: 0,
+  },
+  {
     id: 'pmReminder',
     label: '夕方のリマインダー',
     description: '2セット目のタイミングで通知',
@@ -133,11 +141,12 @@ function scheduleReminders(settings: AppSettings) {
     const delay = target.getTime() - now.getTime();
 
     const messages: Record<string, { title: string; body: string }> = {
-      amReminder:  { title: '💪 おはよう！朝トレの時間',       body: '今日も一緒に始めよう。ストリーク継続中！' },
-      amFollowup:  { title: '🔥 まだ間に合う！朝トレしよう',   body: '数分でOK。ストリークを守ろう💪' },
-      pmReminder:  { title: '🌆 夕方トレーニングの時間',       body: '今日の2セット目を記録しよう！' },
-      pmFollowup:  { title: '⚡ 夜トレまだ間に合う！',         body: '22時までに記録してストリークを守ろう🔥' },
-      streakAlert: { title: '🚨 ストリークが途絶えそう！',     body: '今日はまだトレーニングしていません。今すぐ記録しよう！' },
+      amReminder:   { title: '💪 おはよう！朝トレの時間',       body: '今日も一緒に始めよう。ストリーク継続中！' },
+      amFollowup:   { title: '🔥 まだ間に合う！朝トレしよう',  body: '数分でOK。ストリークを守ろう💪' },
+      noonReminder: { title: '☀️ 昼のトレーニング時間',        body: 'お昼の時間帯も記録しよう！' },
+      pmReminder:   { title: '🌆 夕方トレーニングの時間',      body: '今日の2セット目を記録しよう！' },
+      pmFollowup:   { title: '⚡ 夜トレまだ間に合う！',        body: '22時までに記録してストリークを守ろう🔥' },
+      streakAlert:  { title: '🚨 ストリークが途絶えそう！',    body: '今日はまだトレーニングしていません。今すぐ記録しよう！' },
     };
 
     const msg = messages[item.id];

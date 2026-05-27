@@ -5,17 +5,18 @@ import {
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress } from '../services/timeSlotService';
-import { getDietGoalSettings, getTodayIntakeSummary } from '../services/wellnessService';
+import { getDietGoalSettings, getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
+import { calculateStressScore } from '../utils/stress';
 import { useAppStore } from '../store/appStore';
 import type { GlobalProgress } from '../services/timeSlotService';
-import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
+import type { DietGoalSettings, IntakeSummary, MindMetrics } from '../types/wellness';
+
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
-  onTimeSlots?: () => void;
-  onIntake?: () => void;
+  onFood?: () => void;
   onDietGoal?: () => void;
   onMind?: () => void;
 }
@@ -59,7 +60,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onFood, onDietGoal, onMind }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
@@ -76,6 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [intakeSummary, setIntakeSummary] = useState<IntakeSummary | null>(null);
   const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
+  const [mindMetrics, setMindMetrics] = useState<MindMetrics | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -83,11 +85,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, intake, global, diet] = await Promise.all([
+        const [dashboard, intake, global, diet, mind] = await Promise.all([
           getDashboardData(user.uid),
           getTodayIntakeSummary(user.uid),
           getGlobalProgress(user.uid),
           getDietGoalSettings(user.uid),
+          getMindMetrics(user.uid),
         ]);
         const exercises = dashboard.todayExercises;
         setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
@@ -104,6 +107,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setIntakeSummary(intake);
         setGlobalProgress(global);
         setDietGoal(diet);
+        setMindMetrics(mind);
         // 今日分だけフィルタ
         const today = new Date();
         setTodaySets(dashboard.weeklySetLog.filter(s => {
@@ -332,111 +336,154 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* Diet goal card */}
+        {/* ── Health 2×2 grid: FOOD / DIET / MIND / SLEEP ── */}
         {(() => {
+          // FOOD
+          const calories = intakeSummary?.calories ?? 0;
+          const waterMl  = intakeSummary?.waterMl ?? 0;
+          const mealCnt  = intakeSummary?.mealCount ?? 0;
+          const intakeGoal = dietGoal?.dailyIntakeKcalGoal ?? 0;
+          const calPct = intakeGoal > 0 ? Math.min(100, Math.round((calories / intakeGoal) * 100)) : 0;
+
+          // DIET
           const cw = dietGoal?.currentWeightKg ?? 0;
           const gw = dietGoal?.goalWeightKg ?? 0;
           const sw = dietGoal?.startWeightKg ?? 0;
-          const currentBodyFat = dietGoal?.currentBodyFatPercent ?? 0;
-          const goalBodyFat = dietGoal?.goalBodyFatPercent ?? 0;
-          const intakeGoal = dietGoal?.dailyIntakeKcalGoal ?? 0;
-          const burnGoal = dietGoal?.dailyBurnKcalGoal ?? 0;
-          const intake = intakeSummary?.calories ?? 0;
-          const dailyBalance = intake - burnGoal;
-          const hasWeight = cw > 0 && gw > 0;
-          const remainingKg = hasWeight ? cw - gw : 0;
-          const totalWeightDelta = sw - gw;
-          const completedWeightDelta = sw - cw;
-          const weightPct = Math.min(100, Math.max(0, totalWeightDelta !== 0 ? (completedWeightDelta / totalWeightDelta) * 100 : 0));
-          const days = (() => {
+          const totalWd = sw - gw;
+          const doneWd  = sw - cw;
+          const weightPct = totalWd !== 0 ? Math.min(100, Math.max(0, Math.round((doneWd / totalWd) * 100))) : 0;
+          const remainKg = cw > 0 && gw > 0 ? cw - gw : 0;
+          const daysLeft = (() => {
             if (!dietGoal?.goalDate) return 0;
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const goal = new Date(dietGoal.goalDate); goal.setHours(0, 0, 0, 0);
-            return Math.max(0, Math.round((goal.getTime() - today.getTime()) / 86400000));
+            const t = new Date(); t.setHours(0,0,0,0);
+            const g = new Date(dietGoal.goalDate); g.setHours(0,0,0,0);
+            return Math.max(0, Math.round((g.getTime() - t.getTime()) / 86400000));
           })();
 
-          return (
-            <button
-              onClick={onDietGoal}
-              className="duo-card p-5 w-full text-left hover:opacity-90 active:scale-[0.98] transition-all"
-              style={{ borderColor: '#CE82FF', boxShadow: '0 4px 0 #A15FD4' }}
-            >
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <p className="text-xs font-black text-duo-gray tracking-wider">DIET</p>
-                  <h2 className="text-xl font-black text-duo-dark leading-tight">ダイエット目標</h2>
-                  <p className="text-xs font-bold text-duo-gray mt-1">
-                    {hasWeight ? `目標まで ${remainingKg > 0 ? '-' : '+'}${Math.abs(remainingKg).toFixed(1)}kg` : '体重・体脂肪・カロリー計画を設定'}
-                    {days > 0 ? ` · あと${days}日` : ''}
-                  </p>
-                </div>
-                <span className="font-black text-lg" style={{ color: '#CE82FF' }}>GOAL ›</span>
-              </div>
+          // MIND
+          const hrv = mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0;
+          const stress = calculateStressScore(hrv);
 
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="rounded-2xl p-3" style={{ background: '#F3E8FF' }}>
-                  <p className="text-[10px] font-black text-duo-gray">現在</p>
-                  <p className="text-lg font-black text-duo-dark">{cw > 0 ? `${cw.toFixed(1)}kg` : '—'}</p>
-                  <p className="text-[10px] font-bold text-duo-gray">体脂肪 {currentBodyFat > 0 ? `${currentBodyFat.toFixed(1)}%` : '—'}</p>
-                </div>
-                <div className="rounded-2xl p-3" style={{ background: '#E8F5E9' }}>
-                  <p className="text-[10px] font-black text-duo-gray">ゴール</p>
-                  <p className="text-lg font-black text-duo-green">{gw > 0 ? `${gw.toFixed(1)}kg` : '—'}</p>
-                  <p className="text-[10px] font-bold text-duo-gray">体脂肪 {goalBodyFat > 0 ? `${goalBodyFat.toFixed(1)}%` : '—'}</p>
-                </div>
-                <div className="rounded-2xl p-3" style={{ background: '#FFF3E0' }}>
-                  <p className="text-[10px] font-black text-duo-gray">今日の収支</p>
-                  <p className="text-lg font-black" style={{ color: dailyBalance <= 0 ? '#58CC02' : '#FF9600' }}>
-                    {dailyBalance >= 0 ? '+' : ''}{dailyBalance}
-                  </p>
-                  <p className="text-[10px] font-bold text-duo-gray">kcal</p>
-                </div>
-              </div>
-
-              <div className="duo-progress-bar mb-3" style={{ height: '10px' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${weightPct}%`,
-                    background: 'linear-gradient(90deg, #CE82FF, #58CC02)',
-                  }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold text-duo-gray">
-                <div>摂取: <span className="font-black text-duo-orange">{intake}</span> / {intakeGoal || '—'} kcal</div>
-                <div>消費目標: <span className="font-black text-duo-green">{burnGoal || '—'}</span> kcal</div>
-              </div>
-            </button>
-          );
-        })()}
-
-        {/* Sleep card */}
-        {(() => {
+          // SLEEP
           const sh = globalProgress?.sleepHours ?? 0;
           const ss = globalProgress?.sleepScore ?? 0;
-          const hasSleep = sh > 0;
           const sleepColor = ss >= 80 ? '#58CC02' : ss >= 60 ? '#FF9600' : ss > 0 ? '#FF4B4B' : '#AFAFAF';
+
           return (
-            <div className="duo-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-black text-duo-dark">😴 SLEEP</h2>
-                <span className="text-duo-gray font-bold text-xs">iOS同期</span>
-              </div>
-              {hasSleep ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl p-4" style={{ background: '#EEF2FF' }}>
-                    <p className="text-xs font-black text-duo-gray">睡眠時間</p>
-                    <p className="text-2xl font-black" style={{ color: sleepColor }}>{sh.toFixed(1)} h</p>
-                  </div>
-                  <div className="rounded-2xl p-4" style={{ background: '#E8F5E9' }}>
-                    <p className="text-xs font-black text-duo-gray">睡眠スコア</p>
-                    <p className="text-2xl font-black" style={{ color: sleepColor }}>{ss} 点</p>
-                  </div>
+            <div className="grid grid-cols-2 gap-3">
+
+              {/* FOOD card */}
+              <button
+                onClick={onFood}
+                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
+                style={{ border: '2px solid #FFDDBB', boxShadow: '0 3px 0 #CC5800' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#FF7200' }}>🍽️ FOOD</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: '#FF7200' }}>
+                    {mealCnt > 0 ? `${mealCnt}食` : '未記録'}
+                  </span>
                 </div>
-              ) : (
-                <p className="text-duo-gray font-bold text-sm">睡眠データはまだ取得されていません。</p>
-              )}
+                <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: calories > 0 ? '#FF7200' : '#AFAFAF' }}>
+                  {calories > 0 ? `${calories}` : '—'}
+                </p>
+                <p className="text-[9px] font-bold text-duo-gray mb-2">kcal摂取</p>
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px]">💧</span>
+                  <span className="text-[9px] font-bold text-duo-gray">{waterMl > 0 ? `${waterMl}ml` : '—'}</span>
+                </div>
+                {intakeGoal > 0 && (
+                  <div className="mt-2 rounded-full bg-gray-100" style={{ height: 3 }}>
+                    <div className="rounded-full" style={{ height: 3, width: `${calPct}%`, background: '#FF7200' }} />
+                  </div>
+                )}
+              </button>
+
+              {/* DIET card */}
+              <button
+                onClick={onDietGoal}
+                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
+                style={{ border: '2px solid #E8D0FF', boxShadow: '0 3px 0 #A15FD4' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#CE82FF' }}>🎯 DIET</span>
+                  {daysLeft > 0 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: '#CE82FF' }}>
+                      あと{daysLeft}日
+                    </span>
+                  )}
+                </div>
+                {cw > 0 ? (
+                  <>
+                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: '#CE82FF' }}>
+                      {cw.toFixed(1)}
+                    </p>
+                    <p className="text-[9px] font-bold text-duo-gray mb-2">kg現在</p>
+                    <p className="text-[10px] font-bold" style={{ color: remainKg > 0 ? '#FF9600' : '#58CC02' }}>
+                      {remainKg > 0 ? `-${remainKg.toFixed(1)}kg` : '目標達成！'}
+                    </p>
+                    <div className="mt-1 rounded-full bg-gray-100" style={{ height: 3 }}>
+                      <div className="rounded-full" style={{ height: 3, width: `${weightPct}%`, background: 'linear-gradient(90deg,#CE82FF,#58CC02)' }} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[10px] font-bold text-duo-gray mt-2">未設定</p>
+                )}
+              </button>
+
+              {/* MIND card */}
+              <button
+                onClick={onMind}
+                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
+                style={{ border: '2px solid #C8F0FF', boxShadow: '0 3px 0 #0080C0' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#1CB0F6' }}>🧠 MIND</span>
+                  {hrv > 0 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: stress.color }}>
+                      {stress.label}
+                    </span>
+                  )}
+                </div>
+                {hrv > 0 ? (
+                  <>
+                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: stress.color }}>
+                      {hrv}
+                    </p>
+                    <p className="text-[9px] font-bold text-duo-gray mb-1">ms HRV</p>
+                    <p className="text-[10px] font-bold" style={{ color: stress.color }}>
+                      ストレス {stress.score >= 0 ? `${stress.score}点` : '未入力'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[10px] font-bold text-duo-gray mt-2">未入力</p>
+                )}
+              </button>
+
+              {/* SLEEP card */}
+              <div
+                className="bg-white rounded-2xl p-4"
+                style={{ border: '2px solid #D8E8FF', boxShadow: '0 3px 0 #4060B0' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#4060B0' }}>😴 SLEEP</span>
+                  <span className="text-[9px] font-bold text-duo-gray">iOS同期</span>
+                </div>
+                {sh > 0 ? (
+                  <>
+                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: sleepColor }}>
+                      {sh.toFixed(1)}
+                    </p>
+                    <p className="text-[9px] font-bold text-duo-gray mb-1">時間睡眠</p>
+                    <p className="text-[10px] font-bold" style={{ color: sleepColor }}>
+                      スコア {ss}点
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[10px] font-bold text-duo-gray mt-2">未取得</p>
+                )}
+              </div>
+
             </div>
           );
         })()}

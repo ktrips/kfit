@@ -130,7 +130,19 @@ struct kfitWidget: Widget {
     }
 }
 
+// MARK: - Deep Link URL Helpers
+
+private extension URL {
+    static let fitingoHome        = URL(string: "fitingo://home")!
+    static let fitingoWorkout     = URL(string: "fitingo://workout")!
+    static let fitingoMindfulness = URL(string: "fitingo://mindfulness")!
+    static let fitingoFood        = URL(string: "fitingo://food")!
+    static let fitingoMind        = URL(string: "fitingo://mind")!
+    static let fitingoGoal        = URL(string: "fitingo://goal")!
+}
+
 // MARK: - Small Widget（2×2 グリッド）
+// タップ → トレーニング開始
 
 struct SmallWidgetView: View {
     let stats: WidgetStats
@@ -165,6 +177,7 @@ struct SmallWidgetView: View {
                 .clipShape(Circle())
                 .padding(5)
         }
+        .widgetURL(.fitingoWorkout)  // Small: タップ → トレーニング
         .containerBackground(stats.progressColor, for: .widget)
     }
 
@@ -193,19 +206,31 @@ struct MediumWidgetView: View {
         ZStack(alignment: .topLeading) {
             stats.progressColor.ignoresSafeArea()
             HStack(spacing: 0) {
-                mediumCell(icon: "🔥", value: "\(stats.streak)", sub: "日連続")
+                // 🔥 ストリーク → ホーム
+                Link(destination: .fitingoHome) {
+                    mediumCell(icon: "🔥", value: "\(stats.streak)", sub: "日連続")
+                }
                 divider
-                mediumCell(icon: "📊", value: "\(stats.progressPercent)%", sub: "達成度",
-                           badge: stats.progressPercent == 100 ? "✓" : nil)
+                // 📊 達成度 → ホーム
+                Link(destination: .fitingoHome) {
+                    mediumCell(icon: "📊", value: "\(stats.progressPercent)%", sub: "達成度",
+                               badge: stats.progressPercent == 100 ? "✓" : nil)
+                }
                 divider
-                let balSign = stats.calorieBalance >= 0 ? "+" : ""
-                mediumCell(
-                    icon: stats.calorieBalance >= 0 ? "📈" : "📉",
-                    value: "\(balSign)\(stats.calorieBalance)",
-                    sub: "kcal"
-                )
+                // 📈/📉 カロリー収支 → FOOD
+                Link(destination: .fitingoFood) {
+                    let balSign = stats.calorieBalance >= 0 ? "+" : ""
+                    mediumCell(
+                        icon: stats.calorieBalance >= 0 ? "📈" : "📉",
+                        value: "\(balSign)\(stats.calorieBalance)",
+                        sub: "kcal"
+                    )
+                }
                 divider
-                mediumCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                // ⭐ XP → ホーム
+                Link(destination: .fitingoHome) {
+                    mediumCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 38)
@@ -274,33 +299,43 @@ struct LargeWidgetView: View {
         ZStack {
             stats.progressColor.ignoresSafeArea()
             VStack(spacing: 12) {
-                // Fitingo アイコン + アプリ名 + 日付時刻（1行）
-                HStack(spacing: 8) {
-                    Image("fitingo_button_mascot")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                    Text("Fitingo")
-                        .font(.system(size: 15, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text(date, formatter: Self.headerFormatter)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.85))
+                // Fitingo アイコン + アプリ名 + 日付時刻（1行）→ ホームへ
+                Link(destination: .fitingoHome) {
+                    HStack(spacing: 8) {
+                        Image("fitingo_button_mascot")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                            .clipShape(Circle())
+                        Text("Fitingo")
+                            .font(.system(size: 15, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text(date, formatter: Self.headerFormatter)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
                 }
 
-                // iOSヘッダーと同じ4項目
+                // iOSヘッダーと同じ4項目（各セルをタップで関連画面へ）
                 HStack(spacing: 0) {
-                    largeHeaderCell(icon: "🔥", value: "\(stats.streak)", sub: "日連続")
-                    largeHeaderCell(icon: "📊", value: "\(stats.progressPercent)%", sub: "達成度")
-                    let balSign = stats.calorieBalance >= 0 ? "+" : ""
-                    largeHeaderCell(
-                        icon: stats.calorieBalance >= 0 ? "📈" : "📉",
-                        value: "\(balSign)\(stats.calorieBalance)",
-                        sub: "kcal"
-                    )
-                    largeHeaderCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                    Link(destination: .fitingoHome) {
+                        largeHeaderCell(icon: "🔥", value: "\(stats.streak)", sub: "日連続")
+                    }
+                    Link(destination: .fitingoHome) {
+                        largeHeaderCell(icon: "📊", value: "\(stats.progressPercent)%", sub: "達成度")
+                    }
+                    Link(destination: .fitingoFood) {
+                        let balSign = stats.calorieBalance >= 0 ? "+" : ""
+                        largeHeaderCell(
+                            icon: stats.calorieBalance >= 0 ? "📈" : "📉",
+                            value: "\(balSign)\(stats.calorieBalance)",
+                            sub: "kcal"
+                        )
+                    }
+                    Link(destination: .fitingoHome) {
+                        largeHeaderCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                    }
                 }
                 .padding(.vertical, 12)
                 .background(Color.white.opacity(0.15))
@@ -308,31 +343,43 @@ struct LargeWidgetView: View {
 
                 Divider().background(Color.white.opacity(0.3))
 
-                // 目標別進捗リスト
+                // 目標別進捗リスト（タップで各アクション画面へ）
                 VStack(spacing: 8) {
                     if stats.trainingGoal > 0 {
-                        largeGoalRow(icon: "💪", label: "トレーニング",
-                                     done: stats.trainingCompleted, goal: stats.trainingGoal)
+                        Link(destination: .fitingoWorkout) {
+                            largeGoalRow(icon: "💪", label: "トレーニング",
+                                         done: stats.trainingCompleted, goal: stats.trainingGoal)
+                        }
                     }
                     if stats.mindfulnessGoal > 0 {
-                        largeGoalRow(icon: "🧘", label: "マインドフル",
-                                     done: stats.mindfulnessCompleted, goal: stats.mindfulnessGoal)
+                        Link(destination: .fitingoMindfulness) {
+                            largeGoalRow(icon: "🧘", label: "マインドフル",
+                                         done: stats.mindfulnessCompleted, goal: stats.mindfulnessGoal)
+                        }
                     }
                     if stats.mealGoal > 0 {
-                        largeGoalRow(icon: "🍽️", label: "食事",
-                                     done: stats.mealLogged, goal: stats.mealGoal)
+                        Link(destination: .fitingoFood) {
+                            largeGoalRow(icon: "🍽️", label: "食事",
+                                         done: stats.mealLogged, goal: stats.mealGoal)
+                        }
                     }
                     if stats.drinkGoal > 0 {
-                        largeGoalRow(icon: "💧", label: "水分",
-                                     done: stats.drinkLogged, goal: stats.drinkGoal)
+                        Link(destination: .fitingoFood) {
+                            largeGoalRow(icon: "💧", label: "水分",
+                                         done: stats.drinkLogged, goal: stats.drinkGoal)
+                        }
                     }
                     if stats.workoutGoal > 0 {
-                        largeGoalRow(icon: "🏃", label: "ワークアウト",
-                                     done: stats.workoutMinutes, goal: stats.workoutGoal, unit: "分")
+                        Link(destination: .fitingoWorkout) {
+                            largeGoalRow(icon: "🏃", label: "ワークアウト",
+                                         done: stats.workoutMinutes, goal: stats.workoutGoal, unit: "分")
+                        }
                     }
                     if stats.standGoal > 0 {
-                        largeGoalRow(icon: "🧍", label: "スタンド",
-                                     done: stats.standHours, goal: stats.standGoal, unit: "h")
+                        Link(destination: .fitingoMind) {
+                            largeGoalRow(icon: "🧍", label: "スタンド",
+                                         done: stats.standHours, goal: stats.standGoal, unit: "h")
+                        }
                     }
                 }
                 .padding(.horizontal, 4)

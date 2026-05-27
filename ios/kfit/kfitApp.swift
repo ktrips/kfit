@@ -92,7 +92,27 @@ enum MainMenuTabPreferences {
 }
 
 extension Notification.Name {
-    static let requestStartTraining = Notification.Name("requestStartTraining")
+    static let requestStartTraining   = Notification.Name("requestStartTraining")
+    static let requestStartMindfulness = Notification.Name("requestStartMindfulness")
+}
+
+// MARK: - Deep Link destinations (widget → app)
+enum FitingoDeepLink: String {
+    case workout     = "workout"      // トレーニング開始
+    case mindfulness = "mindfulness"  // 1分瞑想
+    case food        = "food"         // FOODタブ
+    case mind        = "mind"         // MINDタブ
+    case goal        = "goal"         // FIT/GOALタブ
+    case diet        = "diet"         // FIT/GOALタブ（alias）
+    case record      = "record"       // 記録メニュー
+    case home        = "home"         // ROUTINタブ（デフォルト）
+
+    init?(url: URL) {
+        guard url.scheme == "fitingo",
+              let host = url.host,
+              let link = FitingoDeepLink(rawValue: host) else { return nil }
+        self = link
+    }
 }
 
 @main
@@ -146,6 +166,7 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
     @State private var showTrainingTracker = false
+    @State private var showMindfulnessWidget = false
     @State private var isTabBarHidden = false
     @State private var tabBarHideWorkItem: DispatchWorkItem?
     @State private var tabBarRevealWorkItem: DispatchWorkItem?
@@ -194,10 +215,33 @@ struct MainTabView: View {
                 ExerciseTrackerView(isPresented: $showTrainingTracker)
                     .environmentObject(authManager)
             }
+            .fullScreenCover(isPresented: $showMindfulnessWidget) {
+                MindfulnessSessionView(
+                    durationSeconds: 60,
+                    title: "1分瞑想",
+                    completedButtonTitle: "Breatheとして保存"
+                ) { startDate, endDate in
+                    showMindfulnessWidget = false
+                    Task {
+                        _ = await HealthKitManager.shared.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: endDate.timeIntervalSince(startDate),
+                            sessionType: "Breathe"
+                        )
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
                 selectedTab = MainMenuTab.fit.rawValue
                 showTrainingTracker = true
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .requestStartMindfulness)) { _ in
+                showMindfulnessWidget = true
+            }
+            .onOpenURL { url in
+                handleDeepLink(url)
             }
             .onAppear {
                 selectedTab = defaultVisibleTab.rawValue
@@ -272,6 +316,38 @@ struct MainTabView: View {
         guard let current = MainMenuTab(rawValue: selectedTab), isVisible(current) else {
             selectedTab = defaultVisibleTab.rawValue
             return
+        }
+    }
+
+    // MARK: - Widget Deep Link Handler
+    private func handleDeepLink(_ url: URL) {
+        guard let link = FitingoDeepLink(url: url) else {
+            selectedTab = defaultVisibleTab.rawValue
+            return
+        }
+        switch link {
+        case .workout:
+            selectedTab = MainMenuTab.fit.rawValue
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showTrainingTracker = true
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
+            }
+        case .mindfulness:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showMindfulnessWidget = true
+            }
+        case .food:
+            selectedTab = MainMenuTab.food.rawValue
+        case .mind:
+            selectedTab = MainMenuTab.mind.rawValue
+        case .goal, .diet:
+            selectedTab = MainMenuTab.goal.rawValue
+        case .record:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showRecordMenu = true
+            }
+        case .home:
+            selectedTab = defaultVisibleTab.rawValue
         }
     }
 

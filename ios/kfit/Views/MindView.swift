@@ -60,6 +60,7 @@ struct MindView: View {
                         )
                         if saved {
                             await healthKit.refreshMindfulness()
+                            await AuthenticationManager.shared.awardPoints(10)
                         }
                     }
                 }
@@ -81,6 +82,7 @@ struct MindView: View {
                         if saved {
                             await healthKit.refreshMindfulness()
                             await TimeSlotManager.shared.syncStretchFromHealthKit()
+                            await AuthenticationManager.shared.awardPoints(30)
                         }
                     }
                 }

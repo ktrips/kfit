@@ -74,6 +74,7 @@ struct SettingsView: View {
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindTabVisible = false
     @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodTabVisible = true
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoTabVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logTabVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
@@ -94,12 +95,14 @@ struct SettingsView: View {
     @State private var newWeekdayGoalName = ""
     @State private var newWeekdayGoalEmoji = "⭐"
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("app.colorScheme") private var colorSchemePref = "light"
 
     var body: some View {
         ZStack {
             Color.duoBg.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
+                    appearanceSection
                     tabMenuSettingsSection
                     permissionBanner
                     dailyHabitsSection
@@ -220,6 +223,24 @@ struct SettingsView: View {
     private var enabledConfigurableTabs: [MainMenuTab] {
         let enabled = orderedConfigurableTabs.filter { tabVisible($0) }
         return enabled.isEmpty ? [.fit] : enabled
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(icon: "paintbrush.fill",
+                          title: "テーマ",
+                          subtitle: "アプリ全体のカラーテーマを選択。デフォルトはライト（白ベース）。")
+
+            Picker("テーマ", selection: $colorSchemePref) {
+                Text("ライト").tag("light")
+                Text("ダーク").tag("dark")
+            }
+            .pickerStyle(.segmented)
+            .padding(12)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
     }
 
     private var tabMenuSettingsSection: some View {
@@ -406,6 +427,7 @@ struct SettingsView: View {
         case .fit, .goal: return true  // 常に表示
         case .mind: return mindTabVisible
         case .food: return foodTabVisible
+        case .tomo: return tomoTabVisible
         }
     }
 
@@ -429,6 +451,7 @@ struct SettingsView: View {
         case .fit, .goal: break
         case .mind: mindTabVisible = newValue
         case .food: foodTabVisible = newValue
+        case .tomo: tomoTabVisible = newValue
         }
 
         UserDefaults.standard.set(newValue, forKey: MainMenuTabPreferences.visibleKey(for: tab))

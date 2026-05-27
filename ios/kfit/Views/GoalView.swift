@@ -103,9 +103,9 @@ struct GoalView: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
                     HStack(spacing: 0) {
-                        Text("Fitin")
+                        Text("Fit")
                             .foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
-                        Text("go")
+                        Text("ingo")
                             .foregroundColor(.white)
                     }
                     .font(.system(size: 14, weight: .black, design: .rounded))

@@ -101,6 +101,7 @@ struct DashboardView: View {
     @State private var totalReps     = 0
     @State private var totalCalories = 0
     @State private var totalXP      = 0
+    @State private var weeklyXP     = 0
     @State private var todaySetCount = 0  // 今日完了したセット数
     @State private var dailySetGoal  = 2  // 1日の目標セット数
     @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)  // 元の型を保持
@@ -1502,7 +1503,8 @@ struct DashboardView: View {
                         carbsKcal: carb * 4,
                         diameter: 22,
                         lineWidth: 4,
-                        centerText: pfcAnalysis.map { "\($0.score)" }
+                        centerText: pfcAnalysis.map { "\($0.score)" },
+                        centerTextColor: (pfcAnalysis?.score ?? 0) >= 70 ? foodColor : Color.duoDark
                     )
                     // 登録水分量
                     HStack(spacing: 2) {
@@ -1540,16 +1542,15 @@ struct DashboardView: View {
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(mindColor)
                         .cornerRadius(4)
-                    // 睡眠スコア - sleepEnabled または dailyFixedGoals.sleepEnabled のときのみ
+                    // 睡眠リング - sleepEnabled または dailyFixedGoals.sleepEnabled のときのみ
                     if gg.sleepEnabled || dailyFixedGoals.sleepEnabled {
-                        let sleepDone = dailyFixedGoals.sleepEnabled
-                            && healthKit.lastNightTotalHours >= Double(dailyFixedGoals.sleepHoursGoal)
-                        HStack(spacing: 2) {
-                            Text("😴").font(.system(size: 13))
-                            Text(gp.sleepScore > 0 ? "\(gp.sleepScore)" : "—")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(sleepAchieved || sleepDone ? mindColor : Color.duoDark)
-                        }
+                        SleepMiniRingView(
+                            hours: healthKit.lastNightTotalHours,
+                            goal: Double(dailyFixedGoals.sleepHoursGoal),
+                            diameter: 22,
+                            lineWidth: 4,
+                            ringColor: mindColor
+                        )
                     }
                     if gg.mindfulnessEnabled {
                         // マインドフル進捗
@@ -3287,7 +3288,7 @@ struct DashboardView: View {
                 .foregroundColor(Color.duoDark)
 
                 // ポイント表示
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     // 今日のポイント
                     VStack(alignment: .leading, spacing: 3) {
                         Text("今日")
@@ -3295,17 +3296,34 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 3) {
                             Text("\(totalXP)")
-                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("XP")
                                 .font(.caption2)
                                 .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 3)
+                                .padding(.bottom, 2)
                         }
                     }
 
-                    Divider()
-                        .frame(height: 32)
+                    Divider().frame(height: 28)
+
+                    // 今週のポイント（月〜日）
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("今週")
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                        HStack(alignment: .bottom, spacing: 3) {
+                            Text("\(weeklyXP)")
+                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoBlue)
+                            Text("XP")
+                                .font(.caption2)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.bottom, 2)
+                        }
+                    }
+
+                    Divider().frame(height: 28)
 
                     // 総ポイント
                     VStack(alignment: .leading, spacing: 3) {
@@ -3314,12 +3332,12 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 3) {
                             Text("\(authManager.userProfile?.totalPoints ?? 0)")
-                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoOrange)
                             Text("XP")
                                 .font(.caption2)
                                 .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 3)
+                                .padding(.bottom, 2)
                         }
                     }
 
@@ -5837,7 +5855,9 @@ struct DashboardView: View {
             async let setGoal = authManager.getDailySetGoal()
             async let intake = authManager.getTodayIntakeSummary()
             async let intakeSettings = authManager.getIntakeSettings()
-            let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings) = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings)
+            async let wXP = authManager.getThisWeekXP()
+            let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings, fetchedWeeklyXP) = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings, wXP)
+            weeklyXP = fetchedWeeklyXP
             todayExercises = ex
             dailySets      = sets
             weeklySetProgress = weekProg
@@ -6098,6 +6118,19 @@ struct DashboardView: View {
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
             return acc + Double(ex.reps) * rate
         })
+
+        // 1日の目標達成ボーナス（+50XP、1日1回限り）
+        Task {
+            if dailySetGoal > 0 && todaySetCount >= dailySetGoal {
+                await authManager.checkAndAwardDailyBonus(type: "training", points: 50)
+            }
+            let mindGoal = TimeSlot.allCases.reduce(0) {
+                $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0)
+            }
+            if mindGoal > 0 && healthKit.todayMindfulnessSessions >= mindGoal {
+                await authManager.checkAndAwardDailyBonus(type: "mindfulness", points: 50)
+            }
+        }
     }
 
     private func openMindfulness() {
@@ -6231,6 +6264,7 @@ struct DashboardView: View {
             }
             .frame(height: 226)
             .clipShape(RoundedRectangle(cornerRadius: 20))
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
@@ -7089,6 +7123,7 @@ private struct PFCMiniRingView: View {
     let diameter: CGFloat
     let lineWidth: CGFloat
     var centerText: String? = nil
+    var centerTextColor: Color = Color.duoDark
 
     var body: some View {
         let total = proteinKcal + fatKcal + carbsKcal
@@ -7109,10 +7144,43 @@ private struct PFCMiniRingView: View {
             if let text = centerText {
                 Text(text)
                     .font(.system(size: diameter * 0.22, weight: .black, design: .rounded))
-                    .foregroundColor(Color.duoDark)
+                    .foregroundColor(centerTextColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
             }
+        }
+        .frame(width: diameter, height: diameter)
+    }
+}
+
+private struct SleepMiniRingView: View {
+    let hours: Double
+    let goal: Double
+    let diameter: CGFloat
+    let lineWidth: CGFloat
+    let ringColor: Color
+
+    var body: some View {
+        let fraction = goal > 0 ? min(1.0, hours / goal) : 0
+        let achieved = hours >= goal && goal > 0
+        ZStack {
+            Circle()
+                .stroke(Color.gray.opacity(0.15), lineWidth: lineWidth)
+            if hours > 0 {
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(achieved ? ringColor : ringColor.opacity(0.7),
+                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            let label: String = hours > 0
+                ? (hours >= 1 ? String(format: "%.1f", hours) : String(format: "%dm", Int(hours * 60)))
+                : "—"
+            Text(label)
+                .font(.system(size: diameter * 0.22, weight: .black, design: .rounded))
+                .foregroundColor(achieved ? ringColor : Color.duoDark)
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
         }
         .frame(width: diameter, height: diameter)
     }

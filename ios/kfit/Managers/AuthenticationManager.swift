@@ -276,6 +276,44 @@ class AuthenticationManager: ObservableObject {
         ])
     }
 
+    // MARK: - アクティビティポイント付与
+
+    func awardPoints(_ points: Int) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        try? await db.collection("users").document(userId).updateData([
+            "totalPoints": FieldValue.increment(Int64(points))
+        ])
+        print("[XP] Awarded \(points)pts")
+    }
+
+    /// 1日1回限りのボーナス（UserDefaultsで重複防止）
+    func checkAndAwardDailyBonus(type: String, points: Int) async {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        let key = "fitingo.bonus.\(type).\(today)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        await awardPoints(points)
+        print("[XP] Daily bonus: \(type) +\(points)pts")
+    }
+
+    /// 今週（月曜〜本日）の合計XP
+    func getThisWeekXP() async -> Int {
+        guard let userId = Auth.auth().currentUser?.uid else { return 0 }
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)  // 1=Sun, 2=Mon...
+        let daysSinceMonday = weekday == 1 ? 6 : weekday - 2
+        guard let monday = calendar.date(byAdding: .day, value: -daysSinceMonday,
+                                         to: calendar.startOfDay(for: today)) else { return 0 }
+        let snap = try? await db.collection("users").document(userId)
+            .collection("completed-exercises")
+            .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: monday))
+            .getDocuments()
+        return snap?.documents.compactMap { $0.data()["points"] as? Int }.reduce(0, +) ?? 0
+    }
+
     // MARK: - キャッシュから即時取得（ブロックしない）
     func getTodayExercisesFromCache() async -> [CompletedExercise] {
         guard let userId = Auth.auth().currentUser?.uid else {

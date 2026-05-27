@@ -10,6 +10,7 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
     case goal = 1
     case mind = 2
     case food = 3
+    case tomo = 6  // 4=Settings, 5=More are reserved
 
     var id: Int { rawValue }
 
@@ -19,6 +20,7 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
         case .goal: return "FIT"
         case .mind: return "MIND"
         case .food: return "FOOD"
+        case .tomo: return "TOMO"
         }
     }
 
@@ -28,6 +30,7 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
         case .goal: return "FITタブ"
         case .mind: return "MINDタブ"
         case .food: return "FOODタブ"
+        case .tomo: return "TOMOタブ"
         }
     }
 
@@ -37,6 +40,7 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
         case .goal: return "target"
         case .mind: return "brain.head.profile"
         case .food: return "fork.knife"
+        case .tomo: return "person.2.fill"
         }
     }
 }
@@ -46,11 +50,12 @@ enum MainMenuTabPreferences {
     static let goalVisibleKey = "mainTab.goal.visible"
     static let mindVisibleKey = "mainTab.mind.visible"
     static let foodVisibleKey = "mainTab.food.visible"
+    static let tomoVisibleKey = "mainTab.tomo.visible"
     static let logVisibleKey = "mainTab.log.visible"
     static let defaultTabKey = "mainTab.default"
     static let orderKey = "mainTab.order"
 
-    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind]
+    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind, .tomo]
 
     static func visibleKey(for tab: MainMenuTab) -> String {
         switch tab {
@@ -58,6 +63,7 @@ enum MainMenuTabPreferences {
         case .goal: return goalVisibleKey
         case .mind: return mindVisibleKey
         case .food: return foodVisibleKey
+        case .tomo: return tomoVisibleKey
         }
     }
 
@@ -93,6 +99,7 @@ extension Notification.Name {
 struct kfitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authManager: AuthenticationManager
+    @AppStorage("app.colorScheme") private var colorSchemePref = "light"
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -106,13 +113,16 @@ struct kfitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if authManager.isSignedIn {
-                MainTabView()
-                    .environmentObject(authManager)
-            } else {
-                LoginView()
-                    .environmentObject(authManager)
+            Group {
+                if authManager.isSignedIn {
+                    MainTabView()
+                        .environmentObject(authManager)
+                } else {
+                    LoginView()
+                        .environmentObject(authManager)
+                }
             }
+            .preferredColorScheme(colorSchemePref == "dark" ? .dark : .light)
         }
         // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -142,6 +152,7 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
     @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
@@ -196,6 +207,7 @@ struct MainTabView: View {
             .onChange(of: goalVisible) { _, _ in normalizeSelection() }
             .onChange(of: mindVisible) { _, _ in normalizeSelection() }
             .onChange(of: foodVisible) { _, _ in normalizeSelection() }
+            .onChange(of: tomoVisible) { _, _ in normalizeSelection() }
             .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
             .onChange(of: tabOrderRaw) { _, _ in normalizeSelection() }
     }
@@ -208,6 +220,7 @@ struct MainTabView: View {
         case 3:  FoodView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
         case 5:  MoreView()
+        case 6:  TomoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
         }
     }
@@ -234,6 +247,7 @@ struct MainTabView: View {
         case .goal: return goalVisible
         case .mind: return mindVisible
         case .food: return foodVisible
+        case .tomo: return tomoVisible
         }
     }
 
@@ -422,6 +436,7 @@ struct HeaderNavigationMenu: View {
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
     @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
@@ -433,6 +448,7 @@ struct HeaderNavigationMenu: View {
             case .goal: return goalVisible
             case .mind: return mindVisible
             case .food: return foodVisible
+            case .tomo: return tomoVisible
             }
         }
         return visible.isEmpty ? [.fit] : visible

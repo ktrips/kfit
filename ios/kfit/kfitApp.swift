@@ -219,7 +219,7 @@ struct MainTabView: View {
         case 2:  MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         case 3:  FoodView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
-        case 5:  MoreView()
+        case 5:  MoreView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu, overflowTabs: overflowPrimaryTabs)
         case 6:  TomoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
         }
@@ -232,6 +232,18 @@ struct MainTabView: View {
     private var visiblePrimaryTabs: [MainMenuTab] {
         let visible = orderedPrimaryTabs.filter { isVisible($0) }
         return visible.isEmpty ? [.fit] : visible
+    }
+
+    // タブバー: 一次タブ最大5 + SETUP固定 + MORE固定 = 最大7ボタン
+    // LOGはMOREへ移動。非表示・並び替え後も可視リストの先頭から最大5つ表示
+    private let maxPrimaryInBar = 5
+
+    private var primaryTabsInBar: [MainMenuTab] {
+        Array(visiblePrimaryTabs.prefix(maxPrimaryInBar))
+    }
+
+    private var overflowPrimaryTabs: [MainMenuTab] {
+        Array(visiblePrimaryTabs.dropFirst(maxPrimaryInBar))
     }
 
     private var defaultVisibleTab: MainMenuTab {
@@ -315,11 +327,8 @@ struct MainTabView: View {
 
     private var compactTabBar: some View {
         HStack(spacing: 2) {
-            ForEach(visiblePrimaryTabs) { tab in
+            ForEach(primaryTabsInBar) { tab in
                 tabBtn(tag: tab.rawValue, icon: tab.icon, label: tab.label)
-            }
-            if logVisible {
-                recordBtn
             }
             tabBtn(tag: 4, icon: "gearshape.fill",       label: "SETUP")
             tabBtn(tag: 5, icon: "ellipsis.circle.fill", label: "MORE...")

@@ -117,10 +117,15 @@ final class TomoManager: ObservableObject {
     }
 
     private func weeklyPoints(userId: String) async -> Int {
-        let from = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)  // 1=Sun, 2=Mon...
+        let daysSinceMonday = weekday == 1 ? 6 : weekday - 2
+        guard let monday = calendar.date(byAdding: .day, value: -daysSinceMonday,
+                                         to: calendar.startOfDay(for: today)) else { return 0 }
         let snap = try? await db.collection("users").document(userId)
             .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: from))
+            .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: monday))
             .getDocuments()
         return snap?.documents.compactMap { $0.data()["points"] as? Int }.reduce(0, +) ?? 0
     }
@@ -180,7 +185,7 @@ struct TomoView: View {
                 colors: [Color.duoBlue, Color(red: 0.06, green: 0.56, blue: 0.85)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 HStack(spacing: 4) {
                     Image("mascot")
                         .resizable().scaledToFill()
@@ -188,20 +193,29 @@ struct TomoView: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 0.4))
                     HStack(spacing: 0) {
-                        Text("Fit")
+                        Text("Tomo")
                             .foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
-                        Text("ingo")
+                        Text("lingo")
                             .foregroundColor(.white)
                     }
                     .font(.system(size: 14, weight: .black, design: .rounded))
-                    Text("TOMO")
-                        .font(.system(size: 14, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
                 }
                 Spacer()
-                Image(systemName: "person.2.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white.opacity(0.8))
+                let tomoCount = manager.entries.filter { !$0.isMe }.count
+                HStack(spacing: 3) {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("\(tomoCount)")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.2))
+                .cornerRadius(10)
+
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -354,19 +368,27 @@ struct TomoView: View {
     private var rankingHeader: some View {
         HStack(spacing: 0) {
             Text("順位")
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(Color.duoSubtitle)
                 .frame(width: 44, alignment: .center)
             Text("名前")
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(Color.duoSubtitle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 8)
-            Text("週間pt")
+            Text("今週pt")
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(Color.duoBlue)
                 .frame(width: 58, alignment: .trailing)
             Text("累計pt")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
                 .frame(width: 52, alignment: .trailing)
             Text("連続")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
                 .frame(width: 44, alignment: .trailing)
         }
-        .font(.system(size: 10, weight: .black))
-        .foregroundColor(Color.duoSubtitle)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.duoBg)
@@ -409,7 +431,7 @@ struct TomoView: View {
 
             VStack(spacing: 0) {
                 Text("\(entry.weeklyPoints)")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 14, weight: .black))
                     .foregroundColor(Color.duoBlue)
                 Text("pt")
                     .font(.system(size: 8, weight: .bold))
@@ -419,25 +441,25 @@ struct TomoView: View {
 
             VStack(spacing: 0) {
                 Text("\(entry.totalPoints)")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Text("pt")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 7, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 52, alignment: .trailing)
 
             VStack(spacing: 0) {
-                HStack(spacing: 2) {
+                HStack(spacing: 1) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 8))
                         .foregroundColor(Color(hex: "#FF9600"))
                     Text("\(entry.streak)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(Color.duoDark)
                 }
                 Text("日")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 7, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 44, alignment: .trailing)

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct MoreView: View {
+    @Binding var selectedTab: Int
+    @Binding var showRecordMenu: Bool
+    var overflowTabs: [MainMenuTab] = []
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var showLogoutConfirm = false
 
@@ -10,6 +13,34 @@ struct MoreView: View {
                 Color.duoBg.ignoresSafeArea()
 
                 List {
+                    // オーバーフロータブ（タブバーに収まらなかった一次タブ）
+                    if !overflowTabs.isEmpty {
+                        Section {
+                            ForEach(overflowTabs) { tab in
+                                Button {
+                                    selectedTab = tab.rawValue
+                                } label: {
+                                    MenuRow(icon: tab.icon, iconColor: Color.duoBlue, label: tab.label)
+                                }
+                                .listRowBackground(Color.white)
+                            }
+                        } header: {
+                            Text("タブ")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+
+                    // LOG 記録（タブバーから移動）
+                    Section {
+                        Button {
+                            showRecordMenu = true
+                        } label: {
+                            MenuRow(icon: "plus.circle.fill", iconColor: Color.duoGreen, label: "LOG 記録")
+                        }
+                        .listRowBackground(Color.white)
+                    }
+
                     // 履歴
                     NavigationLink(destination: HistoryView().environmentObject(authManager)) {
                         MenuRow(icon: "calendar", iconColor: Color.duoBlue, label: "履歴")
@@ -87,6 +118,6 @@ struct MenuRow: View {
 }
 
 #Preview {
-    MoreView()
+    MoreView(selectedTab: .constant(5), showRecordMenu: .constant(false))
         .environmentObject(AuthenticationManager.shared)
 }

@@ -226,6 +226,7 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
     var comment: String = ""
     var analyzedNutrition: AnalyzedNutrition
     var thumbnailData: Data?          // 小サムネイル（任意）
+    var isFavorite: Bool = false
 
     var thumbnail: UIImage? {
         guard let data = thumbnailData else { return nil }

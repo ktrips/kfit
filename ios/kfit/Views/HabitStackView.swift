@@ -101,7 +101,7 @@ struct HabitStackView: View {
             .labelsHidden()
         }
         .padding(14)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         .opacity(habit.isEnabled ? 1.0 : 0.6)
@@ -249,7 +249,7 @@ struct AddHabitView: View {
                             Spacer()
                         }
                         .padding(10)
-                        .background(Color.white)
+                        .background(Color(.systemBackground))
                         .cornerRadius(12)
                         .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
                     }
@@ -315,7 +315,7 @@ struct AddHabitView: View {
                 Text("日課の名前").font(.caption).foregroundColor(Color.duoSubtitle)
                 TextField("例: 歯磨き、シャワー", text: $name)
                     .padding(12)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .cornerRadius(10)
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(.systemGray4), lineWidth: 1))
             }
@@ -327,12 +327,12 @@ struct AddHabitView: View {
                     .datePickerStyle(.wheel)
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .cornerRadius(10)
             }
         }
         .padding(14)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.04), radius: 4, y: 2)
     }

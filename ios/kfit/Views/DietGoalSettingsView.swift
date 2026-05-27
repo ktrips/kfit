@@ -463,7 +463,7 @@ struct DietGoalSettingsView: View {
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) { content() }
             .padding(16)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }

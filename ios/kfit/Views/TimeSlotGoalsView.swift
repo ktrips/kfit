@@ -25,7 +25,7 @@ struct TimeSlotGoalsView: View {
                         // 1日全体の目標セクション
                         globalGoalsSection
 
-                        ForEach(TimeSlot.allCases, id: \.self) { timeSlot in
+                        ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { timeSlot in
                             if let goal = timeSlotManager.settings.goalFor(timeSlot),
                                let progress = timeSlotManager.progress.progressFor(timeSlot) {
                                 timeSlotCard(timeSlot: timeSlot, goal: goal, progress: progress)
@@ -497,7 +497,7 @@ struct TimeSlotGoalsView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         .sheet(isPresented: $showAddCustomGoal) {
@@ -708,7 +708,7 @@ struct TimeSlotGoalsView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }

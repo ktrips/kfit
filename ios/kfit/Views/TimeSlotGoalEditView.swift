@@ -104,7 +104,7 @@ struct TimeSlotGoalEditView: View {
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -151,7 +151,7 @@ struct TimeSlotGoalEditView: View {
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -184,7 +184,7 @@ struct TimeSlotGoalEditView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -241,7 +241,7 @@ struct TimeSlotGoalEditView: View {
             .tint(Color.duoPurple)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }

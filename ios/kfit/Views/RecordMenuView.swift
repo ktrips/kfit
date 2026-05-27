@@ -61,7 +61,7 @@ struct RecordMenuView: View {
                             }
                         }
                         .padding(16)
-                        .background(Color.white)
+                        .background(Color(.systemBackground))
                         .cornerRadius(16)
                         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
 
@@ -92,7 +92,7 @@ struct RecordMenuView: View {
                             }
                         }
                         .padding(16)
-                        .background(Color.white)
+                        .background(Color(.systemBackground))
                         .cornerRadius(16)
                         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
 
@@ -157,7 +157,7 @@ struct RecordMenuView: View {
                             }
                         }
                         .padding(16)
-                        .background(Color.white)
+                        .background(Color(.systemBackground))
                         .cornerRadius(16)
                         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
                     }
@@ -348,7 +348,7 @@ struct RecordMenuView: View {
                     .foregroundColor(color)
             }
             .padding(20)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: color.opacity(0.2), radius: 8, y: 4)
         }

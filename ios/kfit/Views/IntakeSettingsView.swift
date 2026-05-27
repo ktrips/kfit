@@ -357,7 +357,7 @@ struct LLMSettingsView: View {
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -396,7 +396,7 @@ struct LLMSettingsView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -424,7 +424,7 @@ struct LLMSettingsView: View {
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }

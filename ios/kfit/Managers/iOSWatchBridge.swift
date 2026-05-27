@@ -582,7 +582,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             let prefix = slot.rawValue
 
             if goal.trainingGoal > 0 {
-                let setsCompleted = countSets(in: slot)
+                let setsCompleted = max(progress.trainingCompleted, countSets(in: slot))
                 for index in 1...goal.trainingGoal {
                     tasks.append(WatchFaceTaskConfigForWatch(
                         id: "\(prefix)-training-\(index)",
@@ -596,24 +596,40 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 }
             }
 
-            if goal.logGoal.mealGoal > 0 || goal.logGoal.drinkGoal > 0 {
+            if goal.logGoal.mealGoal > 0 {
                 let subtype = mealSubtype(for: slot)
-                let mealDone = goal.logGoal.mealGoal > 0
-                    && progress.logProgress.mealLogged >= goal.logGoal.mealGoal
-                let drinkDone = goal.logGoal.drinkGoal > 0
-                    && progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal
-                let nextActionType = !mealDone && goal.logGoal.mealGoal > 0 ? "meal" : "water"
-                let nextMessage = nextActionType == "meal"
-                    ? "\(slot.displayName)の食事を追加しますか？"
-                    : "\(slot.displayName)の水分を追加しますか？"
                 tasks.append(WatchFaceTaskConfigForWatch(
-                    id: "\(prefix)-intake",
-                    emoji: "🍽️",
+                    id: "\(prefix)-meal",
+                    emoji: mealEmoji(for: slot),
                     color: "meal",
-                    isDone: mealDone || drinkDone,
-                    actionType: nextActionType,
-                    mealSubtype: nextActionType == "meal" ? subtype : nil,
-                    intakeMessage: nextMessage
+                    isDone: progress.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    actionType: "meal",
+                    mealSubtype: subtype,
+                    intakeMessage: "\(slot.displayName)の食事を追加しますか？"
+                ))
+            }
+
+            if goal.logGoal.drinkGoal > 0 {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-drink",
+                    emoji: "💧",
+                    color: "water",
+                    isDone: progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    actionType: "water",
+                    mealSubtype: nil,
+                    intakeMessage: "\(slot.displayName)の水分を追加しますか？"
+                ))
+            }
+
+            if goal.logGoal.mindInputRequired {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-mind-input",
+                    emoji: "📝",
+                    color: "mind",
+                    isDone: progress.logProgress.mindInputLogged > 0,
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
                 ))
             }
 

@@ -31,6 +31,7 @@ struct GoalView: View {
                             bodyFatChartCard
                                 .transition(.opacity)
                         }
+                        fitingoTrainingButton
                         todayActivityWithHistoryCard
                         progressCard
                         HStack(spacing: 6) {
@@ -75,7 +76,7 @@ struct GoalView: View {
         }
     }
 
-    // MARK: - Fitingoヘッダー（ホームページと同じデザイン）
+    // MARK: - FITヘッダー
 
     private var goalHeader: some View {
         let goal    = dietManager.settings
@@ -102,9 +103,9 @@ struct GoalView: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
                     HStack(spacing: 0) {
-                        Text("Fit")
+                        Text("Fitin")
                             .foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
-                        Text("ingo")
+                        Text("go")
                             .foregroundColor(.white)
                     }
                     .font(.system(size: 14, weight: .black, design: .rounded))
@@ -198,6 +199,9 @@ struct GoalView: View {
         let todayBurnDay = healthKit.weeklyBurnData.first { dateFmtB.string(from: $0.date) == todayKeyB }
         let todaySteps = todayBurnDay?.steps ?? 0
         let todayActiveCalories = todayBurnDay?.activeCalories ?? 0.0
+        let todayRestingCalories = healthKit.todayRestingCalories > 0
+            ? healthKit.todayRestingCalories
+            : (todayBurnDay?.restingCalories ?? 0.0)
         let todaySetCount = weeklySetCounts[todayKeyB] ?? 0
 
         return VStack(spacing: 0) {
@@ -240,12 +244,12 @@ struct GoalView: View {
                     hasIntakeThisWeek: hasIntakeThisWeek,
                     todaySteps: todaySteps,
                     todayActiveCalories: todayActiveCalories,
+                    todayRestingCalories: todayRestingCalories,
                     todaySetCount: todaySetCount,
                     onAction: { action in
                         switch action {
                         case "training":
-                            selectedTab = 0
-                            iOSWatchBridge.shared.sendStartWorkoutSignal()
+                            NotificationCenter.default.post(name: .requestStartTraining, object: nil)
                         case "intake":
                             selectedTab = 3
                         default: break
@@ -257,7 +261,21 @@ struct GoalView: View {
             }
 
             HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    goalProgressChip(
+                        label: "進捗",
+                        value: "\(Int((timeProgress * 100).rounded()))%",
+                        color: Color(hex: "#1CB0F6")
+                    )
+                    goalProgressChip(
+                        label: "体重変化",
+                        value: "\(Int((weightProgress * 100).rounded()))%",
+                        color: Color.duoGreen
+                    )
+                }
+
                 Spacer()
+
                 Button {
                     refreshWatchData()
                 } label: {
@@ -310,9 +328,24 @@ struct GoalView: View {
             }
             .buttonStyle(.plain)
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.07), radius: 8, y: 3)
+    }
+
+    private func goalProgressChip(label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+            Text(value)
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.10))
+        .cornerRadius(9)
     }
 
     private func refreshWatchData() {
@@ -419,7 +452,7 @@ struct GoalView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.white)
+                .background(Color(.systemBackground))
             }
             .buttonStyle(.plain)
 
@@ -430,7 +463,7 @@ struct GoalView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
     }
 
     @ViewBuilder
@@ -686,6 +719,49 @@ struct GoalView: View {
 
     // MARK: - 今日のアクティビティカード
 
+    private var fitingoTrainingButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .requestStartTraining, object: nil)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundColor(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.white.opacity(0.20))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fitingoトレーニング")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("今日のセットを始める")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.86))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(hex: "#1CB0F6")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: Color.duoGreen.opacity(0.22), radius: 5, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var todayActivityWithHistoryCard: some View {
         VStack(spacing: 0) {
             todayActivityCard
@@ -693,7 +769,7 @@ struct GoalView: View {
                 .padding(.horizontal, 18)
             activityHistoryExpandable
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
@@ -1075,7 +1151,7 @@ struct GoalView: View {
             .frame(maxWidth: .infinity)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1201,7 +1277,7 @@ struct GoalView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1241,7 +1317,7 @@ struct GoalView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1369,6 +1445,10 @@ private struct GoalWeeklyCalorieCard: View {
         let dailyAvg = weekTotal / daysElapsed
 
         let balanceColor: Color = weekTotal > 0 ? Color(hex: "#FF4B4B") : Color.duoGreen
+        let mondayMass: Double? = data.first?.bodyMass
+        let latestMass: Double? = data.reversed().first(where: { $0.bodyMass != nil })?.bodyMass
+        let actualChange: Double? = mondayMass.flatMap { mon in latestMass.map { lat in lat - mon } }
+        let targetWeeklyKg = Double(dailyGoal) * 7.0 / 7700.0
 
         VStack(spacing: 0) {
             LinearGradient(
@@ -1423,13 +1503,8 @@ private struct GoalWeeklyCalorieCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
                 } else {
-                    HStack(alignment: .center, spacing: 4) {
-                        ForEach(data) { day in
-                            GoalWeeklyDayBarView(day: day, maxAbs: maxAbs, halfBarH: halfBarH)
-                        }
-                    }
-
-                    HStack(alignment: .bottom, spacing: 8) {
+                    // ─── 凡例（グラフ左上）───
+                    HStack(spacing: 8) {
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 1).fill(Color.duoGreen.opacity(0.85)).frame(width: 10, height: 4)
                             Text("消費超過").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
@@ -1439,22 +1514,64 @@ private struct GoalWeeklyCalorieCard: View {
                             Text("摂取超過").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
-                        // 右下: 理論値 / 実変化kg
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text("理論値 -0.2/週")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(Color.duoGreen)
-                            Text("実 -1.2kg")
-                                .font(.system(size: 11, weight: .black))
-                                .foregroundColor(Color.duoGreen)
+                    }
+
+                    HStack(alignment: .center, spacing: 4) {
+                        ForEach(data) { day in
+                            GoalWeeklyDayBarView(day: day, maxAbs: maxAbs, halfBarH: halfBarH)
                         }
                     }
+
+                    // ─── グラフ下3指標 ───
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("目標差異")
+                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                                Text((dailyGoal >= 0 ? "+" : "") + "\(dailyGoal)")
+                                    .font(.system(size: 12, weight: .black, design: .rounded))
+                                    .foregroundColor(dailyGoal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
+                                Text("kcal/日")
+                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                        Spacer()
+                        VStack(alignment: .center, spacing: 2) {
+                            Text("目標減少")
+                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                                Text(String(format: "%.2f", targetWeeklyKg))
+                                    .font(.system(size: 12, weight: .black, design: .rounded))
+                                    .foregroundColor(targetWeeklyKg <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
+                                Text("kg/週")
+                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("実")
+                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            if let ch = actualChange {
+                                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                                    Text(String(format: "%+.1f", ch))
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundColor(ch <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
+                                    Text("kg")
+                                        .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                }
+                            } else {
+                                Text("—")
+                                    .font(.system(size: 12, weight: .black)).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
@@ -1671,7 +1788,7 @@ private struct GoalWeeklyBurnCard: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
@@ -1866,7 +1983,7 @@ private struct GoalIntakeTrendCard: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
@@ -2158,6 +2275,7 @@ private struct GoalMotivatingBanner: View {
     var hasIntakeThisWeek: Bool = false
     var todaySteps: Int = 0
     var todayActiveCalories: Double = 0
+    var todayRestingCalories: Double = 0
     var todaySetCount: Int = 0
     var onAction: ((String) -> Void)? = nil
 
@@ -2185,6 +2303,18 @@ private struct GoalMotivatingBanner: View {
         if todayBalance > 300 {
             let priority = todayBalance > 700 ? 95 : 82
             candidates.append(("🍽️ 今日\(todayBalance)kcalオーバー。夕食を軽めにしてみよう →", Color(hex: "#FF9600"), "intake", priority))
+        }
+
+        // 安静時カロリー（基礎代謝）が低め
+        if todayRestingCalories > 0 {
+            let hour = Calendar.current.component(.hour, from: Date())
+            let dayProgress = min(1.0, max(0.0, Double(hour) / 24.0))
+            let expectedResting = 1400.0 * dayProgress
+            let isRestingLow = (hour >= 10 && todayRestingCalories < max(450, expectedResting * 0.75))
+                || (hour >= 18 && todayRestingCalories < 900)
+            if isRestingLow {
+                candidates.append(("🔥 安静時カロリー・基礎代謝が低め。筋トレをしよう！ →", Color(hex: "#FF9600"), "training", 88))
+            }
         }
 
         // 今日の運動なし
@@ -2228,7 +2358,7 @@ private struct GoalMotivatingBanner: View {
 
         return candidates
             .sorted { $0.priority > $1.priority }
-            .prefix(2)
+            .prefix(1)
             .map { (message: $0.message, color: $0.color, action: $0.action) }
     }
 

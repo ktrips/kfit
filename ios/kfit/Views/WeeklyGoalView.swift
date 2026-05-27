@@ -90,7 +90,7 @@ struct WeeklyGoalView: View {
                     }
                 }
                 .padding(24)
-                .background(Color.white).cornerRadius(16)
+                .background(Color(.systemBackground)).cornerRadius(16)
                 .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                 .padding(.horizontal, 20)
             } else {
@@ -123,7 +123,7 @@ struct WeeklyGoalView: View {
                 .font(.caption).foregroundColor(Color.duoSubtitle)
         }
         .padding(20)
-        .background(Color.white).cornerRadius(16)
+        .background(Color(.systemBackground)).cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
         .padding(.horizontal, 20)
     }
@@ -147,7 +147,7 @@ struct WeeklyGoalView: View {
                 .font(.caption2).foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white).cornerRadius(14)
+        .background(Color(.systemBackground)).cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
         .padding(.horizontal, 20)
     }
@@ -201,7 +201,7 @@ struct WeeklyGoalView: View {
             }
         }
         .padding(16)
-        .background(Color.white).cornerRadius(14)
+        .background(Color(.systemBackground)).cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
         .padding(.horizontal, 20)
     }

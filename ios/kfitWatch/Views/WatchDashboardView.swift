@@ -723,24 +723,148 @@ struct WatchDashboardView: View {
     }
 
     private func mindfulnessHistoryRow(_ session: WatchMindfulnessSession) -> some View {
-        HStack(spacing: 5) {
-            Text(session.emoji).font(.system(size: 12))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(session.typeLabel)
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundColor(.white)
-                Text(session.sourceLabel)
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.52))
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(session.emoji).font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(session.typeLabel)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.white)
+                    Text(session.sourceLabel)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.52))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(formatMindfulMinutes(session.durationMinutes))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(session.typeLabel == "Reflect" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
             }
-            Spacer()
-            Text(formatMindfulMinutes(session.durationMinutes))
-                .font(.system(size: 10, weight: .black, design: .rounded))
-                .foregroundColor(session.typeLabel == "Reflect" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
+            if session.averageHeartRate > 0 || session.averageHRV > 0 {
+                HStack(spacing: 8) {
+                    if session.averageHeartRate > 0 {
+                        HStack(spacing: 2) {
+                            Text("❤️").font(.system(size: 9))
+                            Text("\(Int(session.averageHeartRate)) bpm")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                    if session.averageHRV > 0 {
+                        HStack(spacing: 2) {
+                            Text("💙").font(.system(size: 9))
+                            Text("\(Int(session.averageHRV)) ms")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                }
+                .padding(.leading, 17)
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(7)
+    }
+
+    private var wellnessImpactHistorySection: some View {
+        let history = healthKit.mindfulnessImpactHistory
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text("📊").font(.system(size: 11))
+                Text("心拍・HRV 前後変化")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+                Spacer()
+                Text("\(history.count)件")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
+            if history.isEmpty {
+                Text("セッション完了後に記録されます")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(history.prefix(5)) { impact in
+                    wellnessImpactRow(impact)
+                }
+            }
+        }
+        .padding(7)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func wellnessImpactRow(_ impact: WatchMindfulnessImpact) -> some View {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "M/d HH:mm"
+        let dateStr = fmt.string(from: impact.startDate)
+        let emoji = impact.sessionType == "Reflect" ? "🤸" : "🧘"
+        let label = impact.sessionType == "Reflect" ? "ストレッチ" : "瞑想"
+        let hrDelta = Int(impact.heartRateDelta)
+        let hrvDelta = impact.hrvDelta
+        let hrColor: Color = hrDelta < 0 ? duoGreen : hrDelta > 0 ? Color(red: 1.0, green: 0.4, blue: 0.3) : .gray
+        let hrvColor: Color = hrvDelta > 0 ? duoGreen : hrvDelta < 0 ? Color(red: 1.0, green: 0.4, blue: 0.3) : .gray
+        let hrDeltaStr = hrDelta == 0 ? "±0" : (hrDelta > 0 ? "+\(hrDelta)" : "\(hrDelta)")
+        let hrvDeltaStr: String = {
+            if abs(hrvDelta) < 0.5 { return "±0" }
+            return String(format: hrvDelta > 0 ? "+%.0f" : "%.0f", hrvDelta)
+        }()
+        let stressDelta = impact.stressDelta
+        let stressDeltaStr = stressDelta == 0 ? "±0" : (stressDelta > 0 ? "+\(stressDelta)" : "\(stressDelta)")
+        let stressColor: Color = stressDelta < 0 ? duoGreen : stressDelta > 0 ? Color(red: 1.0, green: 0.4, blue: 0.3) : .gray
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Text(emoji).font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(.white)
+                Spacer()
+                Text(dateStr)
+                    .font(.system(size: 8))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            HStack(spacing: 10) {
+                HStack(spacing: 2) {
+                    Text("❤️").font(.system(size: 9))
+                    Text("\(Int(impact.before.heartRate))→\(Int(impact.after.heartRate))")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(hrDeltaStr)
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(hrColor)
+                }
+                HStack(spacing: 2) {
+                    Text("💓").font(.system(size: 9))
+                    Text(String(format: "%.0f→%.0f", impact.before.hrv, impact.after.hrv))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(hrvDeltaStr)
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(hrvColor)
+                }
+            }
+            HStack(spacing: 2) {
+                Text("ストレス")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.58))
+                Text("\(impact.stressBefore)→\(impact.stressAfter)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.88))
+                Text(stressDeltaStr)
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundColor(stressColor)
+                Text(stressDelta < 0 ? "改善" : stressDelta > 0 ? "上昇" : "維持")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(stressColor)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
         .background(Color.white.opacity(0.06))
         .cornerRadius(7)
     }
@@ -1334,6 +1458,9 @@ private struct WatchBreatheFlowView: View {
     @State private var isSaving = false
     @State private var didComplete = false
     @State private var inhaleHapticTask: Task<Void, Never>?
+    @State private var beforeVitals: WatchWellnessVitals? = nil
+    @State private var sessionStartDate = Date()
+    @State private var animIsInhaling: Bool = false
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private var cycleSecond: Int { elapsedSeconds % 13 }
@@ -1344,38 +1471,22 @@ private struct WatchBreatheFlowView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(red: 0.20, green: 0.48, blue: 0.95), Color(red: 0.50, green: 0.35, blue: 0.95)],
+                colors: [Color(red: 0.30, green: 0.18, blue: 0.52), Color(red: 0.48, green: 0.28, blue: 0.68)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            BreathingBackground(isInhaling: isInhaling, color: .white)
+            BreathingBackground(isInhaling: animIsInhaling, color: .white)
 
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Breathe")
-                        .font(.system(size: 11, weight: .black))
-                        .foregroundColor(.white.opacity(0.75))
-                    Spacer()
-                    Button { isPresented = false } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white.opacity(0.75))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                BreathingRelaxAnimation(isInhaling: isInhaling)
-                    .frame(width: 86, height: 62)
+            VStack(spacing: 8) {
+                Text("1分瞑想")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
 
                 Text(cue)
                     .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundColor(.white)
-
-                Text("呼吸に意識を向ける")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.75))
 
                 ZStack {
                     Circle()
@@ -1388,7 +1499,32 @@ private struct WatchBreatheFlowView: View {
                         .font(.system(size: 14, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                 }
-                .frame(width: 58, height: 58)
+                .frame(width: 62, height: 62)
+
+                if healthKit.averageHeartRate > 0 || healthKit.latestHRV > 0 {
+                    HStack(spacing: 14) {
+                        if healthKit.averageHeartRate > 0 {
+                            VStack(spacing: 1) {
+                                Text("\(healthKit.averageHeartRate)")
+                                    .font(.system(size: 15, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("BPM")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                        if healthKit.latestHRV > 0 {
+                            VStack(spacing: 1) {
+                                Text(String(format: "%.0f", healthKit.latestHRV))
+                                    .font(.system(size: 15, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("HRV")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                    }
+                }
 
                 if isSaving {
                     ProgressView().tint(.white)
@@ -1397,8 +1533,13 @@ private struct WatchBreatheFlowView: View {
             .padding(10)
         }
         .onAppear {
+            sessionStartDate = Date()
             WKInterfaceDevice.current().play(.start)
             startInhaleHaptics()
+            Task {
+                let v = await healthKit.measureCurrentWellnessVitals()
+                await MainActor.run { beforeVitals = v }
+            }
         }
         .onDisappear {
             inhaleHapticTask?.cancel()
@@ -1406,6 +1547,7 @@ private struct WatchBreatheFlowView: View {
         .onReceive(timer) { _ in
             guard !didComplete else { return }
             elapsedSeconds += 1
+            if isInhaling != animIsInhaling { animIsInhaling = isInhaling }
             if elapsedSeconds % 13 == 0 {
                 startInhaleHaptics()
             }
@@ -1418,12 +1560,12 @@ private struct WatchBreatheFlowView: View {
     private func startInhaleHaptics() {
         inhaleHapticTask?.cancel()
         inhaleHapticTask = Task {
-            for _ in 0..<24 {
+            for _ in 0..<46 {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     WKInterfaceDevice.current().play(.click)
                 }
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: 130_000_000)
             }
         }
     }
@@ -1433,8 +1575,14 @@ private struct WatchBreatheFlowView: View {
         isSaving = true
         inhaleHapticTask?.cancel()
         playCompletionHaptic()
+        let capturedBefore = beforeVitals
+        let startDate = sessionStartDate
         Task {
-            await healthKit.saveMindfulnessSession(durationMinutes: 1, sessionType: "Breathe")
+            let after = await healthKit.measureCurrentWellnessVitals()
+            let impact: WatchMindfulnessImpact? = capturedBefore.map {
+                WatchMindfulnessImpact(sessionType: "Breathe", startDate: startDate, endDate: Date(), before: $0, after: after)
+            }
+            await healthKit.saveMindfulnessSession(durationMinutes: 1, sessionType: "Breathe", impact: impact)
             await healthKit.fetchTodayMindfulness()
             await MainActor.run {
                 isSaving = false
@@ -1457,14 +1605,15 @@ private struct WatchBreatheFlowView: View {
 
 private struct BreathingRelaxAnimation: View {
     let isInhaling: Bool
+    var emoji: String = "🧘"
 
     var body: some View {
         ZStack {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .stroke(Color.white.opacity(0.18 - Double(index) * 0.04), lineWidth: 2)
-                    .scaleEffect(isInhaling ? CGFloat(1.10 + Double(index) * 0.22) : CGFloat(0.74 + Double(index) * 0.14))
-                    .animation(.easeInOut(duration: isInhaling ? 5.8 : 6.8), value: isInhaling)
+                    .stroke(Color.white.opacity(0.22 - Double(index) * 0.045), lineWidth: 2.4)
+                    .scaleEffect(isInhaling ? CGFloat(1.30 + Double(index) * 0.34) : CGFloat(0.50 + Double(index) * 0.12))
+                    .animation(.easeInOut(duration: isInhaling ? 5.6 : 6.6), value: isInhaling)
             }
             Circle()
                 .fill(
@@ -1475,10 +1624,12 @@ private struct BreathingRelaxAnimation: View {
                         endRadius: 36
                     )
                 )
-                .scaleEffect(isInhaling ? 1.08 : 0.72)
-                .animation(.easeInOut(duration: isInhaling ? 5.8 : 6.8), value: isInhaling)
-            Text("🧘")
-                .font(.system(size: 26))
+                .scaleEffect(isInhaling ? 1.24 : 0.54)
+                .animation(.easeInOut(duration: isInhaling ? 5.6 : 6.6), value: isInhaling)
+            Text(emoji)
+                .font(.system(size: 28))
+                .scaleEffect(isInhaling ? 1.06 : 0.94)
+                .animation(.easeInOut(duration: isInhaling ? 5.6 : 6.6), value: isInhaling)
         }
     }
 }
@@ -1521,12 +1672,15 @@ private struct WatchStretchFlowView: View {
     @State private var isSaving = false
     @State private var didComplete = false
     @State private var inhaleHapticTask: Task<Void, Never>?
+    @State private var beforeVitals: WatchWellnessVitals? = nil
+    @State private var sessionStartDate = Date()
+    @State private var animIsInhaling: Bool = false
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let poses: [(emoji: String, title: String, cue: String)] = [
-        ("🙆", "首・肩をゆるめる", "息を吸って肩を上げ、吐きながら力を抜く"),
-        ("🧍", "背中を伸ばす", "胸を開いて、背中をゆっくり伸ばす"),
-        ("🤸", "脚と腰をほぐす", "片脚ずつ軽く伸ばして、呼吸を続ける"),
+        ("🔄", "仰向けツイスト", "膝を倒して背骨をゆっくりねじり、呼吸を続ける"),
+        ("🐱", "猫伸びのポーズ", "四つ這いで背中を丸め、次に反らして繰り返す"),
+        ("🙏", "礼拝のポーズ", "手を合わせ胸の前で深呼吸、全身の力を抜く"),
     ]
 
     private var phaseIndex: Int { min(elapsedSeconds / 60, poses.count - 1) }
@@ -1546,41 +1700,23 @@ private struct WatchStretchFlowView: View {
             )
             .ignoresSafeArea()
 
-            BreathingBackground(isInhaling: isInhaling, color: .white)
+            BreathingBackground(isInhaling: animIsInhaling, color: .white)
 
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Reflect")
-                        .font(.system(size: 11, weight: .black))
-                        .foregroundColor(.white.opacity(0.75))
-                    Spacer()
-                    Button {
-                        isPresented = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white.opacity(0.75))
-                    }
-                    .buttonStyle(.plain)
-                }
+            VStack(spacing: 7) {
+                Text("3分ストレッチ")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
 
-                Text(currentPose.emoji)
-                    .font(.system(size: 42))
+                Text("\(phaseIndex + 1)/3")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .background(Color.white.opacity(0.22))
+                    .cornerRadius(6)
 
-                VStack(spacing: 3) {
-                    Text("\(phaseIndex + 1)/3")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
-                        .foregroundColor(.white.opacity(0.75))
-                    Text(currentPose.title)
-                        .font(.system(size: 16, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                    Text(currentPose.cue)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.78))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text(breathCue)
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
 
                 ZStack {
                     Circle()
@@ -1589,31 +1725,51 @@ private struct WatchStretchFlowView: View {
                         .trim(from: 0, to: CGFloat(elapsedSeconds) / 180.0)
                         .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    VStack(spacing: 0) {
-                        Text(breathCue)
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundColor(.white)
-                        Text("\(remainingSeconds)s")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.75))
+                    Text("\(remainingSeconds)s")
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 58, height: 58)
+
+                if healthKit.averageHeartRate > 0 || healthKit.latestHRV > 0 {
+                    HStack(spacing: 14) {
+                        if healthKit.averageHeartRate > 0 {
+                            VStack(spacing: 1) {
+                                Text("\(healthKit.averageHeartRate)")
+                                    .font(.system(size: 15, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("BPM")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                        if healthKit.latestHRV > 0 {
+                            VStack(spacing: 1) {
+                                Text(String(format: "%.0f", healthKit.latestHRV))
+                                    .font(.system(size: 15, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("HRV")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
                     }
                 }
-                .frame(width: 72, height: 72)
 
                 if isSaving {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Text("Hapticに合わせて呼吸")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.72))
+                    ProgressView().tint(.white)
                 }
             }
             .padding(10)
         }
         .onAppear {
+            sessionStartDate = Date()
             WKInterfaceDevice.current().play(.start)
             startInhaleHaptics()
+            Task {
+                let v = await healthKit.measureCurrentWellnessVitals()
+                await MainActor.run { beforeVitals = v }
+            }
         }
         .onDisappear {
             inhaleHapticTask?.cancel()
@@ -1621,6 +1777,7 @@ private struct WatchStretchFlowView: View {
         .onReceive(timer) { _ in
             guard !didComplete else { return }
             elapsedSeconds += 1
+            if isInhaling != animIsInhaling { animIsInhaling = isInhaling }
             playBreathingHapticIfNeeded()
             if elapsedSeconds >= 180 {
                 completeStretch()
@@ -1629,23 +1786,37 @@ private struct WatchStretchFlowView: View {
     }
 
     private func playBreathingHapticIfNeeded() {
+        // 1分ごとに強いHaptic（60s, 120s）
+        if elapsedSeconds % 60 == 0 && elapsedSeconds > 0 && elapsedSeconds < 180 {
+            playMilestoneHaptic()
+            return
+        }
         if elapsedSeconds % 13 == 0 {
             startInhaleHaptics()
         }
-        if elapsedSeconds % 60 == 0 {
-            WKInterfaceDevice.current().play(.success)
+    }
+
+    private func playMilestoneHaptic() {
+        inhaleHapticTask?.cancel()
+        Task {
+            for _ in 0..<3 {
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(.notification)
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
         }
     }
 
     private func startInhaleHaptics() {
         inhaleHapticTask?.cancel()
         inhaleHapticTask = Task {
-            for _ in 0..<24 {
+            for _ in 0..<46 {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     WKInterfaceDevice.current().play(.click)
                 }
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: 130_000_000)
             }
         }
     }
@@ -1655,8 +1826,14 @@ private struct WatchStretchFlowView: View {
         isSaving = true
         inhaleHapticTask?.cancel()
         playCompletionHaptic()
+        let capturedBefore = beforeVitals
+        let startDate = sessionStartDate
         Task {
-            await healthKit.saveMindfulnessSession(durationMinutes: 3, sessionType: "Reflect")
+            let after = await healthKit.measureCurrentWellnessVitals()
+            let impact: WatchMindfulnessImpact? = capturedBefore.map {
+                WatchMindfulnessImpact(sessionType: "Reflect", startDate: startDate, endDate: Date(), before: $0, after: after)
+            }
+            await healthKit.saveMindfulnessSession(durationMinutes: 3, sessionType: "Reflect", impact: impact)
             await healthKit.fetchTodayMindfulness()
             await MainActor.run {
                 isSaving = false

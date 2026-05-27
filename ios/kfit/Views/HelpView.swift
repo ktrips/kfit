@@ -12,13 +12,13 @@ private let helpItems: [HelpItem] = [
         icon: "💪",
         title: "トレーニングの記録方法",
         content: """
-        1. ダッシュボードの Fitingo ボタンをタップ
+        1. ダッシュボードの ROUTIN ボタンをタップ
         2. 種目（プッシュアップ・スクワットなど）を選択
         3. ＋ ボタンでレップ数を入力、または「モーション自動検出」をONにする
         4. 「✓ トレーニングを記録」で保存
         5. XP が獲得されてダッシュボードに戻ります
-        【Fitingo ボタンの表情】
-        • 今日の始まり → 落ち着いたマスコットと「今日のFitingoを始めよう！」
+        【ROUTIN ボタンの表情】
+        • 今日の始まり → 落ち着いたマスコットと「今日のROUTINを始めよう！」
         • 目標に対して遅れているとき → 炎マスコットと「まだ全然終わってないよ！今すぐやろう！」
         • 達成済み → 達成メッセージ
         ボタン背景は進捗に合わせてグリーン〜シアン、黄色、オレンジ、赤へ変化します。
@@ -189,9 +189,9 @@ private let helpItems: [HelpItem] = [
     ),
     HelpItem(
         icon: "🎯",
-        title: "Diet Goal（ゴールタブ）",
+        title: "FIT（ダイエット目標タブ）",
         content: """
-        下部メニューの「GOAL」では、体重・体脂肪・カロリー収支の目標を管理できます。
+        下部メニューの「FIT」では、体重・体脂肪・カロリー収支の目標を管理できます。
         【設定できる項目】
         • 目標体重・目標体脂肪率・目標日
         • スタート日・スタート体重・スタート体脂肪率
@@ -229,7 +229,7 @@ private let helpItems: [HelpItem] = [
         title: "マインドフルネス",
         content: """
         ダッシュボードのマインドフルネスボタンをタップすると、iOSアプリ内で1分の呼吸セッションを開始します。
-        • 5秒ごとに「吸って / 吐いて」が切り替わり、Hapticで呼吸タイミングを促します
+        • 7秒吸って、8秒吐くリズムで「吸って / 吐いて」が切り替わり、Hapticで呼吸タイミングを促します
         • 1分完了後、Apple Healthにマインドフルネスとして自動保存されます
         • 1分以内の短いセッション（Breathe相当）が時間帯のマインドフルネス回数にカウントされます
         • Reflect セッションはストレッチ目標（分数）にカウントされます（🤸）
@@ -320,7 +320,7 @@ struct HelpView: View {
                             Spacer()
                         }
                         .padding(16)
-                        .background(Color.white)
+                        .background(Color(.systemBackground))
                         .cornerRadius(14)
                         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         .padding(.horizontal, 20)
@@ -368,7 +368,7 @@ struct HelpView: View {
                     .padding(16)
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
         .padding(.horizontal, 20)

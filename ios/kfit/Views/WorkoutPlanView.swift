@@ -171,7 +171,7 @@ private struct DetailSheet: View {
                 }
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
     }
 
     private var detailContent: some View {
@@ -396,7 +396,7 @@ struct WorkoutPlanView: View {
             Text("🎯 6ヶ月で体脂肪 -5%、1年で6パックへ")
                 .font(.caption).foregroundColor(.secondary)
         }
-        .padding(16).background(Color.white).cornerRadius(18)
+        .padding(16).background(Color(.systemBackground)).cornerRadius(18)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 
@@ -412,7 +412,7 @@ struct WorkoutPlanView: View {
             }
             Spacer()
         }
-        .padding(16).background(Color.white).cornerRadius(18)
+        .padding(16).background(Color(.systemBackground)).cornerRadius(18)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 
@@ -453,7 +453,7 @@ struct WorkoutPlanView: View {
 
             roundSection(round: 2, done: r2Done)
         }
-        .padding(16).background(Color.white).cornerRadius(18)
+        .padding(16).background(Color(.systemBackground)).cornerRadius(18)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 
@@ -570,7 +570,7 @@ struct WorkoutPlanView: View {
             }
             .padding(12).background(Color.duoBg).cornerRadius(12)
         }
-        .padding(16).background(Color.white).cornerRadius(18)
+        .padding(16).background(Color(.systemBackground)).cornerRadius(18)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 }

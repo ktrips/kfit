@@ -10,6 +10,8 @@ struct MindfulSession: Identifiable {
     let sourceName: String
     let sourceBundleId: String
     let sessionTypeHint: String?
+    var averageHeartRate: Double = 0
+    var averageHRV: Double = 0
 
     /// ソースから判定した種別ラベル
     var sessionTypeLabel: String {
@@ -303,6 +305,7 @@ final class HealthKitManager: ObservableObject {
 
     // ワークアウト
     @Published var todayWorkoutMinutes: Int = 0         // 今日のワークアウト時間（分）
+    @Published var todayWorkoutCount: Int = 0           // 今日のワークアウト件数
 
     // スタンド時間
     @Published var todayStandHours: Int = 0             // 今日のスタンド時間（時間）
@@ -569,6 +572,7 @@ final class HealthKitManager: ObservableObject {
         async let mindfulness = fetchTodayMindfulness()
         async let daylight = fetchTodayDaylight()
         async let exerciseMinutes = fetchTodayExerciseMinutes()
+        async let workoutCount = fetchTodayWorkoutCount()
         async let activityRings = fetchTodayActivitySummary()
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples  = fetchTodayMealSamplesRaw()
@@ -630,6 +634,7 @@ final class HealthKitManager: ObservableObject {
         previousMindfulnessSessions = newSessions
         todayDaylightMinutes  = await daylight
         todayWorkoutMinutes   = await exerciseMinutes
+        todayWorkoutCount     = await workoutCount
         let rings = await activityRings
         activityMoveCalories    = rings.moveCalories
         activityMoveGoal        = rings.moveGoal
@@ -655,6 +660,7 @@ final class HealthKitManager: ObservableObject {
         async let avgHR = fetchTodayAverageHeartRate()
         async let mindfulness = fetchTodayMindfulness()
         async let exerciseMinutes = fetchTodayExerciseMinutes()
+        async let workoutCount = fetchTodayWorkoutCount()
         async let activityRings = fetchTodayActivitySummary()
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples = fetchTodayMealSamplesRaw()
@@ -668,6 +674,7 @@ final class HealthKitManager: ObservableObject {
         todayAvgHeartRate = await avgHR
         applyMindfulnessResult(await mindfulness)
         todayWorkoutMinutes = await exerciseMinutes
+        todayWorkoutCount = await workoutCount
         let rings = await activityRings
         activityMoveCalories = rings.moveCalories
         activityMoveGoal = rings.moveGoal
@@ -791,6 +798,7 @@ final class HealthKitManager: ObservableObject {
         async let bodyFat = fetchLatestBodyFatPercentage()
         async let mindfulness = fetchTodayMindfulness()
         async let exerciseMinutes = fetchTodayExerciseMinutes()
+        async let workoutCount = fetchTodayWorkoutCount()
 
         todaySteps = await steps
         todayActiveCalories = await activeCalories
@@ -806,6 +814,7 @@ final class HealthKitManager: ObservableObject {
         latestBodyFatPercentage = await bodyFat
         applyMindfulnessResult(await mindfulness)
         todayWorkoutMinutes = await exerciseMinutes
+        todayWorkoutCount = await workoutCount
     }
 
     private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval? = nil) -> Bool {
@@ -1904,33 +1913,42 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
-        return await withCheckedContinuation { continuation in
+        let rawSamples: [HKCategorySample] = await withCheckedContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
-                guard let samples = samples as? [HKCategorySample] else {
-                    continuation.resume(returning: (0, 0, []))
-                    return
-                }
-
-                var totalMinutes: Double = 0
-                var mindfulSamples: [MindfulSession] = []
-                for sample in samples {
-                    let duration = sample.endDate.timeIntervalSince(sample.startDate) / 60.0
-                    totalMinutes += duration
-                    mindfulSamples.append(MindfulSession(
-                        startDate: sample.startDate,
-                        durationMinutes: duration,
-                        sourceName: sample.sourceRevision.source.name,
-                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
-                        sessionTypeHint: sample.metadata?["kfitSessionType"] as? String
-                    ))
-                }
-
-                // 1分セッションのみをマインドフルネスカウントとして扱う（Apple Watch 1分セッション基準）
-                let oneMinuteCount = mindfulSamples.filter { $0.durationMinutes <= 1.5 }.count
-                continuation.resume(returning: (totalMinutes, oneMinuteCount, mindfulSamples))
+                continuation.resume(returning: (samples as? [HKCategorySample]) ?? [])
             }
             store.execute(query)
         }
+
+        var totalMinutes: Double = 0
+        var mindfulSamples: [MindfulSession] = []
+        for sample in rawSamples {
+            let duration = sample.endDate.timeIntervalSince(sample.startDate) / 60.0
+            totalMinutes += duration
+            let sessionPred = HKQuery.predicateForSamples(withStart: sample.startDate, end: sample.endDate, options: .strictStartDate)
+            let hr = await fetchDiscreteAverage(
+                type: HKQuantityType.quantityType(forIdentifier: .heartRate),
+                predicate: sessionPred,
+                unit: HKUnit.count().unitDivided(by: .minute())
+            )
+            let hrv = await fetchDiscreteAverage(
+                type: HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
+                predicate: sessionPred,
+                unit: .secondUnit(with: .milli)
+            )
+            mindfulSamples.append(MindfulSession(
+                startDate: sample.startDate,
+                durationMinutes: duration,
+                sourceName: sample.sourceRevision.source.name,
+                sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+                sessionTypeHint: sample.metadata?["kfitSessionType"] as? String,
+                averageHeartRate: hr,
+                averageHRV: hrv
+            ))
+        }
+
+        let oneMinuteCount = mindfulSamples.filter { $0.durationMinutes <= 1.5 }.count
+        return (totalMinutes, oneMinuteCount, mindfulSamples)
     }
 
     /// マインドフルネスデータを手動で更新
@@ -2124,6 +2142,22 @@ final class HealthKitManager: ObservableObject {
         let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
         let value = await fetchCumulativeSum(type: type, predicate: pred, unit: .minute())
         return Int(value)
+    }
+
+    private func fetchTodayWorkoutCount() async -> Int {
+        let start = Calendar.current.startOfDay(for: Date())
+        let pred  = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKWorkoutType.workoutType(),
+                predicate: pred,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                continuation.resume(returning: samples?.count ?? 0)
+            }
+            store.execute(query)
+        }
     }
 
     // MARK: - 睡眠スコア分析

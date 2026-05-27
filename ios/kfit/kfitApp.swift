@@ -9,22 +9,25 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
     case fit = 0
     case goal = 1
     case mind = 2
+    case food = 3
 
     var id: Int { rawValue }
 
     var label: String {
         switch self {
-        case .fit: return "FIT"
-        case .goal: return "GOAL"
+        case .fit: return "ROUTIN"
+        case .goal: return "FIT"
         case .mind: return "MIND"
+        case .food: return "FOOD"
         }
     }
 
     var settingsLabel: String {
         switch self {
-        case .fit: return "FITタブ"
-        case .goal: return "GOALタブ"
+        case .fit: return "ROUTINタブ"
+        case .goal: return "FITタブ"
         case .mind: return "MINDタブ"
+        case .food: return "FOODタブ"
         }
     }
 
@@ -33,6 +36,7 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
         case .fit: return "house.fill"
         case .goal: return "target"
         case .mind: return "brain.head.profile"
+        case .food: return "fork.knife"
         }
     }
 }
@@ -41,17 +45,19 @@ enum MainMenuTabPreferences {
     static let fitVisibleKey = "mainTab.fit.visible"
     static let goalVisibleKey = "mainTab.goal.visible"
     static let mindVisibleKey = "mainTab.mind.visible"
+    static let foodVisibleKey = "mainTab.food.visible"
     static let logVisibleKey = "mainTab.log.visible"
     static let defaultTabKey = "mainTab.default"
     static let orderKey = "mainTab.order"
 
-    static let defaultOrder = [MainMenuTab.fit, .goal, .mind]
+    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind]
 
     static func visibleKey(for tab: MainMenuTab) -> String {
         switch tab {
         case .fit: return fitVisibleKey
         case .goal: return goalVisibleKey
         case .mind: return mindVisibleKey
+        case .food: return foodVisibleKey
         }
     }
 
@@ -60,8 +66,15 @@ enum MainMenuTabPreferences {
             .split(separator: ",")
             .compactMap { Int($0).flatMap(MainMenuTab.init(rawValue:)) }
 
+        // 不足タブをdefaultOrderの正しい位置に挿入
         for tab in defaultOrder where !result.contains(tab) {
-            result.append(tab)
+            let defaultIdx = defaultOrder.firstIndex(of: tab)!
+            let predecessors = Set(defaultOrder.prefix(defaultIdx))
+            if let insertAfterIdx = result.indices.last(where: { predecessors.contains(result[$0]) }) {
+                result.insert(tab, at: result.index(after: insertAfterIdx))
+            } else {
+                result.insert(tab, at: 0)
+            }
         }
 
         return result.filter { defaultOrder.contains($0) }
@@ -70,6 +83,10 @@ enum MainMenuTabPreferences {
     static func storedOrder(from tabs: [MainMenuTab]) -> String {
         tabs.map { String($0.rawValue) }.joined(separator: ",")
     }
+}
+
+extension Notification.Name {
+    static let requestStartTraining = Notification.Name("requestStartTraining")
 }
 
 @main
@@ -118,11 +135,13 @@ struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
+    @State private var showTrainingTracker = false
     @State private var isTabBarHidden = false
     @State private var tabBarHideWorkItem: DispatchWorkItem?
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
@@ -131,6 +150,14 @@ struct MainTabView: View {
         ZStack(alignment: .bottom) {
             mainContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            if value.translation.height < -20 && !isTabBarHidden {
+                                hideTabBarNow()
+                            }
+                        }
+                )
 
             bottomRevealZone
 
@@ -147,6 +174,15 @@ struct MainTabView: View {
                 RecordMenuView(isPresented: $showRecordMenu)
                     .environmentObject(authManager)
             }
+            .fullScreenCover(isPresented: $showTrainingTracker) {
+                ExerciseTrackerView(isPresented: $showTrainingTracker)
+                    .environmentObject(authManager)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
+                selectedTab = MainMenuTab.fit.rawValue
+                showTrainingTracker = true
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
+            }
             .onAppear {
                 selectedTab = defaultVisibleTab.rawValue
                 normalizeSelection()
@@ -159,6 +195,7 @@ struct MainTabView: View {
             .onChange(of: fitVisible) { _, _ in normalizeSelection() }
             .onChange(of: goalVisible) { _, _ in normalizeSelection() }
             .onChange(of: mindVisible) { _, _ in normalizeSelection() }
+            .onChange(of: foodVisible) { _, _ in normalizeSelection() }
             .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
             .onChange(of: tabOrderRaw) { _, _ in normalizeSelection() }
     }
@@ -168,6 +205,7 @@ struct MainTabView: View {
         switch selectedTab {
         case 1:  GoalView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         case 2:  MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+        case 3:  FoodView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
         case 5:  MoreView()
         default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
@@ -195,6 +233,7 @@ struct MainTabView: View {
         case .fit: return fitVisible
         case .goal: return goalVisible
         case .mind: return mindVisible
+        case .food: return foodVisible
         }
     }
 
@@ -366,7 +405,7 @@ struct MainTabView: View {
             }
         }
         tabBarHideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
     }
 
     private func checkEndOfDayCalorieTopUp() {
@@ -382,6 +421,7 @@ struct HeaderNavigationMenu: View {
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
@@ -392,6 +432,7 @@ struct HeaderNavigationMenu: View {
             case .fit: return fitVisible
             case .goal: return goalVisible
             case .mind: return mindVisible
+            case .food: return foodVisible
             }
         }
         return visible.isEmpty ? [.fit] : visible
@@ -482,22 +523,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let userInfo = response.notification.request.content.userInfo
 
         // アクションボタンがタップされた場合
-        if response.actionIdentifier == NotificationManager.Action.startWorkout {
-            print("[AppDelegate] 🏋️ Start Workout action tapped - sending signal to Watch")
-            // Watchアプリを自動起動
-            iOSWatchBridge.shared.sendStartWorkoutSignal()
-        } else if response.actionIdentifier == NotificationManager.Action.recordWeight {
-            print("[AppDelegate] ⚖️ Record Weight action tapped")
-            // 体重記録画面への遷移（将来実装）
-        }
-        // 通知本体がタップされた場合（デフォルトアクション）
-        else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
-            if let action = userInfo["action"] as? String {
-                if action == "startWorkout" {
-                    print("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
-                    // Watchアプリを自動起動
-                    iOSWatchBridge.shared.sendStartWorkoutSignal()
-                }
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            if let action = userInfo["action"] as? String, action == "startWorkout" {
+                print("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
             }
         }
 

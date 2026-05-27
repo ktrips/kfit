@@ -251,7 +251,7 @@ struct MindView: View {
             WeeklyHRVAverageChart(days: healthKit.weeklyHRVAverages)
                 .frame(height: 132)
                 .padding(10)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(14)
         }
         .padding(10)
@@ -264,7 +264,7 @@ struct MindView: View {
             HRVTrendChart(samples: healthKit.hrvSamples)
                 .frame(height: 126)
                 .padding(10)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(14)
         }
         .padding(10)
@@ -302,7 +302,7 @@ struct MindView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.white)
+                .background(Color(.systemBackground))
             }
             .buttonStyle(.plain)
 
@@ -327,7 +327,7 @@ struct MindView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -433,7 +433,7 @@ struct MindView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
     }
 
@@ -543,7 +543,7 @@ struct MindView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(18)
             .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
         }
@@ -831,7 +831,7 @@ struct MindView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(18)
         .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
     }
@@ -1399,7 +1399,7 @@ private struct HRVStressHelpView: View {
                         thresholdRow("高い / High", detail: "HRV 20ms未満", color: Color(hex: "#FF4B4B"))
                     }
                     .padding(14)
-                    .background(Color.white)
+                    .background(Color(.systemBackground))
                     .cornerRadius(16)
 
                     helpSection(
@@ -1432,7 +1432,7 @@ private struct HRVStressHelpView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
     }
 

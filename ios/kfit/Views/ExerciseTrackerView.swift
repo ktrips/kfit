@@ -247,7 +247,7 @@ struct ExerciseTrackerView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, showWorkoutGIF ? 4 : 0)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -399,7 +399,7 @@ struct ExerciseTrackerView: View {
             }
         }
         .padding(12)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }

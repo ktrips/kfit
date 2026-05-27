@@ -285,7 +285,10 @@ class TimeSlotManager: ObservableObject {
                     globalProgress.sleepScore = globalProgressData["sleepScore"] as? Int ?? 0
                     globalProgress.pfcScore = globalProgressData["pfcScore"] as? Int ?? 0
                     globalProgress.weightMeasured = globalProgressData["weightMeasured"] as? Bool ?? false
-                    globalProgress.completedCustomGoalIds = globalProgressData["completedCustomGoalIds"] as? [String] ?? []
+                    let firestoreIds = globalProgressData["completedCustomGoalIds"] as? [String] ?? []
+                    // UserDefaults キャッシュとマージして、Firestore 書き込み中の競合による消失を防ぐ
+                    let cachedIds = loadCustomGoalIdsFromCache()
+                    globalProgress.completedCustomGoalIds = Array(Set(firestoreIds + cachedIds))
                     if let timestamp = globalProgressData["lastUpdated"] as? Timestamp {
                         globalProgress.lastUpdated = timestamp.dateValue()
                     }
@@ -611,6 +614,22 @@ class TimeSlotManager: ObservableObject {
 
     // MARK: - カスタム目標のトグル
 
+    /// カスタム目標達成状態の UserDefaults キャッシュキー（日付別）
+    private func customGoalCacheKey() -> String {
+        let dateStr = dateString(from: Calendar.current.startOfDay(for: Date()))
+        return "completedCustomGoalIds_v1_\(dateStr)"
+    }
+
+    /// カスタム目標IDリストを UserDefaults にも即時保存
+    private func saveCustomGoalIdsToCache(_ ids: [String]) {
+        UserDefaults.standard.set(ids, forKey: customGoalCacheKey())
+    }
+
+    /// UserDefaults キャッシュからカスタム目標IDリストを読み込む
+    private func loadCustomGoalIdsFromCache() -> [String] {
+        UserDefaults.standard.stringArray(forKey: customGoalCacheKey()) ?? []
+    }
+
     /// カスタム目標の達成状態をトグル
     func toggleCustomGoal(id: String) async {
         var updatedProgress = progress
@@ -621,6 +640,8 @@ class TimeSlotManager: ObservableObject {
         }
         updatedProgress.globalProgress.lastUpdated = Date()
         progress = updatedProgress
+        // UserDefaults に即時保存（Firestore 書き込み中の競合を防ぐ）
+        saveCustomGoalIdsToCache(progress.globalProgress.completedCustomGoalIds)
         await saveTodayProgress()
     }
 

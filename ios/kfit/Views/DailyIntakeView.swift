@@ -85,20 +85,29 @@ struct DailyIntakeView: View {
     // MARK: - サマリーカード
 
     private var summaryCard: some View {
-        VStack(spacing: 12) {
+        // Apple Health の値をベースに、ローカルのコーヒー・アルコール量を水分に加算
+        let hkCalories = Int(healthKit.todayIntakeCalories)
+        let hkWater    = Int(healthKit.todayIntakeWater)
+        let coffeeMl   = todaySummary.coffeeLogs.reduce(0) { $0 + $1.amountMl }
+        let alcoholMl  = todaySummary.alcoholLogs.reduce(0) { $0 + $1.amountMl }
+        let totalWater = hkWater + coffeeMl + alcoholMl
+        let hkCaffeine = Int(healthKit.todayIntakeCaffeine)
+        let hkAlcohol  = healthKit.todayIntakeAlcohol
+
+        return VStack(spacing: 12) {
             HStack(spacing: 20) {
-                summaryItem(title: "カロリー", value: "\(todaySummary.totalCalories)", unit: "kcal", color: .duoOrange)
+                summaryItem(title: "カロリー", value: "\(hkCalories)", unit: "kcal", color: .duoOrange)
                 Divider()
-                summaryItem(title: "水分", value: "\(todaySummary.totalWaterMl)", unit: "ml", color: .duoBlue)
+                summaryItem(title: "水分", value: "\(totalWater)", unit: "ml", color: .duoBlue)
             }
             .frame(height: 60)
 
             Divider()
 
             HStack(spacing: 20) {
-                summaryItem(title: "カフェイン", value: "\(todaySummary.totalCaffeineMg)", unit: "mg", color: .duoBrown)
+                summaryItem(title: "カフェイン", value: "\(hkCaffeine)", unit: "mg", color: .duoBrown)
                 Divider()
-                summaryItem(title: "アルコール", value: String(format: "%.1f", todaySummary.totalAlcoholG), unit: "g", color: .duoPurple)
+                summaryItem(title: "アルコール", value: String(format: "%.1f", hkAlcohol), unit: "g", color: .duoPurple)
             }
             .frame(height: 60)
         }
@@ -383,6 +392,7 @@ struct PhotoLogView: View {
     @State private var llmSettings = LLMSettings.defaultSettings
     @State private var fromHistory = false          // 履歴から選択したか
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
+    @State private var showManageView = false
 
     var body: some View {
         NavigationView {
@@ -457,6 +467,7 @@ struct PhotoLogView: View {
             }
             .fullScreenCover(isPresented: $showCamera) {
                 ImagePicker(sourceType: .camera, selectedImage: $selectedImage)
+                    .ignoresSafeArea()
             }
             .sheet(isPresented: $showPhotoPicker) {
                 ImagePicker(sourceType: .photoLibrary, selectedImage: $selectedImage)
@@ -498,7 +509,7 @@ struct PhotoLogView: View {
             }
         }
         .padding(14)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
     }
@@ -642,8 +653,28 @@ struct PhotoLogView: View {
                     .background(Color.duoGreen.opacity(0.1))
                     .cornerRadius(12)
                 }
+
+                if !photoLogManager.history.isEmpty {
+                    Button {
+                        showManageView = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.pencil")
+                            Text("フォトログを管理")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                }
             }
             .padding(.horizontal)
+            .sheet(isPresented: $showManageView) {
+                PhotoLogManageView()
+            }
         }
         .padding(.vertical, 24)
     }
@@ -690,7 +721,7 @@ struct PhotoLogView: View {
             TextField("例: 朝食、コーヒー、ワイン", text: $comment)
                 .font(.subheadline)
                 .padding(12)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(10)
                 .shadow(color: Color.black.opacity(0.05), radius: 2, y: 1)
         }
@@ -766,7 +797,7 @@ struct PhotoLogView: View {
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -876,7 +907,7 @@ struct PhotoLogView: View {
 
         // フォトログを保存（履歴からの場合は履歴への再追加をスキップ）
         var entry = PhotoLogEntry()
-        entry.imageData = selectedImage?.jpegData(compressionQuality: 0.8)
+        entry.imageData = selectedImage?.jpegData(compressionQuality: 0.5)
         entry.comment = comment
         entry.analyzedNutrition = nutrition
         if fromHistory {
@@ -886,6 +917,313 @@ struct PhotoLogView: View {
         }
 
         dismiss()
+    }
+}
+
+// MARK: - Photo Log Manage View
+
+struct PhotoLogManageView: View {
+    @StateObject private var photoLogManager = PhotoLogManager.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
+    @State private var pendingDeleteId: String?
+    @State private var editingItem: PhotoLogHistoryItem?
+
+    var body: some View {
+        NavigationView {
+            Group {
+                if photoLogManager.history.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "photo.stack")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("記録がありません")
+                            .font(.subheadline)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        let favorites = photoLogManager.history.filter { $0.isFavorite }
+                        let others = photoLogManager.history.filter { !$0.isFavorite }
+
+                        if !favorites.isEmpty {
+                            Section(header: Text("お気に入り").font(.caption).foregroundColor(Color.duoSubtitle)) {
+                                ForEach(favorites) { item in
+                                    manageRow(item)
+                                }
+                            }
+                        }
+                        Section(header: Text(favorites.isEmpty ? "すべての記録（\(photoLogManager.history.count)件）" : "その他").font(.caption).foregroundColor(Color.duoSubtitle)) {
+                            ForEach(others) { item in
+                                manageRow(item)
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("フォトログを管理")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完了") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .alert("削除しますか？", isPresented: $showDeleteConfirm) {
+                Button("削除", role: .destructive) {
+                    if let id = pendingDeleteId {
+                        photoLogManager.deleteHistoryItem(id: id)
+                    }
+                    pendingDeleteId = nil
+                }
+                Button("キャンセル", role: .cancel) { pendingDeleteId = nil }
+            } message: {
+                Text("この食事記録を履歴から削除します。")
+            }
+            .sheet(item: $editingItem) { item in
+                PhotoLogEditView(item: item)
+            }
+        }
+    }
+
+    private func manageRow(_ item: PhotoLogHistoryItem) -> some View {
+        Button {
+            editingItem = item
+        } label: {
+            HStack(spacing: 12) {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.systemGray5))
+                            .frame(width: 52, height: 52)
+                        Text("🍽️").font(.system(size: 22))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.displayName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text("\(item.calories) kcal")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color.duoGreen)
+                        Text(item.timestamp, style: .date)
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    Button {
+                        photoLogManager.toggleFavorite(id: item.id)
+                    } label: {
+                        Image(systemName: item.isFavorite ? "star.fill" : "star")
+                            .font(.system(size: 20))
+                            .foregroundColor(item.isFavorite ? Color(hex: "#FFD700") : Color.duoSubtitle)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        pendingDeleteId = item.id
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18))
+                            .foregroundColor(Color(hex: "#FF4B4B"))
+                    }
+                    .buttonStyle(.plain)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.duoSubtitle.opacity(0.5))
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Photo Log Edit View
+
+struct PhotoLogEditView: View {
+    @StateObject private var photoLogManager = PhotoLogManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    let item: PhotoLogHistoryItem
+
+    @State private var foodName: String
+    @State private var calories: String
+    @State private var protein: String
+    @State private var fat: String
+    @State private var carbs: String
+    @State private var sugar: String
+    @State private var fiber: String
+    @State private var sodium: String
+    @State private var water: String
+    @State private var caffeine: String
+    @State private var alcohol: String
+    @State private var descriptionText: String
+    @State private var showSavedBanner = false
+
+    init(item: PhotoLogHistoryItem) {
+        self.item = item
+        let n = item.analyzedNutrition
+        _foodName       = State(initialValue: item.foodName)
+        _calories       = State(initialValue: "\(n.calories)")
+        _protein        = State(initialValue: String(format: "%.1f", n.protein))
+        _fat            = State(initialValue: String(format: "%.1f", n.fat))
+        _carbs          = State(initialValue: String(format: "%.1f", n.carbs))
+        _sugar          = State(initialValue: String(format: "%.1f", n.sugar))
+        _fiber          = State(initialValue: String(format: "%.1f", n.fiber))
+        _sodium         = State(initialValue: String(format: "%.0f", n.sodium))
+        _water          = State(initialValue: "\(n.water)")
+        _caffeine       = State(initialValue: "\(n.caffeine)")
+        _alcohol        = State(initialValue: String(format: "%.1f", n.alcohol))
+        _descriptionText = State(initialValue: n.description)
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("食品情報")) {
+                    HStack {
+                        if let thumb = item.thumbnail {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } else {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(.systemGray5))
+                                    .frame(width: 60, height: 60)
+                                Text("🍽️").font(.system(size: 26))
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("料理名", text: $foodName)
+                                .font(.system(size: 15, weight: .semibold))
+                            Text(item.timestamp, style: .date)
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        .padding(.leading, 8)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("説明・メモ")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                        TextField("説明", text: $descriptionText, axis: .vertical)
+                            .font(.system(size: 14))
+                            .lineLimit(3, reservesSpace: true)
+                    }
+                }
+
+                Section(header: Text("カロリー")) {
+                    editRow(label: "カロリー", value: $calories, unit: "kcal", keyboard: .numberPad)
+                }
+
+                Section(header: Text("三大栄養素")) {
+                    editRow(label: "たんぱく質", value: $protein, unit: "g", keyboard: .decimalPad)
+                    editRow(label: "脂質",       value: $fat,     unit: "g", keyboard: .decimalPad)
+                    editRow(label: "炭水化物",   value: $carbs,   unit: "g", keyboard: .decimalPad)
+                    editRow(label: "糖質",       value: $sugar,   unit: "g", keyboard: .decimalPad)
+                    editRow(label: "食物繊維",   value: $fiber,   unit: "g", keyboard: .decimalPad)
+                }
+
+                Section(header: Text("その他の成分")) {
+                    editRow(label: "ナトリウム", value: $sodium,   unit: "mg", keyboard: .numberPad)
+                    editRow(label: "水分",       value: $water,    unit: "ml", keyboard: .numberPad)
+                    editRow(label: "カフェイン", value: $caffeine, unit: "mg", keyboard: .numberPad)
+                    editRow(label: "アルコール", value: $alcohol,  unit: "g",  keyboard: .decimalPad)
+                }
+            }
+            .navigationTitle("食事を編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("保存") { save() }
+                        .fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .overlay(alignment: .top) {
+                if showSavedBanner {
+                    Text("保存しました")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.duoGreen)
+                        .cornerRadius(20)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: showSavedBanner)
+        }
+    }
+
+    private func editRow(label: String, value: Binding<String>, unit: String, keyboard: UIKeyboardType) -> some View {
+        HStack {
+            Text(label)
+                .foregroundColor(Color.duoDark)
+            Spacer()
+            TextField("0", text: value)
+                .keyboardType(keyboard)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 80)
+                .foregroundColor(Color.duoGreen)
+            Text(unit)
+                .foregroundColor(Color.duoSubtitle)
+                .frame(width: 30, alignment: .leading)
+        }
+    }
+
+    private func save() {
+        var updated = item
+        updated.foodName = foodName.trimmingCharacters(in: .whitespaces)
+
+        var n = item.analyzedNutrition
+        n.description = descriptionText
+        n.calories  = Int(calories) ?? n.calories
+        n.protein   = Double(protein) ?? n.protein
+        n.fat       = Double(fat) ?? n.fat
+        n.carbs     = Double(carbs) ?? n.carbs
+        n.sugar     = Double(sugar) ?? n.sugar
+        n.fiber     = Double(fiber) ?? n.fiber
+        n.sodium    = Double(sodium) ?? n.sodium
+        n.water     = Int(water) ?? n.water
+        n.caffeine  = Int(caffeine) ?? n.caffeine
+        n.alcohol   = Double(alcohol) ?? n.alcohol
+        updated.analyzedNutrition = n
+
+        photoLogManager.updateHistoryItem(updated)
+        showSavedBanner = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            showSavedBanner = false
+            dismiss()
+        }
     }
 }
 
@@ -901,33 +1239,12 @@ struct ImagePicker: UIViewControllerRepresentable {
         picker.sourceType = sourceType
         picker.delegate = context.coordinator
 
-        // カメラの場合、フルスクリーンでプレビューを表示
         if sourceType == .camera {
             picker.modalPresentationStyle = .fullScreen
             picker.cameraCaptureMode = .photo
             picker.cameraDevice = .rear
             picker.showsCameraControls = true
-
-            // 画面全体を使用するようにカメラのアスペクト比を調整
             picker.cameraFlashMode = .auto
-
-            // カメラプレビューを画面全体に拡大（16:9や4:3から画面全体へ）
-            let screenHeight = UIScreen.main.bounds.height
-            let screenWidth = UIScreen.main.bounds.width
-            let cameraAspectRatio: CGFloat = 4.0 / 3.0  // カメラの標準アスペクト比
-            let screenAspectRatio = screenHeight / screenWidth
-
-            var scale: CGFloat = 1.0
-            if screenAspectRatio > cameraAspectRatio {
-                // 画面の方が縦長の場合（ほとんどのiPhone）
-                scale = screenHeight / (screenWidth * cameraAspectRatio)
-            } else {
-                // 画面の方が横長の場合
-                scale = screenWidth / (screenHeight / cameraAspectRatio)
-            }
-
-            // スケール変換を適用してプレビューを拡大
-            picker.cameraViewTransform = CGAffineTransform(scaleX: scale, y: scale)
         }
 
         return picker
@@ -948,9 +1265,19 @@ struct ImagePicker: UIViewControllerRepresentable {
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
-                parent.selectedImage = image
+                parent.selectedImage = resized(image)
             }
             parent.dismiss()
+        }
+
+        private func resized(_ image: UIImage, maxDimension: CGFloat = 800) -> UIImage {
+            let size = image.size
+            let maxSide = max(size.width, size.height)
+            guard maxSide > maxDimension else { return image }
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

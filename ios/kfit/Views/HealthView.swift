@@ -160,7 +160,7 @@ struct HealthView: View {
                 }
             }
             .padding(14)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(12)
 
             Button {
@@ -180,7 +180,7 @@ struct HealthView: View {
             .buttonStyle(.plain)
         }
         .padding(20)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 3)
     }
@@ -218,7 +218,7 @@ struct HealthView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(14)
     }
 
@@ -367,7 +367,7 @@ struct HealthView: View {
             .padding(.horizontal, 4)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -488,7 +488,7 @@ struct HealthView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -686,7 +686,7 @@ struct HealthView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -760,7 +760,7 @@ struct HealthView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -831,7 +831,7 @@ struct HealthView: View {
             }
         }
         .padding(12)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -988,7 +988,7 @@ struct HealthView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1012,7 +1012,7 @@ struct HealthView: View {
                     .foregroundColor(Color.duoSubtitle)
             }
             .padding(16)
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1125,7 +1125,7 @@ struct HealthView: View {
             .cornerRadius(12)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1195,7 +1195,7 @@ struct HealthView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
     }

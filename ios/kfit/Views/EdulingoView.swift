@@ -5,7 +5,7 @@ struct EdulingoView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image("edulingo")
+            Image("mascot")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 120, height: 120)

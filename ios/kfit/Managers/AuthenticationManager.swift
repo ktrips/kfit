@@ -2161,7 +2161,6 @@ class PhotoLogManager: ObservableObject {
     @Published var history: [PhotoLogHistoryItem] = []
 
     private let historyKey = "photoLogHistory"
-    private let maxHistoryCount = 50
 
     private init() {
         loadHistory()
@@ -2189,6 +2188,22 @@ class PhotoLogManager: ObservableObject {
         persistHistory()
     }
 
+    /// お気に入りをトグル
+    func toggleFavorite(id: String) {
+        if let idx = history.firstIndex(where: { $0.id == id }) {
+            history[idx].isFavorite.toggle()
+            persistHistory()
+        }
+    }
+
+    /// 履歴アイテムを更新（編集）
+    func updateHistoryItem(_ item: PhotoLogHistoryItem) {
+        if let idx = history.firstIndex(where: { $0.id == item.id }) {
+            history[idx] = item
+            persistHistory()
+        }
+    }
+
     /// 写真を分析して栄養情報を取得
     func analyzePhoto(_ image: UIImage, comment: String, settings: LLMSettings) async throws -> AnalyzedNutrition {
         isAnalyzing = true
@@ -2198,8 +2213,8 @@ class PhotoLogManager: ObservableObject {
             throw PhotoLogError.noAPIKey
         }
 
-        // 画像をBase64エンコード
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+        // 画像をAPI送信用に縮小・圧縮してBase64エンコード
+        guard let imageData = compressForAPI(image) else {
             throw PhotoLogError.invalidImage
         }
         let base64Image = imageData.base64EncodedString()
@@ -2242,9 +2257,6 @@ class PhotoLogManager: ObservableObject {
             item.thumbnailData = makeThumbnail(from: image, size: CGSize(width: 100, height: 100))
         }
         history.insert(item, at: 0)
-        if history.count > maxHistoryCount {
-            history = Array(history.prefix(maxHistoryCount))
-        }
         persistHistory()
     }
 
@@ -2261,7 +2273,23 @@ class PhotoLogManager: ObservableObject {
         let thumb = renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
-        return thumb.jpegData(compressionQuality: 0.7)
+        return thumb.jpegData(compressionQuality: 0.6)
+    }
+
+    /// API送信用に最大800px・低品質で圧縮
+    private func compressForAPI(_ image: UIImage, maxDimension: CGFloat = 800) -> Data? {
+        let size = image.size
+        let maxSide = max(size.width, size.height)
+        let target: UIImage
+        if maxSide > maxDimension {
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            target = image
+        }
+        return target.jpegData(compressionQuality: 0.6)
     }
 
     // MARK: - Private Methods

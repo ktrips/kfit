@@ -67,7 +67,7 @@ struct LoginView: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
-                            .background(Color.white)
+                            .background(Color(.systemBackground))
                             .cornerRadius(12)
                             .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         }

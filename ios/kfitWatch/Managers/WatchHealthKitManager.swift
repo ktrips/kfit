@@ -8,6 +8,8 @@ struct WatchMindfulnessSession: Identifiable {
     let sourceName: String
     let sourceBundleId: String
     let sessionTypeHint: String?
+    var averageHeartRate: Double = 0
+    var averageHRV: Double = 0
 
     var typeLabel: String {
         if sessionTypeHint == "Reflect" { return "Reflect" }
@@ -35,6 +37,37 @@ struct WatchMindfulnessSession: Identifiable {
     }
 }
 
+struct WatchWellnessVitals: Codable, Equatable {
+    var heartRate: Double
+    var hrv: Double
+    var measuredAt: Date
+}
+
+struct WatchMindfulnessImpact: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var sessionType: String
+    var startDate: Date
+    var endDate: Date
+    var before: WatchWellnessVitals
+    var after: WatchWellnessVitals
+
+    var hrvDelta: Double { after.hrv - before.hrv }
+    var heartRateDelta: Double { after.heartRate - before.heartRate }
+    var stressBefore: Int { Self.stressScore(hrv: before.hrv) }
+    var stressAfter: Int { Self.stressScore(hrv: after.hrv) }
+    var stressDelta: Int { stressAfter - stressBefore }
+
+    static func stressScore(hrv: Double) -> Int {
+        guard hrv > 0 else { return -1 }
+        if hrv >= 100 { return 5 }
+        if hrv >= 80  { return Int(5  + (100 - hrv) / 20 * 10) }
+        if hrv >= 60  { return Int(15 + (80  - hrv) / 20 * 20) }
+        if hrv >= 40  { return Int(35 + (60  - hrv) / 20 * 25) }
+        if hrv >= 20  { return Int(60 + (40  - hrv) / 20 * 20) }
+        return Int(min(95, 80 + (20 - hrv) / 20 * 15))
+    }
+}
+
 /// Apple Watch用のHealthKitマネージャー
 ///
 /// Watch側で直接HealthKitからデータを取得して表示する。
@@ -57,6 +90,8 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayWorkoutMinutes: Int = 0  // 今日のワークアウト時間（分）
     @Published var todayStandHours: Int = 0      // 今日のスタンド時間（時間）
     @Published var latestHRV: Double = 0.0             // 最新の心拍変動（ms）
+    @Published var latestMindfulnessImpact: WatchMindfulnessImpact?
+    @Published var mindfulnessImpactHistory: [WatchMindfulnessImpact] = []
     @Published var todayDietaryCalories: Double = 0.0  // 今日の摂取カロリー（kcal）
     @Published var todayDietaryWater: Double = 0.0     // 今日の水分摂取（ml）
     @Published var todayDietaryCaffeine: Double = 0.0  // 今日のカフェイン（mg）
@@ -74,8 +109,13 @@ class WatchHealthKitManager: ObservableObject {
     private var lastFetchAllAt: Date? = nil
     private var lastScopedFetchAt: [String: Date] = [:]
     private let fetchAllTTL: TimeInterval = 30
+    private let mindfulnessImpactKey = "watch.mindfulnessImpact.latest"
+    private let mindfulnessImpactHistoryKey = "watch.mindfulnessImpact.history"
 
-    private init() {}
+    private init() {
+        latestMindfulnessImpact = loadLatestMindfulnessImpact()
+        mindfulnessImpactHistory = loadMindfulnessImpactHistory()
+    }
 
     // MARK: - Authorization
 
@@ -429,33 +469,50 @@ class WatchHealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
 
-        let query = HKSampleQuery(
-            sampleType: mindfulType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Mindfulness query error: \(error)")
-                    return
-                }
-                let mindfulSamples = ((samples as? [HKCategorySample]) ?? []).map { sample in
-                    WatchMindfulnessSession(
-                        startDate: sample.startDate,
-                        durationMinutes: sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
-                        sourceName: sample.sourceRevision.source.name,
-                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
-                        sessionTypeHint: sample.metadata?["kfitSessionType"] as? String
-                    )
-                }
-                let count = mindfulSamples.count
-                self?.todayMindfulnessSessions = count
-                self?.todayMindfulnessSamples = mindfulSamples
-                print("[WatchHealthKit] 🧘 Mindfulness sessions: \(count)")
+        let rawSamples: [HKCategorySample] = await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: mindfulType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, _ in
+                continuation.resume(returning: (samples as? [HKCategorySample]) ?? [])
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+
+        var enriched: [WatchMindfulnessSession] = []
+        for sample in rawSamples {
+            let sessionPred = HKQuery.predicateForSamples(withStart: sample.startDate, end: sample.endDate, options: .strictStartDate)
+            let hr = await averageInWindow(identifier: .heartRate, predicate: sessionPred, unit: HKUnit.count().unitDivided(by: .minute()))
+            let hrv = await averageInWindow(identifier: .heartRateVariabilitySDNN, predicate: sessionPred, unit: .secondUnit(with: .milli))
+            enriched.append(WatchMindfulnessSession(
+                startDate: sample.startDate,
+                durationMinutes: sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
+                sourceName: sample.sourceRevision.source.name,
+                sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+                sessionTypeHint: sample.metadata?["kfitSessionType"] as? String,
+                averageHeartRate: hr,
+                averageHRV: hrv
+            ))
+        }
+
+        let count = enriched.count
+        await MainActor.run {
+            self.todayMindfulnessSessions = count
+            self.todayMindfulnessSamples = enriched
+        }
+        print("[WatchHealthKit] 🧘 Mindfulness sessions: \(count)")
+    }
+
+    private func averageInWindow(identifier: HKQuantityTypeIdentifier, predicate: NSPredicate, unit: HKUnit) async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return 0 }
+        return await withCheckedContinuation { cont in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, result, _ in
+                cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+            }
+            healthStore.execute(q)
+        }
     }
 
     // MARK: - Workout Minutes
@@ -523,6 +580,41 @@ class WatchHealthKitManager: ObservableObject {
             }
         }
         healthStore.execute(query)
+    }
+
+    func measureCurrentWellnessVitals() async -> WatchWellnessVitals {
+        async let heartRate = latestQuantityValue(identifier: .heartRate, unit: HKUnit.count().unitDivided(by: .minute()))
+        async let hrv = latestQuantityValue(identifier: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli))
+        let measuredAt = Date()
+        let result = WatchWellnessVitals(heartRate: await heartRate, hrv: await hrv, measuredAt: measuredAt)
+        averageHeartRate = Int(result.heartRate)
+        latestHRV = result.hrv
+        return result
+    }
+
+    private func latestQuantityValue(identifier: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return 0 }
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+        return await withCheckedContinuation { cont in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: nil,
+                limit: 1,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, error in
+                if let error {
+                    print("[WatchHealthKit] latest \(identifier.rawValue) error: \(error)")
+                    cont.resume(returning: 0)
+                    return
+                }
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    cont.resume(returning: 0)
+                    return
+                }
+                cont.resume(returning: sample.quantity.doubleValue(for: unit))
+            }
+            healthStore.execute(query)
+        }
     }
 
     // MARK: - Dietary Calories
@@ -618,7 +710,7 @@ class WatchHealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
-    func saveMindfulnessSession(durationMinutes: Int, sessionType: String = "Breathe") async {
+    func saveMindfulnessSession(durationMinutes: Int, sessionType: String = "Breathe", impact: WatchMindfulnessImpact? = nil) async {
         guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
             print("[WatchHealthKit] ⚠️ Mindfulness type not available")
             return
@@ -628,25 +720,64 @@ class WatchHealthKitManager: ObservableObject {
         let startDate = now.addingTimeInterval(-Double(durationMinutes * 60))
         let normalizedSessionType = sessionType == "Reflect" ? "Reflect" : "Breathe"
 
+        var metadata: [String: Any] = [
+            HKMetadataKeyWasUserEntered: true,
+            "kfitSessionType": normalizedSessionType
+        ]
+        if let impact {
+            metadata["kfitBeforeHeartRate"] = impact.before.heartRate
+            metadata["kfitAfterHeartRate"] = impact.after.heartRate
+            metadata["kfitBeforeHRV"] = impact.before.hrv
+            metadata["kfitAfterHRV"] = impact.after.hrv
+            metadata["kfitHRVDelta"] = impact.hrvDelta
+            metadata["kfitStressBefore"] = impact.stressBefore
+            metadata["kfitStressAfter"] = impact.stressAfter
+            metadata["kfitStressDelta"] = impact.stressDelta
+        }
+
         let sample = HKCategorySample(
             type: mindfulType,
             value: HKCategoryValue.notApplicable.rawValue,
             start: startDate,
             end: now,
-            metadata: [
-                HKMetadataKeyWasUserEntered: true,
-                "kfitSessionType": normalizedSessionType
-            ]
+            metadata: metadata
         )
 
         do {
             try await healthStore.save(sample)
+            if let impact {
+                saveLatestMindfulnessImpact(impact)
+            }
             print("[WatchHealthKit] ✅ Mindfulness session saved: \(durationMinutes) min, type=\(normalizedSessionType)")
             // iOS側に通知してTimeSlotManagerとWatchの表示を即座に同期
             WatchConnectivityManager.shared.sendMindfulnessCompleted()
         } catch {
             print("[WatchHealthKit] ⚠️ Failed to save mindfulness: \(error)")
         }
+    }
+
+    private func saveLatestMindfulnessImpact(_ impact: WatchMindfulnessImpact) {
+        latestMindfulnessImpact = impact
+        if let data = try? JSONEncoder().encode(impact) {
+            UserDefaults.standard.set(data, forKey: mindfulnessImpactKey)
+        }
+        mindfulnessImpactHistory.insert(impact, at: 0)
+        if mindfulnessImpactHistory.count > 30 {
+            mindfulnessImpactHistory = Array(mindfulnessImpactHistory.prefix(30))
+        }
+        if let data = try? JSONEncoder().encode(mindfulnessImpactHistory) {
+            UserDefaults.standard.set(data, forKey: mindfulnessImpactHistoryKey)
+        }
+    }
+
+    private func loadLatestMindfulnessImpact() -> WatchMindfulnessImpact? {
+        guard let data = UserDefaults.standard.data(forKey: mindfulnessImpactKey) else { return nil }
+        return try? JSONDecoder().decode(WatchMindfulnessImpact.self, from: data)
+    }
+
+    private func loadMindfulnessImpactHistory() -> [WatchMindfulnessImpact] {
+        guard let data = UserDefaults.standard.data(forKey: mindfulnessImpactHistoryKey) else { return [] }
+        return (try? JSONDecoder().decode([WatchMindfulnessImpact].self, from: data)) ?? []
     }
 
     // MARK: - Activity Summary

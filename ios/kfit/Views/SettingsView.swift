@@ -10,35 +10,43 @@ private struct ReminderMeta: Identifiable {
     let description: String
 }
 
-private let reminderItems: [ReminderMeta] = [
-    ReminderMeta(id: NotificationManager.ID.amReminder,
-                 emoji: "🌅", label: "朝のリマインダー",
-                 description: "朝の時間帯の開始時に通知"),
-    ReminderMeta(id: NotificationManager.ID.amFollowup,
-                 emoji: "🔥", label: "朝のアラート",
-                 description: "朝のトレーニングが実施されていなかった時のみ"),
-    ReminderMeta(id: NotificationManager.ID.noonReminder,
-                 emoji: "☀️", label: "昼のリマインダー",
-                 description: "昼の時間帯の開始時に通知"),
-    ReminderMeta(id: NotificationManager.ID.noonFollowup,
-                 emoji: "💡", label: "昼のアラート",
-                 description: "昼のトレーニングが実施されていなかった時のみ"),
-    ReminderMeta(id: NotificationManager.ID.afternoonReminder,
-                 emoji: "🌤️", label: "午後のリマインダー",
-                 description: "午後の時間帯の開始時に通知"),
-    ReminderMeta(id: NotificationManager.ID.afternoonFollowup,
-                 emoji: "⚡", label: "午後のアラート",
-                 description: "午後のトレーニングが実施されていなかった時のみ"),
-    ReminderMeta(id: NotificationManager.ID.pmReminder,
-                 emoji: "🌆", label: "夜のリマインダー",
-                 description: "夜の時間帯の開始時に通知"),
-    ReminderMeta(id: NotificationManager.ID.pmFollowup,
-                 emoji: "🌙", label: "夜のアラート",
-                 description: "夜のトレーニングが実施されていなかった時のみ"),
-    ReminderMeta(id: NotificationManager.ID.streakAlert,
-                 emoji: "🚨", label: "ストリーク・アラート",
-                 description: "その日の記録がない時に、連続記録が途絶えちゃうよ！とアラート"),
-]
+// MARK: - 毎日の設定モデル（曜日に関係なく毎日適用）
+
+struct DailyCustomGoal: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var emoji: String
+    init(name: String, emoji: String) { self.id = UUID(); self.name = name; self.emoji = emoji }
+}
+
+struct DailyFixedGoals: Codable, Equatable {
+    var foodEnabled: Bool = false    // 🍽️ 食事2000kcal以上（Apple Health自動）
+    var weightEnabled: Bool = false  // ⚖️ 体重計測（Apple Health自動）
+    var sleepEnabled: Bool = false   // 😴 睡眠計測（Apple Health自動）
+    var sleepHoursGoal: Int = 7      // 😴 目標睡眠時間（時間）
+    var customGoals: [DailyCustomGoal] = []  // 📱 カスタム項目（スクショで完了）
+}
+
+// MARK: - 曜日毎の目標モデル
+
+struct WeekdayCustomGoal: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var emoji: String
+    init(name: String, emoji: String) { self.id = UUID(); self.name = name; self.emoji = emoji }
+}
+
+struct WeekdayGoal: Codable, Identifiable, Equatable {
+    let weekday: Int // 1=月 … 7=日
+    var exerciseEnabled: Bool = false    // 🏃 アクティビティリング完了（自動）
+    var studyEnabled: Bool = false       // 📚 勉強（手動）
+    var noAlcoholEnabled: Bool = false   // 🚫 禁酒（手動）
+    var customGoals: [WeekdayCustomGoal] = []
+    var id: Int { weekday }
+    static let labels = ["月", "火", "水", "木", "金", "土", "日"]
+    var label: String { Self.labels[weekday - 1] }
+    var hasAnyGoal: Bool { exerciseEnabled || studyEnabled || noAlcoholEnabled || !customGoals.isEmpty }
+}
 
 // MARK: - SettingsView
 
@@ -49,6 +57,7 @@ struct SettingsView: View {
     @State private var watchAutoLaunch = iOSWatchBridge.isWatchAutoLaunchEnabled
     @State private var permStatus: UNAuthorizationStatus = .notDetermined
     @State private var showHabitStack = false
+    @State private var showHabitSettings = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
@@ -64,6 +73,7 @@ struct SettingsView: View {
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitTabVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindTabVisible = false
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodTabVisible = true
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logTabVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
@@ -71,6 +81,18 @@ struct SettingsView: View {
     @State private var activeActivitySlot: TimeSlot? = nil
     @State private var newActivityName = ""
     @State private var newActivityEmoji = "⭐"
+    // 毎日の設定
+    @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
+    // 毎日のカスタム項目
+    @State private var showAddDailyCustom = false
+    @State private var newDailyGoalName = ""
+    @State private var newDailyGoalEmoji = "⭐"
+    // 曜日毎の目標
+    @State private var weekdayGoals: [WeekdayGoal] = (1...7).map { WeekdayGoal(weekday: $0) }
+    @State private var selectedWeekday: Int? = nil
+    @State private var showAddWeekdayCustom = false
+    @State private var newWeekdayGoalName = ""
+    @State private var newWeekdayGoalEmoji = "⭐"
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -80,8 +102,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     tabMenuSettingsSection
                     permissionBanner
-                    // 時間帯別の目標（インライン表示）
-                    timeSlotGoalsInlineSection
+                    dailyHabitsSection
                     setConfigurationSection
                     motionSensitivitySection
                     intakeSection
@@ -106,8 +127,11 @@ struct SettingsView: View {
             motionSensitivity = await AuthenticationManager.shared.getAllMotionSensitivity()
             await timeSlotManager.loadTodaySettings()
             await timeSlotManager.loadTodayProgress()
+            loadDailyFixedGoals()
+            loadWeekdayGoals()
         }
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
+        .sheet(isPresented: $showHabitSettings) { habitSettingsSheet }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
         .sheet(isPresented: $showSetEditor) {
             SetConfigurationEditorView(configuration: $setConfiguration)
@@ -127,6 +151,12 @@ struct SettingsView: View {
         .sheet(isPresented: $showAddCustomGoal) {
             addCustomGoalSheet
         }
+        .sheet(isPresented: $showAddDailyCustom) {
+            addDailyCustomGoalSheet
+        }
+        .sheet(isPresented: $showAddWeekdayCustom) {
+            addWeekdayCustomGoalSheet
+        }
         .sheet(isPresented: Binding(
             get: { activeActivitySlot != nil },
             set: { if !$0 { activeActivitySlot = nil; newActivityName = ""; newActivityEmoji = "⭐" } }
@@ -139,13 +169,13 @@ struct SettingsView: View {
 
     private var closeSettingsFloatingButton: some View {
         Button {
-            closeSettings()
+            saveAndClose()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 15, weight: .black))
                 .foregroundColor(Color.duoGreen)
                 .frame(width: 40, height: 40)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .clipShape(Circle())
                 .shadow(color: Color.black.opacity(0.14), radius: 8, y: 4)
         }
@@ -160,6 +190,24 @@ struct SettingsView: View {
             selectedTab = tab.rawValue
         } else {
             selectedTab = enabledConfigurableTabs.first?.rawValue ?? MainMenuTab.fit.rawValue
+        }
+    }
+
+    private func saveAndClose(showBanner: Bool = false) {
+        notif.savePrefs()
+        iOSWatchBridge.isWatchAutoLaunchEnabled = watchAutoLaunch
+        Task {
+            await AuthenticationManager.shared.saveSetConfiguration(setConfiguration)
+            for (_, sensitivity) in motionSensitivity {
+                await AuthenticationManager.shared.saveMotionSensitivity(sensitivity)
+            }
+            await MainActor.run {
+                if permStatus == .authorized { notif.scheduleAllDaily() }
+                if showBanner {
+                    withAnimation { savedBanner = true }
+                }
+                closeSettings()
+            }
         }
     }
 
@@ -178,54 +226,19 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(icon: "rectangle.grid.1x2.fill",
                           title: "メニューのカスタマイズ",
-                          subtitle: "表示するタブ・初期表示・並び順")
+                          subtitle: "タブを非表示にすると関連する情報も非表示。並び順を一番上にするとデフォルト表示")
 
             VStack(spacing: 0) {
                 ForEach(Array(orderedConfigurableTabs.enumerated()), id: \.element.id) { index, tab in
                     tabVisibilityRow(tab: tab, index: index)
-                    if tab == .goal && goalTabVisible {
-                        goalTabSettingsButton
-                            .padding(.horizontal, 12)
-                            .padding(.bottom, 12)
-                    }
                     if index < orderedConfigurableTabs.count - 1 {
                         Divider().padding(.leading, 52)
                     }
                 }
-                Divider().padding(.leading, 52)
-                logTabVisibilityRow
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "house.circle.fill")
-                        .font(.system(size: 17, weight: .black))
-                        .foregroundColor(Color.duoGreen)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("デフォルトタブ")
-                            .font(.system(size: 14, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                        Text("アプリ起動時・設定を閉じた後に戻る画面")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                }
-
-                HStack(spacing: 8) {
-                    ForEach(enabledConfigurableTabs) { tab in
-                        defaultTabOption(tab)
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color.white)
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-
         }
     }
 
@@ -293,20 +306,11 @@ struct SettingsView: View {
                 .background(Color.duoGreen.opacity(0.10))
                 .clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("LOGタブ")
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Text("記録メニューを下部に表示")
-                    .font(.caption)
-                    .foregroundColor(Color.duoSubtitle)
-            }
+            Text("LOGタブ")
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(Color.duoDark)
 
             Spacer()
-
-            Toggle("", isOn: $logTabVisible)
-                .labelsHidden()
-                .tint(Color.duoGreen)
         }
         .padding(12)
     }
@@ -324,7 +328,7 @@ struct SettingsView: View {
     }
 
     private func tabVisibilityRow(tab: MainMenuTab, index: Int) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: tab.icon)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(Color.duoGreen)
@@ -332,25 +336,21 @@ struct SettingsView: View {
                 .background(Color.duoGreen.opacity(0.10))
                 .clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(tab.settingsLabel)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Text(defaultTabBinding.wrappedValue == tab.rawValue ? "デフォルト表示" : "下部メニューに表示")
-                    .font(.caption)
-                    .foregroundColor(Color.duoSubtitle)
-            }
+            Text(tab.settingsLabel)
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(Color.duoDark)
 
             Spacer()
 
-            HStack(spacing: 6) {
+            // 並び替えボタン・アクションボタン・トグル（右寄せ）
+            HStack(spacing: 2) {
                 Button {
                     moveTab(tab, direction: -1)
                 } label: {
                     Image(systemName: "chevron.up")
                         .font(.system(size: 11, weight: .black))
-                        .foregroundColor(index == 0 ? Color.gray.opacity(0.35) : Color.duoGreen)
-                        .frame(width: 24, height: 24)
+                        .foregroundColor(index == 0 ? Color.gray.opacity(0.30) : Color.duoGreen)
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
                 .disabled(index == 0)
@@ -360,25 +360,52 @@ struct SettingsView: View {
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .black))
-                        .foregroundColor(index == orderedConfigurableTabs.count - 1 ? Color.gray.opacity(0.35) : Color.duoGreen)
-                        .frame(width: 24, height: 24)
+                        .foregroundColor(index == orderedConfigurableTabs.count - 1 ? Color.gray.opacity(0.30) : Color.duoGreen)
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
                 .disabled(index == orderedConfigurableTabs.count - 1)
             }
 
-            Toggle("", isOn: tabVisibleBinding(tab))
-                .labelsHidden()
-                .tint(Color.duoGreen)
+            // アクションボタン or トグル
+            if tab == .fit {
+                Button {
+                    showHabitSettings = true
+                } label: {
+                    Text("習慣設定")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.duoGreen.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            } else if tab == .goal {
+                Button {
+                    showDietGoalSettings = true
+                } label: {
+                    Text("目標設定")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.duoGreen.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Toggle("", isOn: tabVisibleBinding(tab))
+                    .labelsHidden()
+                    .tint(Color.duoGreen)
+            }
         }
         .padding(12)
     }
 
     private func tabVisible(_ tab: MainMenuTab) -> Bool {
         switch tab {
-        case .fit: return fitTabVisible
-        case .goal: return goalTabVisible
+        case .fit, .goal: return true  // 常に表示
         case .mind: return mindTabVisible
+        case .food: return foodTabVisible
         }
     }
 
@@ -392,15 +419,16 @@ struct SettingsView: View {
     }
 
     private func setTabVisible(_ tab: MainMenuTab, _ newValue: Bool) {
+        if tab == .fit || tab == .goal { return }  // 常に表示（変更不可）
         let currentlyEnabledCount = MainMenuTab.allCases.filter { tabVisible($0) }.count
         if !newValue && currentlyEnabledCount <= 1 {
             return
         }
 
         switch tab {
-        case .fit: fitTabVisible = newValue
-        case .goal: goalTabVisible = newValue
+        case .fit, .goal: break
         case .mind: mindTabVisible = newValue
+        case .food: foodTabVisible = newValue
         }
 
         UserDefaults.standard.set(newValue, forKey: MainMenuTabPreferences.visibleKey(for: tab))
@@ -421,20 +449,17 @@ struct SettingsView: View {
         guard tabs.indices.contains(newIndex) else { return }
         tabs.swapAt(currentIndex, newIndex)
         tabOrderRaw = MainMenuTabPreferences.storedOrder(from: tabs)
+        // 先頭タブを自動的にデフォルトに設定
+        defaultTabRaw = tabs.first?.rawValue ?? MainMenuTab.fit.rawValue
     }
 
-    // MARK: - 時間帯別目標（インライン）
+    // MARK: - 毎日の習慣・目標設定（インライン）
 
-    private var timeSlotGoalsInlineSection: some View {
+    private var dailyHabitsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 8) {
-                sectionHeader(icon: "clock.fill", title: "時間帯別の目標",
-                              subtitle: "夜中・朝・昼・午後・夜ごとに設定")
-                Spacer(minLength: 8)
-                smallDefaultButton {
-                    resetTimeSlotGoalsToDefault()
-                }
-            }
+            sectionHeader(icon: "calendar.badge.clock",
+                          title: "毎日の習慣・目標設定",
+                          subtitle: "1日全体・曜日別・時間帯の目標を一括管理")
 
             if timeSlotManager.isLoading {
                 ProgressView()
@@ -442,147 +467,521 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
-                // 1日全体の目標
-                globalGoalsInline
+                // 毎日の設定
+                dailyFixedGoalsSection
+
+                // 曜日毎の目標
+                weekdayGoalsSection
+
+                // 時間帯別の目標サブヘッダー
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.duoGreen)
+                        Text("時間帯別の目標")
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("朝・昼・午後・夜")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer(minLength: 8)
+                    smallDefaultButton {
+                        resetTimeSlotGoalsToDefault()
+                    }
+                }
 
                 // 時間帯別カード
-                ForEach(TimeSlot.allCases, id: \.self) { slot in
+                ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { slot in
                     if let goal = timeSlotManager.settings.goalFor(slot),
                        let progress = timeSlotManager.progress.progressFor(slot) {
                         timeSlotCardInline(slot: slot, goal: goal, progress: progress)
                     }
                 }
 
-                // ストリーク・アラート（夜の設定の後）
+                // ストリーク・アラート
                 reminderSection
             }
         }
     }
 
-    // MARK: - 1日全体の目標（インライン）
+    // MARK: - 毎日の設定（インライン）
 
-    private var globalGoalsInline: some View {
+    private var dailyFixedGoalsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("🌍").font(.title2)
+                Text("📆").font(.title2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("1日全体の目標")
+                    Text("毎日の設定")
                         .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("時間帯に関係なく1日の合計で管理")
+                    Text("曜日に関わらず毎日Apple Healthから自動チェック")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                smallDefaultButton {
-                    resetGlobalGoalsToDefault()
-                }
             }
             .padding(.bottom, 14)
 
-            // アクティビティリング
-            globalToggleRow(
-                emoji: "🏃",
-                label: "アクティビティリング",
-                badge: timeSlotManager.settings.globalGoals.activityEnabled ? "Move・Exercise・Stand" : nil,
-                badgeColor: Color(red: 0.98, green: 0.07, blue: 0.31),
-                isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.activityEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.activityEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
-                )
-            )
+            Toggle(isOn: Binding(
+                get: { dailyFixedGoals.foodEnabled },
+                set: { v in dailyFixedGoals.foodEnabled = v; saveDailyFixedGoals() }
+            )) {
+                HStack(spacing: 8) {
+                    Text("🍽️").font(.title3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("食事の記録 2000kcal以上")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Text("Apple Healthの摂取カロリーで自動判定")
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }.tint(Color.duoGreen)
 
-            globalDivider
+            Divider().padding(.vertical, 10)
 
-            // PFCバランス
-            let pfcOn = timeSlotManager.settings.globalGoals.pfcEnabled
-            globalToggleRow(
-                emoji: "🥗", label: "食事の計測（PFC）",
-                badge: pfcOn ? "\(timeSlotManager.settings.globalGoals.pfcScoreThreshold)点" : nil,
-                badgeColor: Color.duoOrange,
-                isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.pfcEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.pfcEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
-                )
-            )
-            if pfcOn {
-                globalStepperRow(
-                    label: "目標スコア",
-                    valueText: "\(timeSlotManager.settings.globalGoals.pfcScoreThreshold)点以上",
-                    color: Color.duoOrange,
-                    value: Binding(
-                        get: { timeSlotManager.settings.globalGoals.pfcScoreThreshold },
-                        set: { v in timeSlotManager.settings.globalGoals.pfcScoreThreshold = v; Task { await timeSlotManager.saveTodaySettings() } }
-                    ), in: 50...100, step: 5
-                )
+            Toggle(isOn: Binding(
+                get: { dailyFixedGoals.weightEnabled },
+                set: { v in dailyFixedGoals.weightEnabled = v; saveDailyFixedGoals() }
+            )) {
+                HStack(spacing: 8) {
+                    Text("⚖️").font(.title3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("体重を計測")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Text("Apple Healthに1日1回以上で自動判定")
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }.tint(Color.duoGreen)
+
+            Divider().padding(.vertical, 10)
+
+            Toggle(isOn: Binding(
+                get: { dailyFixedGoals.sleepEnabled },
+                set: { v in dailyFixedGoals.sleepEnabled = v; saveDailyFixedGoals() }
+            )) {
+                HStack(spacing: 8) {
+                    Text("😴").font(.title3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("睡眠の計測")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Text("Apple Healthに前夜の睡眠データで自動判定")
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }.tint(Color.duoGreen)
+
+            if dailyFixedGoals.sleepEnabled {
+                Divider().padding(.vertical, 6)
+                HStack {
+                    Text("目標睡眠時間")
+                        .font(.subheadline)
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Stepper(
+                        "\(dailyFixedGoals.sleepHoursGoal)時間",
+                        value: Binding(
+                            get: { dailyFixedGoals.sleepHoursGoal },
+                            set: { v in dailyFixedGoals.sleepHoursGoal = v; saveDailyFixedGoals() }
+                        ),
+                        in: 4...12
+                    )
+                    .fixedSize()
+                }
+                .padding(.leading, 36)
             }
 
-            globalDivider
+            Divider().padding(.vertical, 10)
 
-            // マインドフルネス計測
-            globalToggleRow(
-                emoji: "🧘", label: "マインドフルネスを計測",
-                badge: timeSlotManager.settings.globalGoals.mindfulnessEnabled ? "ON" : nil,
-                badgeColor: Color.duoPurple,
-                isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.mindfulnessEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.mindfulnessEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
-                )
-            )
+            // カスタム項目（スクショ完了）
+            HStack(spacing: 8) {
+                Text("📱").font(.title3)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("カスタム項目")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                    Text("スクリーンショットをアップロードすると完了")
+                        .font(.caption2).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Button {
+                    showAddDailyCustom = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
 
-            globalDivider
-
-            // 体重計測
-            let weightOn = timeSlotManager.settings.globalGoals.weightEnabled
-            globalToggleRow(
-                emoji: "⚖️", label: "体重の計測",
-                badge: weightOn ? "ON" : nil,
-                badgeColor: Color.duoPurple,
-                isOn: Binding(
-                    get: { timeSlotManager.settings.globalGoals.weightEnabled },
-                    set: { v in timeSlotManager.settings.globalGoals.weightEnabled = v; Task { await timeSlotManager.saveTodaySettings() } }
-                )
-            )
-
-            globalDivider
-
-            // カスタム目標
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("🎨").font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("カスタム目標").font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Text("自由に目標を追加できます").font(.caption2).foregroundColor(Color.duoSubtitle)
-                    }
+            ForEach(dailyFixedGoals.customGoals) { cg in
+                HStack(spacing: 8) {
+                    Text(cg.emoji).font(.subheadline)
+                    Text(cg.name)
+                        .font(.subheadline).fontWeight(.medium)
+                        .foregroundColor(Color.duoDark)
                     Spacer()
-                    Button { showAddCustomGoal = true } label: {
-                        Image(systemName: "plus.circle.fill").font(.title3).foregroundColor(Color.duoGreen)
+                    Button {
+                        dailyFixedGoals.customGoals.removeAll { $0.id == cg.id }
+                        saveDailyFixedGoals()
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundColor(Color.duoRed.opacity(0.7))
+                            .font(.subheadline)
                     }
                 }
-                ForEach(timeSlotManager.settings.globalGoals.customGoals) { goal in
-                    HStack(spacing: 10) {
-                        Text(goal.emoji).font(.title3)
-                        Text(goal.name).font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Spacer()
-                        if timeSlotManager.progress.globalProgress.completedCustomGoalIds.contains(goal.id) {
-                            Image(systemName: "checkmark.circle.fill").foregroundColor(Color.duoGreen).font(.subheadline)
+                .padding(.leading, 36)
+            }
+
+            if dailyFixedGoals.customGoals.isEmpty {
+                Text("例: Duolingo📱・読書📖・勉強📚・日記📓など")
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(.leading, 36)
+            }
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    // MARK: - 習慣設定シート
+
+    private var habitSettingsSheet: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    dailyFixedGoalsSection
+                    weekdayGoalsSection
+
+                    NavigationLink {
+                        TimeSlotGoalsView()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "clock.fill")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color.duoGreen)
+                                .frame(width: 32, height: 32)
+                                .background(Color.duoGreen.opacity(0.10))
+                                .clipShape(Circle())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("時間帯別の目標")
+                                    .font(.system(size: 13, weight: .black))
+                                    .foregroundColor(Color.duoDark)
+                                Text("朝・昼・午後・夜の時間帯ごとに設定")
+                                    .font(.caption)
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
                         }
-                        Button {
-                            timeSlotManager.settings.globalGoals.customGoals.removeAll { $0.id == goal.id }
-                            Task { await timeSlotManager.saveTodaySettings() }
-                        } label: {
-                            Image(systemName: "minus.circle.fill").foregroundColor(Color.duoRed.opacity(0.7)).font(.subheadline)
-                        }
-                    }.padding(.leading, 8)
+                        .padding(14)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
                 }
-                if timeSlotManager.settings.globalGoals.customGoals.isEmpty {
-                    Text("例: 読書📚・Duolingo🦉・禁酒🚫など")
-                        .font(.caption2).foregroundColor(Color.duoSubtitle).padding(.leading, 8)
+                .padding(16)
+                .padding(.bottom, 20)
+            }
+            .background(Color.duoBg.ignoresSafeArea())
+            .navigationTitle("習慣設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { showHabitSettings = false }
+                        .foregroundColor(Color.duoGreen).fontWeight(.bold)
+                }
+            }
+        }
+    }
+
+    // MARK: - 毎日の設定 永続化
+
+    private func loadDailyFixedGoals() {
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let saved = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            dailyFixedGoals = saved
+        }
+    }
+
+    private func saveDailyFixedGoals() {
+        if let data = try? JSONEncoder().encode(dailyFixedGoals) {
+            UserDefaults.standard.set(data, forKey: "dailyFixedGoals_v1")
+        }
+    }
+
+    // MARK: - 曜日毎の目標（一覧形式）
+
+    private var weekdayGoalsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("📅").font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("曜日毎の目標")
+                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
+                    Text("曜日ごとに運動・勉強などの目標を設定")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+            }
+            .padding(.bottom, 10)
+
+            VStack(spacing: 0) {
+                ForEach(weekdayGoals.indices, id: \.self) { idx in
+                    weekdayRowView(idx: idx)
+                    if idx < weekdayGoals.count - 1 {
+                        Divider().padding(.leading, 32)
+                    }
                 }
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    @ViewBuilder
+    private func weekdayRowView(idx: Int) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(weekdayGoals[idx].label)
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundColor(weekdayGoals[idx].hasAnyGoal ? Color.duoGreen : Color.duoSubtitle)
+                .frame(width: 24, alignment: .center)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    weekdayToggleChip("🏃", "活動", weekdayGoals[idx].exerciseEnabled) {
+                        weekdayGoals[idx].exerciseEnabled.toggle(); saveWeekdayGoals()
+                    }
+                    weekdayToggleChip("📚", "勉強", weekdayGoals[idx].studyEnabled) {
+                        weekdayGoals[idx].studyEnabled.toggle(); saveWeekdayGoals()
+                    }
+                    weekdayToggleChip("🚫", "禁酒", weekdayGoals[idx].noAlcoholEnabled) {
+                        weekdayGoals[idx].noAlcoholEnabled.toggle(); saveWeekdayGoals()
+                    }
+                    ForEach(weekdayGoals[idx].customGoals) { cg in
+                        weekdayCustomChip(cg.emoji, cg.name) {
+                            weekdayGoals[idx].customGoals.removeAll { $0.id == cg.id }
+                            saveWeekdayGoals()
+                        }
+                    }
+                    Button {
+                        selectedWeekday = weekdayGoals[idx].weekday
+                        showAddWeekdayCustom = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(7)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.vertical, 9)
+    }
+
+    private func weekdayToggleChip(_ emoji: String, _ label: String, _ isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Text(emoji).font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isOn ? .white : Color.duoSubtitle)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(isOn ? Color.duoGreen : Color(.systemGray6))
+            .cornerRadius(7)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func weekdayCustomChip(_ emoji: String, _ label: String, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 3) {
+            Text(emoji).font(.system(size: 11))
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(Color(hex: "#1CB0F6"))
+        .cornerRadius(7)
+        .contextMenu {
+            Button(role: .destructive, action: onRemove) {
+                Label("削除", systemImage: "trash")
+            }
+        }
+    }
+
+    private var addDailyCustomGoalSheet: some View {
+        let presets: [DailyCustomGoal] = [
+            DailyCustomGoal(name: "Duolingo",  emoji: "🦉"),
+            DailyCustomGoal(name: "読書",       emoji: "📖"),
+            DailyCustomGoal(name: "勉強",       emoji: "📚"),
+            DailyCustomGoal(name: "日記",       emoji: "📓"),
+            DailyCustomGoal(name: "瞑想",       emoji: "🧘"),
+            DailyCustomGoal(name: "ジョギング", emoji: "🏃"),
+        ]
+        return NavigationView {
+            VStack(spacing: 20) {
+                HStack(spacing: 12) {
+                    TextField("絵文字", text: $newDailyGoalEmoji)
+                        .font(.system(size: 28))
+                        .multilineTextAlignment(.center)
+                        .frame(width: 56)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    TextField("項目名（例: Duolingo、読書…）", text: $newDailyGoalName)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(presets) { preset in
+                        Button {
+                            newDailyGoalEmoji = preset.emoji
+                            newDailyGoalName  = preset.name
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text(preset.emoji).font(.title2)
+                                Text(preset.name).font(.caption2).fontWeight(.bold).foregroundColor(Color.duoDark)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(newDailyGoalName == preset.name ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                Spacer()
+            }
+            .padding(.top, 20)
+            .navigationTitle("カスタム項目を追加")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("キャンセル") {
+                        newDailyGoalName = ""; newDailyGoalEmoji = "⭐"; showAddDailyCustom = false
+                    }.foregroundColor(Color.duoSubtitle)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("追加") {
+                        guard !newDailyGoalName.isEmpty else { return }
+                        let goal = DailyCustomGoal(
+                            name: newDailyGoalName,
+                            emoji: newDailyGoalEmoji.isEmpty ? "⭐" : String(newDailyGoalEmoji.prefix(2))
+                        )
+                        dailyFixedGoals.customGoals.append(goal)
+                        saveDailyFixedGoals()
+                        newDailyGoalName = ""; newDailyGoalEmoji = "⭐"; showAddDailyCustom = false
+                    }
+                    .foregroundColor(Color.duoGreen).fontWeight(.bold)
+                    .disabled(newDailyGoalName.isEmpty)
+                }
+            }
+        }
+    }
+
+    private var addWeekdayCustomGoalSheet: some View {
+        let presets: [WeekdayCustomGoal] = [
+            WeekdayCustomGoal(name: "読書",     emoji: "📖"),
+            WeekdayCustomGoal(name: "英語学習", emoji: "🌎"),
+            WeekdayCustomGoal(name: "ジョギング", emoji: "🏃"),
+            WeekdayCustomGoal(name: "日記",     emoji: "📓"),
+            WeekdayCustomGoal(name: "禁酒",     emoji: "🚫"),
+            WeekdayCustomGoal(name: "瞑想",     emoji: "🧘"),
+        ]
+        return NavigationView {
+            VStack(spacing: 20) {
+                HStack(spacing: 12) {
+                    TextField("絵文字", text: $newWeekdayGoalEmoji)
+                        .font(.system(size: 28))
+                        .multilineTextAlignment(.center)
+                        .frame(width: 56)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    TextField("項目名（例: 読書、ジョギング…）", text: $newWeekdayGoalName)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                }
+                .padding(.horizontal)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(presets) { preset in
+                        Button {
+                            newWeekdayGoalEmoji = preset.emoji
+                            newWeekdayGoalName  = preset.name
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text(preset.emoji).font(.title2)
+                                Text(preset.name).font(.caption2).fontWeight(.bold).foregroundColor(Color.duoDark)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(newWeekdayGoalName == preset.name ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                Spacer()
+            }
+            .padding(.top, 20)
+            .navigationTitle("カスタム目標を追加")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("キャンセル") {
+                        newWeekdayGoalName = ""; newWeekdayGoalEmoji = "⭐"; showAddWeekdayCustom = false
+                    }.foregroundColor(Color.duoSubtitle)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("追加") {
+                        guard let weekday = selectedWeekday,
+                              let idx = weekdayGoals.firstIndex(where: { $0.weekday == weekday }),
+                              !newWeekdayGoalName.isEmpty else { return }
+                        let goal = WeekdayCustomGoal(
+                            name: newWeekdayGoalName,
+                            emoji: newWeekdayGoalEmoji.isEmpty ? "⭐" : String(newWeekdayGoalEmoji.prefix(2))
+                        )
+                        weekdayGoals[idx].customGoals.append(goal)
+                        saveWeekdayGoals()
+                        newWeekdayGoalName = ""; newWeekdayGoalEmoji = "⭐"; showAddWeekdayCustom = false
+                    }
+                    .foregroundColor(Color.duoGreen).fontWeight(.bold)
+                    .disabled(newWeekdayGoalName.isEmpty)
+                }
+            }
+        }
+    }
+
+    // MARK: - 曜日毎の目標 永続化
+
+    private func loadWeekdayGoals() {
+        if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+           let saved = try? JSONDecoder().decode([WeekdayGoal].self, from: data) {
+            weekdayGoals = saved
+        }
+    }
+
+    private func saveWeekdayGoals() {
+        if let data = try? JSONEncoder().encode(weekdayGoals) {
+            UserDefaults.standard.set(data, forKey: "weekdayGoals_v1")
+        }
     }
 
     private func smallDefaultButton(action: @escaping () -> Void) -> some View {
@@ -604,12 +1003,6 @@ struct SettingsView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private func resetGlobalGoalsToDefault() {
-        timeSlotManager.settings.globalGoals = DailyGlobalGoals()
-        timeSlotManager.applyGlobalMealDrinkToSlots()
-        Task { await timeSlotManager.saveTodaySettings() }
     }
 
     private func resetTimeSlotGoalsToDefault() {
@@ -663,13 +1056,12 @@ struct SettingsView: View {
 
     // MARK: - 時間帯別カード（インライン）
 
-    private func reminderIds(for slot: TimeSlot) -> (reminder: String, followup: String) {
+    private func slotReminderID(for slot: TimeSlot) -> String {
         switch slot {
-        case .midnight:  return (NotificationManager.ID.amReminder,        NotificationManager.ID.amFollowup)
-        case .morning:   return (NotificationManager.ID.amReminder,        NotificationManager.ID.amFollowup)
-        case .noon:      return (NotificationManager.ID.noonReminder,      NotificationManager.ID.noonFollowup)
-        case .afternoon: return (NotificationManager.ID.afternoonReminder, NotificationManager.ID.afternoonFollowup)
-        case .evening:   return (NotificationManager.ID.pmReminder,        NotificationManager.ID.pmFollowup)
+        case .midnight, .morning: return NotificationManager.ID.amReminder
+        case .noon:               return NotificationManager.ID.noonReminder
+        case .afternoon:          return NotificationManager.ID.afternoonReminder
+        case .evening:            return NotificationManager.ID.pmReminder
         }
     }
 
@@ -736,7 +1128,7 @@ struct SettingsView: View {
     }
 
     private func timeSlotCardInline(slot: TimeSlot, goal: TimeSlotGoal, progress: TimeSlotProgress) -> some View {
-        let ids = reminderIds(for: slot)
+        let remID = slotReminderID(for: slot)
         return VStack(alignment: .leading, spacing: 10) {
             // ヘッダー
             HStack {
@@ -746,22 +1138,10 @@ struct SettingsView: View {
                     Text(slot.timeRange).font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                if slot == .midnight {
-                    // 睡眠達成バッジ
-                    let sg = timeSlotManager.settings.globalGoals
-                    let sp = timeSlotManager.progress.globalProgress
-                    if sg.sleepEnabled && (sp.sleepHours > 0 || sp.sleepScore > 0) {
-                        let achieved = sp.sleepHours >= Double(sg.sleepHoursGoal) && sp.sleepScore >= sg.sleepScoreThreshold
-                        Image(systemName: achieved ? "checkmark.circle.fill" : "moon.zzz.fill")
-                            .foregroundColor(achieved ? Color.duoGreen : Color.duoSubtitle)
-                            .font(.title3)
-                    }
-                } else {
-                    CircularProgressView(
-                        progress: progress.completionRate(goal: goal),
-                        isCompleted: progress.isFullyCompleted(goal: goal)
-                    )
-                }
+                CircularProgressView(
+                    progress: progress.completionRate(goal: goal),
+                    isCompleted: progress.isFullyCompleted(goal: goal)
+                )
             }
 
             Divider()
@@ -865,19 +1245,23 @@ struct SettingsView: View {
                 Divider()
 
                 ReminderRow(
-                    meta: ReminderMeta(id: ids.reminder,
+                    meta: ReminderMeta(id: remID,
                                        emoji: "🔔",
                                        label: "\(slot.displayName)のリマインダー",
                                        description: "\(slot.timeRange) 開始時に通知"),
                     config: Binding(
-                        get: { notif.prefs[ids.reminder] },
-                        set: { notif.prefs[ids.reminder] = $0 }
+                        get: { notif.prefs[remID] },
+                        set: { v in
+                            notif.prefs[remID] = v
+                            notif.savePrefs()
+                            notif.applyOne(id: remID)
+                        }
                     )
                 )
             }
         }
         .padding(14)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
@@ -1176,7 +1560,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1216,7 +1600,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1249,7 +1633,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1282,7 +1666,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1389,7 +1773,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(14)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(14)
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
             }
@@ -1414,10 +1798,14 @@ struct SettingsView: View {
                 meta: streakMeta,
                 config: Binding(
                     get: { notif.prefs[NotificationManager.ID.streakAlert] },
-                    set: { notif.prefs[NotificationManager.ID.streakAlert] = $0 }
+                    set: { v in
+                        notif.prefs[NotificationManager.ID.streakAlert] = v
+                        notif.savePrefs()
+                        notif.applyOne(id: NotificationManager.ID.streakAlert)
+                    }
                 )
             )
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1460,7 +1848,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 14).padding(.bottom, 12)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1488,7 +1876,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(14)
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(14)
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
             }
@@ -1522,7 +1910,7 @@ struct SettingsView: View {
                 }
                 .padding(14)
             }
-            .background(Color.white)
+            .background(Color(.systemBackground))
             .cornerRadius(14)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
@@ -1532,23 +1920,7 @@ struct SettingsView: View {
 
     private var saveButton: some View {
         Button {
-            notif.savePrefs()
-            iOSWatchBridge.isWatchAutoLaunchEnabled = watchAutoLaunch
-
-            // 設定を保存
-            Task {
-                await AuthenticationManager.shared.saveSetConfiguration(setConfiguration)
-                for (_, sensitivity) in motionSensitivity {
-                    await AuthenticationManager.shared.saveMotionSensitivity(sensitivity)
-                }
-                await MainActor.run {
-                    if permStatus == .authorized { notif.scheduleAllDaily() }
-                    withAnimation {
-                        savedBanner = true
-                        closeSettings()
-                    }
-                }
-            }
+            saveAndClose(showBanner: true)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: savedBanner ? "checkmark.circle.fill" : "square.and.arrow.down.fill")
@@ -1781,7 +2153,7 @@ struct ExerciseRowEditor: View {
                 }
                 Button { onDelete() } label: { Image(systemName: "trash").font(.caption).foregroundColor(Color.red.opacity(0.7)) }
             }.padding(14)
-        }.background(Color.white).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }.background(Color(.systemBackground)).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 }
 
@@ -1810,7 +2182,7 @@ struct MotionSensitivityEditorView: View {
                         ForEach(exercises, id: \.0) { id, name, emoji in if let sens = editingSensitivity[id] { SensitivityRowEditor(exerciseName: "\(emoji) \(name)", sensitivity: Binding(get: { sens }, set: { editingSensitivity[id] = $0 })) } }
                         Button { editingSensitivity = MotionSensitivity.defaultSettings } label: {
                             HStack(spacing: 8) { Image(systemName: "arrow.counterclockwise"); Text("デフォルトに戻す").fontWeight(.bold) }
-                                .foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity).padding(.vertical, 14).background(Color.white).cornerRadius(12)
+                                .foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity).padding(.vertical, 14).background(Color(.systemBackground)).cornerRadius(12)
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.duoSubtitle.opacity(0.3), lineWidth: 1))
                         }.buttonStyle(.plain)
                         Spacer(minLength: 20)
@@ -1841,7 +2213,7 @@ struct SensitivityRowEditor: View {
                 HStack { Text("最小間隔").font(.subheadline).foregroundColor(Color.duoSubtitle); Spacer(); Text(String(format: "%.1f秒", sensitivity.minInterval)).font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen) }
                 HStack(spacing: 8) { Text("短").font(.caption2).foregroundColor(Color.duoSubtitle); Slider(value: $sensitivity.minInterval, in: 0.3...2.0, step: 0.1).tint(Color.duoGreen); Text("長").font(.caption2).foregroundColor(Color.duoSubtitle) }
             }
-        }.padding(14).background(Color.white).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }.padding(14).background(Color(.systemBackground)).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
     private func sensitivityLabel(_ threshold: Double) -> String {
         switch threshold { case 0...0.05: return "最高"; case 0.05...0.08: return "高"; case 0.08...0.12: return "中"; case 0.12...0.16: return "低"; default: return "最低" }

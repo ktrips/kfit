@@ -2156,7 +2156,7 @@ struct DashboardView: View {
                     ZStack {
                         Circle()
                             .fill(LinearGradient(
-                                colors: [Color.blue, Color.purple],
+                                colors: [Color.duoOrange, Color(red: 1.0, green: 0.55, blue: 0.1)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ))
                             .frame(width: 42, height: 42)
@@ -2178,13 +2178,13 @@ struct DashboardView: View {
 
                     Image(systemName: "chevron.right.circle.fill")
                         .font(.callout)
-                        .foregroundColor(Color.duoSubtitle.opacity(0.6))
+                        .foregroundColor(Color.duoOrange.opacity(0.6))
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 18)
                 .background(
                     LinearGradient(
-                        colors: [Color.blue.opacity(0.08), Color.purple.opacity(0.08)],
+                        colors: [Color.duoOrange.opacity(0.10), Color(red: 1.0, green: 0.55, blue: 0.1).opacity(0.06)],
                         startPoint: .leading, endPoint: .trailing
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -3321,23 +3321,26 @@ struct DashboardView: View {
                 .font(.caption)
                 .foregroundColor(Color.duoDark)
 
-                // ポイント表示
-                HStack(spacing: 12) {
+                // ポイント表示（横一線に並べる）
+                HStack(spacing: 0) {
                     // 今日のポイント
                     VStack(alignment: .leading, spacing: 3) {
                         Text("今日")
                             .font(.caption2)
                             .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 3) {
+                        HStack(alignment: .bottom, spacing: 2) {
                             Text("\(totalXP)")
                                 .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.caption2)
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 2)
+                                .padding(.bottom, 3)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     Divider().frame(height: 28)
 
@@ -3346,16 +3349,20 @@ struct DashboardView: View {
                         Text("今週")
                             .font(.caption2)
                             .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 3) {
+                        HStack(alignment: .bottom, spacing: 2) {
                             Text("\(weeklyXP)")
                                 .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoBlue)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.caption2)
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 2)
+                                .padding(.bottom, 3)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 10)
 
                     Divider().frame(height: 28)
 
@@ -3364,18 +3371,20 @@ struct DashboardView: View {
                         Text("総ポイント")
                             .font(.caption2)
                             .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 3) {
+                        HStack(alignment: .bottom, spacing: 2) {
                             Text("\(authManager.userProfile?.totalPoints ?? 0)")
                                 .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoOrange)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.caption2)
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 2)
+                                .padding(.bottom, 3)
                         }
                     }
-
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 10)
                 }
             }
             .padding(12)
@@ -4394,7 +4403,7 @@ struct DashboardView: View {
                         VStack(spacing: 4) {
                             Text("今日のXP")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
-                            Text("\(totalXP + mindfulXP)")
+                            Text("\(totalXP)")
                                 .font(.system(size: 36, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("XP")

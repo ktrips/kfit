@@ -446,7 +446,6 @@ struct WatchDashboardView: View {
                     .buttonStyle(.plain)
 
                     stretchButton
-                    mindfulnessHistorySection
 
                     // ── スワイプヒント ────────────────────
                     HStack(spacing: 4) {
@@ -466,7 +465,7 @@ struct WatchDashboardView: View {
                     }
                     .padding(.vertical, 4)
 
-                    // ── 今日の記録（詳細版：個別セット表示）────────────────────────
+                    // ── 今日のトレーニング履歴（先に表示）────────────────────────
                     if !connectivity.todayExercises.isEmpty {
                         VStack(spacing: 4) {
                             HStack {
@@ -532,6 +531,9 @@ struct WatchDashboardView: View {
                         .background(Color.white.opacity(0.07))
                         .cornerRadius(9)
                     }
+
+                    // ── 今日のマインドフルネス履歴（トレーニング履歴の下）────────────────────────
+                    mindfulnessHistorySection
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
@@ -693,6 +695,7 @@ struct WatchDashboardView: View {
 
     private var mindfulnessHistorySection: some View {
         let samples = healthKit.todayMindfulnessSamples.sorted { $0.startDate > $1.startDate }
+        let impacts = healthKit.mindfulnessImpactHistory
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
                 Text("🧘").font(.system(size: 11))
@@ -713,7 +716,11 @@ struct WatchDashboardView: View {
                     .padding(.vertical, 4)
             } else {
                 ForEach(samples.prefix(4)) { session in
-                    mindfulnessHistoryRow(session)
+                    // セッション開始時刻に近いImpactデータを検索（±5分）
+                    let matchedImpact = impacts.first { impact in
+                        abs(impact.startDate.timeIntervalSince(session.startDate)) < 300
+                    }
+                    mindfulnessHistoryRow(session, impact: matchedImpact)
                 }
             }
         }
@@ -722,7 +729,7 @@ struct WatchDashboardView: View {
         .cornerRadius(10)
     }
 
-    private func mindfulnessHistoryRow(_ session: WatchMindfulnessSession) -> some View {
+    private func mindfulnessHistoryRow(_ session: WatchMindfulnessSession, impact: WatchMindfulnessImpact? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
                 Text(session.emoji).font(.system(size: 12))
@@ -740,22 +747,53 @@ struct WatchDashboardView: View {
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundColor(session.typeLabel == "3分ストレッチ" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
             }
-            if session.averageHeartRate > 0 || session.averageHRV > 0 {
-                HStack(spacing: 8) {
-                    if session.averageHeartRate > 0 {
+
+            // HealthKitセッションのHR/HRV（直接取得）
+            let hkHR = session.averageHeartRate
+            let hkHRV = session.averageHRV
+            // Impactデータ（before/after）のafter値を使用
+            let impactAfterHR = impact?.after.heartRate ?? 0
+            let impactAfterHRV = impact?.after.hrv ?? 0
+
+            let displayHR = hkHR > 0 ? hkHR : impactAfterHR
+            let displayHRV = hkHRV > 0 ? hkHRV : impactAfterHRV
+
+            if displayHR > 0 || displayHRV > 0 || impact != nil {
+                HStack(spacing: 6) {
+                    if displayHR > 0 {
                         HStack(spacing: 2) {
-                            Text("❤️").font(.system(size: 9))
-                            Text("\(Int(session.averageHeartRate)) bpm")
+                            Text("❤️").font(.system(size: 8))
+                            Text("\(Int(displayHR))")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.white.opacity(0.85))
+                            Text("bpm")
+                                .font(.system(size: 7))
+                                .foregroundColor(.white.opacity(0.5))
                         }
                     }
-                    if session.averageHRV > 0 {
+                    if displayHRV > 0 {
                         HStack(spacing: 2) {
-                            Text("💙").font(.system(size: 9))
-                            Text("\(Int(session.averageHRV)) ms")
+                            Text("💙").font(.system(size: 8))
+                            Text("\(Int(displayHRV))")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.white.opacity(0.85))
+                            Text("ms")
+                                .font(.system(size: 7))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                    }
+                    // Impactデータがあり両端のHRVが有効ならストレス変化をコンパクト表示
+                    if let imp = impact, imp.before.hrv > 0 && imp.after.hrv > 0 {
+                        let delta = imp.stressDelta
+                        let deltaStr = delta == 0 ? "±0" : (delta > 0 ? "+\(delta)" : "\(delta)")
+                        let deltaColor: Color = delta < 0 ? duoGreen : delta > 0 ? Color(red: 1.0, green: 0.4, blue: 0.3) : .gray
+                        HStack(spacing: 1) {
+                            Text("ストレス")
+                                .font(.system(size: 7))
+                                .foregroundColor(.white.opacity(0.5))
+                            Text(deltaStr)
+                                .font(.system(size: 9, weight: .black))
+                                .foregroundColor(deltaColor)
                         }
                     }
                 }
@@ -1461,6 +1499,7 @@ private struct WatchBreatheFlowView: View {
     @State private var beforeVitals: WatchWellnessVitals? = nil
     @State private var sessionStartDate = Date()
     @State private var animIsInhaling: Bool = false
+    @State private var extSession: WKExtendedRuntimeSession?
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private var cycleSecond: Int { elapsedSeconds % 13 }
@@ -1536,6 +1575,10 @@ private struct WatchBreatheFlowView: View {
             sessionStartDate = Date()
             WKInterfaceDevice.current().play(.start)
             startInhaleHaptics()
+            // 画面オフ中でもアプリを継続動作させるExtendedRuntimeSession
+            let s = WKExtendedRuntimeSession()
+            s.start()
+            extSession = s
             Task {
                 let v = await healthKit.measureCurrentWellnessVitals()
                 await MainActor.run { beforeVitals = v }
@@ -1543,15 +1586,20 @@ private struct WatchBreatheFlowView: View {
         }
         .onDisappear {
             inhaleHapticTask?.cancel()
+            extSession?.invalidate()
+            extSession = nil
         }
         .onReceive(timer) { _ in
             guard !didComplete else { return }
-            elapsedSeconds += 1
+            // 壁時計で計算 — 画面オフ中もタイマーが止まらないよう開始時刻基準で算出
+            let newSeconds = Int(Date().timeIntervalSince(sessionStartDate))
+            let prev = elapsedSeconds
+            elapsedSeconds = newSeconds
             if isInhaling != animIsInhaling { animIsInhaling = isInhaling }
-            if elapsedSeconds % 13 == 0 {
+            if newSeconds % 13 == 0 && newSeconds > 0 && newSeconds != prev {
                 startInhaleHaptics()
             }
-            if elapsedSeconds >= 60 {
+            if newSeconds >= 60 {
                 completeBreathe()
             }
         }
@@ -1675,6 +1723,7 @@ private struct WatchStretchFlowView: View {
     @State private var beforeVitals: WatchWellnessVitals? = nil
     @State private var sessionStartDate = Date()
     @State private var animIsInhaling: Bool = false
+    @State private var extSession: WKExtendedRuntimeSession?
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let poses: [(emoji: String, title: String, cue: String)] = [
@@ -1766,6 +1815,10 @@ private struct WatchStretchFlowView: View {
             sessionStartDate = Date()
             WKInterfaceDevice.current().play(.start)
             startInhaleHaptics()
+            // 画面オフ中でもアプリを継続動作させるExtendedRuntimeSession
+            let s = WKExtendedRuntimeSession()
+            s.start()
+            extSession = s
             Task {
                 let v = await healthKit.measureCurrentWellnessVitals()
                 await MainActor.run { beforeVitals = v }
@@ -1773,13 +1826,17 @@ private struct WatchStretchFlowView: View {
         }
         .onDisappear {
             inhaleHapticTask?.cancel()
+            extSession?.invalidate()
+            extSession = nil
         }
         .onReceive(timer) { _ in
             guard !didComplete else { return }
-            elapsedSeconds += 1
+            // 壁時計で計算 — 画面オフ中もタイマーが止まらないよう開始時刻基準で算出
+            let newSeconds = Int(Date().timeIntervalSince(sessionStartDate))
+            elapsedSeconds = newSeconds
             if isInhaling != animIsInhaling { animIsInhaling = isInhaling }
             playBreathingHapticIfNeeded()
-            if elapsedSeconds >= 180 {
+            if newSeconds >= 180 {
                 completeStretch()
             }
         }

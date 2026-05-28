@@ -202,7 +202,6 @@ struct MainTabView: View {
             .onAppear {
                 selectedTab = defaultVisibleTab.rawValue
                 normalizeSelection()
-                scheduleTabBarAutoHide()
                 checkEndOfDayCalorieTopUp()
             }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
@@ -355,9 +354,8 @@ struct MainTabView: View {
                 .onEnded { value in
                     if value.translation.height > 12 {
                         hideTabBarNow()
-                    } else {
-                        scheduleTabBarAutoHide()
                     }
+                    // 下スワイプ以外は表示を維持
                 }
         )
         .ignoresSafeArea(edges: .bottom)
@@ -412,10 +410,11 @@ struct MainTabView: View {
     }
 
     private func revealTabBar() {
+        tabBarHideWorkItem?.cancel()
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
             isTabBarHidden = false
         }
-        scheduleTabBarAutoHide()
+        // スクロール開始まで出っ放し — オートハイドは行わない
     }
 
     private func hideTabBarNow() {

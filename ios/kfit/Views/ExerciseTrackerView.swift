@@ -19,11 +19,12 @@ private func isPlank(_ exercise: Exercise?) -> Bool {
 }
 
 // 固定の連続フロー（Watchと同じ）
+// xp = 1回(rep)あたりのXP。プランクは1秒=1repとして計算するため、xp=1で1秒あたり1XP
 private let flowSteps: [(emoji: String, name: String, target: Int, id: String, xp: Int)] = [
     ("🏋️", "スクワット", 20, "squat", 2),
     ("💪", "腕立て伏せ", 15, "pushup", 2),
     ("🔥", "腹筋", 15, "situp", 1),
-    ("🧘", "プランク", 45, "plank", 1),
+    ("🧘", "プランク", 45, "plank", 1),  // 1秒 = 1 XP
     ("🦵", "ランジ", 20, "lunge", 2),
 ]
 

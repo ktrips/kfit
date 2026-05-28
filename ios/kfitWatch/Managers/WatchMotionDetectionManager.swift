@@ -162,13 +162,15 @@ class WatchMotionDetectionManager: NSObject, ObservableObject {
         plankCompleted = false
         plankStartTime = Date()
 
-        // 1秒ごとに更新
-        plankTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        // .common モードで登録 — 画面オフ・スクロール中もタイマーが止まらないよう設定
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             Task { @MainActor in
                 self.updatePlankTimer()
             }
         }
+        RunLoop.main.add(t, forMode: .common)
+        plankTimer = t
     }
 
     private func updatePlankTimer() {

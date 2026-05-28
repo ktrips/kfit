@@ -164,11 +164,8 @@ struct WatchDashboardView: View {
         Task {
             await refreshHealthData(scope: scope, force: true)
             connectivity.requestStatsFromiOS(scope: scope, force: true)
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            await MainActor.run {
-                isManualRefreshing = false
-                WKInterfaceDevice.current().play(.success)
-            }
+            isManualRefreshing = false
+            WKInterfaceDevice.current().play(.success)
         }
     }
 

@@ -461,30 +461,37 @@ struct TimeSlotGoalsView: View {
 
                 // 既存カスタム目標リスト
                 ForEach(timeSlotManager.settings.globalGoals.customGoals) { goal in
+                    let isCompleted = timeSlotManager.progress.globalProgress.completedCustomGoalIds.contains(goal.id)
                     HStack(spacing: 10) {
+                        // 完了トグルボタン
+                        Button {
+                            Task { await timeSlotManager.toggleCustomGoal(id: goal.id) }
+                        } label: {
+                            Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundColor(isCompleted ? Color.duoGreen : Color(uiColor: .systemGray3))
+                        }
+                        .buttonStyle(.plain)
+
                         Text(goal.emoji)
                             .font(.title3)
                         Text(goal.name)
                             .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
+                            .strikethrough(isCompleted, color: Color.duoGreen.opacity(0.6))
                         Spacer()
-                        // 今日の達成状況
-                        if timeSlotManager.progress.globalProgress.completedCustomGoalIds.contains(goal.id) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color.duoGreen)
-                                .font(.subheadline)
-                        }
                         // 削除ボタン
                         Button {
                             timeSlotManager.settings.globalGoals.customGoals.removeAll { $0.id == goal.id }
                             Task { await timeSlotManager.saveTodaySettings() }
                         } label: {
                             Image(systemName: "minus.circle.fill")
-                                .foregroundColor(Color.duoRed.opacity(0.7))
+                                .foregroundColor(Color.duoRed.opacity(0.5))
                                 .font(.subheadline)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.leading, 8)
+                    .padding(.leading, 4)
                 }
 
                 // プリセット提案（目標が0件のとき）
@@ -690,6 +697,14 @@ struct TimeSlotGoalsView: View {
                 logGoalRow(logGoal: goal.logGoal, logProgress: progress.logProgress)
             }
 
+            // カスタムアクティビティ（完了ボタン付き）
+            if !goal.customActivities.filter({ $0.isEnabled }).isEmpty {
+                Divider()
+                ForEach(goal.customActivities.filter { $0.isEnabled }) { activity in
+                    customActivityRow(activity: activity, timeSlot: timeSlot, progress: progress)
+                }
+            }
+
             // 編集ボタン
             NavigationLink {
                 TimeSlotGoalEditView(timeSlot: timeSlot)
@@ -779,6 +794,29 @@ struct TimeSlotGoalsView: View {
                     .foregroundColor(Color.duoGreen)
                     .font(.title3)
             }
+        }
+    }
+
+    // MARK: - Custom Activity Row
+
+    private func customActivityRow(activity: CustomActivity, timeSlot: TimeSlot, progress: TimeSlotProgress) -> some View {
+        let isCompleted = progress.completedActivityIds.contains(activity.id)
+        return HStack(spacing: 12) {
+            Text(activity.emoji)
+                .font(.title3)
+            Text(activity.name)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
+                .strikethrough(isCompleted, color: Color.duoGreen.opacity(0.6))
+            Spacer()
+            Button {
+                Task { await timeSlotManager.toggleCustomActivity(id: activity.id, at: timeSlot) }
+            } label: {
+                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundColor(isCompleted ? Color.duoGreen : Color(uiColor: .systemGray3))
+            }
+            .buttonStyle(.plain)
         }
     }
 

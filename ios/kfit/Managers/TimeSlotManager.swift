@@ -355,24 +355,30 @@ class TimeSlotManager: ObservableObject {
         guard hk.isAuthorized else { return }
 
         let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
         let allSessions = hk.todayMindfulnessSamples
         var changed = false
+
+        // セッションを時間帯別に事前グループ化 — スロット数×セッション数の二重ループを回避
+        var sessionsBySlot: [TimeSlot: [MindfulSession]] = [:]
+        for session in allSessions {
+            let hour = cal.component(.hour, from: session.startDate)
+            let slot: TimeSlot
+            if hour < 6 { slot = .midnight }
+            else if hour < 10 { slot = .morning }
+            else if hour < 14 { slot = .noon }
+            else if hour < 18 { slot = .afternoon }
+            else { slot = .evening }
+            sessionsBySlot[slot, default: []].append(session)
+        }
 
         for slot in TimeSlot.allCases where slot != .midnight {
             guard var prog = progress.progressFor(slot),
                   let goal = settings.goalFor(slot),
                   goal.stretchGoal.enabled else { continue }
 
-            let slotStart = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
-            let slotEnd: Date = slot.endHour >= 24
-                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
-                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
-
-            let sessionsInSlot = allSessions.filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
-            let maxSingle = sessionsInSlot.map { $0.durationMinutes }.max() ?? 0.0
+            let sessions = sessionsBySlot[slot] ?? []
+            let maxSingle = sessions.map { $0.durationMinutes }.max() ?? 0.0
             let target = Double(goal.stretchGoal.stretchMinutes)
-            // 1セッションで目標分数に達していれば達成、未満なら最長セッション分を進捗として使う
             let newCompleted = maxSingle >= target ? goal.stretchGoal.stretchMinutes : Int(maxSingle)
 
             if prog.stretchSetsCompleted != newCompleted {
@@ -402,33 +408,46 @@ class TimeSlotManager: ObservableObject {
         if useHealthKitForMeal {
             await hk.fetchIntakeHealth()
         }
+
+        // サンプルを時間帯別に事前グループ化 — O(n×m) フィルタを O(n+m) に改善
+        let slotBounds: [(TimeSlot, Date, Date)] = TimeSlot.allCases.map { slot in
+            let start = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
+            let end: Date = slot.endHour >= 24
+                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
+                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
+            return (slot, start, end)
+        }
+
+        var waterBySlot: [TimeSlot: Double] = [:]
+        for sample in hk.todayWaterSamples {
+            if let (slot, _, _) = slotBounds.first(where: { sample.startDate >= $1 && sample.startDate < $2 }) {
+                waterBySlot[slot, default: 0] += sample.value
+            }
+        }
+        var mealBySlot: [TimeSlot: Double] = [:]
+        if useHealthKitForMeal {
+            for sample in hk.todayMealSamples {
+                if let (slot, _, _) = slotBounds.first(where: { sample.startDate >= $1 && sample.startDate < $2 }) {
+                    mealBySlot[slot, default: 0] += sample.value
+                }
+            }
+        }
+
         var changed = false
+        let now = Date()
 
         for slot in TimeSlot.allCases {
             guard var prog = progress.progressFor(slot) else { continue }
 
-            let slotStart = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
-            let slotEnd: Date = slot.endHour >= 24
-                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
-                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
-
-            let waterInSlot = hk.todayWaterSamples
-                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
-                .reduce(0.0) { $0 + $1.value }
-
-            let mealInSlot = hk.todayMealSamples
-                .filter { $0.startDate >= slotStart && $0.startDate < slotEnd }
-                .reduce(0.0) { $0 + $1.value }
-
-            let newDrink = max(prog.logProgress.drinkLogged, Int(waterInSlot))
+            let newDrink = max(prog.logProgress.drinkLogged, Int(waterBySlot[slot] ?? 0))
             let newMeal = useHealthKitForMeal
-                ? Int(mealInSlot)
-                : scheduledMealLogged(for: slot, now: Date())
+                ? Int(mealBySlot[slot] ?? 0)
+                : scheduledMealLogged(for: slot, now: now)
 
             if prog.logProgress.drinkLogged != newDrink || prog.logProgress.mealLogged != newMeal {
                 prog.logProgress.drinkLogged = newDrink
                 prog.logProgress.mealLogged  = newMeal
-                prog.lastUpdated = Date()
+                prog.lastUpdated = now
                 var updated = progress
                 updated.updateProgress(prog)
                 progress = updated

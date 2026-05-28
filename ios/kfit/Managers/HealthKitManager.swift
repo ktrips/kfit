@@ -302,6 +302,9 @@ final class HealthKitManager: ObservableObject {
     private var lastFetchAllAt: Date? = nil
     private var lastScopedFetchAt: [String: Date] = [:]
     private let fetchAllTTL: TimeInterval = 20
+    private var mindfulnessCacheResult: (minutes: Double, sessions: Int, samples: [MindfulSession])?
+    private var mindfulnessCachedAt: Date?
+    private let mindfulnessCacheTTL: TimeInterval = 30
 
     // ワークアウト
     @Published var todayWorkoutMinutes: Int = 0         // 今日のワークアウト時間（分）
@@ -1913,8 +1916,14 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - マインドフルネス
 
-    /// 今日のマインドフルネスセッションを取得
+    /// 今日のマインドフルネスセッションを取得（30秒キャッシュ付き）
     func fetchTodayMindfulness() async -> (minutes: Double, sessions: Int, samples: [MindfulSession]) {
+        if let cached = mindfulnessCacheResult,
+           let cachedAt = mindfulnessCachedAt,
+           Date().timeIntervalSince(cachedAt) < mindfulnessCacheTTL {
+            return cached
+        }
+
         guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
             return (0, 0, [])
         }
@@ -1960,7 +1969,10 @@ final class HealthKitManager: ObservableObject {
         }
 
         let oneMinuteCount = mindfulSamples.filter { $0.durationMinutes <= 1.5 }.count
-        return (totalMinutes, oneMinuteCount, mindfulSamples)
+        let result = (totalMinutes, oneMinuteCount, mindfulSamples)
+        mindfulnessCacheResult = result
+        mindfulnessCachedAt = now
+        return result
     }
 
     /// マインドフルネスデータを手動で更新
@@ -2006,7 +2018,7 @@ final class HealthKitManager: ObservableObject {
             ]
         )
 
-        return await withCheckedContinuation { continuation in
+        let success = await withCheckedContinuation { continuation in
             store.save(sample) { success, error in
                 if let error {
                     print("[HealthKit] ❌ Mindfulness save failed: \(error.localizedDescription)")
@@ -2016,6 +2028,9 @@ final class HealthKitManager: ObservableObject {
                 continuation.resume(returning: success)
             }
         }
+        // 新しいセッションを保存したのでキャッシュを無効化（Sendableクロージャの外で実施）
+        if success { mindfulnessCacheResult = nil }
+        return success
     }
 
     // MARK: - ワークアウト

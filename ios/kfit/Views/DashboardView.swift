@@ -138,6 +138,7 @@ struct DashboardView: View {
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
     @State private var lastWidgetPayloadHash = ""
     @State private var pendingWidgetReload: DispatchWorkItem?
+    @State private var pendingWidgetDataUpdate: DispatchWorkItem?
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -150,15 +151,16 @@ struct DashboardView: View {
         coreView
             .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
                 handleMindfulnessChange(old: oldValue, new: newValue)
+                scheduleWidgetDataUpdate()
             }
-            .onChange(of: healthKit.todayActiveCalories) { _, _ in updateWidgetData() }
-            .onChange(of: healthKit.todayRestingCalories) { _, _ in updateWidgetData() }
-            .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in updateWidgetData() }
-            .onChange(of: healthKit.todayStandHours) { _, _ in updateWidgetData() }
-            .onChange(of: todayIntake.totalCalories) { _, _ in updateWidgetData() }
-            .onChange(of: todaySetCount) { _, _ in updateWidgetData() }
+            .onChange(of: healthKit.todayActiveCalories) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayRestingCalories) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayStandHours) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }
             .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
-                updateWidgetData()
+                scheduleWidgetDataUpdate()
             }
             .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
                 Task { await periodicWidgetSync() }
@@ -1608,7 +1610,7 @@ struct DashboardView: View {
                         let goalId = "daily_custom_\(cg.id.uuidString)"
                         let isDone = gp.completedCustomGoalIds.contains(goalId)
                         DailyGoalPickerButton(
-                            emoji: cg.emoji, isDone: isDone,
+                            emoji: cg.emoji, name: cg.name, isDone: isDone,
                             onComplete: { Task { await timeSlotManager.toggleCustomGoal(id: goalId) } }
                         )
                         .scaleEffect(0.65).frame(width: 22, height: 22)
@@ -6216,6 +6218,14 @@ struct DashboardView: View {
         scheduleWidgetReload()
     }
 
+    /// HealthKitプロパティが同時に複数変化しても updateWidgetData() を1回だけ呼ぶ
+    private func scheduleWidgetDataUpdate() {
+        pendingWidgetDataUpdate?.cancel()
+        let workItem = DispatchWorkItem { updateWidgetData() }
+        pendingWidgetDataUpdate = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+    }
+
     private func scheduleWidgetReload() {
         pendingWidgetReload?.cancel()
         let workItem = DispatchWorkItem {
@@ -7285,12 +7295,16 @@ private struct SleepMiniRingView: View {
 
 private struct DailyGoalPickerButton: View {
     let emoji: String
+    let name: String
     let isDone: Bool
     let onComplete: () -> Void
-    @State private var pickerItem: PhotosPickerItem? = nil
+
+    @State private var showSheet = false
 
     var body: some View {
-        PhotosPicker(selection: $pickerItem, matching: .images) {
+        Button {
+            showSheet = true
+        } label: {
             ZStack(alignment: .bottomTrailing) {
                 Text(emoji).font(.system(size: 22))
                 Circle()
@@ -7299,6 +7313,91 @@ private struct DailyGoalPickerButton: View {
                     .offset(x: 2, y: 2)
             }
             .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showSheet) {
+            GoalCompletionSheet(
+                emoji: emoji,
+                name: name,
+                isDone: isDone,
+                onComplete: {
+                    onComplete()
+                    showSheet = false
+                }
+            )
+            .presentationDetents([.height(290)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+private struct GoalCompletionSheet: View {
+    let emoji: String
+    let name: String
+    let isDone: Bool
+    let onComplete: () -> Void
+
+    @State private var pickerItem: PhotosPickerItem? = nil
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 6) {
+                Text(emoji)
+                    .font(.system(size: 44))
+                Text(name)
+                    .font(.title3).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                if isDone {
+                    Label("達成済み", systemImage: "checkmark.circle.fill")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 18)
+
+            Divider()
+
+            VStack(spacing: 10) {
+                // 完了ボタン
+                Button {
+                    onComplete()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: isDone
+                              ? "arrow.uturn.backward.circle.fill"
+                              : "checkmark.circle.fill")
+                            .font(.title3)
+                        Text(isDone ? "完了を取り消す" : "完了する")
+                            .font(.headline).fontWeight(.black)
+                        Spacer()
+                    }
+                    .foregroundColor(isDone ? Color.duoRed : Color.duoGreen)
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background((isDone ? Color.duoRed : Color.duoGreen).opacity(0.1))
+                    .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+
+                // 写真で記録
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.fill")
+                            .font(.title3)
+                        Text("写真で記録する")
+                            .font(.headline).fontWeight(.black)
+                        Spacer()
+                    }
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(Color(hex: "#1CB0F6").opacity(0.1))
+                    .cornerRadius(14)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            Spacer()
         }
         .onChange(of: pickerItem) { _, item in
             guard item != nil else { return }

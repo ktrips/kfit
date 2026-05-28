@@ -211,6 +211,7 @@ struct PhotoLogEntry: Codable, Identifiable {
     var comment: String = ""  // ユーザーコメント
     var mealType: MealType?  // 食事タイプ（朝食、昼食、夕食）
     var analyzedNutrition: AnalyzedNutrition?  // LLM分析結果
+    var isFavorite: Bool = false
 
     var image: UIImage? {
         guard let data = imageData else { return nil }

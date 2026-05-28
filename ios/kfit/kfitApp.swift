@@ -148,6 +148,7 @@ struct MainTabView: View {
     @State private var showTrainingTracker = false
     @State private var isTabBarHidden = false
     @State private var tabBarHideWorkItem: DispatchWorkItem?
+    @State private var tabBarRevealWorkItem: DispatchWorkItem?
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
@@ -166,6 +167,10 @@ struct MainTabView: View {
                         .onChanged { value in
                             if value.translation.height < -20 && !isTabBarHidden {
                                 hideTabBarNow()
+                            }
+                            // スクロール中はリビールタイマーをリセット
+                            if isTabBarHidden {
+                                scheduleTabBarAutoReveal()
                             }
                         }
                 )
@@ -418,6 +423,7 @@ struct MainTabView: View {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
             isTabBarHidden = true
         }
+        scheduleTabBarAutoReveal()
     }
 
     private func scheduleTabBarAutoHide() {
@@ -426,9 +432,21 @@ struct MainTabView: View {
             withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                 isTabBarHidden = true
             }
+            // オートハイド後はリビールしない（スクロール再開まで待つ）
         }
         tabBarHideWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
+    }
+
+    // スクロール停止から3.5秒後に自動表示
+    private func scheduleTabBarAutoReveal() {
+        tabBarRevealWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            guard isTabBarHidden else { return }
+            revealTabBar()
+        }
+        tabBarRevealWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: workItem)
     }
 
     private func checkEndOfDayCalorieTopUp() {

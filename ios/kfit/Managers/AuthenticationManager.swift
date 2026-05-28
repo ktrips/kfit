@@ -24,6 +24,8 @@ class AuthenticationManager: ObservableObject {
     private var cachedTodayExercises: [CompletedExercise] = []
     private var lastTodayExercisesFetch: Date?
     private let cacheExpiry: TimeInterval = 30 // 30秒キャッシュ
+    private var cachedDailySets: DailySets = DailySets(amSets: 0, pmSets: 0)
+    private var lastDailySetsCache: Date? = nil
 
     init() {
         setupAuthStateListener()
@@ -284,6 +286,33 @@ class AuthenticationManager: ObservableObject {
             "totalPoints": FieldValue.increment(Int64(points))
         ])
         print("[XP] Awarded \(points)pts")
+    }
+
+    /// マインドフルネスセッションにXPを付与（セッション開始日時で重複防止）
+    /// Breathe（1分瞑想）= +10 XP、Reflect（3分ストレッチ）= +30 XP
+    func awardXPForMindfulSessions(_ sessions: [MindfulSession]) async {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let today = df.string(from: Date())
+        let key = "fitingo.mindful.xp.\(today)"
+
+        var awarded = Set<String>(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        let iso = ISO8601DateFormatter()
+        var totalNew = 0
+
+        for session in sessions {
+            let sid = iso.string(from: session.startDate)
+            guard !awarded.contains(sid) else { continue }
+            let isReflect = session.sessionTypeLabel == "Reflect"
+            totalNew += isReflect ? 30 : 10
+            awarded.insert(sid)
+            print("[XP] Mindful session \(isReflect ? "Reflect" : "Breathe") +\(isReflect ? 30 : 10)pts")
+        }
+
+        if totalNew > 0 {
+            await awardPoints(totalNew)
+        }
+        UserDefaults.standard.set(Array(awarded), forKey: key)
     }
 
     /// 1日1回限りのボーナス（UserDefaultsで重複防止）
@@ -847,6 +876,7 @@ class AuthenticationManager: ObservableObject {
 
         // キャッシュ無効化
         invalidateTodayExercisesCache()
+        invalidateDailySetsCache()
 
         // Widget更新（データを書いてからリロード）
         AuthenticationManager.syncWidgetData()
@@ -933,6 +963,7 @@ class AuthenticationManager: ObservableObject {
 
         // キャッシュ無効化
         invalidateTodayExercisesCache()
+        invalidateDailySetsCache()
     }
 
     // MARK: - Weekly Set Counts
@@ -1142,9 +1173,17 @@ class AuthenticationManager: ObservableObject {
             print("❌ getDailySets: userId is nil")
             return DailySets(amSets: 0, pmSets: 0)
         }
+        // 30秒キャッシュ
+        if let last = lastDailySetsCache, Date().timeIntervalSince(last) < cacheExpiry {
+            print("⚡ getDailySets: returning cached data")
+            return cachedDailySets
+        }
         let summary = await getTodayActivitySummary()
         if summary.completedSets > 0 {
-            return summary.dailySets
+            let sets = summary.dailySets
+            cachedDailySets = sets
+            lastDailySetsCache = Date()
+            return sets
         }
         print("🔵 getDailySets: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
@@ -1156,12 +1195,18 @@ class AuthenticationManager: ObservableObject {
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .default)
             let sets = buildDailySets(from: snapshot)
+            cachedDailySets = sets
+            lastDailySetsCache = Date()
             print("✅ getDailySets: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
             return sets
         } catch {
             print("❌ getDailySets error: \(error)")
-            return DailySets(amSets: 0, pmSets: 0)
+            return cachedDailySets
         }
+    }
+
+    func invalidateDailySetsCache() {
+        lastDailySetsCache = nil
     }
 
     private func buildDailySets(from snapshot: QuerySnapshot) -> DailySets {
@@ -2294,6 +2339,7 @@ class PhotoLogManager: ObservableObject {
         if let image = entry.image {
             item.thumbnailData = makeThumbnail(from: image, size: CGSize(width: 100, height: 100))
         }
+        item.isFavorite = entry.isFavorite
         history.insert(item, at: 0)
         persistHistory()
     }
@@ -2401,12 +2447,13 @@ class PhotoLogManager: ObservableObject {
             throw PhotoLogError.apiError("OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
+        let rawOpenAIResponse = String(data: data, encoding: .utf8) ?? ""
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            print("[PhotoLog] Failed to parse OpenAI API response structure")
-            throw PhotoLogError.invalidResponse
+            print("[PhotoLog] Failed to parse OpenAI API response structure: \(rawOpenAIResponse)")
+            throw PhotoLogError.invalidResponse("[OpenAI] レスポンス構造が想定外:\n\(rawOpenAIResponse)")
         }
 
         return try parseNutritionJSON(content)
@@ -2450,11 +2497,12 @@ class PhotoLogManager: ObservableObject {
             throw PhotoLogError.apiError("Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
+        let rawAnthropicResponse = String(data: data, encoding: .utf8) ?? ""
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let content = json?["content"] as? [[String: Any]],
               let text = content.first?["text"] as? String else {
-            print("[PhotoLog] Failed to parse Anthropic API response structure")
-            throw PhotoLogError.invalidResponse
+            print("[PhotoLog] Failed to parse Anthropic API response structure: \(rawAnthropicResponse)")
+            throw PhotoLogError.invalidResponse("[Anthropic] レスポンス構造が想定外:\n\(rawAnthropicResponse)")
         }
 
         return try parseNutritionJSON(text)
@@ -2509,6 +2557,7 @@ class PhotoLogManager: ObservableObject {
             throw PhotoLogError.apiError("Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
+        let rawGoogleResponse = String(data: data, encoding: .utf8) ?? ""
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
         // レスポンス構造をログに出力
@@ -2518,8 +2567,8 @@ class PhotoLogManager: ObservableObject {
               let content = candidates.first?["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let text = parts.first?["text"] as? String else {
-            print("[PhotoLog] Failed to parse Google API response structure")
-            throw PhotoLogError.invalidResponse
+            print("[PhotoLog] Failed to parse Google API response structure: \(rawGoogleResponse)")
+            throw PhotoLogError.invalidResponse("[Google] レスポンス構造が想定外:\n\(rawGoogleResponse)")
         }
 
         return try parseNutritionJSON(text)
@@ -2555,7 +2604,7 @@ class PhotoLogManager: ObservableObject {
         guard let data = cleanedString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("[PhotoLog] Failed to parse JSON: \(cleanedString)")
-            throw PhotoLogError.invalidResponse
+            throw PhotoLogError.invalidResponse("[JSONパース失敗] モデルの返答:\n\(cleanedString)")
         }
 
         var nutrition = AnalyzedNutrition()
@@ -2582,7 +2631,7 @@ enum PhotoLogError: LocalizedError {
     case noAPIKey
     case invalidImage
     case apiError(String)
-    case invalidResponse
+    case invalidResponse(String)
 
     var errorDescription: String? {
         switch self {
@@ -2592,8 +2641,20 @@ enum PhotoLogError: LocalizedError {
             return "画像の処理に失敗しました"
         case .apiError(let message):
             return "API呼び出しエラー: \(message)"
-        case .invalidResponse:
-            return "無効なレスポンス"
+        case .invalidResponse(let rawContent):
+            let snippet = String(rawContent.prefix(300))
+            return """
+            レスポンスの解析に失敗しました。
+
+            受信内容（先頭300文字）:
+            \(snippet)
+
+            【考えられる原因と対処法】
+            • APIキーが正しくない → 設定画面でキーを確認
+            • モデル名が間違っている → 設定でモデルを変更
+            • 安全フィルターで画像がブロック → 別の画像を試す
+            • JSONを返さないモデル → Gemini/GPT-4o等に変更
+            """
         }
     }
 }

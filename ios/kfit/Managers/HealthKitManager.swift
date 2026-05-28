@@ -998,23 +998,35 @@ final class HealthKitManager: ObservableObject {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let unit = HKUnit.secondUnit(with: .milli)
+        let hkStore = store
 
-        var days: [DailyHRVAverage] = []
-        for offset in stride(from: 6, through: 0, by: -1) {
-            guard let dayStart = calendar.date(byAdding: .day, value: -offset, to: today),
-                  let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
-                continue
-            }
-            let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
-            let average = await withCheckedContinuation { cont in
-                let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, result, _ in
-                    cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+        // 7日分を並列クエリで一括取得
+        let results = await withTaskGroup(of: DailyHRVAverage?.self) { group in
+            for offset in stride(from: 6, through: 0, by: -1) {
+                guard let dayStart = calendar.date(byAdding: .day, value: -offset, to: today),
+                      let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart) else { continue }
+                group.addTask {
+                    let predicate = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
+                    let value = await withCheckedContinuation { (cont: CheckedContinuation<Double, Never>) in
+                        let query = HKStatisticsQuery(
+                            quantityType: type,
+                            quantitySamplePredicate: predicate,
+                            options: .discreteAverage
+                        ) { _, result, _ in
+                            cont.resume(returning: result?.averageQuantity()?.doubleValue(for: unit) ?? 0)
+                        }
+                        hkStore.execute(query)
+                    }
+                    return DailyHRVAverage(date: dayStart, value: value)
                 }
-                store.execute(query)
             }
-            days.append(DailyHRVAverage(date: dayStart, value: average))
+            var collected: [DailyHRVAverage] = []
+            for await item in group {
+                if let item { collected.append(item) }
+            }
+            return collected
         }
-        return days
+        return results.sorted { $0.date < $1.date }
     }
 
     // MARK: - 昨夜の睡眠

@@ -17,6 +17,8 @@ struct FoodView: View {
     @State private var showIntakeConfirm = false
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
+    @StateObject private var photoLogManager = PhotoLogManager.shared
+    @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -45,6 +47,11 @@ struct FoodView: View {
                     // 詳細ログ
                     detailLogButton
 
+                    // FOODフィード（お気に入りのみ）
+                    if !photoLogManager.history.filter({ $0.isFavorite }).isEmpty {
+                        photoFeedSection
+                    }
+
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -64,6 +71,9 @@ struct FoodView: View {
         .sheet(isPresented: $showDetailLog) {
             DailyIntakeView()
                 .environmentObject(authManager)
+        }
+        .sheet(item: $selectedFeedItem) { item in
+            PhotoFeedDetailSheet(item: item)
         }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("記録する", role: .none) {
@@ -614,6 +624,36 @@ struct FoodView: View {
         }
     }
 
+    // MARK: - FOODフィード
+
+    private var photoFeedSection: some View {
+        let favorites = photoLogManager.history.filter { $0.isFavorite }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#FFD700"))
+                Text("FOODフィード")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("\(favorites.count)件")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(Array(favorites.enumerated()), id: \.element.id) { index, item in
+                    PhotoFeedCard(item: item, gradientIndex: index)
+                        .onTapGesture { selectedFeedItem = item }
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func confirm(_ message: String, action: @escaping () -> Void) {
@@ -648,5 +688,390 @@ struct FoodView: View {
         todayIntake = intake
         intakeGoals = settings
         pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
+    }
+}
+
+// MARK: - Photo Feed Card
+
+private struct PhotoFeedCard: View {
+    let item: PhotoLogHistoryItem
+    let gradientIndex: Int
+
+    private let gradients: [[Color]] = [
+        [Color(hex: "#FF6B6B"), Color(hex: "#FF8E53")],
+        [Color(hex: "#4ECDC4"), Color(hex: "#45B7D1")],
+        [Color(hex: "#96CEB4"), Color(hex: "#00B894")],
+        [Color(hex: "#FFEAA7"), Color(hex: "#FDCB6E")],
+        [Color(hex: "#A29BFE"), Color(hex: "#6C5CE7")],
+        [Color(hex: "#FD79A8"), Color(hex: "#E84393")],
+        [Color(hex: "#74B9FF"), Color(hex: "#0984E3")],
+        [Color(hex: "#55EFC4"), Color(hex: "#00CEC9")],
+    ]
+
+    private var gradient: [Color] { gradients[gradientIndex % gradients.count] }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            // 背景: サムネイル or グラジェント
+            Group {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(
+                            Text(foodEmoji(for: item.displayName))
+                                .font(.system(size: 44))
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+            .clipped()
+
+            // 下部グラデーションオーバーレイ
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.displayName)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                HStack(spacing: 3) {
+                    Text("🔥")
+                        .font(.system(size: 9))
+                    Text("\(item.calories)kcal")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.5), radius: 2)
+                    Spacer()
+                    if item.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "#FDCB6E"))
+                    }
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [.clear, Color.black.opacity(0.65)],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+        }
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.14), radius: 6, x: 0, y: 3)
+    }
+
+    private func foodEmoji(for name: String) -> String {
+        let n = name.lowercased()
+        if n.contains("米") || n.contains("ご飯") || n.contains("rice") { return "🍚" }
+        if n.contains("麺") || n.contains("ラーメン") || n.contains("パスタ") { return "🍜" }
+        if n.contains("肉") || n.contains("チキン") || n.contains("beef") { return "🥩" }
+        if n.contains("魚") || n.contains("サーモン") || n.contains("サバ") { return "🐟" }
+        if n.contains("サラダ") || n.contains("野菜") { return "🥗" }
+        if n.contains("パン") || n.contains("toast") { return "🍞" }
+        if n.contains("スープ") || n.contains("soup") { return "🍲" }
+        if n.contains("卵") || n.contains("たまご") { return "🥚" }
+        if n.contains("フルーツ") || n.contains("果物") { return "🍎" }
+        if n.contains("コーヒー") || n.contains("ティー") { return "☕" }
+        return "🍽️"
+    }
+}
+
+// MARK: - Photo Feed Detail Sheet
+
+struct PhotoFeedDetailSheet: View {
+    let item: PhotoLogHistoryItem
+    @StateObject private var healthKit = HealthKitManager.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var isSaving = false
+    @State private var savedOK = false
+    @State private var showSaveConfirm = false
+
+    private let cardGradients: [[Color]] = [
+        [Color(hex: "#FF6B6B"), Color(hex: "#FF8E53")],
+        [Color(hex: "#4ECDC4"), Color(hex: "#45B7D1")],
+        [Color(hex: "#96CEB4"), Color(hex: "#00B894")],
+        [Color(hex: "#A29BFE"), Color(hex: "#6C5CE7")],
+    ]
+
+    var body: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    headerImage
+                    VStack(alignment: .leading, spacing: 16) {
+                        calorieBanner
+                        if !item.analyzedNutrition.description.isEmpty {
+                            descriptionCard
+                        }
+                        nutritionGrid
+                        recordButton
+                    }
+                    .padding(16)
+                }
+            }
+            .background(Color.duoBg.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(item.displayName)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .alert("食事を記録しますか？", isPresented: $showSaveConfirm) {
+                Button("記録する") {
+                    Task {
+                        isSaving = true
+                        await saveToHealth()
+                        isSaving = false
+                        savedOK = true
+                    }
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("\(item.displayName)（\(item.calories)kcal）を今日の食事としてHealthKitに保存します")
+            }
+        }
+    }
+
+    private var headerImage: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: cardGradients[abs(item.id.hashValue) % cardGradients.count],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .overlay(Text("🍽️").font(.system(size: 72)))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 240)
+            .clipped()
+
+            // 日時バッジ
+            HStack {
+                Text(timeLabel(item.timestamp))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.black.opacity(0.45))
+                    .cornerRadius(10)
+                Spacer()
+                if item.isFavorite {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(Color(hex: "#FDCB6E"))
+                        .font(.system(size: 16))
+                        .padding(8)
+                        .background(Color.black.opacity(0.35))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+            )
+        }
+    }
+
+    private var calorieBanner: some View {
+        HStack(spacing: 16) {
+            VStack(spacing: 2) {
+                Text("\(item.calories)")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+                Text("kcal")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Divider().frame(height: 44)
+            VStack(alignment: .leading, spacing: 4) {
+                pfcBar(label: "P", percent: proteinPercent, color: Color.duoOrange)
+                pfcBar(label: "F", percent: fatPercent, color: Color.duoPurple)
+                pfcBar(label: "C", percent: carbsPercent, color: Color.duoBlue)
+            }
+            Spacer()
+            Text(String(format: "確度\n%.0f%%", item.analyzedNutrition.confidence * 100))
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+                .multilineTextAlignment(.center)
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private func pfcBar(label: String, percent: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(color)
+                .frame(width: 12)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(color.opacity(0.15)).frame(height: 8)
+                    Capsule().fill(color)
+                        .frame(width: max(4, geo.size.width * CGFloat(min(percent / 100, 1))), height: 8)
+                }
+            }
+            .frame(height: 8)
+            Text(String(format: "%.0f%%", percent))
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 30, alignment: .trailing)
+        }
+    }
+
+    private var descriptionCard: some View {
+        Text(item.analyzedNutrition.description)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Color.duoDark.opacity(0.85))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
+    }
+
+    private var nutritionGrid: some View {
+        let n = item.analyzedNutrition
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("栄養素")
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(Color.duoDark)
+
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 8
+            ) {
+                nutritionTile(icon: "💪", label: "たんぱく質", value: String(format: "%.1fg", n.protein), color: Color.duoOrange)
+                nutritionTile(icon: "🛢️", label: "脂質",     value: String(format: "%.1fg", n.fat),     color: Color.duoPurple)
+                nutritionTile(icon: "🍚", label: "炭水化物", value: String(format: "%.1fg", n.carbs),   color: Color.duoBlue)
+                if n.sugar > 0 {
+                    nutritionTile(icon: "🍬", label: "糖質",   value: String(format: "%.1fg", n.sugar),  color: Color(hex: "#FDCB6E"))
+                }
+                if n.fiber > 0 {
+                    nutritionTile(icon: "🌾", label: "食物繊維", value: String(format: "%.1fg", n.fiber), color: Color(hex: "#00B894"))
+                }
+                if n.sodium > 0 {
+                    nutritionTile(icon: "🧂", label: "塩分",   value: String(format: "%.1fg", n.sodium), color: Color(hex: "#B2BEC3"))
+                }
+                if n.water > 0 {
+                    nutritionTile(icon: "💧", label: "水分",   value: "\(n.water)ml",                    color: Color(hex: "#1CB0F6"))
+                }
+                if n.caffeine > 0 {
+                    nutritionTile(icon: "☕", label: "カフェイン", value: "\(n.caffeine)mg",               color: Color(hex: "#8B5E3C"))
+                }
+                if n.alcohol > 0 {
+                    nutritionTile(icon: "🍷", label: "アルコール", value: String(format: "%.1fg", n.alcohol), color: Color.duoPurple)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private func nutritionTile(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(icon).font(.system(size: 20))
+            Text(value)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundColor(color)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Text(label)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(color.opacity(0.10))
+        .cornerRadius(12)
+    }
+
+    private var recordButton: some View {
+        Button {
+            if !savedOK { showSaveConfirm = true }
+        } label: {
+            HStack(spacing: 10) {
+                if isSaving {
+                    ProgressView().tint(.white).scaleEffect(0.9)
+                } else {
+                    Image(systemName: savedOK ? "checkmark.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                }
+                Text(savedOK ? "記録しました！" : "今日の食事として記録する")
+                    .font(.system(size: 15, weight: .black))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                Group {
+                    if savedOK {
+                        AnyView(Color.duoGreen)
+                    } else {
+                        AnyView(LinearGradient(
+                            colors: [Color(red: 1.0, green: 0.55, blue: 0.0), Color(red: 0.9, green: 0.3, blue: 0.0)],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                    }
+                }
+            )
+            .cornerRadius(16)
+            .shadow(color: (savedOK ? Color.duoGreen : Color(red: 1.0, green: 0.45, blue: 0.0)).opacity(0.35), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(isSaving || savedOK)
+    }
+
+    private func saveToHealth() async {
+        let n = item.analyzedNutrition
+        let mealNutrition = MealNutrition(
+            calories: n.calories,
+            protein: n.protein,
+            fat: n.fat,
+            carbs: n.carbs,
+            sugar: n.sugar,
+            fiber: n.fiber,
+            sodium: n.sodium
+        )
+        await healthKit.saveMealNutrition(mealNutrition)
+        if n.water > 0 {
+            await healthKit.saveWaterIntake(amountMl: Double(n.water), timestamp: Date())
+        }
+        if n.caffeine > 0 {
+            await healthKit.saveCaffeineIntake(caffeineMg: Double(n.caffeine), timestamp: Date())
+        }
+    }
+
+    private var totalCalories: Double { Double(item.analyzedNutrition.calories) }
+    private var proteinCalories: Double { item.analyzedNutrition.protein * 4 }
+    private var fatCalories: Double { item.analyzedNutrition.fat * 9 }
+    private var carbsCalories: Double { item.analyzedNutrition.carbs * 4 }
+    private var macroTotal: Double { max(1, proteinCalories + fatCalories + carbsCalories) }
+    private var proteinPercent: Double { proteinCalories / macroTotal * 100 }
+    private var fatPercent: Double { fatCalories / macroTotal * 100 }
+    private var carbsPercent: Double { carbsCalories / macroTotal * 100 }
+
+    private func timeLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日 HH:mm"
+        return f.string(from: date)
     }
 }

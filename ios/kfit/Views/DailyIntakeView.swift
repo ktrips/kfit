@@ -389,10 +389,12 @@ struct PhotoLogView: View {
     @State private var showPhotoPicker = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showErrorSheet = false
     @State private var llmSettings = LLMSettings.defaultSettings
     @State private var fromHistory = false          // 履歴から選択したか
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
     @State private var showManageView = false
+    @State private var markAsFavorite = false
 
     var body: some View {
         NavigationView {
@@ -420,6 +422,9 @@ struct PhotoLogView: View {
                             commentSection
                             if analyzedNutrition == nil && !photoLogManager.isAnalyzing {
                                 analyzeButton
+                            }
+                            if !errorMessage.isEmpty && analyzedNutrition == nil {
+                                analysisErrorCard
                             }
                             if let nutrition = analyzedNutrition {
                                 nutritionResultSection(nutrition)
@@ -458,11 +463,14 @@ struct PhotoLogView: View {
             .navigationTitle("📸 フォトログ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("閉じる") {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
                     }
-                    .foregroundColor(Color.duoGreen)
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
@@ -476,6 +484,9 @@ struct PhotoLogView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
+            }
+            .sheet(isPresented: $showErrorSheet) {
+                analysisErrorSheet
             }
             .task {
                 llmSettings = await authManager.getLLMSettings()
@@ -611,18 +622,7 @@ struct PhotoLogView: View {
     // MARK: - Photo Selection
 
     private var photoSelectionSection: some View {
-        VStack(spacing: 16) {
-            Text("📸 写真を撮影または選択")
-                .font(.title2)
-                .fontWeight(.black)
-                .foregroundColor(Color.duoDark)
-
-            Text("食べ物や飲み物の写真を撮影すると、AIが自動で栄養素を分析します")
-                .font(.caption)
-                .foregroundColor(Color.duoSubtitle)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
+        VStack(spacing: 12) {
             VStack(spacing: 12) {
                 Button {
                     showCamera = true
@@ -671,12 +671,18 @@ struct PhotoLogView: View {
                     }
                 }
             }
-            .padding(.horizontal)
             .sheet(isPresented: $showManageView) {
                 PhotoLogManageView()
             }
+
+            Text("食べ物や飲み物の写真を撮影すると、AIが自動で栄養素を分析します")
+                .font(.caption)
+                .foregroundColor(Color.duoSubtitle)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
         }
-        .padding(.vertical, 24)
+        .padding(.top, 4)
+        .padding(.bottom, 16)
     }
 
     // MARK: - Photo Display
@@ -756,6 +762,86 @@ struct PhotoLogView: View {
         .disabled(llmSettings.apiKey.isEmpty)
     }
 
+    // MARK: - Analysis Error
+
+    private var analysisErrorCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                Text("分析エラー")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.red)
+                Spacer()
+                Button {
+                    showErrorSheet = true
+                } label: {
+                    Text("詳細")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.red.opacity(0.1))
+                        .foregroundColor(.red)
+                        .cornerRadius(8)
+                }
+            }
+
+            Text(errorMessage)
+                .font(.caption)
+                .foregroundColor(Color(.secondaryLabel))
+                .lineLimit(4)
+                .truncationMode(.tail)
+        }
+        .padding(14)
+        .background(Color.red.opacity(0.06))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
+        .cornerRadius(12)
+    }
+
+    private var analysisErrorSheet: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(errorMessage)
+                        .font(.body)
+                        .foregroundColor(Color(.label))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(10)
+
+                    Button {
+                        UIPasteboard.general.string = errorMessage
+                    } label: {
+                        HStack {
+                            Image(systemName: "doc.on.doc")
+                            Text("エラー内容をコピー")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(12)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(16)
+            }
+            .navigationTitle("エラー詳細")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { showErrorSheet = false }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+        }
+    }
+
     // MARK: - Nutrition Result
 
     private func nutritionResultSection(_ nutrition: AnalyzedNutrition) -> some View {
@@ -821,23 +907,36 @@ struct PhotoLogView: View {
     // MARK: - Save Button
 
     private var saveButton: some View {
-        Button {
-            Task {
-                await savePhotoLog()
+        VStack(spacing: 10) {
+            Toggle(isOn: $markAsFavorite) {
+                HStack(spacing: 6) {
+                    Image(systemName: markAsFavorite ? "star.fill" : "star")
+                        .foregroundColor(markAsFavorite ? Color(hex: "#FFD700") : Color.duoSubtitle)
+                    Text("FOODフィードに追加")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.duoDark)
+                }
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                Text("ヘルスに保存")
-                    .fontWeight(.black)
+            .tint(Color(hex: "#FFD700"))
+
+            Button {
+                Task {
+                    await savePhotoLog()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("ヘルスに保存")
+                        .fontWeight(.black)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.duoGreen)
+                .cornerRadius(14)
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color.duoGreen)
-            .cornerRadius(14)
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
@@ -858,10 +957,13 @@ struct PhotoLogView: View {
         comment = ""
         fromHistory = false
         selectedHistoryId = nil
+        markAsFavorite = false
     }
 
     private func analyzePhoto() async {
         guard let image = selectedImage else { return }
+
+        errorMessage = ""
 
         if llmSettings.apiKey.isEmpty {
             errorMessage = "APIキーが設定されていません。設定画面からLLM設定を行ってください。"
@@ -873,7 +975,9 @@ struct PhotoLogView: View {
             analyzedNutrition = try await photoLogManager.analyzePhoto(image, comment: comment, settings: llmSettings)
         } catch {
             errorMessage = error.localizedDescription
-            showError = true
+            if comment.count > 80 {
+                errorMessage += "\n\n💡 コメントを少し短くして再分析してみてください。"
+            }
         }
     }
 
@@ -910,6 +1014,7 @@ struct PhotoLogView: View {
         entry.imageData = selectedImage?.jpegData(compressionQuality: 0.5)
         entry.comment = comment
         entry.analyzedNutrition = nutrition
+        entry.isFavorite = markAsFavorite
         if fromHistory {
             photoLogManager.savePhotoLogWithoutHistory(entry)
         } else {
@@ -1270,13 +1375,15 @@ struct ImagePicker: UIViewControllerRepresentable {
             parent.dismiss()
         }
 
-        private func resized(_ image: UIImage, maxDimension: CGFloat = 800) -> UIImage {
+        private func resized(_ image: UIImage, maxDimension: CGFloat = 1440) -> UIImage {
             let size = image.size
             let maxSide = max(size.width, size.height)
             guard maxSide > maxDimension else { return image }
             let scale = maxDimension / maxSide
             let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-            let renderer = UIGraphicsImageRenderer(size: newSize)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
             return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
         }
 

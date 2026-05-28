@@ -138,6 +138,7 @@ struct DashboardView: View {
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
     @State private var lastWidgetPayloadHash = ""
     @State private var pendingWidgetReload: DispatchWorkItem?
+    @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
     @AppStorage("mainTab.food.visible") private var foodTabVisible = true
@@ -1375,11 +1376,12 @@ struct DashboardView: View {
             && Double(totalDrinkLogged) >= Double(totalDrinkGoal) * timeFraction
         let mealOnTrack = totalMealGoal > 0 && totalMealLogged > 0 && timeFraction > 0
             && Double(totalMealLogged) >= Double(totalMealGoal) * timeFraction
+        let remaining = totalSlots - completedSlots
         let msg: String = completedSlots == totalSlots
-            ? (totalSlots == 4 ? "全時間帯の目標達成！素晴らしい一日🎉" : "ここまでの目標達成！順調です💪")
+            ? (totalSlots == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
             : completedSlots == 0
-            ? "今日はまだ目標を達成していません。"
-            : "あと \(totalSlots - completedSlots) つの時間帯で目標達成！"
+            ? "まず1つ目の時間帯を達成しよう！"
+            : "あと\(remaining)つの時間帯で本日完全達成！"
         let msgGreen = completedSlots == totalSlots
 
         VStack(alignment: .leading, spacing: 8) {
@@ -1528,6 +1530,11 @@ struct DashboardView: View {
                         Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(calDiff > 200 ? Color(hex: "#FF4B4B") : calDiff < -200 ? foodColor : Color.duoDark)
+                        if totalIntakeCal > 0 {
+                            Text("cal")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
                     }
                     Spacer()
                 }
@@ -1670,7 +1677,7 @@ struct DashboardView: View {
             }
             HStack(spacing: 4) {
                 Text(msg)
-                    .font(.caption)
+                    .font(.system(size: 11))
                     .fontWeight(msgGreen ? .bold : .regular)
                     .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
                 Spacer()
@@ -1964,12 +1971,15 @@ struct DashboardView: View {
     private func mindfulRows(sessions: [MindfulSession], color: Color, timeFmt: DateFormatter, showStretch: Bool) -> some View {
         VStack(spacing: 4) {
             ForEach(sessions) { s in
+                let isReflect = s.sessionTypeLabel == "Reflect"
+                let japaneseLabel = isReflect ? "3分ストレッチ" : (s.sessionTypeLabel == "Breathe" ? "1分瞑想" : s.sessionTypeLabel)
+                let xp = isReflect ? 30 : 10
                 HStack(spacing: 6) {
                     Text(timeFmt.string(from: s.startDate))
                         .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
                         .frame(width: 38, alignment: .leading)
-                    Text(String(format: "%.0f分", s.durationMinutes))
-                        .font(.system(size: 11, weight: .black)).foregroundColor(color)
+                    Text(japaneseLabel)
+                        .font(.system(size: 10, weight: .black)).foregroundColor(color)
                     Spacer()
                     if s.averageHeartRate > 0 {
                         HStack(spacing: 2) {
@@ -1987,6 +1997,12 @@ struct DashboardView: View {
                                 .foregroundColor(Color(hex: "#1CB0F6"))
                         }
                     }
+                    Text("+\(xp) XP")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .foregroundColor(Color(hex: "#FDCB6E"))
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color(hex: "#FDCB6E").opacity(0.15))
+                        .cornerRadius(6)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(color.opacity(0.07))
@@ -2136,25 +2152,25 @@ struct DashboardView: View {
             .padding(.top, 4)
 
             Button { showPhotoLog = true } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 12) {
                     ZStack {
                         Circle()
                             .fill(LinearGradient(
                                 colors: [Color.blue, Color.purple],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ))
-                            .frame(width: 30, height: 30)
+                            .frame(width: 42, height: 42)
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 14))
+                            .font(.system(size: 18))
                             .foregroundColor(.white)
                     }
 
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("フォトログ")
-                            .font(.subheadline).fontWeight(.black)
+                            .font(.system(size: 13, weight: .black, design: .rounded))
                             .foregroundColor(Color.duoDark)
                         Text("AI食事分析")
-                            .font(.caption)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
 
@@ -2164,14 +2180,14 @@ struct DashboardView: View {
                         .font(.callout)
                         .foregroundColor(Color.duoSubtitle.opacity(0.6))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 18)
                 .background(
                     LinearGradient(
                         colors: [Color.blue.opacity(0.08), Color.purple.opacity(0.08)],
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 )
             }
             .buttonStyle(.plain)
@@ -2188,28 +2204,28 @@ struct DashboardView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Text(icon)
-                    .font(.system(size: 18))
-                    .frame(width: 34, height: 34)
+                    .font(.system(size: 22))
+                    .frame(width: 42, height: 42)
                     .background(color.opacity(0.2))
                     .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 13, weight: .black, design: .rounded))
                         .foregroundColor(color)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(color.opacity(0.7))
                         .lineLimit(1)
                 }
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 LinearGradient(
@@ -2217,7 +2233,7 @@ struct DashboardView: View {
                     startPoint: .leading,
                     endPoint: .trailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             )
         }
         .buttonStyle(.plain)
@@ -2393,6 +2409,9 @@ struct DashboardView: View {
             if s == 0 { return "\(m)分" }
             return "\(m)分\(s)秒"
         }()
+        let isReflect = session.sessionTypeLabel == "Reflect"
+        let japaneseLabel = isReflect ? "3分ストレッチ" : (session.sessionTypeLabel == "Breathe" ? "1分瞑想" : session.sessionTypeLabel)
+        let xp = isReflect ? 30 : 10
 
         return HStack(spacing: 8) {
             // ソース別アイコン
@@ -2401,9 +2420,9 @@ struct DashboardView: View {
                 .frame(width: 24, height: 24)
                 .background(Color.duoPurple.opacity(0.15))
                 .clipShape(Circle())
-            // セッション種別ラベル + 時刻
+            // セッション種別ラベル（日本語）+ 時刻
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.sessionTypeLabel)
+                Text(japaneseLabel)
                     .font(.caption2).fontWeight(.bold)
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
@@ -2433,6 +2452,13 @@ struct DashboardView: View {
                     }
                 }
             }
+            // XPバッジ
+            Text("+\(xp) XP")
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundColor(Color(hex: "#FDCB6E"))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Color(hex: "#FDCB6E").opacity(0.15))
+                .cornerRadius(6)
             // 時間
             Text(durationText)
                 .font(.caption2).fontWeight(.bold)
@@ -2980,6 +3006,14 @@ struct DashboardView: View {
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(scoreColorForPFC(pfcScore).opacity(0.15))
                             .cornerRadius(8)
+                        if let rating = pfcAnalysis?.rating {
+                            Text(rating)
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundColor(scoreColorForPFC(pfcScore))
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(scoreColorForPFC(pfcScore).opacity(0.12))
+                                .cornerRadius(8)
+                        }
                     }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
@@ -4346,6 +4380,12 @@ struct DashboardView: View {
             ExerciseSummary(name: name, emoji: v.emoji, totalReps: v.reps, totalPoints: v.pts, count: v.count)
         }.sorted { $0.totalPoints > $1.totalPoints }
 
+        // マインドフルネスXP集計
+        let mindfulSamples = healthKit.todayMindfulnessSamples
+        let mindfulXP = mindfulSamples.reduce(0) { total, s in
+            total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
+        }
+
         return NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
@@ -4354,7 +4394,7 @@ struct DashboardView: View {
                         VStack(spacing: 4) {
                             Text("今日のXP")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
-                            Text("\(totalXP)")
+                            Text("\(totalXP + mindfulXP)")
                                 .font(.system(size: 36, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("XP")
@@ -4380,7 +4420,7 @@ struct DashboardView: View {
                     .cornerRadius(16)
                     .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
 
-                    if summaries.isEmpty {
+                    if summaries.isEmpty && mindfulSamples.isEmpty {
                         VStack(spacing: 12) {
                             Text("💪").font(.system(size: 48))
                             Text("今日はまだトレーニングを記録していません")
@@ -4391,49 +4431,112 @@ struct DashboardView: View {
                         .padding(32)
                     } else {
                         // 種目別内訳
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("今日の内訳")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.horizontal, 4)
+                        if !summaries.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("💪 トレーニング内訳")
+                                    .font(.caption).fontWeight(.bold)
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .padding(.horizontal, 4)
 
-                            VStack(spacing: 0) {
-                                ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
-                                    HStack(spacing: 12) {
-                                        Text(s.emoji)
-                                            .font(.title3)
-                                            .frame(width: 36, height: 36)
-                                            .background(Color.duoGreen.opacity(0.1))
-                                            .clipShape(Circle())
+                                VStack(spacing: 0) {
+                                    ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
+                                        HStack(spacing: 12) {
+                                            Text(s.emoji)
+                                                .font(.title3)
+                                                .frame(width: 36, height: 36)
+                                                .background(Color.duoGreen.opacity(0.1))
+                                                .clipShape(Circle())
 
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(s.name)
-                                                .font(.subheadline).fontWeight(.semibold)
-                                                .foregroundColor(Color.duoDark)
-                                            Text("\(s.count)セット · \(s.totalReps) rep")
-                                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(s.name)
+                                                    .font(.subheadline).fontWeight(.semibold)
+                                                    .foregroundColor(Color.duoDark)
+                                                Text("\(s.count)セット · \(s.totalReps) rep")
+                                                    .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                            }
+
+                                            Spacer()
+
+                                            Text("+\(s.totalPoints) XP")
+                                                .font(.system(size: 15, weight: .black, design: .rounded))
+                                                .foregroundColor(Color.duoGold)
+                                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                                .background(Color.duoYellow.opacity(0.2))
+                                                .cornerRadius(8)
                                         }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
 
-                                        Spacer()
-
-                                        Text("+\(s.totalPoints) XP")
-                                            .font(.system(size: 15, weight: .black, design: .rounded))
-                                            .foregroundColor(Color.duoGold)
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
-                                            .background(Color.duoYellow.opacity(0.2))
-                                            .cornerRadius(8)
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-
-                                    if idx < summaries.count - 1 {
-                                        Divider().padding(.leading, 64)
+                                        if idx < summaries.count - 1 {
+                                            Divider().padding(.leading, 64)
+                                        }
                                     }
                                 }
+                                .background(Color(.systemBackground))
+                                .cornerRadius(16)
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
                             }
-                            .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+
+                        // マインドフルネス内訳
+                        if !mindfulSamples.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("🧘 マインドフルネス内訳")
+                                    .font(.caption).fontWeight(.bold)
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .padding(.horizontal, 4)
+
+                                VStack(spacing: 0) {
+                                    ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
+                                        let isReflect = s.sessionTypeLabel == "Reflect"
+                                        let xp = isReflect ? 30 : 10
+                                        let label = isReflect ? "3分ストレッチ" : "1分瞑想"
+                                        HStack(spacing: 12) {
+                                            Text(s.sessionEmoji)
+                                                .font(.title3)
+                                                .frame(width: 36, height: 36)
+                                                .background(Color.duoPurple.opacity(0.1))
+                                                .clipShape(Circle())
+
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(label)
+                                                    .font(.subheadline).fontWeight(.semibold)
+                                                    .foregroundColor(Color.duoDark)
+                                                HStack(spacing: 6) {
+                                                    Text(String(format: "%.0f分", s.durationMinutes))
+                                                        .font(.caption2).foregroundColor(Color.duoPurple)
+                                                    if s.averageHeartRate > 0 {
+                                                        Text("❤️ \(Int(s.averageHeartRate))")
+                                                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                                    }
+                                                    if s.averageHRV > 0 {
+                                                        Text("💙 \(Int(s.averageHRV))")
+                                                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            Text("+\(xp) XP")
+                                                .font(.system(size: 15, weight: .black, design: .rounded))
+                                                .foregroundColor(Color(hex: "#FDCB6E"))
+                                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                                .background(Color(hex: "#FDCB6E").opacity(0.15))
+                                                .cornerRadius(8)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+
+                                        if idx < mindfulSamples.count - 1 {
+                                            Divider().padding(.leading, 64)
+                                        }
+                                    }
+                                }
+                                .background(Color(.systemBackground))
+                                .cornerRadius(16)
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                            }
                         }
                     }
 
@@ -4816,8 +4919,9 @@ struct DashboardView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.duoBg)
+            .background(Color(.systemBackground))
             .cornerRadius(10)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -5827,6 +5931,12 @@ struct DashboardView: View {
             return
         }
 
+        // 1.5秒以内の重複呼び出しをスキップ（デバウンス）
+        if let last = lastLoadDataTime, Date().timeIntervalSince(last) < 1.5 {
+            return
+        }
+        lastLoadDataTime = Date()
+
         loadTodayWeekdayGoal()
         isLoading = true
 
@@ -5836,27 +5946,22 @@ struct DashboardView: View {
         todayExercises = await cachedEx
         dailySets      = await cachedSets
         recalcTotals()
-
-        // PFCバランス分析と睡眠スコアを更新
-        if healthKit.isAuthorized {
-            pfcAnalysis = healthKit.analyzePFCBalance()
-            sleepScore = healthKit.analyzeSleepScore(targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal))
-        }
-
         isLoading = false
 
         // ② バックグラウンドでサーバーから最新値を取得して反映
         Task {
-            async let freshEx   = authManager.getTodayExercises()
-            async let freshSets = authManager.getDailySets()
+            async let freshEx        = authManager.getTodayExercises()
+            async let freshSets      = authManager.getDailySets()
             async let weeklyProgress = authManager.getWeeklySetProgress()
-            async let calGoal = authManager.getDailyCalorieGoal()
-            async let setCount = authManager.getTodaySetCount()
-            async let setGoal = authManager.getDailySetGoal()
-            async let intake = authManager.getTodayIntakeSummary()
+            async let calGoal        = authManager.getDailyCalorieGoal()
+            async let setCount       = authManager.getTodaySetCount()
+            async let setGoal        = authManager.getDailySetGoal()
+            async let intake         = authManager.getTodayIntakeSummary()
             async let intakeSettings = authManager.getIntakeSettings()
-            async let wXP = authManager.getThisWeekXP()
-            let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings, fetchedWeeklyXP) = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings, wXP)
+            async let wXP            = authManager.getThisWeekXP()
+            let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings, fetchedWeeklyXP)
+                = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings, wXP)
+
             weeklyXP = fetchedWeeklyXP
             todayExercises = ex
             dailySets      = sets
@@ -5869,11 +5974,10 @@ struct DashboardView: View {
             // HealthKitとFirestoreのデータを統合
             var mergedIntake = intakeSummary
             if healthKit.isAvailable && healthKit.isAuthorized {
-                // HealthKitのデータを優先（より正確なため）
-                mergedIntake.totalCalories = max(Int(healthKit.todayIntakeCalories), intakeSummary.totalCalories)
-                mergedIntake.totalWaterMl = max(Int(healthKit.todayIntakeWater), intakeSummary.totalWaterMl)
+                mergedIntake.totalCalories  = max(Int(healthKit.todayIntakeCalories), intakeSummary.totalCalories)
+                mergedIntake.totalWaterMl   = max(Int(healthKit.todayIntakeWater),    intakeSummary.totalWaterMl)
                 mergedIntake.totalCaffeineMg = max(Int(healthKit.todayIntakeCaffeine), intakeSummary.totalCaffeineMg)
-                mergedIntake.totalAlcoholG = max(healthKit.todayIntakeAlcohol, intakeSummary.totalAlcoholG)
+                mergedIntake.totalAlcoholG  = max(healthKit.todayIntakeAlcohol,       intakeSummary.totalAlcoholG)
             }
             todayIntake = mergedIntake
 
@@ -5886,10 +5990,12 @@ struct DashboardView: View {
                 await healthKit.fetchBodyMassHistory(days: 7)
             }
 
-            // PFCバランス分析と睡眠スコアを更新
+            // PFCバランス分析・睡眠スコアを最終更新（1回だけ）
             if healthKit.isAuthorized {
                 pfcAnalysis = healthKit.analyzePFCBalance()
-                sleepScore = healthKit.analyzeSleepScore(targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal))
+                sleepScore  = healthKit.analyzeSleepScore(
+                    targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal)
+                )
             }
 
             recalcTotals()
@@ -6113,7 +6219,10 @@ struct DashboardView: View {
 
     private func recalcTotals() {
         totalReps     = todayExercises.reduce(0) { $0 + $1.reps }
-        totalXP       = todayExercises.reduce(0) { $0 + $1.points }
+        let mindfulXP = healthKit.todayMindfulnessSamples.reduce(0) { total, s in
+            total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
+        }
+        totalXP       = todayExercises.reduce(0) { $0 + $1.points } + mindfulXP
         totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
             return acc + Double(ex.reps) * rate
@@ -6291,49 +6400,28 @@ struct DashboardView: View {
     private var trainingVideoButton: some View {
         let currentVideo = currentTrainingVideo
 
-        return VStack(spacing: 8) {
+        return VStack(spacing: 0) {
+            // スリム展開ボタン
             Button {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                     showTrainingVideo.toggle()
                 }
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: showTrainingVideo ? "eye.slash.fill" : "play.rectangle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 34, height: 34)
-                        .background(Color.duoGreen)
-                        .clipShape(Circle())
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(showTrainingVideo ? "トレーニング動画を閉じる" : "トレーニング動画を見る")
-                            .font(.system(size: 13, weight: .black, design: .rounded))
-                            .foregroundColor(Color.duoDark)
-                            .lineLimit(1)
-                        Text(showTrainingVideo ? "再生中: \(currentVideo.name)" : "スクワットから順番に再生")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.duoSubtitle)
-                            .lineLimit(1)
-                    }
-                    .layoutPriority(1)
-
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 9, weight: .regular))
+                        .foregroundColor(Color.duoGreen)
+                    Text("トレーニング動画")
+                        .font(.system(size: 11, weight: .thin))
+                        .foregroundColor(Color.duoSubtitle)
                     Spacer()
-
-                    Image(systemName: showTrainingVideo ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color.duoGreen.opacity(0.75))
+                    Image(systemName: showTrainingVideo ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .light))
+                        .foregroundColor(Color.duoSubtitle)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    LinearGradient(
-                        colors: [Color.duoGreen.opacity(0.14), Color.duoBlue.opacity(0.10)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                )
+                .padding(.horizontal, 20)
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
 
@@ -6363,13 +6451,13 @@ struct DashboardView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(8)
+                .padding(.horizontal, 8)
                 .background(Color.white.opacity(0.7))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 16)
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
         .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
             guard showTrainingVideo else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -7143,7 +7231,7 @@ private struct PFCMiniRingView: View {
             }
             if let text = centerText {
                 Text(text)
-                    .font(.system(size: diameter * 0.22, weight: .black, design: .rounded))
+                    .font(.system(size: diameter * 0.264, weight: .black, design: .rounded))
                     .foregroundColor(centerTextColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)

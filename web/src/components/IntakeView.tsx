@@ -91,6 +91,7 @@ export const IntakeView: React.FC = () => {
         waterMl: current.waterMl + newLog.waterMl,
         caffeineMg: current.caffeineMg + newLog.caffeineMg,
         alcoholGrams: current.alcoholGrams + newLog.alcoholGrams,
+        carbs: current.carbs + newLog.carbs,
         drinkCount: current.drinkCount + 1,
         logs: [newLog, ...current.logs],
       } : current);

@@ -12,12 +12,12 @@ struct WatchMindfulnessSession: Identifiable {
     var averageHRV: Double = 0
 
     var typeLabel: String {
-        if sessionTypeHint == "Reflect" { return "Reflect" }
-        if sessionTypeHint == "Breathe" { return "Breathe" }
-        if durationMinutes >= 2.5 && durationMinutes <= 3.5 { return "Reflect" }
+        if sessionTypeHint == "Reflect" { return "3分ストレッチ" }
+        if sessionTypeHint == "Breathe" { return "1分瞑想" }
+        if durationMinutes >= 2.5 && durationMinutes <= 3.5 { return "3分ストレッチ" }
         let source = "\(sourceName) \(sourceBundleId)".lowercased()
-        if source.contains("reflect") { return "Reflect" }
-        if source.contains("breathe") { return "Breathe" }
+        if source.contains("reflect") { return "3分ストレッチ" }
+        if source.contains("breathe") { return "1分瞑想" }
         return "マインドフルネス"
     }
 
@@ -33,7 +33,7 @@ struct WatchMindfulnessSession: Identifiable {
     }
 
     var emoji: String {
-        typeLabel == "Reflect" ? "💭" : "🧘"
+        typeLabel == "3分ストレッチ" ? "🤸" : "🧘"
     }
 }
 

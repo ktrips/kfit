@@ -41,9 +41,11 @@ struct MindView: View {
                 } else {
                     await healthKit.fetchMindHealth()
                 }
+                await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
             }
             .refreshable {
                 await healthKit.fetchMindHealth(force: true)
+                await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
                 MindfulnessSessionView(
@@ -60,7 +62,7 @@ struct MindView: View {
                         )
                         if saved {
                             await healthKit.refreshMindfulness()
-                            await AuthenticationManager.shared.awardPoints(10)
+                            await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
                         }
                     }
                 }
@@ -82,7 +84,7 @@ struct MindView: View {
                         if saved {
                             await healthKit.refreshMindfulness()
                             await TimeSlotManager.shared.syncStretchFromHealthKit()
-                            await AuthenticationManager.shared.awardPoints(30)
+                            await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
                         }
                     }
                 }
@@ -340,33 +342,72 @@ struct MindView: View {
     private func mindfulHistoryRow(_ session: MindfulSession) -> some View {
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
-        let typeColor: Color = session.sessionTypeLabel == "Reflect" ? Color.duoPurple : Color(hex: "#1CB0F6")
+        let isReflect = session.sessionTypeLabel == "Reflect"
+        let typeColor: Color = isReflect ? Color.duoPurple : Color(hex: "#1CB0F6")
+        let japaneseLabel: String = isReflect ? "3分ストレッチ" : "1分瞑想"
+        let xp = isReflect ? 30 : 10
 
-        return HStack(spacing: 8) {
-            Text(session.sessionEmoji)
-                .font(.system(size: 15))
-                .frame(width: 26, height: 26)
-                .background(typeColor.opacity(0.14))
-                .clipShape(Circle())
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(session.sessionEmoji)
+                    .font(.system(size: 15))
+                    .frame(width: 26, height: 26)
+                    .background(typeColor.opacity(0.14))
+                    .clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.sessionTypeLabel)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(japaneseLabel)
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                    Text("\(timeFormatter.string(from: session.startDate)) 実施")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                Spacer()
+
+                Text("+\(xp) XP")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(Color(hex: "#FDCB6E"))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: "#FDCB6E").opacity(0.15))
+                    .cornerRadius(8)
+
+                Text(formatMindfulMinutes(session.durationMinutes))
                     .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundColor(Color.duoDark)
-                Text("\(timeFormatter.string(from: session.startDate)) 実施")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
+                    .foregroundColor(typeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(typeColor.opacity(0.12))
+                    .cornerRadius(10)
             }
 
-            Spacer()
-
-            Text(formatMindfulMinutes(session.durationMinutes))
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundColor(typeColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(typeColor.opacity(0.12))
-                .cornerRadius(10)
+            if session.averageHeartRate > 0 || session.averageHRV > 0 {
+                HStack(spacing: 10) {
+                    if session.averageHeartRate > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "heart.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hex: "#FF4B4B"))
+                            Text("\(Int(session.averageHeartRate)) bpm")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                    if session.averageHRV > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "waveform.path.ecg")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hex: "#1CB0F6"))
+                            Text("HRV \(Int(session.averageHRV)) ms")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                }
+                .padding(.leading, 34)
+            }
         }
         .padding(8)
         .background(Color.duoBg)

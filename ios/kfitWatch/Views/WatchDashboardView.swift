@@ -738,7 +738,7 @@ struct WatchDashboardView: View {
                 Spacer()
                 Text(formatMindfulMinutes(session.durationMinutes))
                     .font(.system(size: 10, weight: .black, design: .rounded))
-                    .foregroundColor(session.typeLabel == "Reflect" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
+                    .foregroundColor(session.typeLabel == "3分ストレッチ" ? Color(red: 0.82, green: 0.51, blue: 1.0) : duoGreen)
             }
             if session.averageHeartRate > 0 || session.averageHRV > 0 {
                 HStack(spacing: 8) {

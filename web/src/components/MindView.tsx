@@ -1,21 +1,89 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import { getMindMetrics, saveMindMetrics } from '../services/wellnessService';
+import {
+  getMindMetrics,
+  getTodayMindfulnessSessions,
+  recordMindfulnessSession,
+  saveMindMetrics,
+} from '../services/wellnessService';
 import { calculateStressScore, type StressScore } from '../utils/stress';
-import type { MindMetrics } from '../types/wellness';
+import type { MindfulnessSession, MindMetrics } from '../types/wellness';
+
+const SESSION_CONFIG = {
+  meditation: { label: '1分瞑想',    emoji: '🧘', duration: 60,  xp: 10, color: '#6D5DF6' },
+  stretch:    { label: '3分ストレッチ', emoji: '🤸', duration: 180, xp: 30, color: '#58CC02' },
+} as const;
+
+type SessionType = keyof typeof SESSION_CONFIG;
+
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 export const MindView: React.FC = () => {
   const user = useAppStore((state) => state.user);
   const [metrics, setMetrics] = useState<MindMetrics | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sessions, setSessions] = useState<MindfulnessSession[]>([]);
+  const [activeSession, setActiveSession] = useState<SessionType | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  const completedRef = useRef(false);
 
   useEffect(() => {
     if (!user) return;
     getMindMetrics(user.uid).then(setMetrics).catch(console.error);
+    getTodayMindfulnessSessions(user.uid).then(setSessions).catch(console.error);
   }, [user]);
 
+  // Countdown timer
+  useEffect(() => {
+    if (!activeSession || countdown <= 0) return;
+    const id = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [activeSession, countdown]);
+
+  // Session completion when countdown reaches 0
+  useEffect(() => {
+    if (!activeSession || countdown !== 0 || completedRef.current) return;
+    completedRef.current = true;
+
+    const type = activeSession;
+    const config = SESSION_CONFIG[type];
+    setActiveSession(null);
+
+    if (!user) { completedRef.current = false; return; }
+
+    recordMindfulnessSession(user.uid, type, config.duration, config.xp)
+      .then(newSession => {
+        setSessions(prev => [newSession, ...prev]);
+        setMetrics(prev => prev
+          ? { ...prev, mindfulnessMinutes: (prev.mindfulnessMinutes || 0) + config.duration / 60 }
+          : prev);
+      })
+      .catch(console.error)
+      .finally(() => { completedRef.current = false; });
+  }, [activeSession, countdown, user]);
+
+  const startSession = (type: SessionType) => {
+    if (activeSession) return;
+    completedRef.current = false;
+    setActiveSession(type);
+    setCountdown(SESSION_CONFIG[type].duration);
+  };
+
+  const cancelSession = () => {
+    completedRef.current = false;
+    setActiveSession(null);
+    setCountdown(0);
+  };
+
   const currentStress = useMemo(() => calculateStressScore(metrics?.latestHRV ?? 0), [metrics?.latestHRV]);
-  const averageStress = useMemo(() => calculateStressScore(metrics?.averageHRV || metrics?.latestHRV || 0), [metrics?.averageHRV, metrics?.latestHRV]);
+  const averageStress = useMemo(
+    () => calculateStressScore(metrics?.averageHRV || metrics?.latestHRV || 0),
+    [metrics?.averageHRV, metrics?.latestHRV],
+  );
 
   const recommendations = useMemo(() => {
     if (!metrics) return [];
@@ -50,9 +118,14 @@ export const MindView: React.FC = () => {
     }
   };
 
+  const todayXP = sessions.reduce((sum, s) => sum + s.xp, 0);
+
   if (!metrics) {
     return <div className="min-h-screen flex items-center justify-center font-black text-duo-green">読み込み中...</div>;
   }
+
+  const activeConfig = activeSession ? SESSION_CONFIG[activeSession] : null;
+  const progress = activeConfig ? 1 - countdown / activeConfig.duration : 0;
 
   return (
     <div className="min-h-screen bg-duo-gray-light pb-10">
@@ -65,6 +138,95 @@ export const MindView: React.FC = () => {
               <p className="text-sm font-bold text-white/80">Webでは手入力・Firestore保存値でストレスを確認します。</p>
             </div>
           </div>
+        </div>
+
+        {/* Mindfulness Session Card */}
+        <div className="duo-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-black text-duo-dark">🧘 マインドフルネス</h2>
+            {todayXP > 0 && (
+              <span className="text-sm font-black px-2 py-1 rounded-full"
+                style={{ background: '#FFD90020', color: '#CC8800' }}>
+                今日 +{todayXP} XP
+              </span>
+            )}
+          </div>
+
+          {!activeSession ? (
+            <div className="grid grid-cols-2 gap-3">
+              {(Object.entries(SESSION_CONFIG) as [SessionType, (typeof SESSION_CONFIG)[SessionType]][]).map(([type, config]) => (
+                <button
+                  key={type}
+                  onClick={() => startSession(type)}
+                  className="rounded-2xl p-4 text-center transition-transform active:scale-95 cursor-pointer"
+                  style={{ background: `${config.color}18`, border: `2px solid ${config.color}40` }}
+                >
+                  <div className="text-3xl mb-1">{config.emoji}</div>
+                  <div className="font-black text-duo-dark text-sm">{config.label}</div>
+                  <div
+                    className="text-xs font-bold mt-1 rounded-full px-2 py-0.5 inline-block"
+                    style={{ background: `${config.color}30`, color: config.color }}
+                  >
+                    +{config.xp} XP
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-2">
+              <div className="text-5xl mb-2">{activeConfig!.emoji}</div>
+              <p className="font-black text-duo-dark">{activeConfig!.label}</p>
+              <p className="text-5xl font-black mt-2" style={{ color: activeConfig!.color }}>
+                {formatCountdown(countdown)}
+              </p>
+              <div className="w-full bg-gray-100 rounded-full h-3 my-4">
+                <div
+                  className="h-3 rounded-full transition-all duration-1000"
+                  style={{ width: `${progress * 100}%`, backgroundColor: activeConfig!.color }}
+                />
+              </div>
+              <button
+                onClick={cancelSession}
+                className="text-sm font-bold text-duo-gray underline"
+              >
+                キャンセル
+              </button>
+            </div>
+          )}
+
+          {sessions.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs font-black text-duo-gray mb-2">今日のセッション</p>
+              <div className="space-y-2">
+                {sessions.map(session => (
+                  <div
+                    key={session.id}
+                    className="flex items-center justify-between rounded-xl px-3 py-2"
+                    style={{ background: session.type === 'meditation' ? '#6D5DF608' : '#58CC0208' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{session.type === 'meditation' ? '🧘' : '🤸'}</span>
+                      <span className="text-sm font-bold text-duo-dark">{session.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-duo-gray">
+                        {session.timestamp.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span
+                        className="text-xs font-black px-2 py-0.5 rounded-full"
+                        style={{
+                          background: session.type === 'meditation' ? '#6D5DF620' : '#58CC0220',
+                          color: session.type === 'meditation' ? '#6D5DF6' : '#58CC02',
+                        }}
+                      >
+                        +{session.xp} XP
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="duo-card p-5">

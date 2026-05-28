@@ -9,6 +9,9 @@ export interface IntakeLog {
   waterMl: number;
   caffeineMg: number;
   alcoholGrams: number;
+  protein: number;
+  fat: number;
+  carbs: number;
   timeSlot: string;
   timestamp: Date;
 }
@@ -18,6 +21,9 @@ export interface IntakeSummary {
   waterMl: number;
   caffeineMg: number;
   alcoholGrams: number;
+  protein: number;
+  fat: number;
+  carbs: number;
   mealCount: number;
   drinkCount: number;
   logs: IntakeLog[];
@@ -45,4 +51,13 @@ export interface MindMetrics {
   standHours: number;
   steps: number;
   updatedAt?: Date;
+}
+
+export interface MindfulnessSession {
+  id: string;
+  type: 'meditation' | 'stretch';
+  label: string;
+  durationSeconds: number;
+  xp: number;
+  timestamp: Date;
 }

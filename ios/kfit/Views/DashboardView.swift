@@ -139,6 +139,7 @@ struct DashboardView: View {
     @State private var lastWidgetPayloadHash = ""
     @State private var pendingWidgetReload: DispatchWorkItem?
     @State private var pendingWidgetDataUpdate: DispatchWorkItem?
+    @State private var showMandalaDetail = false
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -215,6 +216,7 @@ struct DashboardView: View {
                             pointsCard
                             challengeCard
                             habitStackCard
+                            mandalaCard
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -252,6 +254,7 @@ struct DashboardView: View {
             }
         }
         .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
+        .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
         .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
         .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
         .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
@@ -2782,6 +2785,100 @@ struct DashboardView: View {
     }
 
     // MARK: - ハビットスタックカード
+    // MARK: - Mandala Card
+
+    private var mandalaDateLabel: String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ja_JP")
+        fmt.dateFormat = "M月d日(E)"
+        return fmt.string(from: Date())
+    }
+
+    private var mandalaOverallCount: (done: Int, total: Int) {
+        var done = 0, total = 0
+        let settings = timeSlotManager.settings
+        let progress = timeSlotManager.progress
+        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+            guard let goal = settings.goalFor(slot),
+                  let prog = progress.progressFor(slot) else { continue }
+            if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
+            if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
+            if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
+            if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
+            if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
+            for act in goal.customActivities.filter({ $0.isEnabled }) {
+                total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
+            }
+        }
+        return (done, total)
+    }
+
+    private var mandalaCard: some View {
+        let nc = mandalaOverallCount
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                HStack(spacing: 5) {
+                    Text("🌀").font(.subheadline)
+                    Text("Mandala").fontWeight(.black)
+                }
+                .font(.subheadline)
+                .foregroundColor(Color.duoOrange)
+                Spacer()
+                Text(mandalaDateLabel)
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+                    .layoutPriority(1)
+                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
+                    .font(.caption).fontWeight(.black)
+                    .foregroundColor(nc.total > 0 && nc.done == nc.total
+                                     ? Color.duoGreen : Color.duoDark)
+                Button { showMandalaDetail = true } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.subheadline)
+                        .foregroundColor(Color.duoOrange)
+                }
+            }
+
+            MandalaChartView(
+                settings: timeSlotManager.settings,
+                progress: timeSlotManager.progress,
+                onTapNode: { node in
+                    switch node.type {
+                    case .training:
+                        showTracker = true
+                    case .mindfulness:
+                        showMindfulnessSession = true
+                    case .stretch:
+                        showStretchSession = true
+                    case .drink:
+                        confirmIntake(message: "水 200ml を記録しますか？") {
+                            Task {
+                                await authManager.recordWater()
+                                await updateTimeSlotForDrink(timestamp: Date(), ml: 200)
+                                await refreshIntakeData()
+                            }
+                        }
+                    case .meal:
+                        confirmIntake(message: "朝食 400kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .breakfast)
+                                await updateTimeSlotForMeal(timestamp: Date(), calories: 400)
+                                await refreshIntakeData()
+                            }
+                        }
+                    default:
+                        showMandalaDetail = true
+                    }
+                }
+            )
+            .frame(height: 340)
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
     private var habitStackCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             // ヘッダー

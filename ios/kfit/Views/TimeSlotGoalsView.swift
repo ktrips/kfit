@@ -12,32 +12,38 @@ struct TimeSlotGoalsView: View {
         ZStack {
             Color.duoBg.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    headerSection
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        headerSection
 
-                    if timeSlotManager.isLoading {
-                        ProgressView()
-                            .tint(Color.duoGreen)
-                            .scaleEffect(1.4)
-                            .padding(.vertical, 40)
-                    } else {
-                        // 1日全体の目標セクション
-                        globalGoalsSection
+                        if timeSlotManager.isLoading {
+                            ProgressView()
+                                .tint(Color.duoGreen)
+                                .scaleEffect(1.4)
+                                .padding(.vertical, 40)
+                        } else {
+                            // 1日全体の目標セクション
+                            globalGoalsSection
+                                .id("global")
 
-                        ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { timeSlot in
-                            if let goal = timeSlotManager.settings.goalFor(timeSlot),
-                               let progress = timeSlotManager.progress.progressFor(timeSlot) {
-                                timeSlotCard(timeSlot: timeSlot, goal: goal, progress: progress)
+                            ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { timeSlot in
+                                if let goal = timeSlotManager.settings.goalFor(timeSlot),
+                                   let progress = timeSlotManager.progress.progressFor(timeSlot) {
+                                    timeSlotCard(timeSlot: timeSlot, goal: goal, progress: progress)
+                                        .id(timeSlot.rawValue)
+                                }
                             }
-                        }
-                    }
 
-                    Spacer(minLength: 40)
+                            mandalaSection(scrollProxy: proxy)
+                        }
+
+                        Spacer(minLength: 40)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 20)
             }
         }
         .navigationTitle("時間帯別の目標")
@@ -837,6 +843,78 @@ struct TimeSlotGoalsView: View {
         .background(completed != 0 ? Color.duoGreen.opacity(0.1) : Color(.systemGray6))
         .cornerRadius(6)
     }
+
+    // MARK: - Mandala Section
+
+    private var mandalaTodayDateText: String {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "ja_JP")
+        fmt.dateFormat = "M月d日(E)"
+        return fmt.string(from: Date())
+    }
+
+    private var mandalaNodeCount: (done: Int, total: Int) {
+        var done = 0, total = 0
+        let settings = timeSlotManager.settings
+        let progress = timeSlotManager.progress
+        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+            guard let goal = settings.goalFor(slot),
+                  let prog = progress.progressFor(slot) else { continue }
+            if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
+            if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
+            if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
+            if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
+            if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
+            for act in goal.customActivities.filter({ $0.isEnabled }) {
+                total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
+            }
+        }
+        return (done, total)
+    }
+
+    private func mandalaSection(scrollProxy: ScrollViewProxy) -> some View {
+        let nc = mandalaNodeCount
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color.duoOrange, Color(hex: "6D5DF6")],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 36, height: 36)
+                    Text("🌀").font(.subheadline)
+                }
+                Text("Mandala")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text(mandalaTodayDateText)
+                    .font(.caption2)
+                    .foregroundColor(Color.duoSubtitle)
+                    .layoutPriority(1)
+                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
+                    .font(.caption).fontWeight(.black)
+                    .foregroundColor(nc.total > 0 && nc.done == nc.total
+                                     ? Color.duoGreen : Color.duoDark)
+            }
+
+            MandalaChartView(
+                settings: timeSlotManager.settings,
+                progress: timeSlotManager.progress,
+                onTapNode: { node in
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        scrollProxy.scrollTo(node.slot?.rawValue ?? "global", anchor: .top)
+                    }
+                }
+            )
+            .frame(height: 370)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
 }
 
 // MARK: - Circular Progress View
@@ -861,6 +939,464 @@ struct CircularProgressView: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
         }
+    }
+}
+
+// MARK: - TimeSlot Mandala Color
+
+extension TimeSlot {
+    var mandalaColor: Color {
+        switch self {
+        case .midnight:  return Color(.systemGray3)
+        case .morning:   return Color.duoOrange
+        case .noon:      return Color.duoYellow
+        case .afternoon: return Color.duoBlue
+        case .evening:   return Color.duoPurple
+        }
+    }
+}
+
+// MARK: - Mandala Node Type
+
+enum MandalaNodeType {
+    case training, mindfulness, stretch, meal, drink, sleep, pfc, custom
+}
+
+// MARK: - Mandala Node Data
+
+struct MandalaNodeData: Identifiable {
+    let id: String
+    let emoji: String
+    let label: String
+    let isCompleted: Bool
+    let slot: TimeSlot?
+    let type: MandalaNodeType
+}
+
+// MARK: - Mandala Chart View
+
+struct MandalaChartView: View {
+    let settings: DailyTimeSlotSettings
+    let progress: DailyTimeSlotProgress
+    let onTapNode: (MandalaNodeData) -> Void
+
+    @State private var appeared = false
+    @State private var pulseCenter = false
+
+    private let minRadius: Double = 42
+
+    var nodes: [MandalaNodeData] {
+        var result: [MandalaNodeData] = []
+
+        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+            guard let goal = settings.goalFor(slot),
+                  let prog = progress.progressFor(slot) else { continue }
+
+            if goal.trainingGoal > 0 {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-training",
+                    emoji: "💪",
+                    label: "トレーニング",
+                    isCompleted: prog.trainingCompleted >= goal.trainingGoal,
+                    slot: slot,
+                    type: .training
+                ))
+            }
+            if goal.mindfulnessGoal > 0 {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-mindfulness",
+                    emoji: "🧘",
+                    label: "マインドフルネス",
+                    isCompleted: prog.mindfulnessCompleted >= goal.mindfulnessGoal,
+                    slot: slot,
+                    type: .mindfulness
+                ))
+            }
+            if goal.stretchGoal.enabled {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-stretch",
+                    emoji: "🤸",
+                    label: "ストレッチ",
+                    isCompleted: prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes,
+                    slot: slot,
+                    type: .stretch
+                ))
+            }
+            if goal.logGoal.mealGoal > 0 {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-meal",
+                    emoji: "🍽️",
+                    label: "食事",
+                    isCompleted: prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    slot: slot,
+                    type: .meal
+                ))
+            }
+            if goal.logGoal.drinkGoal > 0 {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-drink",
+                    emoji: "💧",
+                    label: "水分",
+                    isCompleted: prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    slot: slot,
+                    type: .drink
+                ))
+            }
+            for activity in goal.customActivities.filter({ $0.isEnabled }) {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-\(activity.id)",
+                    emoji: activity.emoji,
+                    label: activity.name,
+                    isCompleted: prog.completedActivityIds.contains(activity.id),
+                    slot: slot,
+                    type: .custom
+                ))
+            }
+        }
+
+        // 1日全体のカスタム目標
+        for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
+            result.append(MandalaNodeData(
+                id: "global-\(goal.id)",
+                emoji: goal.emoji,
+                label: goal.name,
+                isCompleted: progress.globalProgress.completedCustomGoalIds.contains(goal.id),
+                slot: nil,
+                type: .custom
+            ))
+        }
+        if settings.globalGoals.sleepEnabled {
+            let g = settings.globalGoals
+            let p = progress.globalProgress
+            result.append(MandalaNodeData(
+                id: "global-sleep",
+                emoji: "😴",
+                label: "睡眠",
+                isCompleted: p.sleepHours >= Double(g.sleepHoursGoal) && p.sleepScore >= g.sleepScoreThreshold,
+                slot: nil,
+                type: .sleep
+            ))
+        }
+        if settings.globalGoals.pfcEnabled {
+            result.append(MandalaNodeData(
+                id: "global-pfc",
+                emoji: "🥗",
+                label: "PFC",
+                isCompleted: progress.globalProgress.pfcScore >= settings.globalGoals.pfcScoreThreshold,
+                slot: nil,
+                type: .pfc
+            ))
+        }
+
+        // 今日の曜日別カスタム目標
+        let weekdayNum: Int = {
+            let wd = Calendar.current.component(.weekday, from: Date())
+            return wd == 1 ? 7 : wd - 1  // Calendar: 1=Sun → 1=月…7=日
+        }()
+        if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+           let wdGoals = try? JSONDecoder().decode([WeekdayGoal].self, from: data),
+           let wg = wdGoals.first(where: { $0.weekday == weekdayNum && $0.hasAnyGoal }) {
+            let gp = progress.globalProgress
+            if wg.studyEnabled {
+                result.append(MandalaNodeData(
+                    id: "wd-study",
+                    emoji: "📚",
+                    label: "勉強",
+                    isCompleted: gp.completedCustomGoalIds.contains("wd_study_\(weekdayNum)"),
+                    slot: nil,
+                    type: .custom
+                ))
+            }
+            if wg.noAlcoholEnabled {
+                result.append(MandalaNodeData(
+                    id: "wd-noalcohol",
+                    emoji: "🚫",
+                    label: "禁酒",
+                    isCompleted: gp.completedCustomGoalIds.contains("wd_noalcohol_\(weekdayNum)"),
+                    slot: nil,
+                    type: .custom
+                ))
+            }
+            for cg in wg.customGoals {
+                result.append(MandalaNodeData(
+                    id: "wd-\(cg.id.uuidString)",
+                    emoji: cg.emoji,
+                    label: cg.name,
+                    isCompleted: gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)"),
+                    slot: nil,
+                    type: .custom
+                ))
+            }
+        }
+
+        // 毎日のカスタム目標
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            let gp = progress.globalProgress
+            for cg in fixed.customGoals {
+                result.append(MandalaNodeData(
+                    id: "daily-\(cg.id.uuidString)",
+                    emoji: cg.emoji,
+                    label: cg.name,
+                    isCompleted: gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)"),
+                    slot: nil,
+                    type: .custom
+                ))
+            }
+        }
+
+        return Array(result.prefix(40))
+    }
+
+    var overallProgress: Double {
+        guard !nodes.isEmpty else { return 0 }
+        return Double(nodes.filter(\.isCompleted).count) / Double(nodes.count)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            // 時間帯凡例（スパイラル上部、完了数付き）
+            HStack(spacing: 0) {
+                ForEach([TimeSlot.morning, .noon, .afternoon, .evening], id: \.self) { slot in
+                    let slotNodes = nodes.filter { $0.slot == slot }
+                    let done  = slotNodes.filter(\.isCompleted).count
+                    let total = slotNodes.count
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(slot.mandalaColor)
+                            .frame(width: 6, height: 6)
+                        Text(total > 0
+                             ? "\(slot.displayName)(\(done)/\(total))"
+                             : slot.displayName)
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(total > 0 && done == total
+                                         ? slot.mandalaColor
+                                         : Color.duoSubtitle)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            GeometryReader { geo in
+                let size = min(geo.size.width, geo.size.height)
+                let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+                let canvasR = size / 2 - 14
+                let (positions, nodeAngles) = computePositions(center: center, canvasR: canvasR)
+
+            ZStack {
+                // 背景円
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(.systemGray6).opacity(0.14), Color(.systemGray5).opacity(0.22)],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: size * 0.48
+                        )
+                    )
+                    .frame(width: size - 16, height: size - 16)
+                    .position(center)
+
+                // 背景スパイラルレール（淡い溝）
+                fullSpiralPath(positions: positions, angles: nodeAngles, center: center)
+                    .stroke(Color(.systemGray4).opacity(0.18), lineWidth: 1)
+
+                // 中心→最初のノードの接続
+                if let first = positions.first {
+                    Path { path in
+                        path.move(to: center)
+                        path.addLine(to: first)
+                    }
+                    .stroke(Color(.systemGray3).opacity(0.4), lineWidth: 5)
+                }
+
+                // ノード間の滑らかな弧（曼荼羅風数珠繋ぎ）
+                if nodes.count >= 2 {
+                    ForEach(0..<(nodes.count - 1), id: \.self) { i in
+                        let segColor = nodes[i].slot?.mandalaColor ?? Color(hex: "CE82FF")
+                        let segOpacity = nodes[i].isCompleted ? 0.52 : 0.16
+                        smoothArcPath(from: i, to: i + 1, positions: positions, angles: nodeAngles, center: center)
+                            .stroke(segColor.opacity(segOpacity), lineWidth: 16)
+                    }
+                }
+
+                // ノードボタン
+                ForEach(Array(nodes.enumerated()), id: \.element.id) { index, node in
+                    let pos = index < positions.count ? positions[index] : center
+                    MandalaNodeButton(
+                        node: node,
+                        delay: Double(index) * 0.045,
+                        appeared: appeared,
+                        action: { onTapNode(node) }
+                    )
+                    .frame(width: 36, height: 36)
+                    .position(pos)
+                }
+
+                // 中心プログレス
+                centerCircle(progress: overallProgress)
+                    .position(center)
+                    .scaleEffect(pulseCenter ? 1.07 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
+                        value: pulseCenter
+                    )
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) { appeared = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pulseCenter = true }
+        }
+        }  // end VStack
+    }
+
+    // MARK: - Spiral helpers
+
+    /// Archimedean spiral with adaptive Δθ: pitch = 2πb = D → guaranteed no cross-arm or consecutive overlap
+    private func computePositions(center: CGPoint, canvasR: Double) -> (positions: [CGPoint], angles: [Double]) {
+        let count = nodes.count
+        guard count > 0 else { return ([], []) }
+        let D: Double = 46          // minimum center-to-center spacing (node 36pt + 10pt gap)
+        let b = D / (2 * .pi)       // growth rate: pitch 2πb = D
+        var positions: [CGPoint] = []
+        var angles: [Double] = []
+        var angle = -Double.pi / 2  // start pointing upward
+        var r = minRadius
+        for _ in 0..<count {
+            let cr = min(r, canvasR)
+            positions.append(CGPoint(x: center.x + cr * cos(angle), y: center.y + cr * sin(angle)))
+            angles.append(angle)
+            // Δθ ≈ D / √(r² + b²) keeps chord between consecutive nodes ≈ D
+            let dt = D / sqrt(r * r + b * b)
+            angle += dt
+            r = minRadius + b * (angle + .pi / 2)
+        }
+        return (positions, angles)
+    }
+
+    // ノードi→ノードi+1 を螺旋曲線に沿って滑らかに繋ぐ弧
+    private func smoothArcPath(from startIdx: Int, to endIdx: Int,
+                                positions: [CGPoint], angles: [Double],
+                                center: CGPoint) -> Path {
+        guard startIdx < positions.count, endIdx < positions.count else { return Path() }
+        let a0 = angles[startIdx], a1 = angles[endIdx]
+        let r0 = hypot(positions[startIdx].x - center.x, positions[startIdx].y - center.y)
+        let r1 = hypot(positions[endIdx].x - center.x, positions[endIdx].y - center.y)
+        let steps = 24
+        return Path { path in
+            for step in 0...steps {
+                let t = Double(step) / Double(steps)
+                let a = a0 + (a1 - a0) * t
+                let r = r0 + (r1 - r0) * t
+                let point = CGPoint(x: center.x + r * cos(a), y: center.y + r * sin(a))
+                step == 0 ? path.move(to: point) : path.addLine(to: point)
+            }
+        }
+    }
+
+    // 背景レール：ノード位置を繋ぐ連続した螺旋を描く
+    private func fullSpiralPath(positions: [CGPoint], angles: [Double], center: CGPoint) -> Path {
+        guard positions.count >= 2 else { return Path() }
+        return Path { path in
+            for i in 0..<(positions.count - 1) {
+                let a0 = angles[i], a1 = angles[i + 1]
+                let r0 = hypot(positions[i].x - center.x, positions[i].y - center.y)
+                let r1 = hypot(positions[i + 1].x - center.x, positions[i + 1].y - center.y)
+                let steps = 12
+                for step in 0...steps {
+                    let t = Double(step) / Double(steps)
+                    let a = a0 + (a1 - a0) * t
+                    let r = r0 + (r1 - r0) * t
+                    let pt = CGPoint(x: center.x + r * cos(a), y: center.y + r * sin(a))
+                    if i == 0 && step == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func centerCircle(progress: Double) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color(.systemBackground))
+                .frame(width: 60, height: 60)
+                .shadow(color: .black.opacity(0.12), radius: 6)
+
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.duoOrange, Color.duoGreen, Color.duoBlue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                )
+                .frame(width: 56, height: 56)
+                .rotationEffect(.degrees(-90))
+
+            VStack(spacing: -1) {
+                Text("\(Int(progress * 100))")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text("%")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+        }
+    }
+}
+
+// MARK: - Mandala Node Button
+
+struct MandalaNodeButton: View {
+    let node: MandalaNodeData
+    let delay: Double
+    let appeared: Bool
+    let action: () -> Void
+
+    @State private var tapped = false
+
+    private var nodeColor: Color {
+        node.slot?.mandalaColor ?? Color(hex: "CE82FF")
+    }
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { tapped = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                tapped = false
+                action()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(nodeColor.opacity(node.isCompleted ? 0.88 : 0.07))
+                Circle()
+                    .strokeBorder(nodeColor, lineWidth: node.isCompleted ? 2.5 : 1)
+                    .opacity(node.isCompleted ? 1.0 : 0.22)
+                Text(node.emoji)
+                    .font(.system(size: 15))
+                    .opacity(node.isCompleted ? 1.0 : 0.55)
+            }
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(node.isCompleted ? 1.1 : 1.0)
+        .scaleEffect(tapped ? 0.82 : 1.0)
+        .scaleEffect(appeared ? 1.0 : 0.0)
+        .opacity(appeared ? 1.0 : 0.0)
+        .animation(
+            .spring(response: 0.44, dampingFraction: 0.68).delay(delay),
+            value: appeared
+        )
+        // 完了時の外縁グロー
+        .overlay(
+            node.isCompleted
+                ? Circle()
+                    .strokeBorder(nodeColor.opacity(0.55), lineWidth: 3)
+                    .frame(width: 50, height: 50)
+                : nil
+        )
     }
 }
 

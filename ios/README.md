@@ -1,4 +1,4 @@
-# kfit iOS App (v0.9.23)
+# kfit iOS App (a.0.11.4)
 
 A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, Firebase backend integration, and AI-powered nutrition analysis.
 
@@ -31,6 +31,9 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 - **Weekly Weight/Fat Trend** - ±X kg/7日 and ±X%/7日 shown below current values in activity card
 - **Real-time Sync** - Firebase Firestore syncs with Web and Watch apps
 - **Watch Connectivity** - Bidirectional data sync between iPhone and Apple Watch
+- **Mandala Spiral Chart** - All daily goals visualized as a mandala-style spiral; tap nodes to jump to training, mindfulness, stretch, meal, or drink recording; adaptive Archimedean algorithm guarantees no node overlap regardless of count
+- **HRV Graph** - Heart rate variability trend visualization in MIND tab
+- **Breathing UI** - Guided breathing session with animated visual cues
 
 ## Tech Stack
 
@@ -204,6 +207,17 @@ xcodebuild -scheme kfit test
 
 ## Recent Updates
 
+### a.0.11.4 (2026-05-29)
+- ✅ **Mandala スパイラルチャート**: ダッシュボードとROUTINページに全目標を渦巻き状の曼荼羅チャートで表示。完了ノードは拡大・光るリング、未完了はフェード。中央に全体達成率（%）を表示
+- ✅ **Mandala タップルーティング**: 💪→ExerciseTracker、🧘→1分マインドフルネス、🤸→3分ストレッチ、💧→水200ml記録確認、🍽️→朝食400kcal記録確認、その他→時間帯スクロール
+- ✅ **Mandala ヘッダー1行化**: 🌀 Mandala・日付・A/B完了数・⚙️設定アイコンを1行に配置（折り返しなし）
+- ✅ **Mandala 分母統一**: 時間帯別レジェンドの合計と全体A/Bの分母を一致させる（スロット目標のみカウント）
+- ✅ **Mandala ノード重なり解消**: アルキメデス螺旋の適応角度ステップ（Δθ = D/√(r²+b²)）でノード数によらず全ノード間46pt以上を保証
+- ✅ **HRVグラフ**: MINDタブに心拍変動のトレンドグラフを追加
+- ✅ **呼吸UI**: ガイド付き呼吸セッションにアニメーション付き視覚フィードバックを追加
+- ✅ **ウェルネス機能強化**: 睡眠・HRV・ストレッチの詳細情報をWatch・iOSで拡充
+- ✅ **パフォーマンス改善**: ウィジェット更新のデバウンス、O(n+m)摂取量同期、マインドフルネスキャッシュ最適化
+
 ### v0.9.23 (2026-05-22)
 - ✅ **下部メニュー刷新**: カスタムタブバーで `FIT` / `GOAL` / `MIND` / `記録` / `設定` / `その他` を表示。記録ボタンは中央寄りの白い丸ボタンとして表示
 - ✅ **MINDタブ追加**: 現在の心拍数・HRV・ストレス状態、1日の平均心拍・平均HRV・平均ストレスを表示し、深呼吸、Reflect/ストレッチ、散歩、マッサージ、水分補給などを提案
@@ -276,7 +290,7 @@ pod 'GoogleSignIn'
 
 ## Version
 
-Current version: **0.9.23** (2026-05-22)
+Current version: **a.0.11.4** (2026-05-29)
 
 ## License
 

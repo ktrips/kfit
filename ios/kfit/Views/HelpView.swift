@@ -52,6 +52,33 @@ private let helpItems: [HelpItem] = [
         """
     ),
     HelpItem(
+        icon: "🌀",
+        title: "Mandala（スパイラルチャート）",
+        content: """
+        ダッシュボードとROUTINページに表示される「Mandala」カードは、今日の全目標を渦巻き状の曼荼羅チャートで可視化します。
+        【ノードの見方】
+        • 完了済み: カラフル・やや拡大・光るリング表示
+        • 未完了: 薄く透過表示
+        • 中央サークル: 全体の達成率（%）をリアルタイム表示
+        【ノードの種類】
+        • 💪 トレーニング / 🧘 マインドフルネス / 🤸 ストレッチ
+        • 🍽️ 食事 / 💧 水分 / 😴 睡眠 / 🥗 PFC
+        • カスタムアクティビティ（読書📚、Duolingo🦉など）
+        【ノードをタップすると】
+        • 💪 → トレーニング記録画面を開く
+        • 🧘 → 1分マインドフルネスセッション開始
+        • 🤸 → 3分ストレッチセッション開始
+        • 💧 → 水 200ml の記録を確認
+        • 🍽️ → 朝食 400kcal の記録を確認
+        • その他 → 該当する時間帯へスクロール移動
+        【ヘッダーの読み方】
+        🌀 Mandala・今日の日付・完了/総数（例: 3/8）・⚙️（設定アイコン）が1行に並びます。
+        螺旋の上のレジェンドで 朝(C/D)・昼(E/F)・午後・夜 など時間帯別の完了状況を確認できます。
+        【スパイラルのアルゴリズム】
+        アルキメデス螺旋の適応的角度ステップにより、ノード数が増えても隣接アーム間を含む全ノード間で最低46ptの間隔を確保し重なりを防いでいます。
+        """
+    ),
+    HelpItem(
         icon: "🎯",
         title: "時間帯別目標の設定",
         content: """
@@ -312,7 +339,7 @@ struct HelpView: View {
                         HStack(spacing: 12) {
                             Text("ℹ️").font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Fitingo v0.10.5")
+                                Text("Fitingo a.0.11.4")
                                     .font(.subheadline).fontWeight(.black)
                                 Text("Web・iOS・Apple Watch 対応")
                                     .font(.caption).foregroundColor(Color.duoSubtitle)

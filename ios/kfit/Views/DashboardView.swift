@@ -2798,6 +2798,8 @@ struct DashboardView: View {
         var done = 0, total = 0
         let settings = timeSlotManager.settings
         let progress = timeSlotManager.progress
+
+        // 時間帯ごとのゴール
         for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
             guard let goal = settings.goalFor(slot),
                   let prog = progress.progressFor(slot) else { continue }
@@ -2810,11 +2812,69 @@ struct DashboardView: View {
                 total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
             }
         }
+
+        // 1日全体のグローバルゴール
+        let gp = progress.globalProgress
+        for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
+            total += 1; if gp.completedCustomGoalIds.contains(goal.id) { done += 1 }
+        }
+        if settings.globalGoals.sleepEnabled {
+            total += 1
+            if gp.sleepHours >= Double(settings.globalGoals.sleepHoursGoal) &&
+               gp.sleepScore >= settings.globalGoals.sleepScoreThreshold { done += 1 }
+        }
+        if settings.globalGoals.pfcEnabled {
+            total += 1
+            if gp.pfcScore >= settings.globalGoals.pfcScoreThreshold { done += 1 }
+        }
+
+        // 今日の曜日別ゴール
+        let weekdayNum: Int = {
+            let wd = Calendar.current.component(.weekday, from: Date())
+            return wd == 1 ? 7 : wd - 1
+        }()
+        if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+           let wdGoals = try? JSONDecoder().decode([WeekdayGoal].self, from: data),
+           let wg = wdGoals.first(where: { $0.weekday == weekdayNum && $0.hasAnyGoal }) {
+            if wg.studyEnabled { total += 1; if gp.completedCustomGoalIds.contains("wd_study_\(weekdayNum)") { done += 1 } }
+            if wg.noAlcoholEnabled { total += 1; if gp.completedCustomGoalIds.contains("wd_noalcohol_\(weekdayNum)") { done += 1 } }
+            for cg in wg.customGoals {
+                total += 1; if gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)") { done += 1 }
+            }
+        }
+
+        // 毎日のカスタムゴール
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            for cg in fixed.customGoals {
+                total += 1; if gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)") { done += 1 }
+            }
+        }
+
         return (done, total)
+    }
+
+    private var mandalaCurrentSlotProgress: (slot: TimeSlot, done: Int, total: Int) {
+        let slot = TimeSlot.current()
+        guard slot != .midnight,
+              let goal = timeSlotManager.settings.goalFor(slot),
+              let prog = timeSlotManager.progress.progressFor(slot) else { return (slot, 0, 0) }
+        var done = 0, total = 0
+        if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
+        if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
+        if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
+        if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
+        if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
+        for act in goal.customActivities.filter({ $0.isEnabled }) {
+            total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
+        }
+        return (slot, done, total)
     }
 
     private var mandalaCard: some View {
         let nc = mandalaOverallCount
+        let cs = mandalaCurrentSlotProgress
+        let slotPct = cs.total > 0 ? Int(round(Double(cs.done) / Double(cs.total) * 100)) : 0
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
@@ -2828,10 +2888,14 @@ struct DashboardView: View {
                     .font(.caption2)
                     .foregroundColor(Color.duoSubtitle)
                     .layoutPriority(1)
-                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
-                    .font(.caption).fontWeight(.black)
-                    .foregroundColor(nc.total > 0 && nc.done == nc.total
-                                     ? Color.duoGreen : Color.duoDark)
+                if cs.total > 0 {
+                    Text("\(cs.slot.displayName) \(slotPct)%")
+                        .font(.caption2).fontWeight(.black)
+                        .foregroundColor(slotPct == 100 ? cs.slot.mandalaColor : Color.duoSubtitle)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(cs.slot.mandalaColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
                 Button { showMandalaDetail = true } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.subheadline)
@@ -2872,6 +2936,18 @@ struct DashboardView: View {
                 }
             )
             .frame(height: 340)
+
+            HStack {
+                Spacer()
+                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
+                    .font(.caption).fontWeight(.black)
+                    .foregroundColor(nc.total > 0 && nc.done == nc.total ? Color.duoGreen : Color.duoDark)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(
+                        (nc.total > 0 && nc.done == nc.total ? Color.duoGreen : Color.duoDark).opacity(0.08)
+                    )
+                    .clipShape(Capsule())
+            }
         }
         .padding(14)
         .background(Color(.systemBackground))

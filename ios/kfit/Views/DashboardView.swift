@@ -2795,10 +2795,17 @@ struct DashboardView: View {
     }
 
     private var mandalaOverallCount: (done: Int, total: Int) {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let visibleSlots: [TimeSlot] = {
+            if hour < 12 { return [.morning] }
+            else if hour < 15 { return [.morning, .noon] }
+            else if hour < 19 { return [.morning, .noon, .afternoon] }
+            else { return [.morning, .noon, .afternoon, .evening] }
+        }()
         var done = 0, total = 0
         let settings = timeSlotManager.settings
         let progress = timeSlotManager.progress
-        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+        for slot in visibleSlots {
             guard let goal = settings.goalFor(slot),
                   let prog = progress.progressFor(slot) else { continue }
             if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
@@ -2809,6 +2816,19 @@ struct DashboardView: View {
             for act in goal.customActivities.filter({ $0.isEnabled }) {
                 total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
             }
+        }
+        // 今日全体タスク（カスタム目標・睡眠・PFC）
+        let gp = progress.globalProgress
+        for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
+            total += 1; if gp.completedCustomGoalIds.contains(goal.id) { done += 1 }
+        }
+        if settings.globalGoals.sleepEnabled {
+            total += 1
+            if gp.sleepHours >= Double(settings.globalGoals.sleepHoursGoal) &&
+               gp.sleepScore >= settings.globalGoals.sleepScoreThreshold { done += 1 }
+        }
+        if settings.globalGoals.pfcEnabled {
+            total += 1; if gp.pfcScore >= settings.globalGoals.pfcScoreThreshold { done += 1 }
         }
         return (done, total)
     }

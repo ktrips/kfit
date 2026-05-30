@@ -1153,27 +1153,68 @@ struct MandalaChartView: View {
         return Double(nodes.filter(\.isCompleted).count) / Double(nodes.count)
     }
 
+    @ViewBuilder
+    private func legendCell(label: String, color: Color, done: Int, total: Int) -> some View {
+        HStack(spacing: 2) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text(total > 0 ? "\(label)(\(done)/\(total))" : label)
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .foregroundColor(total > 0 && done == total ? color : Color.duoSubtitle)
+        }
+        .padding(.horizontal, 3).padding(.vertical, 1)
+        .background(total > 0 && done == total ? color.opacity(0.12) : Color.clear)
+        .cornerRadius(3)
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
-            // 時間帯凡例（スパイラル上部、完了数付き）
-            HStack(spacing: 0) {
-                ForEach([TimeSlot.morning, .noon, .afternoon, .evening], id: \.self) { slot in
-                    let slotNodes = nodes.filter { $0.slot == slot }
-                    let done  = slotNodes.filter(\.isCompleted).count
-                    let total = slotNodes.count
-                    HStack(spacing: 3) {
-                        Circle()
-                            .fill(slot.mandalaColor)
-                            .frame(width: 6, height: 6)
-                        Text(total > 0
-                             ? "\(slot.displayName)(\(done)/\(total))"
-                             : slot.displayName)
-                        .font(.caption2).fontWeight(.semibold)
-                        .foregroundColor(total > 0 && done == total
-                                         ? slot.mandalaColor
-                                         : Color.duoSubtitle)
+        let hour = Calendar.current.component(.hour, from: Date())
+        let visibleSlots: [TimeSlot] = {
+            if hour < 12 { return [.morning] }
+            else if hour < 15 { return [.morning, .noon] }
+            else if hour < 19 { return [.morning, .noon, .afternoon] }
+            else { return [.morning, .noon, .afternoon, .evening] }
+        }()
+        let todayNodes   = nodes.filter { $0.slot == nil }
+        let allDone      = nodes.filter(\.isCompleted).count
+        let allTotal     = nodes.count
+        let visibleNodes = nodes.filter { $0.slot == nil || visibleSlots.contains($0.slot!) }
+        let visibleDone  = visibleNodes.filter(\.isCompleted).count
+        let visibleTotal = visibleNodes.count
+        let visiblePct   = visibleTotal > 0 ? Double(visibleDone) / Double(visibleTotal) : 0.0
+
+        return VStack(spacing: 6) {
+            // 時間帯凡例（今日 + 現在時刻までのスロット）
+            HStack(spacing: 2) {
+                legendCell(label: "今日", color: Color.duoGreen,
+                           done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
+                ForEach(visibleSlots, id: \.self) { slot in
+                    let sn = nodes.filter { $0.slot == slot }
+                    legendCell(label: slot.displayName, color: slot.mandalaColor,
+                               done: sn.filter(\.isCompleted).count, total: sn.count)
+                }
+                Spacer(minLength: 0)
+            }
+
+            // 進捗バー（今日 + 現在時刻までのスロットの達成率）
+            if visibleTotal > 0 {
+                HStack(spacing: 6) {
+                    GeometryReader { pg in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color(.systemGray5)).frame(height: 5)
+                            Capsule()
+                                .fill(LinearGradient(
+                                    colors: [Color.duoGreen, Color.duoBlue],
+                                    startPoint: .leading, endPoint: .trailing
+                                ))
+                                .frame(width: max(0, pg.size.width * CGFloat(visiblePct)), height: 5)
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(height: 5)
+                    Text(String(format: "%d%%", Int(visiblePct * 100)))
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(visiblePct >= 1.0 ? Color.duoGreen : Color.duoSubtitle)
+                        .frame(width: 30, alignment: .trailing)
                 }
             }
 
@@ -1241,6 +1282,19 @@ struct MandalaChartView: View {
                         .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
                         value: pulseCenter
                     )
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if allTotal > 0 {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(allDone)/\(allTotal)")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(allDone == allTotal ? Color.duoGreen : Color.duoDark)
+                    Text("全体")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(8)
             }
         }
         .onAppear {

@@ -259,7 +259,13 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
             <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
               <img
                 key={stepIdx}
-                src="/fitingo_workout.gif"
+                src={
+                  current.exerciseId === 'squat'
+                    ? '/fitingo_wo_squat.gif'
+                    : current.exerciseId === 'pushup' || current.exerciseId === 'situp'
+                    ? '/fitingo_wo_pushups.gif'
+                    : '/fitingo_workout.gif'
+                }
                 alt={current.exerciseName}
                 className="w-full h-full object-cover"
               />

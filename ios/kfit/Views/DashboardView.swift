@@ -140,6 +140,7 @@ struct DashboardView: View {
     @State private var pendingWidgetReload: DispatchWorkItem?
     @State private var pendingWidgetDataUpdate: DispatchWorkItem?
     @State private var showMandalaDetail = false
+    @State private var showMandalaTaskHistory = false
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -255,6 +256,13 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
+        .sheet(isPresented: $showMandalaTaskHistory) {
+            MandalaTaskHistoryView(
+                exercises: todayExercises,
+                intake: todayIntake,
+                healthKit: healthKit
+            )
+        }
         .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
         .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
         .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
@@ -2938,6 +2946,19 @@ struct DashboardView: View {
                         (nc.total > 0 && nc.done == nc.total ? Color.duoGreen : Color.duoDark).opacity(0.08)
                     )
                     .clipShape(Capsule())
+            }
+
+            Button { showMandalaTaskHistory = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "clock.arrow.circlepath")
+                    Text("タスク履歴を開く")
+                }
+                .font(.caption).fontWeight(.bold)
+                .foregroundColor(Color.duoOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Color.duoOrange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
         .padding(14)
@@ -7568,6 +7589,206 @@ private struct GoalCompletionSheet: View {
             onComplete()
             pickerItem = nil
         }
+    }
+}
+
+// MARK: - Mandala Task History Sheet
+
+struct MandalaTaskHistoryView: View {
+    let exercises: [CompletedExercise]
+    let intake: TodayIntakeSummary
+    let healthKit: HealthKitManager
+
+    @State private var workoutSessions: [WorkoutSession] = []
+    @State private var isLoadingWorkouts = true
+    @Environment(\.dismiss) private var dismiss
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private var todayBodyMass: [BodyMassRecord] {
+        let start = Calendar.current.startOfDay(for: Date())
+        return healthKit.bodyMassHistory
+            .filter { $0.measuredAt >= start }
+            .sorted { $0.measuredAt < $1.measuredAt }
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 12) {
+                    // トレーニング
+                    if !exercises.isEmpty {
+                        historySection(emoji: "💪", title: "トレーニング") {
+                            ForEach(exercises.sorted { $0.timestamp < $1.timestamp }) { ex in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: ex.timestamp),
+                                    title: ex.exerciseName,
+                                    detail: "\(ex.reps)回 · \(ex.points)pt"
+                                )
+                            }
+                        }
+                    }
+
+                    // ワークアウト
+                    if !workoutSessions.isEmpty {
+                        historySection(emoji: "🏃", title: "ワークアウト") {
+                            ForEach(workoutSessions) { session in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: session.startDate),
+                                    title: "\(session.emoji) \(session.activityName)",
+                                    detail: "\(Int(session.durationMinutes))分 · \(Int(session.calories))kcal"
+                                )
+                            }
+                        }
+                    } else if isLoadingWorkouts {
+                        ProgressView().padding()
+                    }
+
+                    // マインドフルネス
+                    if !healthKit.todayMindfulnessSamples.isEmpty {
+                        historySection(emoji: "🧘", title: "マインドフルネス") {
+                            ForEach(healthKit.todayMindfulnessSamples.sorted { $0.startDate < $1.startDate }) { s in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: s.startDate),
+                                    title: s.sessionTypeLabel,
+                                    detail: "\(Int(s.durationMinutes))分"
+                                )
+                            }
+                        }
+                    }
+
+                    // 体重
+                    if !todayBodyMass.isEmpty {
+                        historySection(emoji: "⚖️", title: "体重") {
+                            ForEach(todayBodyMass) { r in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: r.measuredAt),
+                                    title: "体重計測",
+                                    detail: String(format: "%.1f kg", r.kg)
+                                )
+                            }
+                        }
+                    }
+
+                    // 食事
+                    if !intake.meals.isEmpty {
+                        historySection(emoji: "🍽️", title: "食事") {
+                            ForEach(intake.meals.sorted { $0.timestamp < $1.timestamp }) { meal in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: meal.timestamp),
+                                    title: "\(meal.mealType.emoji) \(meal.mealType.displayName)",
+                                    detail: "\(meal.calories) kcal"
+                                )
+                            }
+                        }
+                    }
+
+                    // 水分
+                    if !intake.waterLogs.isEmpty || !intake.coffeeLogs.isEmpty || !intake.alcoholLogs.isEmpty {
+                        historySection(emoji: "💧", title: "水分") {
+                            ForEach(intake.waterLogs.sorted { $0.timestamp < $1.timestamp }) { log in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: log.timestamp),
+                                    title: "水",
+                                    detail: "\(log.amountMl) ml"
+                                )
+                            }
+                            ForEach(intake.coffeeLogs.sorted { $0.timestamp < $1.timestamp }) { log in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: log.timestamp),
+                                    title: "☕️ コーヒー",
+                                    detail: "\(log.amountMl) ml · \(log.caffeineMg) mg"
+                                )
+                            }
+                            ForEach(intake.alcoholLogs.sorted { $0.timestamp < $1.timestamp }) { log in
+                                historyRow(
+                                    time: Self.timeFmt.string(from: log.timestamp),
+                                    title: "\(log.alcoholType.emoji) \(log.alcoholType.displayName)",
+                                    detail: "\(log.amountMl) ml · \(String(format: "%.1f", log.alcoholG)) g"
+                                )
+                            }
+                        }
+                    }
+
+                    let hasAnyRecord = !exercises.isEmpty || !workoutSessions.isEmpty ||
+                        !healthKit.todayMindfulnessSamples.isEmpty || !todayBodyMass.isEmpty ||
+                        !intake.meals.isEmpty || !intake.waterLogs.isEmpty ||
+                        !intake.coffeeLogs.isEmpty || !intake.alcoholLogs.isEmpty
+                    if !hasAnyRecord && !isLoadingWorkouts {
+                        VStack(spacing: 8) {
+                            Text("📋").font(.largeTitle)
+                            Text("今日の記録はまだありません")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
+            }
+            .background(Color.duoBg.ignoresSafeArea())
+            .navigationTitle("タスク履歴")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .fontWeight(.bold)
+                        .foregroundColor(Color.duoOrange)
+                }
+            }
+        }
+        .task {
+            workoutSessions = await healthKit.fetchTodayWorkoutSessions()
+            isLoadingWorkouts = false
+        }
+    }
+
+    @ViewBuilder
+    private func historySection<Content: View>(emoji: String, title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Text(emoji).font(.subheadline)
+                Text(title)
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+            }
+            .padding(.bottom, 2)
+
+            VStack(spacing: 1) {
+                content()
+            }
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
+        }
+    }
+
+    private func historyRow(time: String, title: String, detail: String) -> some View {
+        HStack(spacing: 12) {
+            Text(time)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(Color.duoSubtitle)
+                .frame(width: 42, alignment: .leading)
+            Text(title)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundColor(Color.duoDark)
+                .lineLimit(1)
+            Spacer()
+            Text(detail)
+                .font(.caption).fontWeight(.bold)
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(.systemBackground))
     }
 }
 

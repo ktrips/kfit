@@ -1153,27 +1153,56 @@ struct MandalaChartView: View {
         return Double(nodes.filter(\.isCompleted).count) / Double(nodes.count)
     }
 
+    @ViewBuilder
+    private func legendCell(label: String, color: Color, done: Int, total: Int) -> some View {
+        let pct = total > 0 ? Int(round(Double(done) / Double(total) * 100)) : 0
+        let isComplete = total > 0 && done == total
+        VStack(spacing: 2) {
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                Text(total > 0 ? "\(label)(\(done)/\(total))" : label)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(isComplete ? color : Color.duoSubtitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            Capsule()
+                .fill(Color(.systemGray5))
+                .frame(height: 4)
+                .overlay(
+                    Capsule()
+                        .fill(color.opacity(isComplete ? 1.0 : 0.75))
+                        .scaleEffect(x: total > 0 ? CGFloat(pct) / 100.0 : 0, anchor: .leading),
+                    alignment: .leading
+                )
+            Text("\(pct)%")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(isComplete ? color : Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     var body: some View {
         VStack(spacing: 8) {
-            // 時間帯凡例（スパイラル上部、完了数付き）
-            HStack(spacing: 0) {
+            // 時間帯凡例（今日 + 朝/昼/午後/夜）
+            HStack(spacing: 2) {
+                let todayNodes = nodes.filter { $0.slot == nil }
+                legendCell(
+                    label: "今日",
+                    color: Color.duoGreen,
+                    done: todayNodes.filter(\.isCompleted).count,
+                    total: todayNodes.count
+                )
                 ForEach([TimeSlot.morning, .noon, .afternoon, .evening], id: \.self) { slot in
                     let slotNodes = nodes.filter { $0.slot == slot }
-                    let done  = slotNodes.filter(\.isCompleted).count
-                    let total = slotNodes.count
-                    HStack(spacing: 3) {
-                        Circle()
-                            .fill(slot.mandalaColor)
-                            .frame(width: 6, height: 6)
-                        Text(total > 0
-                             ? "\(slot.displayName)(\(done)/\(total))"
-                             : slot.displayName)
-                        .font(.caption2).fontWeight(.semibold)
-                        .foregroundColor(total > 0 && done == total
-                                         ? slot.mandalaColor
-                                         : Color.duoSubtitle)
-                    }
-                    .frame(maxWidth: .infinity)
+                    legendCell(
+                        label: slot.displayName,
+                        color: slot.mandalaColor,
+                        done: slotNodes.filter(\.isCompleted).count,
+                        total: slotNodes.count
+                    )
                 }
             }
 

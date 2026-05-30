@@ -1065,28 +1065,6 @@ struct MandalaChartView: View {
                 type: .custom
             ))
         }
-        if settings.globalGoals.sleepEnabled {
-            let g = settings.globalGoals
-            let p = progress.globalProgress
-            result.append(MandalaNodeData(
-                id: "global-sleep",
-                emoji: "😴",
-                label: "睡眠",
-                isCompleted: p.sleepHours >= Double(g.sleepHoursGoal) && p.sleepScore >= g.sleepScoreThreshold,
-                slot: nil,
-                type: .sleep
-            ))
-        }
-        if settings.globalGoals.pfcEnabled {
-            result.append(MandalaNodeData(
-                id: "global-pfc",
-                emoji: "🥗",
-                label: "PFC",
-                isCompleted: progress.globalProgress.pfcScore >= settings.globalGoals.pfcScoreThreshold,
-                slot: nil,
-                type: .pfc
-            ))
-        }
 
         // 今日の曜日別カスタム目標
         let weekdayNum: Int = {

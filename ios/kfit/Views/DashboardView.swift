@@ -2818,15 +2818,6 @@ struct DashboardView: View {
         for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
             total += 1; if gp.completedCustomGoalIds.contains(goal.id) { done += 1 }
         }
-        if settings.globalGoals.sleepEnabled {
-            total += 1
-            if gp.sleepHours >= Double(settings.globalGoals.sleepHoursGoal) &&
-               gp.sleepScore >= settings.globalGoals.sleepScoreThreshold { done += 1 }
-        }
-        if settings.globalGoals.pfcEnabled {
-            total += 1
-            if gp.pfcScore >= settings.globalGoals.pfcScoreThreshold { done += 1 }
-        }
 
         // 今日の曜日別ゴール
         let weekdayNum: Int = {

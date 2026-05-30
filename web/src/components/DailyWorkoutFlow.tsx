@@ -255,15 +255,25 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
           )}
 
           {/* 種目カード */}
-          <div className="duo-card p-6 text-center">
-            <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-6xl mx-auto mb-4"
-              style={{ background: '#D7FFB8', border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}>
-              {current.emoji}
+          <div className="duo-card overflow-hidden">
+            <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+              <img
+                key={stepIdx}
+                src="/fitingo_workout.gif"
+                alt={current.exerciseName}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute top-3 right-3 w-11 h-11 rounded-2xl flex items-center justify-center text-2xl"
+                style={{ background: 'rgba(255,255,255,0.92)', border: '2px solid #58CC02' }}>
+                {current.emoji}
+              </div>
             </div>
-            <h2 className="text-3xl font-black text-duo-dark">{current.exerciseName}</h2>
-            <p className="text-duo-gray font-bold text-sm mt-1">
-              目標: {current.targetReps}{isPlank ? ' 秒' : ' 回'}
-            </p>
+            <div className="px-5 pt-4 pb-5 text-center">
+              <h2 className="text-3xl font-black text-duo-dark">{current.exerciseName}</h2>
+              <p className="text-duo-gray font-bold text-sm mt-1">
+                目標: {current.targetReps}{isPlank ? ' 秒' : ' 回'}
+              </p>
+            </div>
           </div>
 
           {/* カウンター / タイマー */}

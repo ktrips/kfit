@@ -188,6 +188,9 @@ function App() {
                         <span>🚪</span>
                         <span>ログアウト</span>
                       </button>
+                      <div className="px-4 py-2 text-center" style={{ borderTop: '1.5px solid #e5e5e5', marginTop: '4px' }}>
+                        <p className="text-[10px] font-bold text-duo-gray">v0.5.0 · 2026-05-30</p>
+                      </div>
                     </div>
                   </>
                 )}

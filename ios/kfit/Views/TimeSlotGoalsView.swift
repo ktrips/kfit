@@ -1410,6 +1410,7 @@ struct MandalaChartView: View {
         let completed = nodes.filter(\.isCompleted).count
         let progress = total > 0 ? Double(completed) / Double(total) : 0.0
         let segments = buildRingSegments(nodes: nodes)
+        let progressColor: Color = progress >= 0.8 ? .duoGreen : progress >= 0.5 ? .duoOrange : .duoRed
         ZStack {
             Circle()
                 .fill(Color(.systemBackground))
@@ -1435,20 +1436,20 @@ struct MandalaChartView: View {
                 .stroke(Color(.systemGray5), lineWidth: 4)
                 .frame(width: 52, height: 52)
 
-            // 内側リング：グリーン進捗
+            // 内側リング：達成率に応じた色で進捗表示
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(Color.duoGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .stroke(progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .frame(width: 52, height: 52)
                 .rotationEffect(.degrees(-90))
 
             VStack(spacing: -1) {
                 Text("\(Int(progress * 100))")
                     .font(.system(size: 14, weight: .black))
-                    .foregroundColor(Color.duoDark)
+                    .foregroundColor(progressColor)
                 Text("%")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
+                    .foregroundColor(progressColor.opacity(0.8))
             }
         }
     }

@@ -5,20 +5,19 @@ import {
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress } from '../services/timeSlotService';
-import { getDietGoalSettings, getMindMetrics, getTodayIntakeSummary } from '../services/wellnessService';
-import { calculateStressScore } from '../utils/stress';
+import { getDietGoalSettings } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
 import type { GlobalProgress } from '../services/timeSlotService';
-import type { DietGoalSettings, IntakeSummary, MindMetrics } from '../types/wellness';
+import type { DietGoalSettings } from '../types/wellness';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
-  onFood?: () => void;
+
   onDietGoal?: () => void;
-  onMind?: () => void;
+
 }
 
 const EXERCISE_EMOJI: Record<string, string> = {
@@ -60,7 +59,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onFood, onDietGoal, onMind }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
@@ -74,10 +73,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
-  const [intakeSummary, setIntakeSummary] = useState<IntakeSummary | null>(null);
   const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
-  const [mindMetrics, setMindMetrics] = useState<MindMetrics | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -86,12 +83,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, intake, global, diet, mind] = await Promise.all([
+        const [dashboard, global, diet] = await Promise.all([
           getDashboardData(user.uid),
-          getTodayIntakeSummary(user.uid),
           getGlobalProgress(user.uid),
           getDietGoalSettings(user.uid),
-          getMindMetrics(user.uid),
         ]);
         if (cancelled) return;
         const exercises = dashboard.todayExercises;
@@ -106,10 +101,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         setSetProgress(dashboard.setProgress);
         setDailySets(dashboard.dailySets);
         setTodaySetCount(dashboard.todaySetCount);
-        setIntakeSummary(intake);
         setGlobalProgress(global);
         setDietGoal(diet);
-        setMindMetrics(mind);
         // 今日分だけフィルタ
         const today = new Date();
         setTodaySets(dashboard.weeklySetLog.filter(s => {
@@ -340,15 +333,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* ── Health 2×2 grid: FOOD / DIET / MIND / SLEEP ── */}
+        {/* ── Health grid: DIET / SLEEP ── */}
         {(() => {
-          // FOOD
-          const calories = intakeSummary?.calories ?? 0;
-          const waterMl  = intakeSummary?.waterMl ?? 0;
-          const mealCnt  = intakeSummary?.mealCount ?? 0;
-          const intakeGoal = dietGoal?.dailyIntakeKcalGoal ?? 0;
-          const calPct = intakeGoal > 0 ? Math.min(100, Math.round((calories / intakeGoal) * 100)) : 0;
-
           // DIET
           const cw = dietGoal?.currentWeightKg ?? 0;
           const gw = dietGoal?.goalWeightKg ?? 0;
@@ -364,10 +350,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             return Math.max(0, Math.round((g.getTime() - t.getTime()) / 86400000));
           })();
 
-          // MIND
-          const hrv = mindMetrics?.averageHRV || mindMetrics?.latestHRV || 0;
-          const stress = calculateStressScore(hrv);
-
           // SLEEP
           const sh = globalProgress?.sleepHours ?? 0;
           const ss = globalProgress?.sleepScore ?? 0;
@@ -375,33 +357,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
           return (
             <div className="grid grid-cols-2 gap-3">
-
-              {/* FOOD card */}
-              <button
-                onClick={onFood}
-                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
-                style={{ border: '2px solid #FFDDBB', boxShadow: '0 3px 0 #CC5800' }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#FF7200' }}>🍽️ FOOD</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: '#FF7200' }}>
-                    {mealCnt > 0 ? `${mealCnt}食` : '未記録'}
-                  </span>
-                </div>
-                <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: calories > 0 ? '#FF7200' : '#AFAFAF' }}>
-                  {calories > 0 ? `${calories}` : '—'}
-                </p>
-                <p className="text-[9px] font-bold text-duo-gray mb-2">kcal摂取</p>
-                <div className="flex items-center gap-1">
-                  <span className="text-[9px]">💧</span>
-                  <span className="text-[9px] font-bold text-duo-gray">{waterMl > 0 ? `${waterMl}ml` : '—'}</span>
-                </div>
-                {intakeGoal > 0 && (
-                  <div className="mt-2 rounded-full bg-gray-100" style={{ height: 3 }}>
-                    <div className="rounded-full" style={{ height: 3, width: `${calPct}%`, background: '#FF7200' }} />
-                  </div>
-                )}
-              </button>
 
               {/* DIET card */}
               <button
@@ -432,35 +387,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
                   </>
                 ) : (
                   <p className="text-[10px] font-bold text-duo-gray mt-2">未設定</p>
-                )}
-              </button>
-
-              {/* MIND card */}
-              <button
-                onClick={onMind}
-                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
-                style={{ border: '2px solid #C8F0FF', boxShadow: '0 3px 0 #0080C0' }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#1CB0F6' }}>🧠 MIND</span>
-                  {hrv > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: stress.color }}>
-                      {stress.label}
-                    </span>
-                  )}
-                </div>
-                {hrv > 0 ? (
-                  <>
-                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: stress.color }}>
-                      {hrv}
-                    </p>
-                    <p className="text-[9px] font-bold text-duo-gray mb-1">ms HRV</p>
-                    <p className="text-[10px] font-bold" style={{ color: stress.color }}>
-                      ストレス {stress.score >= 0 ? `${stress.score}点` : '未入力'}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-[10px] font-bold text-duo-gray mt-2">未入力</p>
                 )}
               </button>
 

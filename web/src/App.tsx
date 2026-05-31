@@ -208,9 +208,7 @@ function App() {
             onLogWorkout={() => navigate('tracker')}
             onWeeklyGoal={() => navigate('weekly')}
             onWorkoutPlan={() => navigate('plan')}
-            onFood={() => navigate('food')}
             onDietGoal={() => navigate('dietGoal')}
-            onMind={() => navigate('mind')}
           />
         )}
         {currentView === 'workout' && user && (

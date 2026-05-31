@@ -990,46 +990,95 @@ struct MandalaChartView: View {
     static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
-        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+        // 1日合計を事前集計して、1日目標達成済みかチェック
+        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        var totalTrainingCompleted = 0, totalTrainingGoal = 0
+        var totalMindfulnessCompleted = 0, totalMindfulnessGoal = 0
+        var totalStretchCompleted = 0, totalStretchGoal = 0
+        var totalMealLogged = 0, totalMealGoal = 0
+        var totalDrinkLogged = 0, totalDrinkGoal = 0
+        for slot in activeSlots {
+            guard let goal = settings.goalFor(slot), let prog = progress.progressFor(slot) else { continue }
+            totalTrainingCompleted += prog.trainingCompleted
+            totalTrainingGoal += goal.trainingGoal
+            totalMindfulnessCompleted += prog.mindfulnessCompleted
+            totalMindfulnessGoal += goal.mindfulnessGoal
+            if goal.stretchGoal.enabled {
+                totalStretchCompleted += prog.stretchSetsCompleted
+                totalStretchGoal += goal.stretchGoal.stretchMinutes
+            }
+            totalMealLogged += prog.logProgress.mealLogged
+            totalMealGoal += goal.logGoal.mealGoal
+            totalDrinkLogged += prog.logProgress.drinkLogged
+            totalDrinkGoal += goal.logGoal.drinkGoal
+        }
+        // グローバル設定が有効な場合はそちらの目標値を優先
+        if settings.globalGoals.mealEnabled && settings.globalGoals.dailyMealKcal > 0 {
+            totalMealGoal = settings.globalGoals.dailyMealKcal
+        }
+        if settings.globalGoals.drinkEnabled && settings.globalGoals.dailyDrinkMl > 0 {
+            totalDrinkGoal = settings.globalGoals.dailyDrinkMl
+        }
+        let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingCompleted >= totalTrainingGoal
+        let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulnessCompleted >= totalMindfulnessGoal
+        let dailyStretchDone = totalStretchGoal > 0 && totalStretchCompleted >= totalStretchGoal
+        let dailyMealDone = totalMealGoal > 0 && totalMealLogged >= totalMealGoal
+        let dailyDrinkDone = totalDrinkGoal > 0 && totalDrinkLogged >= totalDrinkGoal
+
+        for slot in activeSlots {
             guard let goal = settings.goalFor(slot),
                   let prog = progress.progressFor(slot) else { continue }
 
             if goal.trainingGoal > 0 {
-                result.append(MandalaNodeData(
-                    id: "\(slot.rawValue)-training",
-                    emoji: "💪",
-                    label: "トレーニング",
-                    isCompleted: prog.trainingCompleted >= goal.trainingGoal,
-                    slot: slot,
-                    type: .training
-                ))
+                for i in 1...goal.trainingGoal {
+                    result.append(MandalaNodeData(
+                        id: "\(slot.rawValue)-training-\(i)",
+                        emoji: "💪",
+                        label: "トレーニング",
+                        isCompleted: dailyTrainingDone || prog.trainingCompleted >= i,
+                        slot: slot,
+                        type: .training
+                    ))
+                }
             }
             if goal.mindfulnessGoal > 0 {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: prog.mindfulnessCompleted >= goal.mindfulnessGoal,
+                    isCompleted: dailyMindfulnessDone || prog.mindfulnessCompleted >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))
             }
-            if goal.stretchGoal.enabled {
-                result.append(MandalaNodeData(
-                    id: "\(slot.rawValue)-stretch",
-                    emoji: "🤸",
-                    label: "ストレッチ",
-                    isCompleted: prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes,
-                    slot: slot,
-                    type: .stretch
-                ))
+            if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 {
+                let stretchUnits = max(1, goal.stretchGoal.stretchMinutes / 3)
+                for i in 1...stretchUnits {
+                    result.append(MandalaNodeData(
+                        id: "\(slot.rawValue)-stretch-\(i)",
+                        emoji: "🤸",
+                        label: "ストレッチ",
+                        isCompleted: dailyStretchDone || prog.stretchSetsCompleted >= i * 3,
+                        slot: slot,
+                        type: .stretch
+                    ))
+                }
             }
             if goal.logGoal.mealGoal > 0 {
+                let mealEmoji: String = {
+                    switch slot {
+                    case .midnight:  return "🌙"
+                    case .morning:   return "🥐"
+                    case .noon:      return "🍱"
+                    case .afternoon: return "🍎"
+                    case .evening:   return "🍛"
+                    }
+                }()
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
-                    emoji: "🍽️",
+                    emoji: mealEmoji,
                     label: "食事",
-                    isCompleted: prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    isCompleted: dailyMealDone || prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     slot: slot,
                     type: .meal
                 ))
@@ -1039,7 +1088,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
                     label: "水分",
-                    isCompleted: prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    isCompleted: dailyDrinkDone || prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
                 ))
@@ -1176,15 +1225,11 @@ struct MandalaChartView: View {
         let todayNodes   = nodes.filter { $0.slot == nil }
         let allDone      = nodes.filter(\.isCompleted).count
         let allTotal     = nodes.count
-        let visibleNodes = nodes.filter { $0.slot == nil || visibleSlots.contains($0.slot!) }
-        let visibleDone  = visibleNodes.filter(\.isCompleted).count
-        let visibleTotal = visibleNodes.count
-        let visiblePct   = visibleTotal > 0 ? Double(visibleDone) / Double(visibleTotal) : 0.0
 
-        return VStack(spacing: 6) {
+        return VStack(spacing: 2) {
             // 時間帯凡例（今日 + 現在時刻までのスロット）
             HStack(spacing: 2) {
-                legendCell(label: "今日", color: Color.duoGreen,
+                legendCell(label: "今日", color: Color(hex: "CE82FF"),
                            done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
                 ForEach(visibleSlots, id: \.self) { slot in
                     let sn = nodes.filter { $0.slot == slot }
@@ -1192,28 +1237,6 @@ struct MandalaChartView: View {
                                done: sn.filter(\.isCompleted).count, total: sn.count)
                 }
                 Spacer(minLength: 0)
-            }
-
-            // 進捗バー（今日 + 現在時刻までのスロットの達成率）
-            if visibleTotal > 0 {
-                HStack(spacing: 6) {
-                    GeometryReader { pg in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color(.systemGray5)).frame(height: 5)
-                            Capsule()
-                                .fill(LinearGradient(
-                                    colors: [Color.duoGreen, Color.duoBlue],
-                                    startPoint: .leading, endPoint: .trailing
-                                ))
-                                .frame(width: max(0, pg.size.width * CGFloat(visiblePct)), height: 5)
-                        }
-                    }
-                    .frame(height: 5)
-                    Text(String(format: "%d%%", Int(visiblePct * 100)))
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundColor(visiblePct >= 1.0 ? Color.duoGreen : Color.duoSubtitle)
-                        .frame(width: 30, alignment: .trailing)
-                }
             }
 
             GeometryReader { geo in

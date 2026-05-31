@@ -2813,28 +2813,39 @@ struct DashboardView: View {
     private var mandalaCard: some View {
         let nc = mandalaOverallCount
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 HStack(spacing: 5) {
                     Text("🌀").font(.subheadline)
-                    Text("Mandala").fontWeight(.black)
+                    Text("Mandala").fontWeight(.black).font(.subheadline)
                 }
-                .font(.subheadline)
                 .foregroundColor(Color.duoOrange)
-                Spacer()
-                Text(mandalaDateLabel)
-                    .font(.caption2)
-                    .foregroundColor(Color.duoSubtitle)
-                    .layoutPriority(1)
-                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
-                    .font(.caption).fontWeight(.black)
-                    .foregroundColor(nc.total > 0 && nc.done == nc.total
-                                     ? Color.duoGreen : Color.duoDark)
+                .fixedSize()
+                Spacer(minLength: 4)
+                Group {
+                    Text(mandalaDateLabel)
+                        .font(.caption2)
+                        .foregroundColor(Color.duoSubtitle)
+                    if nc.total > 0 {
+                        let pct = Double(nc.done) / Double(nc.total)
+                        let pctColor: Color = pct >= 0.8 ? Color.duoGreen : pct >= 0.5 ? Color.duoOrange : Color.red
+                        Text("\(Int(pct * 100))%（\(nc.done)/\(nc.total)）")
+                            .font(.caption).fontWeight(.black)
+                            .foregroundColor(pctColor)
+                    } else {
+                        Text("--")
+                            .font(.caption).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                    }
+                }
+                .lineLimit(1)
+                .fixedSize()
                 Button { showMandalaDetail = true } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.subheadline)
                         .foregroundColor(Color.duoOrange)
                 }
             }
+            .lineLimit(1)
 
             MandalaChartView(
                 settings: timeSlotManager.settings,

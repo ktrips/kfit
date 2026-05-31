@@ -1150,11 +1150,6 @@ struct MandalaChartView: View {
         return Array(result.prefix(40))
     }
 
-    var overallProgress: Double {
-        guard !nodes.isEmpty else { return 0 }
-        return Double(nodes.filter(\.isCompleted).count) / Double(nodes.count)
-    }
-
     @ViewBuilder
     private func legendCell(label: String, color: Color, done: Int, total: Int) -> some View {
         HStack(spacing: 2) {
@@ -1278,7 +1273,7 @@ struct MandalaChartView: View {
                 }
 
                 // 中心プログレス
-                centerCircle(progress: overallProgress)
+                centerCircle(nodes: nodes)
                     .position(center)
                     .scaleEffect(pulseCenter ? 1.07 : 1.0)
                     .animation(
@@ -1371,33 +1366,80 @@ struct MandalaChartView: View {
         }
     }
 
+    private struct RingSegment {
+        let color: Color
+        let start: Double
+        let end: Double
+    }
+
+    private func buildRingSegments(nodes: [MandalaNodeData]) -> [RingSegment] {
+        let total = nodes.count
+        guard total > 0 else { return [] }
+        let slotOrder: [(TimeSlot?, Color)] = [
+            (.morning,   TimeSlot.morning.mandalaColor),
+            (.noon,      TimeSlot.noon.mandalaColor),
+            (.afternoon, TimeSlot.afternoon.mandalaColor),
+            (.evening,   TimeSlot.evening.mandalaColor),
+            (nil,        Color(hex: "CE82FF"))
+        ]
+        let gap = 0.008
+        var result: [RingSegment] = []
+        var cum = 0.0
+        for (slot, color) in slotOrder {
+            let count = nodes.filter { $0.slot == slot }.count
+            guard count > 0 else { continue }
+            let fraction = Double(count) / Double(total)
+            let segEnd = cum + fraction - gap
+            if segEnd > cum { result.append(RingSegment(color: color, start: cum, end: segEnd)) }
+            cum += fraction
+        }
+        return result
+    }
+
     @ViewBuilder
-    private func centerCircle(progress: Double) -> some View {
+    private func centerCircle(nodes: [MandalaNodeData]) -> some View {
+        let total = nodes.count
+        let completed = nodes.filter(\.isCompleted).count
+        let progress = total > 0 ? Double(completed) / Double(total) : 0.0
+        let segments = buildRingSegments(nodes: nodes)
         ZStack {
             Circle()
                 .fill(Color(.systemBackground))
-                .frame(width: 60, height: 60)
+                .frame(width: 72, height: 72)
                 .shadow(color: .black.opacity(0.12), radius: 6)
 
+            // 外側リング：時間帯別タスク割合（背景トラック）
+            Circle()
+                .stroke(Color(.systemGray6), lineWidth: 5.5)
+                .frame(width: 64, height: 64)
+
+            // 外側リング：時間帯カラーセグメント
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                Circle()
+                    .trim(from: seg.start, to: seg.end)
+                    .stroke(seg.color, style: StrokeStyle(lineWidth: 5.5, lineCap: .butt))
+                    .frame(width: 64, height: 64)
+                    .rotationEffect(.degrees(-90))
+            }
+
+            // 内側リング：実際の進捗（背景トラック）
+            Circle()
+                .stroke(Color(.systemGray5), lineWidth: 4)
+                .frame(width: 52, height: 52)
+
+            // 内側リング：グリーン進捗
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.duoOrange, Color.duoGreen, Color.duoBlue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
-                )
-                .frame(width: 56, height: 56)
+                .stroke(Color.duoGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .frame(width: 52, height: 52)
                 .rotationEffect(.degrees(-90))
 
             VStack(spacing: -1) {
                 Text("\(Int(progress * 100))")
-                    .font(.system(size: 15, weight: .black))
+                    .font(.system(size: 14, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Text("%")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
         }

@@ -140,7 +140,6 @@ struct DashboardView: View {
     @State private var pendingWidgetReload: DispatchWorkItem?
     @State private var pendingWidgetDataUpdate: DispatchWorkItem?
     @State private var showMandalaDetail = false
-    @State private var mealQuickLogTarget: MealQuickLogTarget?
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -256,12 +255,6 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
-        .sheet(item: $mealQuickLogTarget) { target in
-            MealQuickLogSheet(target: target) { kcal in
-                await updateTimeSlotForMeal(timestamp: Date(), calories: kcal)
-                await refreshIntakeData()
-            }
-        }
         .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
         .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
         .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
@@ -2863,17 +2856,13 @@ struct DashboardView: View {
                             }
                         }
                     case .meal:
-                        let (mt, kcal, emoji, label): (MealType, Int, String, String) = {
-                            switch node.slot {
-                            case .morning:   return (.breakfast, 400, "🌅", "朝食")
-                            case .noon:      return (.lunch,     600, "🍱", "昼食")
-                            case .afternoon: return (.snack,     200, "🍫", "午後食")
-                            default:         return (.dinner,    800, "🍽️", "夕食")
+                        confirmIntake(message: "朝食 400kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .breakfast)
+                                await updateTimeSlotForMeal(timestamp: Date(), calories: 400)
+                                await refreshIntakeData()
                             }
-                        }()
-                        mealQuickLogTarget = MealQuickLogTarget(
-                            mealType: mt, defaultKcal: kcal, emoji: emoji, label: label
-                        )
+                        }
                     default:
                         showMandalaDetail = true
                     }
@@ -7515,113 +7504,6 @@ private struct GoalCompletionSheet: View {
             guard item != nil else { return }
             onComplete()
             pickerItem = nil
-        }
-    }
-}
-
-// MARK: - Meal Quick Log Sheet
-
-struct MealQuickLogTarget: Identifiable {
-    let id = UUID()
-    let mealType: MealType
-    let defaultKcal: Int
-    let emoji: String
-    let label: String
-}
-
-struct MealQuickLogSheet: View {
-    let target: MealQuickLogTarget
-    let onRecord: (Int) async -> Void
-
-    @State private var calories: Int
-    @Environment(\.dismiss) private var dismiss
-    @StateObject private var authManager = AuthenticationManager.shared
-    @State private var isRecording = false
-
-    init(target: MealQuickLogTarget, onRecord: @escaping (Int) async -> Void) {
-        self.target = target
-        self.onRecord = onRecord
-        _calories = State(initialValue: target.defaultKcal)
-    }
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 32) {
-                Spacer()
-
-                VStack(spacing: 10) {
-                    Text(target.emoji)
-                        .font(.system(size: 72))
-                    Text(target.label)
-                        .font(.title2).fontWeight(.black)
-                        .foregroundColor(Color.duoOrange)
-                }
-
-                VStack(spacing: 8) {
-                    Text("カロリー")
-                        .font(.subheadline).fontWeight(.bold)
-                        .foregroundColor(Color.duoSubtitle)
-                    HStack(spacing: 24) {
-                        Button {
-                            if calories >= 50 { calories -= 50 }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(Color.duoOrange)
-                        }
-                        Text("\(calories)")
-                            .font(.system(size: 48, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                            .frame(width: 130, alignment: .center)
-                        Button { calories += 50 } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(Color.duoOrange)
-                        }
-                    }
-                    Text("kcal")
-                        .font(.subheadline).fontWeight(.bold)
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.vertical, 24).padding(.horizontal, 32)
-                .background(Color(.systemGray6))
-                .cornerRadius(20)
-
-                Button {
-                    guard !isRecording else { return }
-                    isRecording = true
-                    Task {
-                        await authManager.recordMeal(mealType: target.mealType, calories: calories)
-                        await onRecord(calories)
-                        await MainActor.run { dismiss() }
-                    }
-                } label: {
-                    Group {
-                        if isRecording {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("記録する")
-                                .font(.headline).fontWeight(.black)
-                        }
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.duoOrange)
-                    .cornerRadius(14)
-                }
-                .disabled(isRecording)
-
-                Spacer()
-            }
-            .padding(.horizontal, 28)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("キャンセル") { dismiss() }
-                        .foregroundColor(Color.duoSubtitle)
-                }
-            }
         }
     }
 }

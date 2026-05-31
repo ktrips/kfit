@@ -1025,10 +1025,18 @@ struct MandalaChartView: View {
                 ))
             }
             if goal.logGoal.mealGoal > 0 {
+                let (mealEmoji, mealLabel): (String, String) = {
+                    switch slot {
+                    case .morning:   return ("🌅", "朝食")
+                    case .noon:      return ("🍱", "昼食")
+                    case .afternoon: return ("🍫", "スナック")
+                    default:         return ("🍽️", "夕食")
+                    }
+                }()
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
-                    emoji: "🍽️",
-                    label: "食事",
+                    emoji: mealEmoji,
+                    label: mealLabel,
                     isCompleted: prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     slot: slot,
                     type: .meal

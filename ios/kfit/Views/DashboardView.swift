@@ -2796,41 +2796,18 @@ struct DashboardView: View {
 
     private var mandalaOverallCount: (done: Int, total: Int) {
         let hour = Calendar.current.component(.hour, from: Date())
-        let visibleSlots: [TimeSlot] = {
-            if hour < 12 { return [.morning] }
-            else if hour < 15 { return [.morning, .noon] }
-            else if hour < 19 { return [.morning, .noon, .afternoon] }
+        let visibleSlots: Set<TimeSlot> = {
+            if hour < 10 { return [.morning] }
+            else if hour < 14 { return [.morning, .noon] }
+            else if hour < 18 { return [.morning, .noon, .afternoon] }
             else { return [.morning, .noon, .afternoon, .evening] }
         }()
-        var done = 0, total = 0
-        let settings = timeSlotManager.settings
-        let progress = timeSlotManager.progress
-        for slot in visibleSlots {
-            guard let goal = settings.goalFor(slot),
-                  let prog = progress.progressFor(slot) else { continue }
-            if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
-            if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
-            if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
-            if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
-            if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
-            for act in goal.customActivities.filter({ $0.isEnabled }) {
-                total += 1; if prog.completedActivityIds.contains(act.id) { done += 1 }
-            }
-        }
-        // 今日全体タスク（カスタム目標・睡眠・PFC）
-        let gp = progress.globalProgress
-        for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
-            total += 1; if gp.completedCustomGoalIds.contains(goal.id) { done += 1 }
-        }
-        if settings.globalGoals.sleepEnabled {
-            total += 1
-            if gp.sleepHours >= Double(settings.globalGoals.sleepHoursGoal) &&
-               gp.sleepScore >= settings.globalGoals.sleepScoreThreshold { done += 1 }
-        }
-        if settings.globalGoals.pfcEnabled {
-            total += 1; if gp.pfcScore >= settings.globalGoals.pfcScoreThreshold { done += 1 }
-        }
-        return (done, total)
+        let allNodes = MandalaChartView.buildNodes(
+            settings: timeSlotManager.settings,
+            progress: timeSlotManager.progress
+        )
+        let visible = allNodes.filter { $0.slot == nil || visibleSlots.contains($0.slot!) }
+        return (visible.filter(\.isCompleted).count, visible.count)
     }
 
     private var mandalaCard: some View {
@@ -6191,8 +6168,14 @@ struct DashboardView: View {
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         if newPhase == .active {
-            print("🔄 App became active - refreshing HealthKit data")
-            Task { await periodicWidgetSync() }
+            // 前回ロードから10分以上経過した場合のみ再取得（バッテリー節約）
+            let isStale = lastLoadDataTime.map { Date().timeIntervalSince($0) > 600 } ?? true
+            if isStale {
+                print("🔄 App became active (stale data) - refreshing HealthKit data")
+                Task { await periodicWidgetSync() }
+            } else {
+                print("✅ App became active (fresh data) - skipping refresh")
+            }
         } else if newPhase == .background {
             print("📲 App moved to background - flushing Widget data")
             updateWidgetData()

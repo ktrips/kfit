@@ -14,6 +14,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     private var lastStatsSendTime: Date?
     private var lastStatsPayloadSignature: String?
     private let statsDebounceInterval: TimeInterval = 2.0 // 2秒以内の重複送信を防ぐ
+    private var lastStatsRequestTime: Date?
+    private let statsRequestCacheInterval: TimeInterval = 5.0 // 5秒以内のfetchをスキップ
 
     private override init() {
         super.init()
@@ -112,9 +114,26 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     if force {
                         lastStatsSendTime = nil
                         lastStatsPayloadSignature = nil
+                        lastStatsRequestTime = nil
                         await HealthKitManager.shared.fetchWatchSnapshotHealth(force: true)
                         await TimeSlotManager.shared.loadTodayProgress(syncHealthKit: false)
+                    } else if let lastReq = lastStatsRequestTime,
+                              Date().timeIntervalSince(lastReq) < statsRequestCacheInterval {
+                        // 5秒以内の再リクエスト: fetch をスキップして前回の結果を再送
+                        print("[iOSWatchBridge] request_stats キャッシュ利用（fetch スキップ）")
+                        let summary = await AuthenticationManager.shared.getTodayActivitySummary()
+                        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
+                        self.sendStatsToWatch(
+                            streak:    profile?.streak ?? 0,
+                            todayReps: summary.exerciseReps,
+                            todayXP:   summary.exercisePoints,
+                            todaySets: summary.completedSets,
+                            todayExercises: todayExercises,
+                            force: false
+                        )
+                        return
                     } else {
+                        lastStatsRequestTime = Date()
                         await HealthKitManager.shared.fetchWatchSnapshotHealth()
                     }
                     let summary = await AuthenticationManager.shared.getTodayActivitySummary()

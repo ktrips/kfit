@@ -2384,7 +2384,7 @@ class PhotoLogManager: ObservableObject {
 
         JSONフォーマット:
         {
-          "description": "食品の簡潔な説明",
+          "description": "食品の簡潔な説明（40字以内）",
           "calories": カロリー（kcal、整数）,
           "protein": たんぱく質（g、小数）,
           "fat": 脂質（g、小数）,
@@ -2429,7 +2429,7 @@ class PhotoLogManager: ObservableObject {
                     ]
                 ]
             ],
-            "max_tokens": 500,
+            "max_tokens": 1024,
             "response_format": ["type": "json_object"]
         ]
 
@@ -2471,7 +2471,7 @@ class PhotoLogManager: ObservableObject {
 
         let payload: [String: Any] = [
             "model": settings.effectiveModel,
-            "max_tokens": 500,
+            "max_tokens": 1024,
             "messages": [
                 [
                     "role": "user",
@@ -2599,27 +2599,43 @@ class PhotoLogManager: ObservableObject {
             cleanedString = String(cleanedString[startIndex...endIndex])
         }
 
+        // 文字列値内にある改行文字をスペースに置換（LLMが長い説明を複数行で返すとパース失敗するため）
+        cleanedString = cleanedString
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+
         cleanedString = cleanedString.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let data = cleanedString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        // JSONパース（失敗時は末尾に "}" を補完してリトライ — max_tokens 超えで切れた場合の対策）
+        func tryParse(_ s: String) -> [String: Any]? {
+            guard let d = s.data(using: .utf8) else { return nil }
+            return try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+        }
+        let json: [String: Any]
+        if let parsed = tryParse(cleanedString) {
+            json = parsed
+        } else if let parsed = tryParse(cleanedString + "}") {
+            json = parsed
+        } else {
             print("[PhotoLog] Failed to parse JSON: \(cleanedString)")
             throw PhotoLogError.invalidResponse("[JSONパース失敗] モデルの返答:\n\(cleanedString)")
         }
 
         var nutrition = AnalyzedNutrition()
-        nutrition.description = json["description"] as? String ?? ""
-        nutrition.calories = json["calories"] as? Int ?? 0
-        nutrition.protein = json["protein"] as? Double ?? 0.0
-        nutrition.fat = json["fat"] as? Double ?? 0.0
-        nutrition.carbs = json["carbs"] as? Double ?? 0.0
-        nutrition.sugar = json["sugar"] as? Double ?? 0.0
-        nutrition.fiber = json["fiber"] as? Double ?? 0.0
-        nutrition.sodium = json["sodium"] as? Double ?? 0.0
-        nutrition.water = json["water"] as? Int ?? 0
-        nutrition.caffeine = json["caffeine"] as? Int ?? 0
-        nutrition.alcohol = json["alcohol"] as? Double ?? 0.0
-        nutrition.confidence = json["confidence"] as? Double ?? 0.8
+        let rawDesc = json["description"] as? String ?? ""
+        nutrition.description = rawDesc.count > 40 ? String(rawDesc.prefix(40)) : rawDesc
+        nutrition.calories = (json["calories"] as? NSNumber).map { Int($0.intValue) } ?? 0
+        nutrition.protein = (json["protein"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.fat = (json["fat"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.carbs = (json["carbs"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.sugar = (json["sugar"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.fiber = (json["fiber"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.sodium = (json["sodium"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.water = (json["water"] as? NSNumber).map { Int($0.intValue) } ?? 0
+        nutrition.caffeine = (json["caffeine"] as? NSNumber).map { Int($0.intValue) } ?? 0
+        nutrition.alcohol = (json["alcohol"] as? NSNumber)?.doubleValue ?? 0.0
+        nutrition.confidence = (json["confidence"] as? NSNumber)?.doubleValue ?? 0.8
 
         print("[PhotoLog] Successfully parsed nutrition: \(nutrition.calories)kcal")
 

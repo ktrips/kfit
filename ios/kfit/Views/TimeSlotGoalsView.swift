@@ -985,7 +985,9 @@ struct MandalaChartView: View {
 
     private let minRadius: Double = 42
 
-    var nodes: [MandalaNodeData] {
+    var nodes: [MandalaNodeData] { Self.buildNodes(settings: settings, progress: progress) }
+
+    static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
         for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
@@ -1168,11 +1170,12 @@ struct MandalaChartView: View {
     }
 
     var body: some View {
+        let nodes = self.nodes  // 1回だけ計算（UserDefaults読み込み含む）
         let hour = Calendar.current.component(.hour, from: Date())
         let visibleSlots: [TimeSlot] = {
-            if hour < 12 { return [.morning] }
-            else if hour < 15 { return [.morning, .noon] }
-            else if hour < 19 { return [.morning, .noon, .afternoon] }
+            if hour < 10 { return [.morning] }
+            else if hour < 14 { return [.morning, .noon] }
+            else if hour < 18 { return [.morning, .noon, .afternoon] }
             else { return [.morning, .noon, .afternoon, .evening] }
         }()
         let todayNodes   = nodes.filter { $0.slot == nil }

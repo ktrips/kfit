@@ -82,6 +82,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       if (!user) return;
       try {
@@ -92,6 +93,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           getDietGoalSettings(user.uid),
           getMindMetrics(user.uid),
         ]);
+        if (cancelled) return;
         const exercises = dashboard.todayExercises;
         setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
         setTotalPoints(exercises.reduce((s: number, e: CompletedExercise) => s + (e.points || 0), 0));
@@ -117,13 +119,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
                  d.getDate() === today.getDate();
         }));
       } catch (err) {
-        console.error('Error loading dashboard:', err);
+        if (!cancelled) console.error('Error loading dashboard:', err);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
     loadData();
-  }, [user, setStoreWeeklyGoals, setStoreWeeklyProgress]);
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
 
   if (isLoading) {
     return (

@@ -1280,8 +1280,8 @@ struct MandalaChartView: View {
                     .position(pos)
                 }
 
-                // 中心プログレス（表示中の時間帯＋今日のタスクを基準に色変え）
-                centerCircle(nodes: visibleNodes)
+                // 中心プログレス
+                centerCircle(nodes: nodes)
                     .position(center)
                     .scaleEffect(pulseCenter ? 1.07 : 1.0)
                     .animation(

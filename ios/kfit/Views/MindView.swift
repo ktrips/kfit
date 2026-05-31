@@ -261,6 +261,11 @@ struct MindView: View {
         .padding(10)
         .background(Color.duoBg)
         .cornerRadius(14)
+        .onTapGesture {
+            if let url = URL(string: "x-apple-health://HeartRateVariabilitySDNN") {
+                openURL(url)
+            }
+        }
     }
 
     private var hrvTrendAlways: some View {
@@ -274,6 +279,11 @@ struct MindView: View {
         .padding(10)
         .background(Color.duoBg)
         .cornerRadius(14)
+        .onTapGesture {
+            if let url = URL(string: "x-apple-health://HeartRateVariabilitySDNN") {
+                openURL(url)
+            }
+        }
     }
 
     private var mindfulHistorySection: some View {

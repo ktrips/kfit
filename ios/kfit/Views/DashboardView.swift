@@ -3892,6 +3892,7 @@ struct DashboardView: View {
             weeklyBodyMassChange: healthKit.weeklyBodyMassChange,
             weeklyBodyFatChange: healthKit.weeklyBodyFatChange
         )
+        .onTapGesture { openHealthApp(category: "ActiveEnergyBurned") }
     }
 
     // MARK: - 旧カロリー収支カード（削除予定）

@@ -276,6 +276,11 @@ struct HealthView: View {
         .background(Color(hex: "#FFF3E0"))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        .onTapGesture {
+            if let url = URL(string: "x-apple-health://ActiveEnergyBurned") {
+                UIApplication.shared.open(url)
+            }
+        }
     }
 
     // MARK: - カロリー収支カード
@@ -370,6 +375,11 @@ struct HealthView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        .onTapGesture {
+            if let url = URL(string: "x-apple-health://ActiveEnergyBurned") {
+                UIApplication.shared.open(url)
+            }
+        }
     }
 
     // MARK: - 心拍・ストレスカード
@@ -689,6 +699,11 @@ struct HealthView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        .onTapGesture {
+            if let url = URL(string: "x-apple-health://HeartRateVariabilitySDNN") {
+                UIApplication.shared.open(url)
+            }
+        }
     }
 
     // MARK: - 日光露出カード

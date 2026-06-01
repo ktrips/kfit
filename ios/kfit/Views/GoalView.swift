@@ -16,6 +16,8 @@ struct GoalView: View {
     @State private var weeklySetCounts: [String: Int] = [:]
     @State private var weeklyIntakeData: [String: [String: Int]] = [:]
     @State private var isRefreshingWatchData = false
+    @State private var todayWeekdayGoal: WeekdayGoal? = nil
+    @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
     var body: some View {
         NavigationView {
@@ -24,6 +26,7 @@ struct GoalView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         goalHeader
+                        fitSummaryRow
                         goalHeroCard
                         if showCharts {
                             weightChartCard
@@ -60,6 +63,7 @@ struct GoalView: View {
                 NavigationView { DietGoalSettingsView() }
             }
             .task {
+                loadTodayWeekdayGoal()
                 await timeSlotManager.loadTodaySettings()
                 await healthKit.fetchBodyMassHistory(days: 30)
                 await healthKit.fetchBodyFatHistory(days: 30)
@@ -74,6 +78,76 @@ struct GoalView: View {
                 weeklyIntakeData = await authManager.fetchWeeklyIntakeData()
             }
         }
+    }
+
+    // MARK: - FITサマリー行
+
+    private var fitSummaryRow: some View {
+        let fitColor = Color(hex: "#FF9600")
+        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
+        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
+        }
+        let todayWeightKg = healthKit.todayBodyMassRecord?.kg
+        let stepsStr: String = {
+            let s = healthKit.todaySteps
+            guard s > 0 else { return "—" }
+            return s >= 1000 ? String(format: "%.1fk", Double(s) / 1000.0) : "\(s)"
+        }()
+        return HStack(spacing: 6) {
+            Text("FIT")
+                .font(.system(size: 8, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(fitColor)
+                .cornerRadius(4)
+            if todayWeekdayGoal?.exerciseEnabled == true {
+                ZStack {
+                    ActivityRingView(
+                        progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
+                        color: Color(red: 0.98, green: 0.07, blue: 0.31), diameter: 22, lineWidth: 3)
+                    ActivityRingView(
+                        progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
+                        color: Color(red: 0.57, green: 0.91, blue: 0.16), diameter: 15, lineWidth: 3)
+                    ActivityRingView(
+                        progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
+                        color: Color(red: 0.12, green: 0.89, blue: 0.94), diameter: 8, lineWidth: 3)
+                }.frame(width: 22, height: 22)
+            }
+            if dailyFixedGoals.weightEnabled {
+                HStack(spacing: 2) {
+                    Text("⚖️").font(.system(size: 13))
+                    Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(todayWeightKg != nil ? fitColor : Color.duoDark)
+                }
+            }
+            HStack(spacing: 2) {
+                Text("💪").font(.system(size: 13))
+                Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal ? fitColor : Color.duoDark)
+            }
+            HStack(spacing: 2) {
+                Text("👟").font(.system(size: 13))
+                Text(stepsStr)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+            }
+            HStack(spacing: 2) {
+                Text("🔥").font(.system(size: 13))
+                Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text("cal").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     // MARK: - FITヘッダー
@@ -382,6 +456,43 @@ struct GoalView: View {
 
     private func formatSignedDelta(_ value: Double) -> String {
         String(format: "%+.1f", value)
+    }
+
+    private func loadTodayWeekdayGoal() {
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let saved = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            dailyFixedGoals = saved
+        }
+        guard let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+              let goals = try? JSONDecoder().decode([WeekdayGoal].self, from: data) else {
+            todayWeekdayGoal = nil
+            return
+        }
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let mapped = weekday == 1 ? 7 : weekday - 1
+        todayWeekdayGoal = goals.first(where: { $0.weekday == mapped && $0.hasAnyGoal })
+    }
+
+    private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
+        let calendar = Calendar.current
+        let slotExercises = todayExercises
+            .filter { ex in
+                let hour = calendar.component(.hour, from: ex.timestamp)
+                return hour >= slot.startHour && hour < slot.endHour
+            }
+            .sorted { $0.timestamp < $1.timestamp }
+        guard !slotExercises.isEmpty else { return 0 }
+        var sessionCount = 0
+        var lastTime: Date? = nil
+        for ex in slotExercises {
+            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
+                // same session
+            } else {
+                sessionCount += 1
+            }
+            lastTime = ex.timestamp
+        }
+        return sessionCount
     }
 
     private func metricColumn(label: String, weightVal: String, fatVal: String?, color: Color) -> some View {

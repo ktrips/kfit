@@ -102,6 +102,7 @@ struct DashboardView: View {
     @State private var totalCalories = 0
     @State private var totalXP      = 0
     @State private var weeklyXP     = 0
+    @State private var weeklyBaseXP = 0  // 今週の今日より前の合計XP（再計算用）
     @State private var todaySetCount = 0  // 今日完了したセット数
     @State private var dailySetGoal  = 2  // 1日の目標セット数
     @State private var dailySets    = DailySets(amSets: 0, pmSets: 0)  // 元の型を保持
@@ -1373,14 +1374,7 @@ struct DashboardView: View {
             : progressPercent >= 70 ? Color.duoGreen.opacity(0.8)
             : progressPercent >= 40 ? Color(hex: "#FF9600")
             : Color(hex: "#FF4B4B")
-        let sleepAchieved = gp.sleepScore >= gg.sleepScoreThreshold
-        // 時間帯比例達成チェック（6時〜22時の16時間を均等分割）
-        let nowHour = Calendar.current.component(.hour, from: Date())
-        let timeFraction = min(1.0, Double(max(0, nowHour - 6)) / 16.0)
-        let waterOnTrack = totalDrinkGoal > 0 && totalDrinkLogged > 0 && timeFraction > 0
-            && Double(totalDrinkLogged) >= Double(totalDrinkGoal) * timeFraction
-        let mealOnTrack = totalMealGoal > 0 && totalMealLogged > 0 && timeFraction > 0
-            && Double(totalMealLogged) >= Double(totalMealGoal) * timeFraction
+        let _ = gp.sleepScore >= gg.sleepScoreThreshold
         let remaining = totalSlots - completedSlots
         let msg: String = completedSlots == totalSlots
             ? (totalSlots == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
@@ -1429,255 +1423,6 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(healthKit.isLoading)
-                }
-            }
-            // --- Fit 行（オレンジ）---
-            let fitColor   = Color(hex: "#FF9600")
-            let foodColor  = Color.duoGreen
-            let mindColor  = Color.duoPurple
-
-            HStack(spacing: 6) {
-                // ラベル
-                Text("FIT")
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(fitColor)
-                    .cornerRadius(4)
-                // アクティビティリング（ミニ）- 今日の曜日に exerciseEnabled 設定がある時のみ
-                if todayWeekdayGoal?.exerciseEnabled == true {
-                    ZStack {
-                        ActivityRingView(progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
-                            color: Color(red: 0.98, green: 0.07, blue: 0.31), diameter: 22, lineWidth: 3)
-                        ActivityRingView(progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
-                            color: Color(red: 0.57, green: 0.91, blue: 0.16), diameter: 15, lineWidth: 3)
-                        ActivityRingView(progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
-                            color: Color(red: 0.12, green: 0.89, blue: 0.94), diameter: 8, lineWidth: 3)
-                    }.frame(width: 22, height: 22)
-                }
-                // 体重計測 - weightEnabled のときのみ
-                if dailyFixedGoals.weightEnabled {
-                    let todayWeight = healthKit.todayBodyMassRecord?.kg
-                    HStack(spacing: 2) {
-                        Text("⚖️").font(.system(size: 13))
-                        Text(todayWeight != nil ? "\(Int(todayWeight!.rounded()))" : "—")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(todayWeight != nil ? fitColor : Color.duoDark)
-                    }
-                }
-                // トレーニング
-                HStack(spacing: 2) {
-                    Text("💪").font(.system(size: 13))
-                    Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal ? fitColor : Color.duoDark)
-                }
-                // 歩数
-                HStack(spacing: 2) {
-                    Text("👟").font(.system(size: 13))
-                    Text(formatSteps(healthKit.todaySteps))
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                }
-                // 総消費カロリー
-                HStack(spacing: 2) {
-                    Text("🔥").font(.system(size: 13))
-                    Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                    Text("cal").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-
-            // --- Food 行（グリーン）--- FOODタブ表示中 かつ pfcEnabled または foodEnabled のときに表示
-            if foodTabVisible && (gg.pfcEnabled || dailyFixedGoals.foodEnabled) {
-                let calDiff = calorieBalance
-                let totalIntakeCal = combinedIntakeCalories
-                let foodGoalDone = dailyFixedGoals.foodEnabled && totalIntakeCal >= 2000
-                let prot = combinedProtein; let fat_ = combinedFat; let carb = combinedCarbs
-                HStack(spacing: 6) {
-                    Text("FOOD")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(foodColor)
-                        .cornerRadius(4)
-                    // PFCバランスリング
-                    PFCMiniRingView(
-                        proteinKcal: prot * 4,
-                        fatKcal: fat_ * 9,
-                        carbsKcal: carb * 4,
-                        diameter: 22,
-                        lineWidth: 4,
-                        centerText: pfcAnalysis.map { "\($0.score)" },
-                        centerTextColor: (pfcAnalysis?.score ?? 0) >= 70 ? foodColor : Color.duoDark
-                    )
-                    // 登録水分量
-                    HStack(spacing: 2) {
-                        Text("💧").font(.system(size: 11))
-                        let waterMl = totalDrinkLogged
-                        Text(waterMl > 0 ? "\(waterMl)" : "—")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(waterOnTrack ? foodColor : Color.duoDark)
-                    }
-                    // 摂取カロリー（フォトログ込み）
-                    HStack(spacing: 2) {
-                        Text("🍽️").font(.system(size: 11))
-                        Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(foodGoalDone ? foodColor : (mealOnTrack ? foodColor : Color.duoDark))
-                    }
-                    // 本日のカロリー収支
-                    HStack(spacing: 2) {
-                        Text("⚡").font(.system(size: 11))
-                        let sign = calDiff >= 0 ? "+" : ""
-                        Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(calDiff > 200 ? Color(hex: "#FF4B4B") : calDiff < -200 ? foodColor : Color.duoDark)
-                        if totalIntakeCal > 0 {
-                            Text("cal")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                    }
-                    Spacer()
-                }
-            }
-
-            // --- Mindfulness 行（パープル）--- MINDタブ表示中 かつ mindfulnessEnabled または sleepEnabled のときのみ表示
-            if mindTabVisible && (gg.mindfulnessEnabled || dailyFixedGoals.sleepEnabled) {
-                HStack(spacing: 6) {
-                    Text("MIND")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(mindColor)
-                        .cornerRadius(4)
-                    // 睡眠リング - sleepEnabled または dailyFixedGoals.sleepEnabled のときのみ
-                    if gg.sleepEnabled || dailyFixedGoals.sleepEnabled {
-                        SleepMiniRingView(
-                            hours: healthKit.lastNightTotalHours,
-                            goal: Double(dailyFixedGoals.sleepHoursGoal),
-                            diameter: 22,
-                            lineWidth: 4,
-                            ringColor: mindColor
-                        )
-                    }
-                    if gg.mindfulnessEnabled {
-                        // マインドフル進捗
-                        HStack(spacing: 2) {
-                            Text("🧘").font(.system(size: 13))
-                            Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal ? mindColor : Color.duoDark)
-                        }
-                        // ストレッチ進捗
-                        HStack(spacing: 2) {
-                            Text("🤸").font(.system(size: 13))
-                            Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(totalStretchGoal > 0 && totalStretch >= totalStretchGoal ? mindColor : Color.duoDark)
-                        }
-                        // 日光下時間
-                        HStack(spacing: 2) {
-                            Text("☀️").font(.system(size: 13))
-                            Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? mindColor : Color.duoDark)
-                        }
-                    }
-                    Spacer()
-                }
-            }
-            // --- Custom 行（ブルー）---
-            let enabledCustomGoals = gg.customGoals.filter { $0.isEnabled }
-            // 時間帯別カスタムアクティビティ（全スロット集約）
-            let slotActivities: [(slot: TimeSlot, activity: CustomActivity)] = TimeSlot.allCases.flatMap { slot -> [(slot: TimeSlot, activity: CustomActivity)] in
-                guard let goal = timeSlotManager.settings.goalFor(slot) else { return [] }
-                return goal.customActivities.filter { $0.isEnabled }.map { (slot, $0) }
-            }
-            let hasCustomRow = !enabledCustomGoals.isEmpty || !slotActivities.isEmpty || todayWeekdayGoal?.hasAnyGoal == true || !dailyFixedGoals.customGoals.isEmpty
-            if hasCustomRow {
-                let customColor = Color(hex: "#1CB0F6")
-                HStack(spacing: 8) {
-                    Text("CUSTOM")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(customColor)
-                        .cornerRadius(4)
-                    // グローバルカスタム目標
-                    // 毎日のカスタム項目（スクショで完了）
-                    ForEach(dailyFixedGoals.customGoals) { cg in
-                        let goalId = "daily_custom_\(cg.id.uuidString)"
-                        let isDone = gp.completedCustomGoalIds.contains(goalId)
-                        DailyGoalPickerButton(
-                            emoji: cg.emoji, name: cg.name, isDone: isDone,
-                            onComplete: { Task { await timeSlotManager.toggleCustomGoal(id: goalId) } }
-                        )
-                        .scaleEffect(0.65).frame(width: 22, height: 22)
-                    }
-                    ForEach(enabledCustomGoals) { goal in
-                        let done = gp.completedCustomGoalIds.contains(goal.id)
-                        Button {
-                            Task { await timeSlotManager.toggleCustomGoal(id: goal.id) }
-                        } label: {
-                            goalIconDot(emoji: goal.emoji, achieved: done, hasData: true)
-                        }
-                        .buttonStyle(.plain)
-                        .scaleEffect(0.65)
-                        .frame(width: 22, height: 22)
-                    }
-                    // 時間帯別カスタムアクティビティ
-                    ForEach(slotActivities, id: \.activity.id) { item in
-                        let done = timeSlotManager.progress.progressFor(item.slot)?.completedActivityIds.contains(item.activity.id) ?? false
-                        Button {
-                            Task { await timeSlotManager.toggleCustomActivity(id: item.activity.id, at: item.slot) }
-                        } label: {
-                            goalIconDot(emoji: item.activity.emoji, achieved: done, hasData: true)
-                        }
-                        .buttonStyle(.plain).scaleEffect(0.65).frame(width: 22, height: 22)
-                    }
-                    // 曜日毎の目標（今日の曜日に設定があれば）
-                    if let wg = todayWeekdayGoal {
-                        Group {
-                            // 📚 勉強（手動）
-                            if wg.studyEnabled {
-                                Button {
-                                    Task { await timeSlotManager.toggleCustomGoal(id: "wd_study_\(wg.weekday)") }
-                                } label: {
-                                    goalIconDot(emoji: "📚",
-                                        achieved: gp.completedCustomGoalIds.contains("wd_study_\(wg.weekday)"),
-                                        hasData: true)
-                                }
-                                .buttonStyle(.plain).scaleEffect(0.65).frame(width: 22, height: 22)
-                            }
-                            // 🚫 禁酒（手動）
-                            if wg.noAlcoholEnabled {
-                                Button {
-                                    Task { await timeSlotManager.toggleCustomGoal(id: "wd_noalcohol_\(wg.weekday)") }
-                                } label: {
-                                    goalIconDot(emoji: "🚫",
-                                        achieved: gp.completedCustomGoalIds.contains("wd_noalcohol_\(wg.weekday)"),
-                                        hasData: true)
-                                }
-                                .buttonStyle(.plain).scaleEffect(0.65).frame(width: 22, height: 22)
-                            }
-                            // カスタム（手動）
-                            ForEach(wg.customGoals) { cg in
-                                Button {
-                                    Task { await timeSlotManager.toggleCustomGoal(id: "wd_\(cg.id.uuidString)") }
-                                } label: {
-                                    goalIconDot(emoji: cg.emoji,
-                                        achieved: gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)"),
-                                        hasData: true)
-                                }
-                                .buttonStyle(.plain).scaleEffect(0.65).frame(width: 22, height: 22)
-                            }
-                        }
-                    }
-                    Spacer()
                 }
             }
             HStack(spacing: 4) {
@@ -6079,7 +5824,9 @@ struct DashboardView: View {
             let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings, fetchedWeeklyXP)
                 = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings, wXP)
 
-            weeklyXP = fetchedWeeklyXP
+            // 今日分のexercise XPを週合計から引いて「今日より前の分」を保持
+            let todayExXP = ex.reduce(0) { $0 + $1.points }
+            weeklyBaseXP = max(0, fetchedWeeklyXP - todayExXP)
             todayExercises = ex
             dailySets      = sets
             weeklySetProgress = weekProg
@@ -6354,6 +6101,7 @@ struct DashboardView: View {
             total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
         }
         totalXP       = todayExercises.reduce(0) { $0 + $1.points } + mindfulXP
+        weeklyXP      = weeklyBaseXP + totalXP
         totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
             return acc + Double(ex.reps) * rate
@@ -7318,7 +7066,7 @@ struct MindfulnessSessionView: View {
 }
 
 // MARK: - PFCミニリング（P=赤, F=オレンジ, C=緑）
-private struct ArcSegment: Shape {
+struct ArcSegment: Shape {
     let startFraction: Double
     let endFraction: Double
     func path(in rect: CGRect) -> Path {
@@ -7335,7 +7083,7 @@ private struct ArcSegment: Shape {
     }
 }
 
-private struct PFCMiniRingView: View {
+struct PFCMiniRingView: View {
     let proteinKcal: Double
     let fatKcal: Double
     let carbsKcal: Double
@@ -7372,7 +7120,7 @@ private struct PFCMiniRingView: View {
     }
 }
 
-private struct SleepMiniRingView: View {
+struct SleepMiniRingView: View {
     let hours: Double
     let goal: Double
     let diameter: CGFloat

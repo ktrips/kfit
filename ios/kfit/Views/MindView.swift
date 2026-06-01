@@ -11,6 +11,7 @@ struct MindView: View {
     @State private var showMindfulHistory = false
     @State private var showHRVHelp = false
     @State private var isRefreshingHealthData = false
+    @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
     var body: some View {
         NavigationView {
@@ -18,6 +19,7 @@ struct MindView: View {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
+                        mindSummaryRow
                         headerSection
                         currentStressCard
                         averageStressCard
@@ -35,6 +37,7 @@ struct MindView: View {
                 HRVStressHelpView()
             }
             .task {
+                loadDailyFixedGoals()
                 await timeSlotManager.loadTodaySettings()
                 if healthKit.isAvailable && !healthKit.isAuthorized {
                     await healthKit.requestAuthorization()
@@ -1179,6 +1182,74 @@ struct MindView: View {
         case ..<75: return MindStressInfo(score: score, label: "やや高", englishLabel: "Elevated", color: Color.duoOrange)
         default:    return MindStressInfo(score: score, label: "高い", englishLabel: "High", color: Color(hex: "#FF4B4B"))
         }
+    }
+
+    private func loadDailyFixedGoals() {
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let saved = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            dailyFixedGoals = saved
+        }
+    }
+
+    // MARK: - MINDサマリー行
+
+    private var mindSummaryRow: some View {
+        let mindColor = Color.duoPurple
+        let gg = timeSlotManager.settings.globalGoals
+        let totalMindfulness = healthKit.todayMindfulnessSessions
+        let totalMindfulnessGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
+        }
+        let totalStretch = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0)
+        }
+        let totalStretchGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            guard let g = timeSlotManager.settings.goalFor(slot), g.stretchGoal.enabled else { return sum }
+            return sum + g.stretchGoal.stretchMinutes
+        }
+        return HStack(spacing: 6) {
+            Text("MIND")
+                .font(.system(size: 8, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(mindColor)
+                .cornerRadius(4)
+            if gg.sleepEnabled || dailyFixedGoals.sleepEnabled {
+                SleepMiniRingView(
+                    hours: healthKit.lastNightTotalHours,
+                    goal: Double(dailyFixedGoals.sleepHoursGoal),
+                    diameter: 22,
+                    lineWidth: 4,
+                    ringColor: mindColor
+                )
+            }
+            if gg.mindfulnessEnabled {
+                HStack(spacing: 2) {
+                    Text("🧘").font(.system(size: 13))
+                    Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal ? mindColor : Color.duoDark)
+                }
+                HStack(spacing: 2) {
+                    Text("🤸").font(.system(size: 13))
+                    Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(totalStretchGoal > 0 && totalStretch >= totalStretchGoal ? mindColor : Color.duoDark)
+                }
+                HStack(spacing: 2) {
+                    Text("☀️").font(.system(size: 13))
+                    Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? mindColor : Color.duoDark)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 }
 

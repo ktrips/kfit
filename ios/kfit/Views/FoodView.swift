@@ -19,10 +19,14 @@ struct FoodView: View {
     @State private var confirmMessage    = ""
     @StateObject private var photoLogManager = PhotoLogManager.shared
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
+    @State private var showFoodHistory = false
+    @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
+                    foodSummaryRow
+
                     // PFCバランス（最上段）
                     if let analysis = pfcAnalysis, analysis.score > 0 {
                         pfcBalanceCard(analysis)
@@ -34,9 +38,10 @@ struct FoodView: View {
                     hydrationRow
 
                     // アドバイス
-                    if let analysis = pfcAnalysis, analysis.score > 0 {
-                        improvementCard(analysis)
-                    }
+                    improvementCard(pfcAnalysis)
+
+                    // 食事履歴
+                    foodHistorySection
 
                     // フォトログ（大）
                     photoLogButton
@@ -247,6 +252,7 @@ struct FoodView: View {
                     confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
                         Task {
                             await authManager.recordCoffee()
+                            await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
                             await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
                             await loadData()
                         }
@@ -260,6 +266,7 @@ struct FoodView: View {
                     confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
                         Task {
                             await authManager.recordAlcohol(alcoholType: .beer)
+                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
                             await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
                             await loadData()
                         }
@@ -269,6 +276,7 @@ struct FoodView: View {
                     confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
                         Task {
                             await authManager.recordAlcohol(alcoholType: .wine)
+                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
                             await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
                             await loadData()
                         }
@@ -278,6 +286,7 @@ struct FoodView: View {
                     confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
                         Task {
                             await authManager.recordAlcohol(alcoholType: .chuhai)
+                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
                             await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
                             await loadData()
                         }
@@ -418,7 +427,7 @@ struct FoodView: View {
 
     // MARK: - Improvement Card
 
-    private func improvementCard(_ analysis: PFCBalanceAnalysis) -> some View {
+    private func improvementCard(_ analysis: PFCBalanceAnalysis?) -> some View {
         let tips = buildTips(analysis)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -456,53 +465,245 @@ struct FoodView: View {
         let emoji: String; let title: String; let message: String; let color: Color
     }
 
-    private func buildTips(_ a: PFCBalanceAnalysis) -> [FoodTip] {
+    private func buildTips(_ a: PFCBalanceAnalysis?) -> [FoodTip] {
         var tips: [FoodTip] = []
-        if a.proteinPercent < 12 {
-            tips.append(FoodTip(emoji: "🥩", title: "たんぱく質不足",
-                message: "目標より少なめです。卵・鶏むね・豆腐・納豆などを積極的に取り入れましょう。",
-                color: Color.duoOrange))
-        } else if a.proteinPercent > 25 {
-            tips.append(FoodTip(emoji: "🥩", title: "たんぱく質過多",
-                message: "摂り過ぎると腎臓への負荷が増えます。バランスを意識してみましょう。",
-                color: Color.duoOrange))
+
+        // PFCバランスアドバイス（食事データがある場合のみ）
+        if let a = a {
+            if a.proteinPercent < 12 {
+                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質不足",
+                    message: "目標より少なめです。卵・鶏むね・豆腐・納豆などを積極的に取り入れましょう。",
+                    color: Color.duoOrange))
+            } else if a.proteinPercent > 25 {
+                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質過多",
+                    message: "摂り過ぎると腎臓への負荷が増えます。バランスを意識してみましょう。",
+                    color: Color.duoOrange))
+            }
+            if a.fatPercent > 35 {
+                tips.append(FoodTip(emoji: "🛢️", title: "脂質が多め",
+                    message: "揚げ物や脂身の多い肉を控え、青魚・アボカド・ナッツなど質の良い脂質を選びましょう。",
+                    color: Color.duoPurple))
+            } else if a.fatPercent < 15 {
+                tips.append(FoodTip(emoji: "🥑", title: "脂質が少なめ",
+                    message: "脂溶性ビタミン（A・D・E・K）の吸収に脂質が必要です。良質な油を少量加えましょう。",
+                    color: Color.duoPurple))
+            }
+            if a.carbsPercent > 70 {
+                tips.append(FoodTip(emoji: "🍚", title: "炭水化物が多め",
+                    message: "白米や麺類の量を少し減らし、野菜・タンパク質の比率を増やすとバランスが改善します。",
+                    color: Color.duoBlue))
+            } else if a.carbsPercent < 40 {
+                tips.append(FoodTip(emoji: "🍚", title: "炭水化物が少なめ",
+                    message: "脳や筋肉のエネルギー源として重要です。玄米や全粒パンなど質の良い炭水化物を補いましょう。",
+                    color: Color.duoBlue))
+            }
+            if tips.isEmpty {
+                tips.append(a.score >= 80
+                    ? FoodTip(emoji: "✨", title: "バランス良好！",
+                        message: "今日の食事はバランスが取れています。このペースを維持しましょう！",
+                        color: Color.duoGreen)
+                    : FoodTip(emoji: "🍽️", title: "もう少しで理想的",
+                        message: "P:15% / F:25% / C:60% の比率を意識すると、さらにバランスアップできます。",
+                        color: Color(red: 1.0, green: 0.6, blue: 0.0))
+                )
+            }
         }
-        if a.fatPercent > 35 {
-            tips.append(FoodTip(emoji: "🛢️", title: "脂質が多め",
-                message: "揚げ物や脂身の多い肉を控え、青魚・アボカド・ナッツなど質の良い脂質を選びましょう。",
-                color: Color.duoPurple))
-        } else if a.fatPercent < 15 {
-            tips.append(FoodTip(emoji: "🥑", title: "脂質が少なめ",
-                message: "脂溶性ビタミン（A・D・E・K）の吸収に脂質が必要です。良質な油を少量加えましょう。",
-                color: Color.duoPurple))
+
+        // 飲料サマリー（水分・カフェイン・アルコールを1項目にまとめる）
+        let waterGoal = intakeGoals.dailyWaterGoal
+        let waterMl = todayIntake.totalWaterMl
+        let caffeineMg = todayIntake.totalCaffeineMg
+        let caffeineLimit = intakeGoals.dailyCaffeineLimit
+        let alcoholG = todayIntake.totalAlcoholG
+        let alcoholLimit = intakeGoals.dailyAlcoholLimit
+
+        var parts: [String] = []
+        var hydrationColor: Color = Color(red: 0.2, green: 0.6, blue: 1.0)
+        var hint = ""
+
+        if waterGoal > 0 {
+            let pct = Int(min(Double(waterMl) / Double(waterGoal) * 100, 100))
+            let mark = pct >= 100 ? "✅" : pct < 50 ? "❗" : ""
+            parts.append("💧\(waterMl)ml(\(pct)%)\(mark)")
+            if pct >= 100 {
+                hydrationColor = Color.duoGreen
+            } else if pct < 50 {
+                hint = "水分あと\(waterGoal - waterMl)ml"
+            }
         }
-        if a.carbsPercent > 70 {
-            tips.append(FoodTip(emoji: "🍚", title: "炭水化物が多め",
-                message: "白米や麺類の量を少し減らし、野菜・タンパク質の比率を増やすとバランスが改善します。",
-                color: Color.duoBlue))
-        } else if a.carbsPercent < 40 {
-            tips.append(FoodTip(emoji: "🍚", title: "炭水化物が少なめ",
-                message: "脳や筋肉のエネルギー源として重要です。玄米や全粒パンなど質の良い炭水化物を補いましょう。",
-                color: Color.duoBlue))
+        if caffeineMg > 0 && caffeineLimit > 0 {
+            let pct = Int(Double(caffeineMg) / Double(caffeineLimit) * 100)
+            let mark = pct >= 100 ? "⚠️" : pct >= 70 ? "❗" : ""
+            parts.append("☕\(caffeineMg)mg\(mark)")
+            if pct >= 100 { hydrationColor = .red; hint = "カフェイン上限超過" }
+            else if pct >= 70, hydrationColor != .red { hydrationColor = Color.duoOrange; hint = hint.isEmpty ? "午後のコーヒーは控えめに" : hint }
         }
-        let waterPct = intakeGoals.dailyWaterGoal > 0
-            ? Double(todayIntake.totalWaterMl) / Double(intakeGoals.dailyWaterGoal) * 100 : 0
-        if waterPct < 60 {
-            tips.append(FoodTip(emoji: "💧", title: "水分補給を忘れずに",
-                message: "今日の水分摂取が少なめです。こまめに水やお茶を飲む習慣をつけましょう。",
+        if alcoholG > 0 && alcoholLimit > 0 {
+            let pct = Int(alcoholG / alcoholLimit * 100)
+            let mark = pct >= 100 ? "⚠️" : pct >= 70 ? "❗" : ""
+            parts.append(String(format: "🍷%.0fg%@", alcoholG, mark))
+            if pct >= 100 { hydrationColor = .red; hint = "アルコール上限超過・水を飲んで" }
+            else if pct >= 70, hydrationColor != .red { hydrationColor = Color.duoPurple; hint = hint.isEmpty ? "飲み過ぎ注意・お水も忘れずに" : hint }
+        }
+
+        if !parts.isEmpty {
+            let msg = hint.isEmpty ? parts.joined(separator: " · ") : parts.joined(separator: " · ") + "\n" + hint
+            tips.append(FoodTip(emoji: "💧", title: "飲料サマリー", message: msg, color: hydrationColor))
+        } else if waterGoal > 0 {
+            tips.append(FoodTip(emoji: "💧", title: "水分未摂取",
+                message: "今日の水分摂取がまだありません。目標\(waterGoal)ml。",
                 color: Color(red: 0.2, green: 0.6, blue: 1.0)))
         }
+
         if tips.isEmpty {
-            tips.append(a.score >= 80
-                ? FoodTip(emoji: "✨", title: "バランス良好！",
-                    message: "今日の食事はバランスが取れています。このペースを維持しましょう！",
-                    color: Color.duoGreen)
-                : FoodTip(emoji: "🍽️", title: "もう少しで理想的",
-                    message: "P:15% / F:25% / C:60% の比率を意識すると、さらにバランスアップできます。",
-                    color: Color(red: 1.0, green: 0.6, blue: 0.0))
-            )
+            tips.append(FoodTip(emoji: "📝", title: "食事を記録しよう",
+                message: "フォトログやクイックログから食事を記録すると、栄養バランスのアドバイスが表示されます。",
+                color: Color.duoGreen))
         }
         return tips
+    }
+
+    // MARK: - 食事履歴
+
+    private struct HistoryEntry: Identifiable {
+        let id = UUID()
+        let emoji: String
+        let primary: String
+        let detail: String
+        let sub: String    // source tag (クイック / フォト / Watch / etc.)
+        let time: Date
+    }
+
+    private var foodHistorySection: some View {
+        let calendar = Calendar.current
+
+        // 食事: クイックログ + Watch同期
+        let quickMeals: [HistoryEntry] = todayIntake.meals.map {
+            HistoryEntry(emoji: $0.mealType.emoji, primary: $0.mealType.displayName,
+                detail: "\($0.calories)kcal", sub: "クイック", time: $0.timestamp)
+        }
+        // 食事: フォトログ（今日分のみ）
+        let photoMeals: [HistoryEntry] = photoLogManager.history
+            .filter { calendar.isDateInToday($0.timestamp) }
+            .map { HistoryEntry(emoji: "📸", primary: $0.displayName,
+                detail: "\($0.calories)kcal", sub: "フォト", time: $0.timestamp) }
+        let allMeals = (quickMeals + photoMeals).sorted { $0.time < $1.time }
+
+        // 水分: クイックログ + Watch
+        let waterEntries: [HistoryEntry] = todayIntake.waterLogs.map {
+            HistoryEntry(emoji: "💧", primary: "水", detail: "\($0.amountMl)ml", sub: "クイック", time: $0.timestamp)
+        }
+        // コーヒー
+        let coffeeEntries: [HistoryEntry] = todayIntake.coffeeLogs.map {
+            HistoryEntry(emoji: "☕", primary: "コーヒー",
+                detail: "\($0.amountMl)ml · カフェイン\($0.caffeineMg)mg", sub: "クイック", time: $0.timestamp)
+        }
+        // アルコール
+        let alcoholEntries: [HistoryEntry] = todayIntake.alcoholLogs.map {
+            HistoryEntry(emoji: $0.alcoholType.emoji, primary: $0.alcoholType.displayName,
+                detail: "\($0.amountMl)ml · 純アルコール\(String(format: "%.1f", $0.alcoholG))g",
+                sub: "クイック", time: $0.timestamp)
+        }
+
+        let totalCount = allMeals.count + waterEntries.count + coffeeEntries.count + alcoholEntries.count
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showFoodHistory.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+                    Text("今日の食事履歴")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    if totalCount > 0 {
+                        Text("\(totalCount)件")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Image(systemName: showFoodHistory ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            if showFoodHistory {
+                Divider()
+                VStack(alignment: .leading, spacing: 0) {
+                    if totalCount == 0 {
+                        Text("今日の記録はまだありません")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.duoSubtitle)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 16)
+                    } else {
+                        if !allMeals.isEmpty {
+                            foodHistoryCategoryHeader(title: "食事", icon: "fork.knife.circle.fill",
+                                color: Color(red: 1.0, green: 0.45, blue: 0.0))
+                            ForEach(allMeals) { e in historyEntryRow(e) }
+                        }
+                        if !waterEntries.isEmpty || !coffeeEntries.isEmpty || !alcoholEntries.isEmpty {
+                            foodHistoryCategoryHeader(title: "飲料", icon: "drop.fill", color: Color.duoBlue)
+                            ForEach(waterEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
+                            ForEach(coffeeEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
+                            ForEach(alcoholEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
+                        }
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .background(Color(.systemBackground))
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
+
+    private func historyEntryRow(_ e: HistoryEntry) -> some View {
+        HStack(spacing: 8) {
+            Text(e.emoji).font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(e.primary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color.duoDark)
+                Text(e.detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(formatTime(e.time))
+                    .font(.system(size: 9))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.7))
+                Text(e.sub)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.5))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+    }
+
+    private func foodHistoryCategoryHeader(title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 10)).foregroundColor(color)
+            Text(title).font(.system(size: 10, weight: .bold)).foregroundColor(color)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
     }
 
     // MARK: - No Data
@@ -675,6 +876,7 @@ struct FoodView: View {
     }
 
     private func loadData() async {
+        loadDailyFixedGoals()
         async let summary = authManager.getTodayIntakeSummary()
         async let goals   = authManager.getIntakeSettings()
         await healthKit.fetchIntakeHealth()
@@ -688,6 +890,81 @@ struct FoodView: View {
         todayIntake = intake
         intakeGoals = settings
         pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
+    }
+
+    private func loadDailyFixedGoals() {
+        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let saved = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+            dailyFixedGoals = saved
+        }
+    }
+
+    // MARK: - FOODサマリー行
+
+    private var foodSummaryRow: some View {
+        let foodColor = Color.duoGreen
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let photoTotals = photoLogManager.history
+            .filter { cal.startOfDay(for: $0.timestamp) == today }
+            .reduce(into: (protein: 0.0, fat: 0.0, carbs: 0.0, calories: 0)) { acc, item in
+                acc.protein += item.analyzedNutrition.protein
+                acc.fat += item.analyzedNutrition.fat
+                acc.carbs += item.analyzedNutrition.carbs
+                acc.calories += item.analyzedNutrition.calories
+            }
+        let prot = healthKit.todayIntakeProtein + photoTotals.protein
+        let fat_ = healthKit.todayIntakeFat + photoTotals.fat
+        let carb = healthKit.todayIntakeCarbs + photoTotals.carbs
+        let totalIntakeCal = Int(healthKit.todayIntakeCalories) + photoTotals.calories
+        let calDiff = totalIntakeCal - Int(healthKit.todayActiveCalories + healthKit.todayRestingCalories)
+        let waterMl = Int(healthKit.todayIntakeWater)
+        let foodGoalDone = dailyFixedGoals.foodEnabled && totalIntakeCal >= 2000
+        let sign = calDiff >= 0 ? "+" : ""
+        return HStack(spacing: 6) {
+            Text("FOOD")
+                .font(.system(size: 8, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(foodColor)
+                .cornerRadius(4)
+            PFCMiniRingView(
+                proteinKcal: prot * 4,
+                fatKcal: fat_ * 9,
+                carbsKcal: carb * 4,
+                diameter: 22,
+                lineWidth: 4,
+                centerText: pfcAnalysis.map { "\($0.score)" },
+                centerTextColor: (pfcAnalysis?.score ?? 0) >= 70 ? foodColor : Color.duoDark
+            )
+            HStack(spacing: 2) {
+                Text("💧").font(.system(size: 11))
+                Text(waterMl > 0 ? "\(waterMl)" : "—")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+            }
+            HStack(spacing: 2) {
+                Text("🍽️").font(.system(size: 11))
+                Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(foodGoalDone ? foodColor : Color.duoDark)
+            }
+            HStack(spacing: 2) {
+                Text("⚡").font(.system(size: 11))
+                Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(calDiff > 200 ? Color(hex: "#FF4B4B") : calDiff < -200 ? foodColor : Color.duoDark)
+                if totalIntakeCal > 0 {
+                    Text("cal").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 }
 

@@ -217,7 +217,6 @@ struct DashboardView: View {
                             pointsCard
                             challengeCard
                             habitStackCard
-                            mandalaCard
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -1098,162 +1097,42 @@ struct DashboardView: View {
             return false
         }.count
 
-        // トータル進捗を計算（今日1日分の全時間帯）
-        var totalTraining = 0
-        var totalTrainingGoal = 0
-        var totalMindfulness = 0
-        var totalMindfulnessGoal = 0
-        var totalMealLogged = 0
-        var totalMealGoal = 0
-        var totalDrinkLogged = 0
-        var totalDrinkGoal = 0
-        var totalCustomCompleted = 0
-        var totalCustomGoal = 0
-
-        // 全時間帯の実績をカウント（累計）
-        for slot in TimeSlot.allCases {
-            if let goal = timeSlotManager.settings.goalFor(slot),
-               let progress = timeSlotManager.progress.progressFor(slot) {
-                let setsInSlot = countSetsInTimeSlot(slot)
-                totalTraining += setsInSlot
-
-                if goal.logGoal.mealGoal > 0 {
-                    totalMealGoal += goal.logGoal.mealGoal
-                }
-                if goal.logGoal.drinkGoal > 0 {
-                    totalDrinkGoal += goal.logGoal.drinkGoal
-                }
-
-                let enabled = goal.customActivities.filter { $0.isEnabled }
-                totalCustomGoal += enabled.count
-                totalCustomCompleted += enabled.filter { progress.completedActivityIds.contains($0.id) }.count
-            }
-        }
-        // 現時点までの時間帯の目標をカウント（時間比例）
-        for slot in visibleSlots {
-            if let goal = timeSlotManager.settings.goalFor(slot) {
-                totalTrainingGoal += goal.trainingGoal
-                totalMindfulnessGoal += goal.mindfulnessGoal
-            }
-        }
-
-        // 食事は設定に応じてApple Healthまたはダイエット目標の自動実績を使用
-        totalMindfulness = healthKit.todayMindfulnessSessions
-        totalMealLogged = effectiveMealLogged
-        totalDrinkLogged = Int(healthKit.todayIntakeWater)
-
-        // ストレッチ目標：現時点の時間帯まで（実績は全時間帯累計）
-        var totalStretchGoal = 0
-        var totalStretch = 0
-        for slot in visibleSlots where slot != .midnight {
-            if let goal = timeSlotManager.settings.goalFor(slot), goal.stretchGoal.enabled {
-                totalStretchGoal += goal.stretchGoal.stretchMinutes
-            }
-        }
-        for slot in TimeSlot.allCases {
-            totalStretch += timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0
-        }
-
-        // 有効な目標の総合進捗 % を計算
-        var enabledGoalCount = 0
-        var sumProgress = 0.0
-        if totalTrainingGoal > 0 {
-            enabledGoalCount += 1
-            sumProgress += min(1.0, Double(totalTraining) / Double(totalTrainingGoal))
-        }
-        if totalMindfulnessGoal > 0 {
-            enabledGoalCount += 1
-            sumProgress += min(1.0, Double(totalMindfulness) / Double(totalMindfulnessGoal))
-        }
-        if totalStretchGoal > 0 {
-            enabledGoalCount += 1
-            sumProgress += min(1.0, Double(totalStretch) / Double(totalStretchGoal))
-        }
-        // 時間帯比例目標（6時〜22時の16時間を均等分割）
-        let dayFraction = min(1.0, Double(max(0, currentHour - 6)) / 16.0)
-        if totalMealGoal > 0 {
-            enabledGoalCount += 1
-            let expectedMeal = dayFraction > 0 ? Double(totalMealGoal) * dayFraction : 1.0
-            sumProgress += min(1.0, Double(totalMealLogged) / expectedMeal)
-        }
-        if totalDrinkGoal > 0 {
-            enabledGoalCount += 1
-            let expectedDrink = dayFraction > 0 ? Double(totalDrinkGoal) * dayFraction : 1.0
-            sumProgress += min(1.0, Double(totalDrinkLogged) / expectedDrink)
-        }
-        if totalCustomGoal > 0 {
-            enabledGoalCount += 1
-            sumProgress += min(1.0, Double(totalCustomCompleted) / Double(totalCustomGoal))
-        }
-        // 毎日の設定（全曜日共通・dailySetsCard用）
-        if dailyFixedGoals.foodEnabled {
-            enabledGoalCount += 1
-            sumProgress += min(1.0, healthKit.todayIntakeCalories / 2000.0)
-        }
-        if dailyFixedGoals.weightEnabled {
-            enabledGoalCount += 1
-            sumProgress += healthKit.todayBodyMassMeasurements > 0 ? 1.0 : 0.0
-        }
-        if dailyFixedGoals.sleepEnabled {
-            enabledGoalCount += 1
-            sumProgress += healthKit.lastNightTotalHours >= Double(dailyFixedGoals.sleepHoursGoal) ? 1.0 : 0.0
-        }
-        // 曜日毎の目標（dailySetsCard用）
-        if let wg = todayWeekdayGoal {
-            if wg.exerciseEnabled {
-                enabledGoalCount += 1
-                let moveP = healthKit.activityMoveGoal > 0 ? min(1.0, healthKit.activityMoveCalories / healthKit.activityMoveGoal) : 0
-                let exerP = healthKit.activityExerciseGoal > 0 ? min(1.0, Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal)) : 0
-                let standP = healthKit.activityStandGoal > 0 ? min(1.0, Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal)) : 0
-                sumProgress += (moveP + exerP + standP) / 3.0
-            }
-            let gp4 = timeSlotManager.progress.globalProgress
-            if wg.studyEnabled {
-                enabledGoalCount += 1
-                sumProgress += gp4.completedCustomGoalIds.contains("wd_study_\(wg.weekday)") ? 1.0 : 0.0
-            }
-            if wg.noAlcoholEnabled {
-                enabledGoalCount += 1
-                sumProgress += gp4.completedCustomGoalIds.contains("wd_noalcohol_\(wg.weekday)") ? 1.0 : 0.0
-            }
-            for cg in wg.customGoals {
-                enabledGoalCount += 1
-                sumProgress += gp4.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)") ? 1.0 : 0.0
-            }
-            for cg in dailyFixedGoals.customGoals {
-                enabledGoalCount += 1
-                sumProgress += gp4.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)") ? 1.0 : 0.0
-            }
-        }
-        let progressPercent = todayCurrentProgressPercent
-
         return AnyView(VStack(alignment: .leading, spacing: 0) {
-            // ヘッダー（タップで展開）
+            Divider()
+                .padding(.horizontal, 16)
+
+            mandalaContent
+                .padding(14)
+
+            // メッセージ + 展開シェブロン（タップで展開）
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     showTodayRecords.toggle()
                 }
             } label: {
-                AnyView(
-                    VStack(alignment: .leading, spacing: 0) {
-                        dailySetsCardStatsArea(
-                            progressPercent: progressPercent,
-                            showBar: enabledGoalCount > 0,
-                            totalTraining: totalTraining, totalTrainingGoal: totalTrainingGoal,
-                            totalMindfulness: totalMindfulness, totalMindfulnessGoal: totalMindfulnessGoal,
-                            totalMealLogged: totalMealLogged, totalMealGoal: totalMealGoal,
-                            totalDrinkLogged: totalDrinkLogged, totalDrinkGoal: totalDrinkGoal,
-                            totalCustomCompleted: totalCustomCompleted, totalCustomGoal: totalCustomGoal,
-                            totalStretch: totalStretch, totalStretchGoal: totalStretchGoal,
-                            completedSlots: totalCompletedSlots, totalSlots: totalSlotsToShow,
-                            isExpanded: showTodayRecords
-                        )
-                    }
-                )
+                let remaining = totalSlotsToShow - totalCompletedSlots
+                let msg: String = totalCompletedSlots == totalSlotsToShow
+                    ? (totalSlotsToShow == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
+                    : totalCompletedSlots == 0
+                    ? "まず1つ目の時間帯を達成しよう！"
+                    : "あと\(remaining)つの時間帯で本日完全達成！"
+                let msgGreen = totalCompletedSlots == totalSlotsToShow
+                HStack(spacing: 4) {
+                    Text(msg)
+                        .font(.system(size: 11))
+                        .fontWeight(msgGreen ? .bold : .regular)
+                        .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
+                    Spacer()
+                    Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
 
-            // 時間帯別の進捗（アコーディオン）- メッセージの下
+            // 時間帯別の進捗（アコーディオン）
             if showTodayRecords {
                 VStack(spacing: 0) {
                     Divider()
@@ -1269,12 +1148,12 @@ struct DashboardView: View {
                 }
             }
 
-            dailySetsCardButtons
-
-            // 今日の履歴（展開時のみ表示）- フォトログの下
+            // 今日の履歴（展開時のみ表示）
             if showTodayRecords {
                 todayExpandedHistorySection
             }
+
+            dailySetsCardButtons
         })
         .background(Color(.systemBackground))
         .cornerRadius(16)
@@ -1368,13 +1247,6 @@ struct DashboardView: View {
         completedSlots: Int, totalSlots: Int,
         isExpanded: Bool
     ) -> some View {
-        let gp = timeSlotManager.progress.globalProgress
-        let gg = timeSlotManager.settings.globalGoals
-        let barColor: Color = progressPercent >= 100 ? Color.duoGreen
-            : progressPercent >= 70 ? Color.duoGreen.opacity(0.8)
-            : progressPercent >= 40 ? Color(hex: "#FF9600")
-            : Color(hex: "#FF4B4B")
-        let _ = gp.sleepScore >= gg.sleepScoreThreshold
         let remaining = totalSlots - completedSlots
         let msg: String = completedSlots == totalSlots
             ? (totalSlots == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
@@ -1384,47 +1256,6 @@ struct DashboardView: View {
         let msgGreen = completedSlots == totalSlots
 
         VStack(alignment: .leading, spacing: 8) {
-            if showBar {
-                HStack(spacing: 6) {
-                    Text({
-                        let f = DateFormatter()
-                        f.locale = Locale(identifier: "ja_JP")
-                        f.dateFormat = "M/d(EEE)"
-                        return f.string(from: Date())
-                    }())
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.duoSubtitle)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.gray.opacity(0.15)).frame(height: 5)
-                            Capsule()
-                                .fill(barColor)
-                                .frame(width: geo.size.width * CGFloat(progressPercent) / 100.0, height: 5)
-                        }
-                    }
-                    .frame(height: 5)
-                    Text("\(progressPercent)%")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
-                        .foregroundColor(barColor)
-                        .frame(width: 32, alignment: .trailing)
-                    Button {
-                        Task { await healthKit.fetchAll(force: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(healthKit.isLoading ? Color.duoGreen : Color.duoSubtitle)
-                            .rotationEffect(healthKit.isLoading ? .degrees(360) : .degrees(0))
-                            .animation(
-                                healthKit.isLoading
-                                    ? .linear(duration: 0.9).repeatForever(autoreverses: false)
-                                    : .default,
-                                value: healthKit.isLoading
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(healthKit.isLoading)
-                }
-            }
             HStack(spacing: 4) {
                 Text(msg)
                     .font(.system(size: 11))
@@ -2555,7 +2386,7 @@ struct DashboardView: View {
         return (visible.filter(\.isCompleted).count, visible.count)
     }
 
-    private var mandalaCard: some View {
+    private var mandalaContent: some View {
         let nc = mandalaOverallCount
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -2626,10 +2457,6 @@ struct DashboardView: View {
             )
             .frame(height: 340)
         }
-        .padding(14)
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
     private var habitStackCard: some View {

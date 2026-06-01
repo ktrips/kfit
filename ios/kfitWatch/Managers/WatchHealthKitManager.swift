@@ -278,8 +278,14 @@ class WatchHealthKitManager: ObservableObject {
 
     private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval) -> Bool {
         if isFetchingAll {
-            print("[WatchHealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
-            return false
+            if force {
+                // 強制更新時は実行中フラグをリセットして続行
+                print("[WatchHealthKit] ⚡ \(scope) force-fetch: resetting isFetchingAll")
+                isFetchingAll = false
+            } else {
+                print("[WatchHealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
+                return false
+            }
         }
         if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < ttl {
             print("[WatchHealthKit] ✅ \(scope) fetch skipped by TTL")
@@ -298,114 +304,70 @@ class WatchHealthKitManager: ObservableObject {
 
     func fetchTodaySteps() async {
         guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return }
-
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-
-        let query = HKStatisticsQuery(
-            quantityType: stepType,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Steps query error: \(error)")
-                    return
-                }
-                let steps = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
-                self?.todaySteps = Int(steps)
-                print("[WatchHealthKit] 📊 Steps: \(Int(steps))")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todaySteps = Int(value) }
+        print("[WatchHealthKit] 📊 Steps: \(Int(value))")
     }
 
     // MARK: - Calories
 
     func fetchTodayCalories() async {
         guard let calorieType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return }
-
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-
-        let query = HKStatisticsQuery(
-            quantityType: calorieType,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Calories query error: \(error)")
-                    return
-                }
-                let calories = result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0
-                self?.todayCalories = Int(calories)
-                print("[WatchHealthKit] 🔥 Calories: \(Int(calories)) kcal")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: calorieType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayCalories = Int(value) }
+        print("[WatchHealthKit] 🔥 Calories: \(Int(value)) kcal")
     }
 
     // MARK: - Heart Rate
 
     func fetchAverageHeartRate() async {
         guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return }
-
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-
-        let query = HKStatisticsQuery(
-            quantityType: heartRateType,
-            quantitySamplePredicate: predicate,
-            options: .discreteAverage
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Heart rate query error: \(error)")
-                    return
-                }
-                let bpm = result?.averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute())) ?? 0
-                self?.averageHeartRate = Int(bpm)
-                print("[WatchHealthKit] ❤️ Heart rate: \(Int(bpm)) bpm")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: heartRateType, quantitySamplePredicate: predicate, options: .discreteAverage) { _, result, _ in
+                cont.resume(returning: result?.averageQuantity()?.doubleValue(for: HKUnit.count().unitDivided(by: .minute())) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.averageHeartRate = Int(value) }
+        print("[WatchHealthKit] ❤️ Heart rate: \(Int(value)) bpm")
     }
 
     // MARK: - Sleep
 
     func fetchSleepHours() async {
         guard let sleepType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return }
-
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
-
-        let query = HKSampleQuery(
-            sampleType: sleepType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Sleep query error: \(error)")
-                    return
-                }
-                guard let samples = samples as? [HKCategorySample] else { return }
-
-                let totalSeconds = samples
+        let hours: Double = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sortDescriptor]) { _, samples, _ in
+                let totalSeconds = (samples as? [HKCategorySample] ?? [])
                     .filter { $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
                               $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
                               $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue }
                     .reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
-
-                let hours = totalSeconds / 3600.0
-                self?.sleepHours = hours
-                print("[WatchHealthKit] 😴 Sleep: \(String(format: "%.1f", hours)) hours")
+                cont.resume(returning: totalSeconds / 3600.0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.sleepHours = hours }
+        print("[WatchHealthKit] 😴 Sleep: \(String(format: "%.1f", hours)) hours")
     }
 
     // MARK: - Body Mass
@@ -413,25 +375,17 @@ class WatchHealthKitManager: ObservableObject {
     func fetchLatestBodyMass() async {
         guard let bodyMassType = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return }
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-
-        let query = HKSampleQuery(
-            sampleType: bodyMassType,
-            predicate: nil,
-            limit: 1,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Body mass query error: \(error)")
-                    return
-                }
-                guard let sample = samples?.first as? HKQuantitySample else { return }
-                let kg = sample.quantity.doubleValue(for: .gramUnit(with: .kilo))
-                self?.latestBodyMass = kg
-                print("[WatchHealthKit] ⚖️ Body mass: \(String(format: "%.1f", kg)) kg")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: bodyMassType, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, _ in
+                let kg = (samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: .gramUnit(with: .kilo)) ?? 0
+                cont.resume(returning: kg)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        if value > 0 {
+            await MainActor.run { self.latestBodyMass = value }
+            print("[WatchHealthKit] ⚖️ Body mass: \(String(format: "%.1f", value)) kg")
+        }
     }
 
     // MARK: - Body Fat Percentage
@@ -439,25 +393,17 @@ class WatchHealthKitManager: ObservableObject {
     func fetchLatestBodyFatPercentage() async {
         guard let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else { return }
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-
-        let query = HKSampleQuery(
-            sampleType: bodyFatType,
-            predicate: nil,
-            limit: 1,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error {
-                    print("[WatchHealthKit] Body fat query error: \(error)")
-                    return
-                }
-                guard let sample = samples?.first as? HKQuantitySample else { return }
-                let pct = sample.quantity.doubleValue(for: .percent()) * 100
-                self?.latestBodyFatPercentage = pct
-                print("[WatchHealthKit] 📊 Body fat: \(String(format: "%.1f", pct))%")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: bodyFatType, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, _ in
+                let pct = ((samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: .percent()) ?? 0) * 100
+                cont.resume(returning: pct)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        if value > 0 {
+            await MainActor.run { self.latestBodyFatPercentage = value }
+            print("[WatchHealthKit] 📊 Body fat: \(String(format: "%.1f", value))%")
+        }
     }
 
     // MARK: - Mindfulness
@@ -521,19 +467,14 @@ class WatchHealthKitManager: ObservableObject {
         guard let exerciseType = HKQuantityType.quantityType(forIdentifier: .appleExerciseTime) else { return }
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        let query = HKStatisticsQuery(
-            quantityType: exerciseType,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] WorkoutMinutes error: \(error)"); return }
-                let minutes = result?.sumQuantity()?.doubleValue(for: .minute()) ?? 0
-                self?.todayWorkoutMinutes = Int(minutes)
-                print("[WatchHealthKit] 🏃 WorkoutMinutes: \(Int(minutes))")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: exerciseType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .minute()) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayWorkoutMinutes = Int(value) }
+        print("[WatchHealthKit] 🏃 WorkoutMinutes: \(Int(value))")
     }
 
     // MARK: - Stand Hours
@@ -542,22 +483,17 @@ class WatchHealthKitManager: ObservableObject {
         guard let standType = HKCategoryType.categoryType(forIdentifier: .appleStandHour) else { return }
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        let query = HKSampleQuery(
-            sampleType: standType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: nil
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] StandHours error: \(error)"); return }
+        let value: Int = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: standType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
                 let stood = (samples as? [HKCategorySample])?.filter {
                     $0.value == HKCategoryValueAppleStandHour.stood.rawValue
                 }.count ?? 0
-                self?.todayStandHours = stood
-                print("[WatchHealthKit] 🕐 StandHours: \(stood)")
+                cont.resume(returning: stood)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayStandHours = value }
+        print("[WatchHealthKit] 🕐 StandHours: \(value)")
     }
 
     // MARK: - Heart Rate Variability
@@ -565,21 +501,17 @@ class WatchHealthKitManager: ObservableObject {
     func fetchLatestHRV() async {
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return }
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
-        let query = HKSampleQuery(
-            sampleType: type,
-            predicate: nil,
-            limit: 1,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] HRV error: \(error)"); return }
-                guard let sample = samples?.first as? HKQuantitySample else { return }
-                let ms = sample.quantity.doubleValue(for: HKUnit.secondUnit(with: .milli))
-                self?.latestHRV = ms
-                print("[WatchHealthKit] 💓 HRV: \(String(format: "%.1f", ms)) ms")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, _ in
+                let ms = (samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: HKUnit.secondUnit(with: .milli)) ?? 0
+                cont.resume(returning: ms)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        if value > 0 {
+            await MainActor.run { self.latestHRV = value }
+            print("[WatchHealthKit] 💓 HRV: \(String(format: "%.1f", value)) ms")
+        }
     }
 
     func measureCurrentWellnessVitals() async -> WatchWellnessVitals {
@@ -623,19 +555,14 @@ class WatchHealthKitManager: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        let query = HKStatisticsQuery(
-            quantityType: type,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] DietaryCalories error: \(error)"); return }
-                let kcal = result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0
-                self?.todayDietaryCalories = kcal
-                print("[WatchHealthKit] 🍽️ DietaryCalories: \(Int(kcal)) kcal")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .kilocalorie()) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayDietaryCalories = value }
+        print("[WatchHealthKit] 🍽️ DietaryCalories: \(Int(value)) kcal")
     }
 
     // MARK: - Dietary Water
@@ -644,19 +571,14 @@ class WatchHealthKitManager: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        let query = HKStatisticsQuery(
-            quantityType: type,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] DietaryWater error: \(error)"); return }
-                let ml = result?.sumQuantity()?.doubleValue(for: .literUnit(with: .milli)) ?? 0
-                self?.todayDietaryWater = ml
-                print("[WatchHealthKit] 💧 DietaryWater: \(Int(ml)) ml")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .literUnit(with: .milli)) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayDietaryWater = value }
+        print("[WatchHealthKit] 💧 DietaryWater: \(Int(value)) ml")
     }
 
     // MARK: - Dietary Caffeine
@@ -665,19 +587,14 @@ class WatchHealthKitManager: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return }
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-        let query = HKStatisticsQuery(
-            quantityType: type,
-            quantitySamplePredicate: predicate,
-            options: .cumulativeSum
-        ) { [weak self] _, result, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] DietaryCaffeine error: \(error)"); return }
-                let mg = result?.sumQuantity()?.doubleValue(for: .gramUnit(with: .milli)) ?? 0
-                self?.todayDietaryCaffeine = mg
-                print("[WatchHealthKit] ☕ DietaryCaffeine: \(Int(mg)) mg")
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                cont.resume(returning: result?.sumQuantity()?.doubleValue(for: .gramUnit(with: .milli)) ?? 0)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayDietaryCaffeine = value }
+        print("[WatchHealthKit] ☕ DietaryCaffeine: \(Int(value)) mg")
     }
 
     // MARK: - Dietary Alcohol (dietaryEnergyConsumed with alcohol metadata)
@@ -687,14 +604,8 @@ class WatchHealthKitManager: ObservableObject {
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
-        let query = HKSampleQuery(
-            sampleType: type,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] _, samples, error in
-            Task { @MainActor in
-                if let error { print("[WatchHealthKit] DietaryAlcohol error: \(error)"); return }
+        let value: Double = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sortDescriptor]) { _, samples, _ in
                 var totalAlcoholG = 0.0
                 for sample in (samples as? [HKQuantitySample]) ?? [] {
                     if let intakeType = sample.metadata?["intake_type"] as? String,
@@ -703,11 +614,12 @@ class WatchHealthKitManager: ObservableObject {
                         totalAlcoholG += alcoholGrams
                     }
                 }
-                self?.todayDietaryAlcohol = totalAlcoholG
-                print("[WatchHealthKit] 🍺 DietaryAlcohol: \(String(format: "%.1f", totalAlcoholG)) g")
+                cont.resume(returning: totalAlcoholG)
             }
+            healthStore.execute(query)
         }
-        healthStore.execute(query)
+        await MainActor.run { self.todayDietaryAlcohol = value }
+        print("[WatchHealthKit] 🍺 DietaryAlcohol: \(String(format: "%.1f", value)) g")
     }
 
     func saveMindfulnessSession(durationMinutes: Int, sessionType: String = "Breathe", impact: WatchMindfulnessImpact? = nil) async {

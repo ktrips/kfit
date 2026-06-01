@@ -830,8 +830,14 @@ final class HealthKitManager: ObservableObject {
             return false
         }
         if isLoading {
-            print("[HealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
-            return false
+            if force {
+                // 強制更新時は実行中フラグをリセットして続行
+                print("[HealthKit] ⚡ \(scope) force-fetch: resetting isLoading")
+                isLoading = false
+            } else {
+                print("[HealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
+                return false
+            }
         }
         let scopeTTL = ttl ?? fetchAllTTL
         if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < scopeTTL {

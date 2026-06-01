@@ -25,8 +25,6 @@ struct FoodView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
-                    foodSummaryRow
-
                     // PFCバランス（最上段）
                     if let analysis = pfcAnalysis, analysis.score > 0 {
                         pfcBalanceCard(analysis)
@@ -92,55 +90,81 @@ struct FoodView: View {
     // MARK: - Header
 
     private var foodHeader: some View {
-        ZStack {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let photoTotals = photoLogManager.history
+            .filter { cal.startOfDay(for: $0.timestamp) == today }
+            .reduce(into: (protein: 0.0, fat: 0.0, carbs: 0.0, calories: 0)) { acc, item in
+                acc.protein += item.analyzedNutrition.protein
+                acc.fat += item.analyzedNutrition.fat
+                acc.carbs += item.analyzedNutrition.carbs
+                acc.calories += item.analyzedNutrition.calories
+            }
+        let prot = healthKit.todayIntakeProtein + photoTotals.protein
+        let fat_ = healthKit.todayIntakeFat + photoTotals.fat
+        let carb = healthKit.todayIntakeCarbs + photoTotals.carbs
+        let totalIntakeCal = Int(healthKit.todayIntakeCalories) + photoTotals.calories
+        let calDiff = totalIntakeCal - Int(healthKit.todayActiveCalories + healthKit.todayRestingCalories)
+        let waterMl = Int(healthKit.todayIntakeWater)
+        let foodGoalDone = dailyFixedGoals.foodEnabled && totalIntakeCal >= 2000
+        let sign = calDiff >= 0 ? "+" : ""
+        return ZStack {
             LinearGradient(
                 colors: [Color(red: 1.0, green: 0.45, blue: 0.0), Color(red: 0.85, green: 0.25, blue: 0.0)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            HStack {
-                HStack(spacing: 4) {
-                    Image(systemName: "fork.knife.circle.fill")
-                        .font(.system(size: 14, weight: .black))
+            HStack(spacing: 0) {
+                Text("FOOD")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(4)
+                    .fixedSize()
+                Spacer(minLength: 8)
+                PFCMiniRingView(
+                    proteinKcal: prot * 4,
+                    fatKcal: fat_ * 9,
+                    carbsKcal: carb * 4,
+                    diameter: 22,
+                    lineWidth: 4,
+                    centerText: pfcAnalysis.map { "\($0.score)" },
+                    centerTextColor: .white
+                )
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("💧").font(.system(size: 11))
+                    Text(waterMl > 0 ? "\(waterMl)" : "—")
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
-                    HStack(spacing: 0) {
-                        Text("Food").foregroundColor(Color(red: 1.0, green: 0.95, blue: 0.5))
-                        Text("ingo").foregroundColor(.white)
-                    }
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                        .lineLimit(1)
                 }
-                Spacer()
-                HStack(spacing: 6) {
-                    HStack(spacing: 2) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(Color(red: 1.0, green: 0.95, blue: 0.5))
-                        Text("\(Int(healthKit.todayIntakeCalories))")
-                            .font(.system(size: 10, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("kcal")
-                            .font(.system(size: 8))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(Color.white.opacity(0.18))
-                    .cornerRadius(8)
-
-                    if let a = pfcAnalysis, a.score > 0 {
-                        HStack(spacing: 2) {
-                            Text("\(a.score)")
-                                .font(.system(size: 11, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                            Text("点")
-                                .font(.system(size: 8))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(Color.white.opacity(0.18))
-                        .cornerRadius(8)
-                    }
-
-                    HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("🍽️").font(.system(size: 11))
+                    Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(foodGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
                 }
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("⚡").font(.system(size: 11))
+                    Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(calDiff > 200 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
+                    if totalIntakeCal > 0 {
+                        Text("cal").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .fixedSize()
+                Spacer(minLength: 8)
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                    .fixedSize()
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 7)

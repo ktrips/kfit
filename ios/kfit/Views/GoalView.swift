@@ -25,8 +25,6 @@ struct GoalView: View {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        goalHeader
-                        fitSummaryRow
                         goalHeroCard
                         if showCharts {
                             weightChartCard
@@ -59,6 +57,7 @@ struct GoalView: View {
                 }
             }
             .navigationBarHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
             .sheet(isPresented: $showDietGoalSettings) {
                 NavigationView { DietGoalSettingsView() }
             }
@@ -78,6 +77,101 @@ struct GoalView: View {
                 weeklyIntakeData = await authManager.fetchWeeklyIntakeData()
             }
         }
+    }
+
+    // MARK: - Header
+
+    private var fitHeader: some View {
+        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
+        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
+        }
+        let todayWeightKg = healthKit.todayBodyMassRecord?.kg
+        let stepsStr: String = {
+            let s = healthKit.todaySteps
+            guard s > 0 else { return "—" }
+            return s >= 1000 ? String(format: "%.1fk", Double(s) / 1000.0) : "\(s)"
+        }()
+        let trainingGoalDone = totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal
+        return ZStack {
+            LinearGradient(
+                colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            HStack(spacing: 0) {
+                Text("FIT")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundColor(Color.duoGreen)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(4)
+                    .fixedSize()
+                if todayWeekdayGoal?.exerciseEnabled == true {
+                    Spacer(minLength: 6)
+                    ZStack {
+                        ActivityRingView(
+                            progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
+                            color: Color(red: 0.98, green: 0.07, blue: 0.31), diameter: 22, lineWidth: 3)
+                        ActivityRingView(
+                            progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
+                            color: Color(red: 0.57, green: 0.91, blue: 0.16), diameter: 15, lineWidth: 3)
+                        ActivityRingView(
+                            progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
+                            color: Color(red: 0.12, green: 0.89, blue: 0.94), diameter: 8, lineWidth: 3)
+                    }
+                    .frame(width: 22, height: 22)
+                    .fixedSize()
+                }
+                if dailyFixedGoals.weightEnabled {
+                    Spacer(minLength: 6)
+                    HStack(spacing: 2) {
+                        Text("⚖️").font(.system(size: 11))
+                        Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(todayWeightKg != nil ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                            .lineLimit(1)
+                    }
+                    .fixedSize()
+                }
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("💪").font(.system(size: 11))
+                    Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(trainingGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("👟").font(.system(size: 11))
+                    Text(stepsStr)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("🔥").font(.system(size: 11))
+                    Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    if healthKit.todayTotalCalories > 0 {
+                        Text("cal").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .fixedSize()
+                Spacer(minLength: 8)
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+        }
+        .frame(height: 46)
+        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - FITサマリー行
@@ -889,7 +983,7 @@ struct GoalView: View {
         let allRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
             && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
             && healthKit.activityStandHours >= healthKit.activityStandGoal
-        let isGoal = timeSlotManager.settings.globalGoals.activityEnabled
+        let isGoal = todayWeekdayGoal?.exerciseEnabled == true
 
         let moveProgress = healthKit.activityMoveGoal > 0 ? min(healthKit.activityMoveCalories / healthKit.activityMoveGoal, 1.0) : 0
         let exerciseProgress = healthKit.activityExerciseGoal > 0 ? min(Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal), 1.0) : 0

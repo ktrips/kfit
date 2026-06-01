@@ -4,10 +4,6 @@ struct TimeSlotGoalsView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showAddCustomGoal = false
-    @State private var newGoalName = ""
-    @State private var newGoalEmoji = "⭐"
-
     var body: some View {
         ZStack {
             Color.duoBg.ignoresSafeArea()
@@ -23,10 +19,6 @@ struct TimeSlotGoalsView: View {
                                 .scaleEffect(1.4)
                                 .padding(.vertical, 40)
                         } else {
-                            // 1日全体の目標セクション
-                            globalGoalsSection
-                                .id("global")
-
                             ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { timeSlot in
                                 if let goal = timeSlotManager.settings.goalFor(timeSlot),
                                    let progress = timeSlotManager.progress.progressFor(timeSlot) {
@@ -60,553 +52,6 @@ struct TimeSlotGoalsView: View {
         .task {
             await timeSlotManager.loadTodaySettings()
             await timeSlotManager.loadTodayProgress()
-        }
-    }
-
-    // MARK: - Global Goals Section
-
-    private var globalGoalsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // ヘッダー
-            HStack {
-                Text("🌍")
-                    .font(.title2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("1日全体の目標")
-                        .font(.headline).fontWeight(.black)
-                        .foregroundColor(Color.duoDark)
-                    Text("時間帯に関係なく1日の合計で管理")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-
-            // アクティビティリング目標
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.activityEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.activityEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("🏃")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("アクティビティリング")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("Move・Exercise・Standのリングをすべて閉じる")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoGreen)
-
-            Divider()
-
-            // 睡眠計測目標
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.sleepEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.sleepEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("😴")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("睡眠の計測")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("睡眠スコアを計測")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoGreen)
-
-            if timeSlotManager.settings.globalGoals.sleepEnabled {
-                HStack {
-                    Text("目標時間:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.sleepHoursGoal)時間以上",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.sleepHoursGoal },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.sleepHoursGoal = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 1...12,
-                           step: 1)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                HStack {
-                    Text("目標スコア:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.sleepScoreThreshold)点以上",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.sleepScoreThreshold },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.sleepScoreThreshold = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 50...100,
-                           step: 5)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                // 進捗表示（睡眠時間・スコア）
-                if timeSlotManager.progress.globalProgress.sleepHours > 0 || timeSlotManager.progress.globalProgress.sleepScore > 0 {
-                    let hours = timeSlotManager.progress.globalProgress.sleepHours
-                    let score = timeSlotManager.progress.globalProgress.sleepScore
-                    let hoursGoal = timeSlotManager.settings.globalGoals.sleepHoursGoal
-                    let scoreGoal = timeSlotManager.settings.globalGoals.sleepScoreThreshold
-                    HStack(spacing: 12) {
-                        HStack(spacing: 4) {
-                            Text("昨夜:")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                            Text(String(format: "%.1f時間", hours))
-                                .font(.subheadline).fontWeight(.bold)
-                                .foregroundColor(hours >= Double(hoursGoal) ? Color.duoGreen : Color.duoDark)
-                        }
-                        if score > 0 {
-                            HStack(spacing: 4) {
-                                Text("\(score)点")
-                                    .font(.subheadline).fontWeight(.bold)
-                                    .foregroundColor(score >= scoreGoal ? Color.duoGreen : Color.duoDark)
-                                if hours >= Double(hoursGoal) && score >= scoreGoal {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(Color.duoGreen)
-                                        .font(.caption)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.leading, 40)
-                }
-            }
-
-            Divider()
-
-            // 食事の計測（PFCバランス）目標
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.pfcEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.pfcEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("🍽️")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("食事の計測")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("PFCバランスを計測")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoGreen)
-
-            if timeSlotManager.settings.globalGoals.pfcEnabled {
-                HStack {
-                    Text("目標:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.pfcScoreThreshold)点以上",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.pfcScoreThreshold },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.pfcScoreThreshold = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 50...100,
-                           step: 5)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                // 進捗表示（PFCバランススコア）
-                if timeSlotManager.progress.globalProgress.pfcScore > 0 {
-                    HStack(spacing: 8) {
-                        Text("今日:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(timeSlotManager.progress.globalProgress.pfcScore)点")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(
-                                timeSlotManager.progress.globalProgress.pfcScore >= timeSlotManager.settings.globalGoals.pfcScoreThreshold
-                                ? Color.duoGreen : Color.duoDark
-                            )
-                        if timeSlotManager.progress.globalProgress.pfcScore >= timeSlotManager.settings.globalGoals.pfcScoreThreshold {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color.duoGreen)
-                                .font(.caption)
-                        }
-                    }
-                    .padding(.leading, 40)
-                }
-            }
-
-            Divider()
-
-            // 食事カロリー目標（1日合計）
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.mealEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.mealEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("🍱")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("食事カロリー目標")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("1日の合計摂取カロリー目標")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoOrange)
-
-            if timeSlotManager.settings.globalGoals.mealEnabled {
-                HStack {
-                    Text("1日の目標:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.dailyMealKcal) kcal",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.dailyMealKcal },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.dailyMealKcal = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 500...4000,
-                           step: 100)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                let totalMealLogged = TimeSlot.allCases.reduce(0) { sum, s in
-                    sum + (timeSlotManager.progress.progressFor(s)?.logProgress.mealLogged ?? 0)
-                }
-                let mealGoal = timeSlotManager.settings.globalGoals.dailyMealKcal
-                if totalMealLogged > 0 {
-                    HStack(spacing: 8) {
-                        Text("今日:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(totalMealLogged) / \(mealGoal) kcal")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(totalMealLogged >= mealGoal ? Color.duoGreen : Color.duoDark)
-                        if totalMealLogged >= mealGoal {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color.duoGreen)
-                                .font(.caption)
-                        }
-                    }
-                    .padding(.leading, 40)
-                }
-            }
-
-            Divider()
-
-            // 水分目標（1日合計）
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.drinkEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.drinkEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("💧")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("水分目標")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("1日の合計水分摂取量目標")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoBlue)
-
-            if timeSlotManager.settings.globalGoals.drinkEnabled {
-                HStack {
-                    Text("1日の目標:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    Stepper("\(timeSlotManager.settings.globalGoals.dailyDrinkMl) ml",
-                           value: Binding(
-                               get: { timeSlotManager.settings.globalGoals.dailyDrinkMl },
-                               set: { newValue in
-                                   timeSlotManager.settings.globalGoals.dailyDrinkMl = newValue
-                                   Task { await timeSlotManager.saveTodaySettings() }
-                               }
-                           ),
-                           in: 500...5000,
-                           step: 100)
-                    .font(.subheadline).fontWeight(.bold)
-                }
-                .padding(.leading, 40)
-
-                let totalDrinkLogged = TimeSlot.allCases.reduce(0) { sum, s in
-                    sum + (timeSlotManager.progress.progressFor(s)?.logProgress.drinkLogged ?? 0)
-                }
-                let drinkGoal = timeSlotManager.settings.globalGoals.dailyDrinkMl
-                if totalDrinkLogged > 0 {
-                    HStack(spacing: 8) {
-                        Text("今日:")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                        Text("\(totalDrinkLogged) / \(drinkGoal) ml")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(totalDrinkLogged >= drinkGoal ? Color.duoGreen : Color.duoDark)
-                        if totalDrinkLogged >= drinkGoal {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(Color.duoGreen)
-                                .font(.caption)
-                        }
-                    }
-                    .padding(.leading, 40)
-                }
-            }
-
-            Divider()
-
-            // 体重計測目標
-            Toggle(isOn: Binding(
-                get: { timeSlotManager.settings.globalGoals.weightEnabled },
-                set: { newValue in
-                    timeSlotManager.settings.globalGoals.weightEnabled = newValue
-                    Task { await timeSlotManager.saveTodaySettings() }
-                }
-            )) {
-                HStack(spacing: 8) {
-                    Text("⚖️")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("体重の計測")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("毎日1回体重を記録（Apple Health連携）")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                }
-            }
-            .tint(Color.duoGreen)
-
-            if timeSlotManager.settings.globalGoals.weightEnabled {
-                HStack(spacing: 8) {
-                    Text("今日:")
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                    if timeSlotManager.progress.globalProgress.weightMeasured {
-                        Text("計測済み ✅")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(Color.duoGreen)
-                    } else {
-                        Text("未計測")
-                            .font(.subheadline).fontWeight(.bold)
-                            .foregroundColor(Color.duoDark)
-                    }
-                }
-                .padding(.leading, 40)
-            }
-
-            Divider()
-
-            // カスタム目標セクション
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("🎨")
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("カスタム目標")
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(Color.duoDark)
-                        Text("自由に目標を追加できます")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                    Button {
-                        showAddCustomGoal = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                            .foregroundColor(Color.duoGreen)
-                    }
-                }
-
-                // 既存カスタム目標リスト
-                ForEach(timeSlotManager.settings.globalGoals.customGoals) { goal in
-                    let isCompleted = timeSlotManager.progress.globalProgress.completedCustomGoalIds.contains(goal.id)
-                    HStack(spacing: 10) {
-                        // 完了トグルボタン
-                        Button {
-                            Task { await timeSlotManager.toggleCustomGoal(id: goal.id) }
-                        } label: {
-                            Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                                .font(.title3)
-                                .foregroundColor(isCompleted ? Color.duoGreen : Color(uiColor: .systemGray3))
-                        }
-                        .buttonStyle(.plain)
-
-                        Text(goal.emoji)
-                            .font(.title3)
-                        Text(goal.name)
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
-                            .strikethrough(isCompleted, color: Color.duoGreen.opacity(0.6))
-                        Spacer()
-                        // 削除ボタン
-                        Button {
-                            timeSlotManager.settings.globalGoals.customGoals.removeAll { $0.id == goal.id }
-                            Task { await timeSlotManager.saveTodaySettings() }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundColor(Color.duoRed.opacity(0.5))
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.leading, 4)
-                }
-
-                // プリセット提案（目標が0件のとき）
-                if timeSlotManager.settings.globalGoals.customGoals.isEmpty {
-                    Text("例: 読書📚・Duolingo🦉・禁酒🚫など")
-                        .font(.caption2)
-                        .foregroundColor(Color.duoSubtitle)
-                        .padding(.leading, 8)
-                }
-            }
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        .sheet(isPresented: $showAddCustomGoal) {
-            addCustomGoalSheet
-        }
-    }
-
-    // MARK: - カスタム目標追加シート
-
-    private var addCustomGoalSheet: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("絵文字")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoSubtitle)
-                    TextField("絵文字を入力（例: 📚）", text: $newGoalEmoji)
-                        .font(.system(size: 36))
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("目標名")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoSubtitle)
-                    TextField("例: 読書、Duolingo、禁酒…", text: $newGoalName)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                }
-
-                // プリセット選択
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("プリセットから選ぶ")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoSubtitle)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        ForEach(CustomDailyGoal.presets) { preset in
-                            Button {
-                                newGoalEmoji = preset.emoji
-                                newGoalName = preset.name
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Text(preset.emoji).font(.title2)
-                                    Text(preset.name).font(.caption2).fontWeight(.bold)
-                                        .foregroundColor(Color.duoDark)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(
-                                    newGoalName == preset.name
-                                    ? Color.duoGreen.opacity(0.15)
-                                    : Color(.systemGray6)
-                                )
-                                .cornerRadius(10)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                Spacer()
-            }
-            .padding(20)
-            .navigationTitle("カスタム目標を追加")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("キャンセル") {
-                        newGoalName = ""
-                        newGoalEmoji = "⭐"
-                        showAddCustomGoal = false
-                    }
-                    .foregroundColor(Color.duoSubtitle)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("追加") {
-                        guard !newGoalName.isEmpty else { return }
-                        let newGoal = CustomDailyGoal(
-                            name: newGoalName,
-                            emoji: newGoalEmoji.isEmpty ? "⭐" : String(newGoalEmoji.prefix(2))
-                        )
-                        timeSlotManager.settings.globalGoals.customGoals.append(newGoal)
-                        Task { await timeSlotManager.saveTodaySettings() }
-                        newGoalName = ""
-                        newGoalEmoji = "⭐"
-                        showAddCustomGoal = false
-                    }
-                    .foregroundColor(Color.duoGreen)
-                    .fontWeight(.bold)
-                    .disabled(newGoalName.isEmpty)
-                }
-            }
         }
     }
 
@@ -959,7 +404,7 @@ extension TimeSlot {
 // MARK: - Mandala Node Type
 
 enum MandalaNodeType {
-    case training, mindfulness, stretch, meal, drink, sleep, pfc, custom
+    case training, mindfulness, stretch, meal, drink, sleep, pfc, custom, weight, activity
 }
 
 // MARK: - Mandala Node Data
@@ -978,6 +423,7 @@ struct MandalaNodeData: Identifiable {
 struct MandalaChartView: View {
     let settings: DailyTimeSlotSettings
     let progress: DailyTimeSlotProgress
+    var activityRingsDone: Bool = false
     let onTapNode: (MandalaNodeData) -> Void
 
     @State private var appeared = false
@@ -985,9 +431,9 @@ struct MandalaChartView: View {
 
     private let minRadius: Double = 42
 
-    var nodes: [MandalaNodeData] { Self.buildNodes(settings: settings, progress: progress) }
+    var nodes: [MandalaNodeData] { Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone) }
 
-    static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress) -> [MandalaNodeData] {
+    static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress, activityRingsDone: Bool = false) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
         // 1日合計を事前集計して、1日目標達成済みかチェック
@@ -1011,13 +457,6 @@ struct MandalaChartView: View {
             totalMealGoal += goal.logGoal.mealGoal
             totalDrinkLogged += prog.logProgress.drinkLogged
             totalDrinkGoal += goal.logGoal.drinkGoal
-        }
-        // グローバル設定が有効な場合はそちらの目標値を優先
-        if settings.globalGoals.mealEnabled && settings.globalGoals.dailyMealKcal > 0 {
-            totalMealGoal = settings.globalGoals.dailyMealKcal
-        }
-        if settings.globalGoals.drinkEnabled && settings.globalGoals.dailyDrinkMl > 0 {
-            totalDrinkGoal = settings.globalGoals.dailyDrinkMl
         }
         let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingCompleted >= totalTrainingGoal
         let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulnessCompleted >= totalMindfulnessGoal
@@ -1105,38 +544,30 @@ struct MandalaChartView: View {
             }
         }
 
-        // 1日全体のカスタム目標
-        for goal in settings.globalGoals.customGoals.filter({ $0.isEnabled }) {
-            result.append(MandalaNodeData(
-                id: "global-\(goal.id)",
-                emoji: goal.emoji,
-                label: goal.name,
-                isCompleted: progress.globalProgress.completedCustomGoalIds.contains(goal.id),
-                slot: nil,
-                type: .custom
-            ))
-        }
-        if settings.globalGoals.sleepEnabled {
-            let g = settings.globalGoals
+        // 睡眠ノード（毎日の設定を参照）
+        if let fixedData = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: fixedData) {
             let p = progress.globalProgress
-            result.append(MandalaNodeData(
-                id: "global-sleep",
-                emoji: "😴",
-                label: "睡眠",
-                isCompleted: p.sleepHours >= Double(g.sleepHoursGoal) && p.sleepScore >= g.sleepScoreThreshold,
-                slot: nil,
-                type: .sleep
-            ))
-        }
-        if settings.globalGoals.pfcEnabled {
-            result.append(MandalaNodeData(
-                id: "global-pfc",
-                emoji: "🥗",
-                label: "PFC",
-                isCompleted: progress.globalProgress.pfcScore >= settings.globalGoals.pfcScoreThreshold,
-                slot: nil,
-                type: .pfc
-            ))
+            if fixed.sleepEnabled {
+                result.append(MandalaNodeData(
+                    id: "global-sleep",
+                    emoji: "😴",
+                    label: "睡眠",
+                    isCompleted: p.sleepHours >= Double(fixed.sleepHoursGoal),
+                    slot: nil,
+                    type: .sleep
+                ))
+            }
+            if fixed.weightEnabled {
+                result.append(MandalaNodeData(
+                    id: "global-weight",
+                    emoji: "⚖️",
+                    label: "体重計測",
+                    isCompleted: p.weightMeasured,
+                    slot: nil,
+                    type: .weight
+                ))
+            }
         }
 
         // 今日の曜日別カスタム目標
@@ -1148,6 +579,16 @@ struct MandalaChartView: View {
            let wdGoals = try? JSONDecoder().decode([WeekdayGoal].self, from: data),
            let wg = wdGoals.first(where: { $0.weekday == weekdayNum && $0.hasAnyGoal }) {
             let gp = progress.globalProgress
+            if wg.exerciseEnabled {
+                result.append(MandalaNodeData(
+                    id: "wd-activity",
+                    emoji: "🏃",
+                    label: "アクティビティ",
+                    isCompleted: activityRingsDone,
+                    slot: nil,
+                    type: .activity
+                ))
+            }
             if wg.studyEnabled {
                 result.append(MandalaNodeData(
                     id: "wd-study",

@@ -19,8 +19,6 @@ struct MindView: View {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        mindSummaryRow
-                        headerSection
                         currentStressCard
                         averageStressCard
                         sleepScoreCard
@@ -33,6 +31,7 @@ struct MindView: View {
                 }
             }
             .navigationBarHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) { mindHeader }
             .sheet(isPresented: $showHRVHelp) {
                 HRVStressHelpView()
             }
@@ -93,6 +92,84 @@ struct MindView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Header
+
+    private var mindHeader: some View {
+        let totalMindfulness = healthKit.todayMindfulnessSessions
+        let totalMindfulnessGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
+        }
+        let totalStretch = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0)
+        }
+        let totalStretchGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            guard let g = timeSlotManager.settings.goalFor(slot), g.stretchGoal.enabled else { return sum }
+            return sum + g.stretchGoal.stretchMinutes
+        }
+        let mindGoalDone = totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal
+        let stretchGoalDone = totalStretchGoal > 0 && totalStretch >= totalStretchGoal
+        return ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#6D5DF6"), Color(hex: "#1CB0F6")],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            HStack(spacing: 0) {
+                Text("MIND")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundColor(Color(hex: "#6D5DF6"))
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.white.opacity(0.9))
+                    .cornerRadius(4)
+                    .fixedSize()
+                if dailyFixedGoals.sleepEnabled {
+                    Spacer(minLength: 6)
+                    SleepMiniRingView(
+                        hours: healthKit.lastNightTotalHours,
+                        goal: Double(dailyFixedGoals.sleepHoursGoal),
+                        diameter: 22,
+                        lineWidth: 4,
+                        ringColor: .white
+                    )
+                    .fixedSize()
+                }
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("🧘").font(.system(size: 11))
+                    Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(mindGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("🤸").font(.system(size: 11))
+                    Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(stretchGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                Spacer(minLength: 6)
+                HStack(spacing: 2) {
+                    Text("☀️").font(.system(size: 11))
+                    Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                Spacer(minLength: 8)
+                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+        }
+        .frame(height: 46)
+        .ignoresSafeArea(edges: .top)
     }
 
     private var headerSection: some View {
@@ -517,7 +594,7 @@ struct MindView: View {
 
     private var sleepScoreCard: some View {
         let analysis = healthKit.analyzeSleepScore(
-            targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal)
+            targetHours: Double(dailyFixedGoals.sleepHoursGoal)
         )
 
         return Button {

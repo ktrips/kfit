@@ -141,6 +141,7 @@ struct DashboardView: View {
     @State private var pendingWidgetReload: DispatchWorkItem?
     @State private var pendingWidgetDataUpdate: DispatchWorkItem?
     @State private var showMandalaDetail = false
+    @State private var selectedMandalaNode: MandalaNodeData? = nil
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -260,6 +261,18 @@ struct DashboardView: View {
         .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
         .sheet(isPresented: $showIntakeGoalEdit) {
             IntakeSettingsView().environmentObject(authManager)
+        }
+        .sheet(item: $selectedMandalaNode) { node in
+            GoalCompletionSheet(
+                emoji: node.emoji,
+                name: node.label,
+                isDone: node.isCompleted
+            ) {
+                selectedMandalaNode = nil
+                Task { await handleMandalaComplete(node) }
+            }
+            .presentationDetents([.height(290)])
+            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
         .fullScreenCover(isPresented: $showMindfulnessSession) {
@@ -2426,6 +2439,8 @@ struct DashboardView: View {
             MandalaChartView(
                 settings: timeSlotManager.settings,
                 progress: timeSlotManager.progress,
+                activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
+                    healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
                 onTapNode: { node in
                     switch node.type {
                     case .training:
@@ -2434,24 +2449,12 @@ struct DashboardView: View {
                         showMindfulnessSession = true
                     case .stretch:
                         showStretchSession = true
-                    case .drink:
-                        confirmIntake(message: "水 200ml を記録しますか？") {
-                            Task {
-                                await authManager.recordWater()
-                                await updateTimeSlotForDrink(timestamp: Date(), ml: 200)
-                                await refreshIntakeData()
-                            }
-                        }
-                    case .meal:
-                        confirmIntake(message: "朝食 400kcal を記録しますか？") {
-                            Task {
-                                await authManager.recordMeal(mealType: .breakfast)
-                                await updateTimeSlotForMeal(timestamp: Date(), calories: 400)
-                                await refreshIntakeData()
-                            }
-                        }
-                    default:
+                    case .sleep, .weight, .activity:
+                        break
+                    case .pfc:
                         showMandalaDetail = true
+                    case .meal, .drink, .custom:
+                        selectedMandalaNode = node
                     }
                 }
             )
@@ -2621,12 +2624,12 @@ struct DashboardView: View {
 
     // MARK: - ヘルスメトリクスグリッド（型境界を分離してスタックオーバーフロー防止）
     private var conditionalSleepCard: AnyView {
-        timeSlotManager.settings.globalGoals.sleepEnabled
+        dailyFixedGoals.sleepEnabled
             ? AnyView(integratedSleepCard) : AnyView(EmptyView())
     }
 
     private var conditionalActivityCard: AnyView {
-        timeSlotManager.settings.globalGoals.activityEnabled
+        todayWeekdayGoal?.exerciseEnabled == true
             ? AnyView(activityRingsCard) : AnyView(EmptyView())
     }
 
@@ -2635,8 +2638,7 @@ struct DashboardView: View {
     }
 
     private var conditionalHeartRateCard: AnyView {
-        timeSlotManager.settings.globalGoals.mindfulnessEnabled
-            ? AnyView(heartRateWithHRVItem) : AnyView(EmptyView())
+        AnyView(heartRateWithHRVItem)
     }
 
     @ViewBuilder
@@ -5685,7 +5687,7 @@ struct DashboardView: View {
             if healthKit.isAuthorized {
                 pfcAnalysis = healthKit.analyzePFCBalance()
                 sleepScore  = healthKit.analyzeSleepScore(
-                    targetHours: Double(timeSlotManager.settings.globalGoals.sleepHoursGoal)
+                    targetHours: Double(dailyFixedGoals.sleepHoursGoal)
                 )
             }
 
@@ -5722,6 +5724,40 @@ struct DashboardView: View {
         else { timeSlot = .evening }
 
         await timeSlotManager.recordMealLog(at: timeSlot, calories: calories)
+    }
+
+    /// Mandalaノードの完了処理（ノードIDに基づいてルーティング）
+    private func handleMandalaComplete(_ node: MandalaNodeData) async {
+        let weekdayNum: Int = {
+            let wd = Calendar.current.component(.weekday, from: Date())
+            return wd == 1 ? 7 : wd - 1
+        }()
+        let id = node.id
+        if id == "wd-study" {
+            await timeSlotManager.toggleCustomGoal(id: "wd_study_\(weekdayNum)")
+        } else if id == "wd-noalcohol" {
+            await timeSlotManager.toggleCustomGoal(id: "wd_noalcohol_\(weekdayNum)")
+        } else if id.hasPrefix("wd-") {
+            let uuid = String(id.dropFirst(3))
+            await timeSlotManager.toggleCustomGoal(id: "wd_\(uuid)")
+        } else if id.hasPrefix("daily-") {
+            let uuid = String(id.dropFirst(6))
+            await timeSlotManager.toggleCustomGoal(id: "daily_custom_\(uuid)")
+        } else if id.hasSuffix("-meal") {
+            await authManager.recordMeal(mealType: .breakfast)
+            await updateTimeSlotForMeal(timestamp: Date(), calories: 400)
+            await refreshIntakeData()
+        } else if id.hasSuffix("-drink") {
+            await authManager.recordWater()
+            await updateTimeSlotForDrink(timestamp: Date(), ml: 200)
+            await refreshIntakeData()
+        } else if let slot = node.slot {
+            let slotPrefix = "\(slot.rawValue)-"
+            if id.hasPrefix(slotPrefix) {
+                let activityId = String(id.dropFirst(slotPrefix.count))
+                await timeSlotManager.toggleCustomActivity(id: activityId, at: slot)
+            }
+        }
     }
 
     /// 飲み物記録時に時間帯の進捗を更新（mlを加算）

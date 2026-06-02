@@ -1144,7 +1144,9 @@ struct WatchDashboardView: View {
                 // 渦巻きガイドライン（Canvas でZStack中心を基準に描画）
                 Canvas { ctx, size in
                     let cx = size.width / 2, cy = size.height / 2
-                    var path = Path()
+
+                    // 背景スパイラルレール（淡い溝）
+                    var rail = Path()
                     let steps = 120
                     let rStart: Double = 12
                     let rEnd = spiralScale.endRadius + 3
@@ -1155,10 +1157,30 @@ struct WatchDashboardView: View {
                         let r = rStart + (rEnd - rStart) * t
                         let θ = θ0 + totalAngle * t
                         let pt = CGPoint(x: cx + r * cos(θ), y: cy + r * sin(θ))
-                        if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                        if i == 0 { rail.move(to: pt) } else { rail.addLine(to: pt) }
                     }
-                    ctx.stroke(path, with: .color(.white.opacity(0.12)),
-                               style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [3, 5]))
+                    ctx.stroke(rail, with: .color(.white.opacity(0.10)),
+                               style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2, 4]))
+
+                    // ノード間カラーアーク（iOS Mandalaスタイル）
+                    for i in 0..<(positions.count - 1) {
+                        let (node, deg0, r0) = positions[i]
+                        let (_, deg1, r1) = positions[i + 1]
+                        let a0 = deg0 * .pi / 180.0
+                        let a1 = deg1 * .pi / 180.0
+                        var arcPath = Path()
+                        let arcSteps = 16
+                        for step in 0...arcSteps {
+                            let t = Double(step) / Double(arcSteps)
+                            let a = a0 + (a1 - a0) * t
+                            let r = r0 + (r1 - r0) * t
+                            let pt = CGPoint(x: cx + r * cos(a), y: cy + r * sin(a))
+                            if step == 0 { arcPath.move(to: pt) } else { arcPath.addLine(to: pt) }
+                        }
+                        let opacity = node.isDone ? 0.65 : 0.20
+                        ctx.stroke(arcPath, with: .color(node.accentColor.opacity(opacity)),
+                                   style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    }
                 }
 
                 // タスクノード（内側=朝、外側=夜の渦巻き配置）
@@ -1169,22 +1191,45 @@ struct WatchDashboardView: View {
                         .offset(x: r * CGFloat(cos(rad)), y: r * CGFloat(sin(rad)))
                 }
 
-                // 中央: マスコット（タップでトレーニング開始）
-                Button { showFlow = true } label: {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(
-                                colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 42, height: 42)
-                        Image("mascot")
-                            .resizable().scaledToFill()
-                            .frame(width: 30, height: 30)
-                            .clipShape(Circle())
+                // 中央: 進捗リング + マスコット（タップでトレーニング開始）
+                ZStack {
+                    // 進捗トラック（背景リング）
+                    Circle()
+                        .stroke(Color.white.opacity(0.15), lineWidth: 4)
+                        .frame(width: 54, height: 54)
+                    // 進捗リング（緑）
+                    Circle()
+                        .trim(from: 0, to: CGFloat(doneCount) / CGFloat(max(totalCount, 1)))
+                        .stroke(duoGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 54, height: 54)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeOut(duration: 0.6), value: doneCount)
+                    // マスコットボタン
+                    Button { showFlow = true } label: {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(
+                                    colors: [duoGreen, Color(red: 0.2, green: 0.65, blue: 0.0)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 40, height: 40)
+                            Image("mascot")
+                                .resizable().scaledToFill()
+                                .frame(width: 28, height: 28)
+                                .clipShape(Circle())
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .handGestureShortcut(.primaryAction)
                 }
-                .buttonStyle(.plain)
-                .handGestureShortcut(.primaryAction)
+                .overlay(alignment: .bottom) {
+                    Text(totalCount > 0 ? "\(Int(Double(doneCount) / Double(totalCount) * 100))%" : "--")
+                        .font(.system(size: 8, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.black.opacity(0.48))
+                        .cornerRadius(4)
+                        .offset(y: 11)
+                }
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 18)
@@ -1455,17 +1500,17 @@ struct WatchDashboardView: View {
                 if node.isDone {
                     ZStack {
                         Circle().fill(node.accentColor)
-                            .frame(width: 34, height: 34)
-                        Text(node.emoji).font(.system(size: 23))
+                            .frame(width: 28, height: 28)
+                        Text(node.emoji).font(.system(size: 17))
                     }
                 } else {
                     ZStack {
-                        Circle().fill(Color.black.opacity(0.35))
-                            .frame(width: 34, height: 34)
-                        Circle().stroke(node.accentColor.opacity(0.7), lineWidth: 1.5)
-                            .frame(width: 34, height: 34)
-                        Text(node.emoji).font(.system(size: 23))
-                            .opacity(0.6)
+                        Circle().fill(Color.black.opacity(0.40))
+                            .frame(width: 28, height: 28)
+                        Circle().stroke(node.accentColor.opacity(0.72), lineWidth: 1.5)
+                            .frame(width: 28, height: 28)
+                        Text(node.emoji).font(.system(size: 17))
+                            .opacity(0.65)
                     }
                 }
             }

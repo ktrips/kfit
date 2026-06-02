@@ -142,6 +142,8 @@ struct DashboardView: View {
     @State private var pendingWidgetDataUpdate: DispatchWorkItem?
     @State private var showMandalaDetail = false
     @State private var selectedMandalaNode: MandalaNodeData? = nil
+    @State private var showEduPhotoLog = false
+    @State private var eduPhotoLogNode: MandalaNodeData? = nil
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -266,15 +268,48 @@ struct DashboardView: View {
             GoalCompletionSheet(
                 emoji: node.emoji,
                 name: node.label,
-                isDone: node.isCompleted
-            ) {
-                selectedMandalaNode = nil
-                Task { await handleMandalaComplete(node) }
-            }
+                isDone: node.isCompleted,
+                onComplete: {
+                    selectedMandalaNode = nil
+                    Task { await handleMandalaComplete(node) }
+                },
+                onPhotoTap: node.type == .meal ? {
+                    selectedMandalaNode = nil
+                    showPhotoLog = true
+                } : node.type == .custom ? {
+                    eduPhotoLogNode = node
+                    selectedMandalaNode = nil
+                    showEduPhotoLog = true
+                } : nil
+            )
             .presentationDetents([.height(290)])
             .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
+        .sheet(isPresented: $showEduPhotoLog) {
+            if let node = eduPhotoLogNode {
+                EduPhotoLogSheet(
+                    nodeEmoji: node.emoji,
+                    nodeName: node.label,
+                    onComplete: { saveToFeed, image, comment in
+                        showEduPhotoLog = false
+                        Task {
+                            await handleMandalaComplete(node)
+                            if saveToFeed {
+                                EduLogManager.shared.addItem(
+                                    activityName: node.label,
+                                    activityEmoji: node.emoji,
+                                    comment: comment,
+                                    image: image
+                                )
+                            }
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
         .fullScreenCover(isPresented: $showMindfulnessSession) {
             MindfulnessSessionView(
                 durationSeconds: 60,
@@ -1069,79 +1104,47 @@ struct DashboardView: View {
         // 現在時刻から表示すべき時間帯を決定
         let currentHour = Calendar.current.component(.hour, from: Date())
         let visibleSlots: [TimeSlot]
-        let totalSlotsToShow: Int
 
         let nonMidnightSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
         if currentHour < 6 {
-            // 6時前は全時間帯表示（前日扱い）
             visibleSlots = nonMidnightSlots
-            totalSlotsToShow = 4
         } else if currentHour < 10 {
-            // 朝（6-10時）：朝のみ
             visibleSlots = [.morning]
-            totalSlotsToShow = 1
         } else if currentHour < 14 {
-            // 昼（10-14時）：朝、昼
             visibleSlots = [.morning, .noon]
-            totalSlotsToShow = 2
         } else if currentHour < 18 {
-            // 午後（14-18時）：朝、昼、午後
             visibleSlots = [.morning, .noon, .afternoon]
-            totalSlotsToShow = 3
         } else {
-            // 夜（18時以降）：全時間帯（夜中除く）
             visibleSlots = nonMidnightSlots
-            totalSlotsToShow = 4
         }
-
-        // 表示する時間帯の達成状況を計算
-        let totalCompletedSlots = visibleSlots.filter { slot in
-            if let goal = timeSlotManager.settings.goalFor(slot),
-               let progress = timeSlotManager.progress.progressFor(slot) {
-                // トレーニングは実際のセット数でチェック
-                let setsCompleted = countSetsInTimeSlot(slot)
-                let trainingGoalMet = goal.trainingGoal == 0 || setsCompleted >= goal.trainingGoal
-                let mindfulnessGoalMet = goal.mindfulnessGoal == 0 || progress.mindfulnessCompleted >= goal.mindfulnessGoal
-                let mealGoalMet = goal.logGoal.mealGoal == 0 || progress.logProgress.mealLogged >= goal.logGoal.mealGoal
-                let drinkGoalMet = goal.logGoal.drinkGoal == 0 || progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal
-                let mindInputGoalMet = !goal.logGoal.mindInputRequired || progress.logProgress.mindInputLogged > 0
-                return trainingGoalMet && mindfulnessGoalMet && mealGoalMet && drinkGoalMet && mindInputGoalMet
-            }
-            return false
-        }.count
 
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             Divider()
                 .padding(.horizontal, 16)
 
             mandalaContent
-                .padding(14)
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
 
-            // メッセージ + 展開シェブロン（タップで展開）
+            // タスクメッセージ + 展開シェブロン（タップで展開）
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     showTodayRecords.toggle()
                 }
             } label: {
-                let remaining = totalSlotsToShow - totalCompletedSlots
-                let msg: String = totalCompletedSlots == totalSlotsToShow
-                    ? (totalSlotsToShow == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
-                    : totalCompletedSlots == 0
-                    ? "まず1つ目の時間帯を達成しよう！"
-                    : "あと\(remaining)つの時間帯で本日完全達成！"
-                let msgGreen = totalCompletedSlots == totalSlotsToShow
                 HStack(spacing: 4) {
-                    Text(msg)
-                        .font(.system(size: 11))
-                        .fontWeight(msgGreen ? .bold : .regular)
-                        .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
-                    Spacer()
+                    Text(mandalaContextMessage)
+                        .font(.caption2)
+                        .foregroundColor(Color.duoSubtitle)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                     Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
 
@@ -1775,7 +1778,7 @@ struct DashboardView: View {
                         .foregroundColor(Color.duoOrange.opacity(0.6))
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 18)
+                .padding(.vertical, 10)
                 .background(
                     LinearGradient(
                         colors: [Color.duoOrange.opacity(0.10), Color(red: 1.0, green: 0.55, blue: 0.1).opacity(0.06)],
@@ -2383,6 +2386,79 @@ struct DashboardView: View {
         return fmt.string(from: Date())
     }
 
+    @ViewBuilder
+    private func mandalaLegendCell(label: String, color: Color, done: Int, total: Int) -> some View {
+        let achieved = total > 0 && done == total
+        HStack(spacing: 2) {
+            Circle().fill(color).frame(width: 5, height: 5)
+            Text(total > 0 ? "\(label)(\(done)/\(total))" : label)
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .foregroundColor(achieved ? color : Color.duoSubtitle)
+        }
+        .padding(.horizontal, 3).padding(.vertical, 1)
+        .background(achieved ? color.opacity(0.12) : Color.clear)
+        .cornerRadius(3)
+    }
+
+    private var mandalaLegendRow: some View {
+        let nodes = MandalaChartView.buildNodes(
+            settings: timeSlotManager.settings,
+            progress: timeSlotManager.progress,
+            activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
+                healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
+        )
+        let hour = Calendar.current.component(.hour, from: Date())
+        let visibleSlots: [TimeSlot] = {
+            if hour < 10 { return [.morning] }
+            else if hour < 14 { return [.morning, .noon] }
+            else if hour < 18 { return [.morning, .noon, .afternoon] }
+            else { return [.morning, .noon, .afternoon, .evening] }
+        }()
+        let todayNodes = nodes.filter { $0.slot == nil }
+        return HStack(spacing: 2) {
+            mandalaLegendCell(label: "今日", color: Color(hex: "CE82FF"),
+                              done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
+            ForEach(visibleSlots, id: \.self) { slot in
+                let sn = nodes.filter { $0.slot == slot }
+                self.mandalaLegendCell(label: slot.displayName, color: slot.mandalaColor,
+                                       done: sn.filter(\.isCompleted).count, total: sn.count)
+            }
+        }
+    }
+
+    private var mandalaContextMessage: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let currentSlot: TimeSlot? = {
+            if hour >= 5 && hour < 10 { return .morning }
+            else if hour >= 10 && hour < 14 { return .noon }
+            else if hour >= 14 && hour < 18 { return .afternoon }
+            else if hour >= 18 { return .evening }
+            return nil
+        }()
+        let actDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
+            healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
+        let nodes = MandalaChartView.buildNodes(
+            settings: timeSlotManager.settings,
+            progress: timeSlotManager.progress,
+            activityRingsDone: actDone
+        )
+        if let slot = currentSlot {
+            let slotNodes = nodes.filter { $0.slot == slot }
+            let incomplete = slotNodes.filter { !$0.isCompleted }
+            if let first = incomplete.first {
+                return "\(first.emoji) \(first.label)を記録しましょう"
+            } else if !slotNodes.isEmpty {
+                return "\(slot.displayName)のタスク完了！このまま継続"
+            }
+        }
+        let todayIncomplete = nodes.filter { $0.slot == nil && !$0.isCompleted }
+        if let first = todayIncomplete.first {
+            return "\(first.emoji) \(first.label)を記録しましょう"
+        }
+        return "今日のタスクはすべて完了！"
+    }
+
     private var mandalaOverallCount: (done: Int, total: Int) {
         let hour = Calendar.current.component(.hour, from: Date())
         let visibleSlots: Set<TimeSlot> = {
@@ -2401,40 +2477,55 @@ struct DashboardView: View {
 
     private var mandalaContent: some View {
         let nc = mandalaOverallCount
-        return VStack(alignment: .leading, spacing: 10) {
+        let streak = authManager.userProfile?.streak ?? 0
+        return VStack(alignment: .leading, spacing: 4) {
+            // ヘッダー（緑グラデーション背景・連続記録表示）
             HStack(spacing: 6) {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Text("🌀").font(.subheadline)
                     Text("Mandala").fontWeight(.black).font(.subheadline)
                 }
-                .foregroundColor(Color.duoOrange)
+                .foregroundColor(.white)
                 .fixedSize()
-                Spacer(minLength: 4)
-                Group {
-                    Text(mandalaDateLabel)
-                        .font(.caption2)
-                        .foregroundColor(Color.duoSubtitle)
-                    if nc.total > 0 {
-                        let pct = Double(nc.done) / Double(nc.total)
-                        let pctColor: Color = pct >= 0.8 ? Color.duoGreen : pct >= 0.5 ? Color.duoOrange : Color.red
-                        Text("\(Int(pct * 100))%（\(nc.done)/\(nc.total)）")
-                            .font(.caption).fontWeight(.black)
-                            .foregroundColor(pctColor)
-                    } else {
-                        Text("--")
-                            .font(.caption).fontWeight(.black)
-                            .foregroundColor(Color.duoDark)
-                    }
+
+                HStack(spacing: 2) {
+                    Text("🔥").font(.caption)
+                    Text("\(streak)日").font(.caption).fontWeight(.black)
                 }
-                .lineLimit(1)
+                .foregroundColor(.white)
                 .fixedSize()
-                Button { showMandalaDetail = true } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.subheadline)
-                        .foregroundColor(Color.duoOrange)
+
+                Spacer(minLength: 4)
+
+                Text(mandalaDateLabel)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .fixedSize()
+
+                if nc.total > 0 {
+                    let pct = Double(nc.done) / Double(nc.total)
+                    Text("\(Int(pct * 100))%（\(nc.done)/\(nc.total)）")
+                        .font(.caption).fontWeight(.black)
+                        .foregroundColor(pct >= 0.8 ? Color.duoYellow : .white)
+                        .lineLimit(1)
+                        .fixedSize()
+                } else {
+                    Text("--")
+                        .font(.caption).fontWeight(.black)
+                        .foregroundColor(.white.opacity(0.6))
                 }
             }
-            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.22)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .cornerRadius(10)
+            )
 
             MandalaChartView(
                 settings: timeSlotManager.settings,
@@ -2459,6 +2550,43 @@ struct DashboardView: View {
                 }
             )
             .frame(height: 340)
+            .padding(.top, 1)
+            .padding(.bottom, 1)
+            .overlay(alignment: .top) {
+                HStack(alignment: .center, spacing: 4) {
+                    mandalaLegendRow
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 5)
+                        .background(Color(.systemBackground).opacity(0.82))
+                        .cornerRadius(6)
+                        .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                    Spacer(minLength: 0)
+                    HStack(spacing: 6) {
+                        Button {
+                            Task { await loadData() }
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption)
+                                .foregroundColor(Color.duoBlue)
+                                .padding(7)
+                                .background(Color(.systemBackground).opacity(0.88))
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
+                        }
+                        Button { showMandalaDetail = true } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.caption)
+                                .foregroundColor(Color.duoOrange)
+                                .padding(7)
+                                .background(Color(.systemBackground).opacity(0.88))
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+                .padding(.horizontal, 6)
+            }
         }
     }
 
@@ -5744,8 +5872,17 @@ struct DashboardView: View {
             let uuid = String(id.dropFirst(6))
             await timeSlotManager.toggleCustomGoal(id: "daily_custom_\(uuid)")
         } else if id.hasSuffix("-meal") {
-            await authManager.recordMeal(mealType: .breakfast)
-            await updateTimeSlotForMeal(timestamp: Date(), calories: 400)
+            let mealType: MealType
+            let calories: Int
+            switch node.slot {
+            case .morning:   mealType = .breakfast; calories = 400
+            case .noon:      mealType = .lunch;     calories = 600
+            case .afternoon: mealType = .snack;     calories = 200
+            case .evening:   mealType = .dinner;    calories = 800
+            default:         mealType = .breakfast; calories = 400
+            }
+            await authManager.recordMeal(mealType: mealType)
+            await updateTimeSlotForMeal(timestamp: Date(), calories: calories)
             await refreshIntakeData()
         } else if id.hasSuffix("-drink") {
             await authManager.recordWater()
@@ -6113,7 +6250,7 @@ struct DashboardView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
             }
-            .frame(height: 226)
+            .frame(height: 140)
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }
@@ -7054,11 +7191,108 @@ private struct DailyGoalPickerButton: View {
     }
 }
 
+// MARK: - EDUフォトログシート
+
+private struct EduPhotoLogSheet: View {
+    let nodeEmoji: String
+    let nodeName: String
+    let onComplete: (Bool, UIImage?, String) -> Void
+
+    @State private var selectedImage: UIImage? = nil
+    @State private var pickerItem: PhotosPickerItem? = nil
+    @State private var comment: String = ""
+    @State private var saveToFeed: Bool = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 6) {
+                Text(nodeEmoji).font(.system(size: 44))
+                Text(nodeName).font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
+            }
+            .padding(.top, 20).padding(.bottom, 14)
+
+            Divider()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 14) {
+                    // 写真選択
+                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                        if let image = selectedImage {
+                            Image(uiImage: image)
+                                .resizable().scaledToFill()
+                                .frame(maxWidth: .infinity).frame(height: 160)
+                                .cornerRadius(12).clipped()
+                        } else {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.systemGray6))
+                                .frame(maxWidth: .infinity).frame(height: 90)
+                                .overlay {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: "camera.fill")
+                                            .font(.title2).foregroundColor(Color.duoBlue)
+                                        Text("写真を選択（任意）")
+                                            .font(.caption).foregroundColor(Color.duoBlue)
+                                    }
+                                }
+                        }
+                    }
+
+                    // コメント入力
+                    TextField("タイトル・メモ（本のタイトル・学んだこと等）", text: $comment, axis: .vertical)
+                        .font(.body)
+                        .padding(12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .lineLimit(3...5)
+
+                    // EDUフィード追加トグル
+                    Toggle(isOn: $saveToFeed) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "rectangle.stack.fill")
+                                .foregroundColor(Color.duoPurple)
+                            Text("EDUフィードに追加")
+                                .font(.subheadline).fontWeight(.semibold)
+                        }
+                    }
+                    .tint(Color.duoPurple)
+
+                    // 記録ボタン
+                    Button {
+                        onComplete(saveToFeed, selectedImage, comment)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill").font(.title3)
+                            Text("記録する").font(.headline).fontWeight(.black)
+                            Spacer()
+                        }
+                        .foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .background(Color.duoGreen.opacity(0.1))
+                        .cornerRadius(14)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20).padding(.vertical, 16)
+            }
+        }
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    selectedImage = image
+                }
+            }
+        }
+    }
+}
+
 private struct GoalCompletionSheet: View {
     let emoji: String
     let name: String
     let isDone: Bool
     let onComplete: () -> Void
+    var onPhotoTap: (() -> Void)? = nil
 
     @State private var pickerItem: PhotosPickerItem? = nil
 
@@ -7102,19 +7336,18 @@ private struct GoalCompletionSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                // 写真で記録
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "photo.fill")
-                            .font(.title3)
-                        Text("写真で記録する")
-                            .font(.headline).fontWeight(.black)
-                        Spacer()
+                // 写真で記録（フォトログ or ライブラリ選択）
+                if let onPhotoTap {
+                    Button {
+                        onPhotoTap()
+                    } label: {
+                        photoButtonLabel
                     }
-                    .foregroundColor(Color(hex: "#1CB0F6"))
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-                    .background(Color(hex: "#1CB0F6").opacity(0.1))
-                    .cornerRadius(14)
+                    .buttonStyle(.plain)
+                } else {
+                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                        photoButtonLabel
+                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -7127,6 +7360,20 @@ private struct GoalCompletionSheet: View {
             onComplete()
             pickerItem = nil
         }
+    }
+
+    private var photoButtonLabel: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "camera.fill")
+                .font(.title3)
+            Text("写真で記録する")
+                .font(.headline).fontWeight(.black)
+            Spacer()
+        }
+        .foregroundColor(Color(hex: "#1CB0F6"))
+        .padding(.horizontal, 20).padding(.vertical, 14)
+        .background(Color(hex: "#1CB0F6").opacity(0.1))
+        .cornerRadius(14)
     }
 }
 

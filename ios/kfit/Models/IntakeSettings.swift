@@ -259,3 +259,18 @@ struct AnalyzedNutrition: Codable {
     var alcohol: Double = 0.0  // アルコール量（g）
     var confidence: Double = 1.0  // 推定の確度（0.0-1.0）
 }
+
+/// EDUログ履歴アイテム（勉強・読書・Duolingo等）
+struct EduLogHistoryItem: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var timestamp: Date = Date()
+    var activityName: String = ""
+    var activityEmoji: String = ""
+    var comment: String = ""
+    var thumbnailData: Data?
+
+    var thumbnail: UIImage? {
+        guard let data = thumbnailData else { return nil }
+        return UIImage(data: data)
+    }
+}

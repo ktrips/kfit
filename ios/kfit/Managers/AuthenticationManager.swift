@@ -2674,3 +2674,61 @@ enum PhotoLogError: LocalizedError {
         }
     }
 }
+
+// MARK: - EduLogManager
+
+@MainActor
+class EduLogManager: ObservableObject {
+    static let shared = EduLogManager()
+
+    @Published var history: [EduLogHistoryItem] = []
+
+    private let historyKey = "eduLogHistory_v1"
+
+    private init() { loadHistory() }
+
+    func addItem(activityName: String, activityEmoji: String, comment: String, image: UIImage?) {
+        var item = EduLogHistoryItem(
+            activityName: activityName,
+            activityEmoji: activityEmoji,
+            comment: comment
+        )
+        if let image {
+            item.thumbnailData = makeThumbnail(from: image)
+        }
+        history.insert(item, at: 0)
+        persistHistory()
+    }
+
+    func deleteItem(id: String) {
+        history.removeAll { $0.id == id }
+        persistHistory()
+    }
+
+    private func loadHistory() {
+        guard let data = UserDefaults.standard.data(forKey: historyKey),
+              let items = try? JSONDecoder().decode([EduLogHistoryItem].self, from: data) else { return }
+        history = items
+    }
+
+    private func persistHistory() {
+        if let data = try? JSONEncoder().encode(history) {
+            UserDefaults.standard.set(data, forKey: historyKey)
+        }
+    }
+
+    private func makeThumbnail(from image: UIImage, maxDimension: CGFloat = 200) -> Data? {
+        let size = image.size
+        let maxSide = max(size.width, size.height)
+        let target: UIImage
+        if maxSide > maxDimension {
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            target = image
+        }
+        return target.jpegData(compressionQuality: 0.55)
+    }
+}

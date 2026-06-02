@@ -513,10 +513,19 @@ struct MandalaChartView: View {
                     case .evening:   return "🍛"
                     }
                 }()
+                let mealLabel: String = {
+                    switch slot {
+                    case .midnight:  return "夜食"
+                    case .morning:   return "朝食 400kcal"
+                    case .noon:      return "昼食 600kcal"
+                    case .afternoon: return "午後の食事 200kcal"
+                    case .evening:   return "夕食 800kcal"
+                    }
+                }()
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
                     emoji: mealEmoji,
-                    label: "食事",
+                    label: mealLabel,
                     isCompleted: dailyMealDone || prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     slot: slot,
                     type: .meal
@@ -526,7 +535,7 @@ struct MandalaChartView: View {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分",
+                    label: "水分 200ml",
                     isCompleted: dailyDrinkDone || prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
@@ -656,31 +665,10 @@ struct MandalaChartView: View {
 
     var body: some View {
         let nodes = self.nodes  // 1回だけ計算（UserDefaults読み込み含む）
-        let hour = Calendar.current.component(.hour, from: Date())
-        let visibleSlots: [TimeSlot] = {
-            if hour < 10 { return [.morning] }
-            else if hour < 14 { return [.morning, .noon] }
-            else if hour < 18 { return [.morning, .noon, .afternoon] }
-            else { return [.morning, .noon, .afternoon, .evening] }
-        }()
-        let todayNodes   = nodes.filter { $0.slot == nil }
         let allDone      = nodes.filter(\.isCompleted).count
         let allTotal     = nodes.count
 
-        return VStack(spacing: 2) {
-            // 時間帯凡例（今日 + 現在時刻までのスロット）
-            HStack(spacing: 2) {
-                legendCell(label: "今日", color: Color(hex: "CE82FF"),
-                           done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
-                ForEach(visibleSlots, id: \.self) { slot in
-                    let sn = nodes.filter { $0.slot == slot }
-                    legendCell(label: slot.displayName, color: slot.mandalaColor,
-                               done: sn.filter(\.isCompleted).count, total: sn.count)
-                }
-                Spacer(minLength: 0)
-            }
-
-            GeometryReader { geo in
+        return GeometryReader { geo in
                 let size = min(geo.size.width, geo.size.height)
                 let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
                 let canvasR = size / 2 - 14
@@ -763,7 +751,6 @@ struct MandalaChartView: View {
             withAnimation(.easeOut(duration: 0.5)) { appeared = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pulseCenter = true }
         }
-        }  // end VStack
     }
 
     // MARK: - Spiral helpers

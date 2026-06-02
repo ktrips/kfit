@@ -18,7 +18,9 @@ struct FoodView: View {
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
     @StateObject private var photoLogManager = PhotoLogManager.shared
+    @StateObject private var eduLogManager = EduLogManager.shared
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
+    @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var showFoodHistory = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
@@ -55,6 +57,11 @@ struct FoodView: View {
                         photoFeedSection
                     }
 
+                    // EDUフィード
+                    if !eduLogManager.history.isEmpty {
+                        eduFeedSection
+                    }
+
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -77,6 +84,9 @@ struct FoodView: View {
         }
         .sheet(item: $selectedFeedItem) { item in
             PhotoFeedDetailSheet(item: item)
+        }
+        .sheet(item: $selectedEduItem) { item in
+            EduFeedDetailSheet(item: item)
         }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("記録する", role: .none) {
@@ -879,6 +889,28 @@ struct FoodView: View {
         }
     }
 
+    // MARK: - EDUフィード
+
+    private var eduFeedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("📚").font(.system(size: 12))
+                Text("EDUフィード")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("\(eduLogManager.history.count)件")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            ForEach(eduLogManager.history.prefix(20)) { item in
+                EduFeedCard(item: item)
+                    .onTapGesture { selectedEduItem = item }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func confirm(_ message: String, action: @escaping () -> Void) {
@@ -1374,5 +1406,151 @@ struct PhotoFeedDetailSheet: View {
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "M月d日 HH:mm"
         return f.string(from: date)
+    }
+}
+
+// MARK: - EDU Feed Card
+
+private struct EduFeedCard: View {
+    let item: EduLogHistoryItem
+
+    private var dateLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d HH:mm"
+        return f.string(from: item.timestamp)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // サムネイル or 絵文字
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.duoPurple.opacity(0.12))
+                    .frame(width: 64, height: 64)
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable().scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .cornerRadius(10).clipped()
+                } else {
+                    Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                        .font(.system(size: 28))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.activityName)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundColor(Color.duoPurple)
+                    .lineLimit(1)
+                if !item.comment.isEmpty {
+                    Text(item.comment)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(2)
+                }
+                Text(dateLabel)
+                    .font(.system(size: 9))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .padding(10)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+    }
+}
+
+// MARK: - EDU Feed Detail Sheet
+
+struct EduFeedDetailSheet: View {
+    let item: EduLogHistoryItem
+    @StateObject private var eduLogManager = EduLogManager.shared
+    @Environment(\.dismiss) private var dismiss
+
+    private var dateLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 HH:mm"
+        return f.string(from: item.timestamp)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ハンドル
+            Capsule()
+                .fill(Color(.systemGray4))
+                .frame(width: 36, height: 4)
+                .padding(.top, 10)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    // サムネイル
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable().scaledToFill()
+                            .frame(maxWidth: .infinity).frame(height: 200)
+                            .cornerRadius(14).clipped()
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.duoPurple.opacity(0.10))
+                                .frame(maxWidth: .infinity).frame(height: 120)
+                            Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                                .font(.system(size: 52))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        // アクティビティ名
+                        HStack(spacing: 6) {
+                            Text(item.activityEmoji).font(.title2)
+                            Text(item.activityName)
+                                .font(.title3).fontWeight(.black)
+                                .foregroundColor(Color.duoDark)
+                        }
+
+                        // 日時
+                        Label(dateLabel, systemImage: "clock")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+
+                        // コメント
+                        if !item.comment.isEmpty {
+                            Divider()
+                            Text(item.comment)
+                                .font(.body)
+                                .foregroundColor(Color.duoDark)
+                        }
+
+                        Divider()
+
+                        // 削除ボタン
+                        Button(role: .destructive) {
+                            eduLogManager.deleteItem(id: item.id)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("削除する")
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(.systemBackground))
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
     }
 }

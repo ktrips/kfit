@@ -2,7 +2,9 @@ import SwiftUI
 
 struct TimeSlotGoalsView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
+    @StateObject private var notif = NotificationManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var streakPickerTime: Date = Date()
 
     var body: some View {
         ZStack {
@@ -28,6 +30,8 @@ struct TimeSlotGoalsView: View {
                             }
 
                             mandalaSection(scrollProxy: proxy)
+
+                            streakAlertSection
                         }
 
                         Spacer(minLength: 40)
@@ -52,6 +56,85 @@ struct TimeSlotGoalsView: View {
         .task {
             await timeSlotManager.loadTodaySettings()
             await timeSlotManager.loadTodayProgress()
+            let cfg = notif.prefs[NotificationManager.ID.streakAlert]
+            streakPickerTime = Calendar.current.date(
+                bySettingHour: cfg.hour, minute: cfg.minute, second: 0, of: Date()
+            ) ?? Date()
+        }
+    }
+
+    // MARK: - ストリーク・アラート
+
+    private var streakAlertSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "bell.fill")
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoGreen)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("ストリーク・アラート")
+                        .font(.subheadline).fontWeight(.black).foregroundColor(Color.duoDark)
+                    Text("連続記録が途絶える前に通知")
+                        .font(.caption2).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .padding(.bottom, 4)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Text("🚨").font(.title3).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ストリーク・アラート")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("その日の記録がない時に、連続記録が途絶えちゃうよ！とアラート")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { notif.prefs[NotificationManager.ID.streakAlert].enabled },
+                        set: { v in
+                            var cfg = notif.prefs[NotificationManager.ID.streakAlert]
+                            cfg.enabled = v
+                            notif.prefs[NotificationManager.ID.streakAlert] = cfg
+                            notif.savePrefs()
+                            notif.applyOne(id: NotificationManager.ID.streakAlert)
+                        }
+                    ))
+                    .tint(Color.duoGreen)
+                    .labelsHidden()
+                }
+                .padding(.horizontal, 14).padding(.vertical, 12)
+
+                if notif.prefs[NotificationManager.ID.streakAlert].enabled {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                        DatePicker("", selection: $streakPickerTime, displayedComponents: .hourAndMinute)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                            .tint(Color.duoGreen)
+                            .onChange(of: streakPickerTime) { _, newVal in
+                                let comps = Calendar.current.dateComponents([.hour, .minute], from: newVal)
+                                var cfg = notif.prefs[NotificationManager.ID.streakAlert]
+                                cfg.hour   = comps.hour   ?? cfg.hour
+                                cfg.minute = comps.minute ?? cfg.minute
+                                notif.prefs[NotificationManager.ID.streakAlert] = cfg
+                                notif.savePrefs()
+                                notif.applyOne(id: NotificationManager.ID.streakAlert)
+                            }
+                        Spacer()
+                        Text(String(format: "毎日 %02d:%02d",
+                                    notif.prefs[NotificationManager.ID.streakAlert].hour,
+                                    notif.prefs[NotificationManager.ID.streakAlert].minute))
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(.horizontal, 14).padding(.bottom, 12)
+                    .background(Color(hex: "#F0FFF0"))
+                }
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
     }
 

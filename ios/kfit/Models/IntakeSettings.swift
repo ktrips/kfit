@@ -29,7 +29,7 @@ struct IntakeSettings: Codable {
     var dinnerSodium: Double = 5.0
 
     // スナックのデフォルト栄養素
-    var snackCalories: Int = 100
+    var snackCalories: Int = 200
     var snackProtein: Double = 2.0   // たんぱく質（g）
     var snackFat: Double = 50.0      // 脂質（g）
     var snackCarbs: Double = 10.0    // 炭水化物（g）

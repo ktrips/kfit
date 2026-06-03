@@ -55,6 +55,19 @@ struct GoalView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 20)
                 }
+                .refreshable {
+                    loadTodayWeekdayGoal()
+                    await timeSlotManager.loadTodaySettings()
+                    await healthKit.fetchBodyMassHistory(days: 30)
+                    await healthKit.fetchBodyFatHistory(days: 30)
+                    await healthKit.fetchGoalHealth()
+                    await healthKit.fetchWeeklyBurnData()
+                    await healthKit.fetchWeeklyDietarySamples()
+                    todayExercises = await authManager.getTodayExercises()
+                    todayWorkoutSessions = await healthKit.fetchTodayWorkoutSessions()
+                    weeklySetCounts = await authManager.fetchWeeklySetCounts()
+                    weeklyIntakeData = await authManager.fetchWeeklyIntakeData()
+                }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
@@ -443,21 +456,6 @@ struct GoalView: View {
                 }
 
                 Spacer()
-
-                Button {
-                    refreshWatchData()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundColor(Color.duoBlue)
-                        .padding(8)
-                        .background(Color.duoBlue.opacity(0.1))
-                        .cornerRadius(9)
-                        .rotationEffect(.degrees(isRefreshingWatchData ? 360 : 0))
-                        .animation(isRefreshingWatchData ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isRefreshingWatchData)
-                }
-                .buttonStyle(.plain)
-                .disabled(isRefreshingWatchData)
 
                 Button {
                     showDietGoalSettings = true

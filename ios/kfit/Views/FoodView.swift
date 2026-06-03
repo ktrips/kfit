@@ -22,6 +22,7 @@ struct FoodView: View {
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
     @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var showFoodHistory = false
+    @State private var showIntakeSettings = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
     var body: some View {
@@ -67,6 +68,7 @@ struct FoodView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 20)
         }
+        .refreshable { await loadData() }
         .background(Color.duoBg.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
             foodHeader
@@ -81,6 +83,9 @@ struct FoodView: View {
         .sheet(isPresented: $showDetailLog) {
             DailyIntakeView()
                 .environmentObject(authManager)
+        }
+        .sheet(isPresented: $showIntakeSettings) {
+            IntakeSettingsView()
         }
         .sheet(item: $selectedFeedItem) { item in
             PhotoFeedDetailSheet(item: item)
@@ -429,8 +434,22 @@ struct FoodView: View {
                     pfcRow(color: Color.duoBlue,    label: "C", name: "炭水化物",   percent: analysis.carbsPercent,   grams: analysis.carbsGrams)
                 }
             }
-            Text("目安: P 15% / F 25% / C 60%")
-                .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+            HStack {
+                Text("目安: P 15% / F 25% / C 60%")
+                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Button {
+                    showIntakeSettings = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.duoOrange)
+                        .padding(6)
+                        .background(Color.duoOrange.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(12)
         .background(Color(.systemBackground))

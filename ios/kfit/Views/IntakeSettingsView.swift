@@ -3,6 +3,8 @@ import SwiftUI
 struct IntakeSettingsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) var dismiss
+    @StateObject private var dietGoalManager = DietGoalManager.shared
+    @StateObject private var timeSlotManager = TimeSlotManager.shared
 
     @State private var settings = IntakeSettings.defaultSettings
     @State private var isLoading = true
@@ -38,6 +40,18 @@ struct IntakeSettingsView: View {
                     }
 
                     HStack {
+                        Text("🌤️ 午後")
+                            .font(.subheadline).fontWeight(.bold)
+                        Spacer()
+                        TextField("", value: $settings.snackCalories, format: .number)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Text("kcal")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+
+                    HStack {
                         Text("🍽️ 夕食")
                             .font(.subheadline).fontWeight(.bold)
                         Spacer()
@@ -49,7 +63,7 @@ struct IntakeSettingsView: View {
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
                 } header: {
-                    Text("食事のデフォルトカロリー")
+                    Text("食事のデフォルトカロリー（時間帯別目標に使用）")
                 }
 
                 // 水分設定
@@ -104,7 +118,13 @@ struct IntakeSettingsView: View {
                         Text("🎯 カロリー目標")
                             .font(.subheadline).fontWeight(.bold)
                         Spacer()
-                        TextField("", value: $settings.dailyCalorieGoal, format: .number)
+                        TextField("", value: Binding(
+                            get: { dietGoalManager.settings.dailyIntakeGoal },
+                            set: { v in
+                                dietGoalManager.settings.dailyIntakeGoal = v
+                                settings.dailyCalorieGoal = v
+                            }
+                        ), format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
@@ -116,7 +136,13 @@ struct IntakeSettingsView: View {
                         Text("💧 水分目標")
                             .font(.subheadline).fontWeight(.bold)
                         Spacer()
-                        TextField("", value: $settings.dailyWaterGoal, format: .number)
+                        TextField("", value: Binding(
+                            get: { timeSlotManager.settings.globalGoals.dailyDrinkMl },
+                            set: { v in
+                                timeSlotManager.settings.globalGoals.dailyDrinkMl = v
+                                settings.dailyWaterGoal = v
+                            }
+                        ), format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
@@ -219,6 +245,18 @@ struct IntakeSettingsView: View {
                     Button {
                         Task {
                             isSaving = true
+                            // カロリー・水分目標を authoritative sources に反映
+                            dietGoalManager.settings.dailyIntakeGoal = settings.dailyCalorieGoal
+                            timeSlotManager.settings.globalGoals.dailyDrinkMl = settings.dailyWaterGoal
+                            // 食事配分を時間帯目標に反映
+                            TimeSlotManager.updateMealDistribution(
+                                breakfast: settings.breakfastCalories,
+                                lunch: settings.lunchCalories,
+                                snack: settings.snackCalories,
+                                dinner: settings.dinnerCalories
+                            )
+                            timeSlotManager.syncMealGoalFromDietGoal()
+                            timeSlotManager.applyGlobalMealDrinkToSlots()
                             await authManager.saveIntakeSettings(settings)
                             isSaving = false
                             dismiss()
@@ -236,6 +274,9 @@ struct IntakeSettingsView: View {
             }
             .task {
                 settings = await authManager.getIntakeSettings()
+                // authoritative sources の値で上書き（単一ソースに統一）
+                settings.dailyCalorieGoal = dietGoalManager.settings.dailyIntakeGoal
+                settings.dailyWaterGoal = timeSlotManager.settings.globalGoals.dailyDrinkMl
                 isLoading = false
             }
         }

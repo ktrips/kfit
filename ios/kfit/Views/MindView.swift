@@ -29,6 +29,10 @@ struct MindView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 24)
                 }
+                .refreshable {
+                    await healthKit.fetchMindHealth(force: true)
+                    await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
+                }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { mindHeader }
@@ -43,10 +47,6 @@ struct MindView: View {
                 } else {
                     await healthKit.fetchMindHealth()
                 }
-                await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
-            }
-            .refreshable {
-                await healthKit.fetchMindHealth(force: true)
                 await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
@@ -437,71 +437,37 @@ struct MindView: View {
         let japaneseLabel: String = isReflect ? "3分ストレッチ" : "1分瞑想"
         let xp = isReflect ? 30 : 10
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(session.sessionEmoji)
-                    .font(.system(size: 15))
-                    .frame(width: 26, height: 26)
-                    .background(typeColor.opacity(0.14))
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(japaneseLabel)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoDark)
-                    Text("\(timeFormatter.string(from: session.startDate)) 実施")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
+        return HStack(spacing: 6) {
+            Text(timeFormatter.string(from: session.startDate))
+                .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                .frame(width: 38, alignment: .leading)
+            Text(japaneseLabel)
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundColor(typeColor)
+            Spacer()
+            if session.averageHeartRate > 0 {
+                HStack(spacing: 2) {
+                    Text("❤️").font(.system(size: 10))
+                    Text("\(Int(session.averageHeartRate))")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "#FF4B4B"))
                 }
-
-                Spacer()
-
-                Text("+\(xp) XP")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .foregroundColor(Color(hex: "#FDCB6E"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color(hex: "#FDCB6E").opacity(0.15))
-                    .cornerRadius(8)
-
-                Text(formatMindfulMinutes(session.durationMinutes))
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundColor(typeColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(typeColor.opacity(0.12))
-                    .cornerRadius(10)
             }
-
-            if session.averageHeartRate > 0 || session.averageHRV > 0 {
-                HStack(spacing: 10) {
-                    if session.averageHeartRate > 0 {
-                        HStack(spacing: 3) {
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(hex: "#FF4B4B"))
-                            Text("\(Int(session.averageHeartRate)) bpm")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                        }
-                    }
-                    if session.averageHRV > 0 {
-                        HStack(spacing: 3) {
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(hex: "#1CB0F6"))
-                            Text("HRV \(Int(session.averageHRV)) ms")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                        }
-                    }
-                }
-                .padding(.leading, 34)
+            if session.averageHRV > 0 {
+                Text("HRV \(Int(session.averageHRV))")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color(hex: "#1CB0F6"))
             }
+            Text("+\(xp) XP")
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(Color.duoGold)
+            Text(formatMindfulMinutes(session.durationMinutes))
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundColor(typeColor)
         }
-        .padding(8)
-        .background(Color.duoBg)
-        .cornerRadius(10)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(typeColor.opacity(0.07))
+        .cornerRadius(8)
     }
 
     private func formatMindfulMinutes(_ minutes: Double) -> String {
@@ -990,22 +956,6 @@ struct MindView: View {
                 .font(.headline.weight(.black))
                 .foregroundColor(Color.duoDark)
             Spacer()
-            if showsRefresh {
-                Button {
-                    refreshMindHealthData()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundColor(Color.duoGreen)
-                        .frame(width: 28, height: 28)
-                        .background(Color.duoGreen.opacity(0.10))
-                        .clipShape(Circle())
-                        .rotationEffect(.degrees(isRefreshingHealthData ? 360 : 0))
-                        .animation(isRefreshingHealthData ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isRefreshingHealthData)
-                }
-                .buttonStyle(.plain)
-                .disabled(isRefreshingHealthData)
-            }
             Button {
                 showHRVHelp = true
             } label: {

@@ -54,6 +54,7 @@ struct SettingsView: View {
     @Binding var selectedTab: Int
     @StateObject private var notif = NotificationManager.shared
     @StateObject private var timeSlotManager = TimeSlotManager.shared
+    @StateObject private var dietGoalManager = DietGoalManager.shared
     @State private var watchAutoLaunch = iOSWatchBridge.isWatchAutoLaunchEnabled
     @State private var permStatus: UNAuthorizationStatus = .notDetermined
     @State private var showHabitStack = false
@@ -413,6 +414,18 @@ struct SettingsView: View {
                         .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
+            } else if tab == .food {
+                Button {
+                    showIntakeSettings = true
+                } label: {
+                    Text("食事設定")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundColor(Color.duoOrange)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.duoOrange.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
             } else {
                 Toggle("", isOn: tabVisibleBinding(tab))
                     .labelsHidden()
@@ -551,14 +564,61 @@ struct SettingsView: View {
             )) {
                 HStack(spacing: 8) {
                     Text("🍽️").font(.title3)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("食事の記録 2000kcal以上")
-                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Text("Apple Healthの摂取カロリーで自動判定")
-                            .font(.caption2).foregroundColor(Color.duoSubtitle)
-                    }
+                    Text("食事の記録")
+                        .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
                 }
             }.tint(Color.duoGreen)
+
+            if dailyFixedGoals.foodEnabled {
+                HStack(spacing: 8) {
+                    Text("摂取カロリー目標")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                    Spacer(minLength: 4)
+                    Stepper(
+                        value: Binding(
+                            get: { dietGoalManager.settings.dailyIntakeGoal },
+                            set: { v in
+                                dietGoalManager.settings.dailyIntakeGoal = v
+                                TimeSlotManager.shared.syncMealGoalFromDietGoal()
+                            }
+                        ),
+                        in: 800...5000, step: 50
+                    ) {
+                        Text("\(dietGoalManager.settings.dailyIntakeGoal) kcal")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color.duoOrange)
+                            .lineLimit(1)
+                            .frame(minWidth: 80, alignment: .trailing)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 6)
+
+                Divider().padding(.vertical, 4)
+
+                HStack(spacing: 8) {
+                    Text("水分量目標")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                    Spacer(minLength: 4)
+                    Stepper(
+                        value: Binding(
+                            get: { timeSlotManager.settings.globalGoals.dailyDrinkMl },
+                            set: { v in
+                                timeSlotManager.settings.globalGoals.dailyDrinkMl = v
+                                timeSlotManager.applyGlobalMealDrinkToSlots()
+                            }
+                        ),
+                        in: 500...5000, step: 100
+                    ) {
+                        Text("\(timeSlotManager.settings.globalGoals.dailyDrinkMl) ml")
+                            .font(.subheadline).fontWeight(.bold)
+                            .foregroundColor(Color(hex: "#1CB0F6"))
+                            .lineLimit(1)
+                            .frame(minWidth: 72, maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
 
             Divider().padding(.vertical, 10)
 
@@ -571,7 +631,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("体重を計測")
                             .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Text("Apple Healthに1日1回以上で自動判定")
+                        Text("1日に1回以上の計測の登録で自動判定")
                             .font(.caption2).foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -588,7 +648,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("睡眠の計測")
                             .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Text("Apple Healthに前夜の睡眠データで自動判定")
+                        Text("前夜の睡眠データ登録で自動判定")
                             .font(.caption2).foregroundColor(Color.duoSubtitle)
                     }
                 }

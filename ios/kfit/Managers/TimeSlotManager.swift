@@ -695,24 +695,37 @@ class TimeSlotManager: ObservableObject {
         }
     }
 
+    // MARK: - 食事カロリー配分（IntakeSettings連動）
+
+    private static let mealDistKey = "kfit_meal_distribution_v2"
+
+    /// IntakeSettings の食事カロリーを配分として保存
+    static func updateMealDistribution(breakfast: Int, lunch: Int, snack: Int, dinner: Int) {
+        UserDefaults.standard.set([breakfast, lunch, snack, dinner], forKey: mealDistKey)
+    }
+
+    private static func loadMealDistribution() -> (b: Int, l: Int, s: Int, d: Int) {
+        if let arr = UserDefaults.standard.array(forKey: mealDistKey) as? [Int], arr.count == 4 {
+            return (arr[0], arr[1], arr[2], arr[3])
+        }
+        return (400, 600, 200, 800)
+    }
+
     private func mealGoal(for slot: TimeSlot) -> Int {
         guard settings.globalGoals.mealEnabled else { return 0 }
         let total = settings.globalGoals.dailyMealKcal
-        let morning = Int(Double(total) * 0.20)
-        let noon = Int(Double(total) * 0.30)
-        let afternoon = Int(Double(total) * 0.10)
-
+        let dist = TimeSlotManager.loadMealDistribution()
+        let baseTotal = dist.b + dist.l + dist.s + dist.d
+        guard baseTotal > 0 else { return 0 }
+        let morning   = Int(Double(total) * Double(dist.b) / Double(baseTotal))
+        let noon      = Int(Double(total) * Double(dist.l) / Double(baseTotal))
+        let afternoon = Int(Double(total) * Double(dist.s) / Double(baseTotal))
         switch slot {
-        case .midnight:
-            return 0
-        case .morning:
-            return morning
-        case .noon:
-            return noon
-        case .afternoon:
-            return afternoon
-        case .evening:
-            return total - morning - noon - afternoon
+        case .midnight:  return 0
+        case .morning:   return morning
+        case .noon:      return noon
+        case .afternoon: return afternoon
+        case .evening:   return total - morning - noon - afternoon
         }
     }
 

@@ -89,6 +89,27 @@ struct ActivityRingView: View {
 }
 
 struct DashboardView: View {
+
+    // DateFormatter は生成コストが高いため static で一度だけ生成
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+    private static let hm: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "H:mm"; return f
+    }()
+    private static let mdE: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日(E)"
+        return f
+    }()
+    private static let slashMdE: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d(E)"
+        return f
+    }()
+
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
     @EnvironmentObject var authManager: AuthenticationManager
@@ -97,6 +118,8 @@ struct DashboardView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @StateObject private var dietGoalManager = DietGoalManager.shared
     @StateObject private var photoLogManager = PhotoLogManager.shared
+    // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
+    @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -164,6 +187,7 @@ struct DashboardView: View {
             .onChange(of: healthKit.todayStandHours) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals() }
             .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
                 scheduleWidgetDataUpdate()
             }
@@ -172,6 +196,7 @@ struct DashboardView: View {
             }
             .onAppear {
                 withAnimation { mascotBounce = true }
+                recomputePhotoLogTotals()
                 if !hasLoadedOnce {
                     hasLoadedOnce = true
                     isLoading = true
@@ -205,7 +230,7 @@ struct DashboardView: View {
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 10) {
+                        LazyVStack(spacing: 10) {
                             headerInfoCard
                             dailySetsCard
                             quickMenu
@@ -751,10 +776,15 @@ struct DashboardView: View {
     }
 
     // MARK: - フォトログ（今日分）の集計
+    // キャッシュから読む（onChange で photoLogManager.history 変化時のみ再計算）
     private var photoLogTotalsToday: (protein: Double, fat: Double, carbs: Double, calories: Int) {
+        cachedPhotoLogTotals
+    }
+
+    private func recomputePhotoLogTotals() {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        return photoLogManager.history
+        cachedPhotoLogTotals = photoLogManager.history
             .filter { cal.startOfDay(for: $0.timestamp) == today }
             .reduce(into: (0.0, 0.0, 0.0, 0)) { acc, item in
                 acc.0 += item.analyzedNutrition.protein
@@ -764,10 +794,10 @@ struct DashboardView: View {
             }
     }
 
-    private var combinedProtein: Double { healthKit.todayIntakeProtein + photoLogTotalsToday.protein }
-    private var combinedFat: Double { healthKit.todayIntakeFat + photoLogTotalsToday.fat }
-    private var combinedCarbs: Double { healthKit.todayIntakeCarbs + photoLogTotalsToday.carbs }
-    private var combinedIntakeCalories: Int { effectiveIntakeCalories + photoLogTotalsToday.calories }
+    private var combinedProtein: Double { healthKit.todayIntakeProtein + cachedPhotoLogTotals.protein }
+    private var combinedFat: Double { healthKit.todayIntakeFat + cachedPhotoLogTotals.fat }
+    private var combinedCarbs: Double { healthKit.todayIntakeCarbs + cachedPhotoLogTotals.carbs }
+    private var combinedIntakeCalories: Int { effectiveIntakeCalories + cachedPhotoLogTotals.calories }
 
     private var effectiveMealLogged: Int {
         if dietGoalManager.settings.useHealthKitForIntake {
@@ -1355,9 +1385,7 @@ struct DashboardView: View {
     // MARK: - 今日の統合履歴（フォトログ下）
 
     private var todayExpandedHistorySection: some View {
-        let timeFmt: DateFormatter = {
-            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
-        }()
+        let timeFmt = DashboardView.hhmm
         let mindfulSessions = healthKit.todayMindfulnessSamples
             .sorted { $0.startDate < $1.startDate }
         let mealSamples = healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate }
@@ -1614,9 +1642,7 @@ struct DashboardView: View {
     // MARK: - Reflect履歴セクション（展開時）
 
     private func reflectHistorySection(sessions: [MindfulSession]) -> some View {
-        let timeFmt: DateFormatter = {
-            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
-        }()
+        let timeFmt = DashboardView.hhmm
         let totalMinutes = sessions.reduce(0.0) { $0 + $1.durationMinutes }
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -1666,12 +1692,8 @@ struct DashboardView: View {
     // MARK: - 体重計測履歴セクション（展開時）
 
     private var bodyMassHistorySection: some View {
-        let dateFmt: DateFormatter = {
-            let f = DateFormatter(); f.dateFormat = "M/d(E)"; f.locale = Locale(identifier: "ja_JP"); return f
-        }()
-        let timeFmt: DateFormatter = {
-            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
-        }()
+        let dateFmt = DashboardView.slashMdE
+        let timeFmt = DashboardView.hhmm
         let recent = Array(healthKit.bodyMassHistory.prefix(7))
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -1996,11 +2018,7 @@ struct DashboardView: View {
 
     // MARK: - マインドフルネスセッション行
     private func mindfulSessionRow(_ session: MindfulSession) -> some View {
-        let timeFmt: DateFormatter = {
-            let f = DateFormatter()
-            f.dateFormat = "HH:mm"
-            return f
-        }()
+        let timeFmt = DashboardView.hhmm
         let durationText: String = {
             let totalSec = Int(session.durationMinutes * 60)
             let m = totalSec / 60
@@ -2073,9 +2091,7 @@ struct DashboardView: View {
 
     // MARK: - 摂取サンプルセクション（水分・食事）
     private func intakeSampleSection(icon: String, title: String, total: String, color: Color, samples: [DietarySample], unit: String) -> some View {
-        let timeFmt: DateFormatter = {
-            let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
-        }()
+        let timeFmt = DashboardView.hhmm
         return VStack(spacing: 2) {
             HStack(spacing: 6) {
                 Text(icon).font(.caption)
@@ -2382,12 +2398,7 @@ struct DashboardView: View {
     // MARK: - ハビットスタックカード
     // MARK: - Mandala Card
 
-    private var mandalaDateLabel: String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "M月d日(E)"
-        return fmt.string(from: Date())
-    }
+    private var mandalaDateLabel: String { DashboardView.mdE.string(from: Date()) }
 
     @ViewBuilder
     private func mandalaLegendCell(label: String, color: Color, done: Int, total: Int) -> some View {
@@ -2404,34 +2415,46 @@ struct DashboardView: View {
         .cornerRadius(3)
     }
 
-    private var mandalaLegendRow: some View {
-        let nodes = MandalaChartView.buildNodes(
+    // buildNodes() を1回だけ呼び出し、他のプロパティで再利用する
+    private var currentMandalaNodes: [MandalaNodeData] {
+        MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
             activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
                 healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
         )
-        let hour = Calendar.current.component(.hour, from: Date())
-        let visibleSlots: [TimeSlot] = {
-            if hour < 10 { return [.morning] }
-            else if hour < 14 { return [.morning, .noon] }
-            else if hour < 18 { return [.morning, .noon, .afternoon] }
-            else { return [.morning, .noon, .afternoon, .evening] }
-        }()
+    }
+
+    private var currentMandalaHour: Int { Calendar.current.component(.hour, from: Date()) }
+
+    private var mandalaVisibleSlots: [TimeSlot] {
+        let h = currentMandalaHour
+        if h < 10 { return [.morning] }
+        else if h < 14 { return [.morning, .noon] }
+        else if h < 18 { return [.morning, .noon, .afternoon] }
+        else { return [.morning, .noon, .afternoon, .evening] }
+    }
+
+    private func mandalaSlotLegend(slot: TimeSlot, nodes: [MandalaNodeData]) -> some View {
+        let sn = nodes.filter { $0.slot == slot }
+        return mandalaLegendCell(label: slot.displayName, color: slot.mandalaColor,
+                                 done: sn.filter(\.isCompleted).count, total: sn.count)
+    }
+
+    private var mandalaLegendRow: some View {
+        let nodes = currentMandalaNodes
         let todayNodes = nodes.filter { $0.slot == nil }
         return HStack(spacing: 2) {
             mandalaLegendCell(label: "今日", color: Color(hex: "CE82FF"),
                               done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
-            ForEach(visibleSlots, id: \.self) { slot in
-                let sn = nodes.filter { $0.slot == slot }
-                self.mandalaLegendCell(label: slot.displayName, color: slot.mandalaColor,
-                                       done: sn.filter(\.isCompleted).count, total: sn.count)
+            ForEach(mandalaVisibleSlots, id: \.self) { slot in
+                self.mandalaSlotLegend(slot: slot, nodes: nodes)
             }
         }
     }
 
     private var mandalaContextMessage: String {
-        let hour = Calendar.current.component(.hour, from: Date())
+        let hour = currentMandalaHour
         let currentSlot: TimeSlot? = {
             if hour >= 5 && hour < 10 { return .morning }
             else if hour >= 10 && hour < 14 { return .noon }
@@ -2439,13 +2462,7 @@ struct DashboardView: View {
             else if hour >= 18 { return .evening }
             return nil
         }()
-        let actDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
-            healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
-        let nodes = MandalaChartView.buildNodes(
-            settings: timeSlotManager.settings,
-            progress: timeSlotManager.progress,
-            activityRingsDone: actDone
-        )
+        let nodes = currentMandalaNodes
         if let slot = currentSlot {
             let slotNodes = nodes.filter { $0.slot == slot }
             let incomplete = slotNodes.filter { !$0.isCompleted }
@@ -2463,18 +2480,9 @@ struct DashboardView: View {
     }
 
     private var mandalaOverallCount: (done: Int, total: Int) {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let visibleSlots: Set<TimeSlot> = {
-            if hour < 10 { return [.morning] }
-            else if hour < 14 { return [.morning, .noon] }
-            else if hour < 18 { return [.morning, .noon, .afternoon] }
-            else { return [.morning, .noon, .afternoon, .evening] }
-        }()
-        let allNodes = MandalaChartView.buildNodes(
-            settings: timeSlotManager.settings,
-            progress: timeSlotManager.progress
-        )
-        let visible = allNodes.filter { $0.slot == nil || visibleSlots.contains($0.slot!) }
+        let visibleSlotSet = Set(mandalaVisibleSlots)
+        let nodes = currentMandalaNodes
+        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
         return (visible.filter(\.isCompleted).count, visible.count)
     }
 
@@ -2506,26 +2514,28 @@ struct DashboardView: View {
             .padding(.top, 1)
             .padding(.bottom, 1)
             .overlay(alignment: .top) {
-                HStack(alignment: .center, spacing: 4) {
-                    mandalaLegendRow
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 5)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemBackground).opacity(0.82))
-                        .cornerRadius(6)
-                        .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-                    Button { showMandalaDetail = true } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.caption)
-                            .foregroundColor(Color.duoOrange)
-                            .padding(7)
-                            .background(Color(.systemBackground).opacity(0.88))
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
-                    }
+                mandalaLegendRow
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemBackground).opacity(0.82))
+                    .cornerRadius(6)
+                    .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                    .padding(.top, 6)
+                    .padding(.horizontal, 6)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Button { showMandalaDetail = true } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.duoOrange)
+                        .padding(7)
+                        .background(Color(.systemBackground).opacity(0.88))
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
                 }
-                .padding(.top, 6)
-                .padding(.horizontal, 6)
+                .padding(.leading, 8)
+                .padding(.bottom, 8)
             }
         }
     }
@@ -5058,25 +5068,9 @@ struct DashboardView: View {
 
     // MARK: - セットサマリーボタン（折りたたみ可能）
 
-    private func timeString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
-    }
-
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M月d日(E)"
-        return formatter.string(from: date)
-    }
-
-    private func formatHeaderDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M/d(E)"
-        return formatter.string(from: date)
-    }
+    private func timeString(_ date: Date) -> String { DashboardView.hhmm.string(from: date) }
+    private func formatDate(_ date: Date) -> String { DashboardView.mdE.string(from: date) }
+    private func formatHeaderDate(_ date: Date) -> String { DashboardView.slashMdE.string(from: date) }
 
     // MARK: - 健康サマリーカード（HealthKit）
     @ViewBuilder
@@ -5421,8 +5415,7 @@ struct DashboardView: View {
                                 value: "\(sleep.bedtimeScore)/30",
                                 note: {
                                     if let t = sleep.firstSleepTime {
-                                        let f = DateFormatter(); f.dateFormat = "H:mm"
-                                        return f.string(from: t)
+                                        return DashboardView.hm.string(from: t)
                                     }
                                     return "—"
                                 }()

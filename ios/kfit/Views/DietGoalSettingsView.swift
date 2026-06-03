@@ -15,8 +15,6 @@ struct DietGoalSettingsView: View {
     @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
     @State private var dailyIntakeGoal: Int = 2000
     @State private var dailyBurnGoal: Int = 2200
-    @State private var useHealthKitForIntake: Bool = false
-    @State private var useHealthKitForBurn: Bool = false
     @State private var showAIResult = false
     @State private var savedBanner = false
 
@@ -24,12 +22,6 @@ struct DietGoalSettingsView: View {
     private var daysRemaining: Int {
         max(1, Calendar.current.dateComponents([.day], from: Date(), to: targetDate).day ?? 1)
     }
-
-    // 時間帯別配分（固定比率）
-    private var morningKcal:   Int { Int(Double(dailyIntakeGoal) * 0.20) }
-    private var noonKcal:      Int { Int(Double(dailyIntakeGoal) * 0.30) }
-    private var afternoonKcal: Int { Int(Double(dailyIntakeGoal) * 0.10) }
-    private var eveningKcal:   Int { dailyIntakeGoal - morningKcal - noonKcal - afternoonKcal }
 
     var body: some View {
         ZStack {
@@ -40,7 +32,6 @@ struct DietGoalSettingsView: View {
                     startSection
                     targetSection
                     calorieGoalSection
-                    mealDistributionSection
                     summarySection
                     saveButton
                     Spacer(minLength: 40)
@@ -52,6 +43,13 @@ struct DietGoalSettingsView: View {
         }
         .navigationTitle("ダイエット目標")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("保存") { Task { await save() } }
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.duoGreen)
+            }
+        }
         .onAppear { loadSettings() }
         .overlay(alignment: .top) {
             if savedBanner {
@@ -236,30 +234,12 @@ struct DietGoalSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("摂取カロリー目標")
                         .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                    Text(useHealthKitForIntake ? "Apple Health実績を使用" : "1日に摂取するカロリー")
+                    Text("1日に摂取するカロリー")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                HStack(spacing: 8) {
-                    kcalInputField(value: $dailyIntakeGoal, minValue: 800, maxValue: 5000)
-                    if useHealthKitForIntake {
-                        HStack(spacing: 4) {
-                            Image(systemName: "heart.fill")
-                                .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
-                            Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
-                        }
-                    }
-                }
+                kcalInputField(value: $dailyIntakeGoal, minValue: 800, maxValue: 5000)
             }
-            Toggle(isOn: $useHealthKitForIntake) {
-                HStack(spacing: 5) {
-                    Image(systemName: "heart.fill")
-                        .font(.caption2).foregroundColor(Color(hex: "#FF4B4B"))
-                    Text("Apple Healthで計測")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-            }
-            .tint(Color(hex: "#FF4B4B"))
 
             Divider()
 
@@ -268,70 +248,12 @@ struct DietGoalSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("消費カロリー目標")
                         .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                    Text(useHealthKitForBurn ? "Apple Health実績を使用" : "1日に消費するカロリー")
+                    Text("1日に消費するカロリー")
                         .font(.caption).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
-                if useHealthKitForBurn {
-                    HStack(spacing: 4) {
-                        Image(systemName: "heart.fill")
-                            .font(.caption).foregroundColor(Color(hex: "#FF4B4B"))
-                        Text("実績値").font(.caption).fontWeight(.bold).foregroundColor(Color(hex: "#FF4B4B"))
-                    }
-                } else {
-                    intStepper(value: $dailyBurnGoal, step: 50, min: 1000, max: 6000, unit: "kcal")
-                }
+                intStepper(value: $dailyBurnGoal, step: 50, min: 1000, max: 6000, unit: "kcal")
             }
-            Toggle(isOn: $useHealthKitForBurn) {
-                HStack(spacing: 5) {
-                    Image(systemName: "heart.fill")
-                        .font(.caption2).foregroundColor(Color(hex: "#FF4B4B"))
-                    Text("Apple Healthで計測")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-            }
-            .tint(Color(hex: "#FF4B4B"))
-        }
-    }
-
-    // MARK: - 食事カロリー配分
-
-    private var mealDistributionSection: some View {
-        card {
-            sectionHeader(icon: "🍽️", title: "食事カロリー配分")
-            Text("摂取目標を時間帯別に自動配分（保存時に反映）")
-                .font(.caption).foregroundColor(Color.duoSubtitle)
-
-            VStack(spacing: 8) {
-                mealRow(emoji: "🌅", label: "朝食", kcal: morningKcal,   percent: 20, color: Color(hex: "#FF9600"))
-                mealRow(emoji: "☀️", label: "昼食", kcal: noonKcal,      percent: 30, color: Color(hex: "#1CB0F6"))
-                mealRow(emoji: "🌤️", label: "午後", kcal: afternoonKcal, percent: 10, color: Color(hex: "#CE82FF"))
-                mealRow(emoji: "🌆", label: "夕食", kcal: eveningKcal,   percent: 40, color: Color.duoGreen)
-            }
-        }
-    }
-
-    private func mealRow(emoji: String, label: String, kcal: Int, percent: Int, color: Color) -> some View {
-        HStack(spacing: 10) {
-            Text(emoji).font(.title3).frame(width: 28)
-            Text(label)
-                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-            Spacer()
-            // ミニバー
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5))
-                    Capsule().fill(color.opacity(0.8))
-                        .frame(width: geo.size.width * CGFloat(percent) / 100)
-                }
-            }
-            .frame(width: 60, height: 6)
-            Text("\(percent)%")
-                .font(.caption).foregroundColor(Color.duoSubtitle)
-                .frame(width: 28)
-            Text("\(kcal) kcal")
-                .font(.subheadline.weight(.black)).foregroundColor(color)
-                .frame(width: 72, alignment: .trailing)
         }
     }
 
@@ -571,10 +493,8 @@ struct DietGoalSettingsView: View {
         targetBodyFat    = s.targetBodyFatPercent
         hasBodyFatTarget = s.hasBodyFatTarget
         targetDate       = s.targetDate
-        dailyIntakeGoal       = s.dailyIntakeGoal
-        dailyBurnGoal         = s.dailyBurnGoal
-        useHealthKitForIntake = s.useHealthKitForIntake
-        useHealthKitForBurn   = s.useHealthKitForBurn
+        dailyIntakeGoal = s.dailyIntakeGoal
+        dailyBurnGoal   = s.dailyBurnGoal
     }
 
     private func save() async {
@@ -588,20 +508,11 @@ struct DietGoalSettingsView: View {
         s.targetBodyFatPercent = targetBodyFat
         s.hasBodyFatTarget     = hasBodyFatTarget
         s.targetDate           = targetDate
-        s.dailyIntakeGoal      = dailyIntakeGoal
-        s.dailyBurnGoal        = dailyBurnGoal
-        s.useHealthKitForIntake = useHealthKitForIntake
-        s.useHealthKitForBurn   = useHealthKitForBurn
+        s.dailyIntakeGoal       = dailyIntakeGoal
+        s.dailyBurnGoal         = dailyBurnGoal
+        s.useHealthKitForIntake = false
+        s.useHealthKitForBurn   = false
         manager.settings = s
-
-        // IntakeSettings の食事カロリーを時間帯別に反映
-        var intakeSettings = await AuthenticationManager.shared.getIntakeSettings()
-        intakeSettings.breakfastCalories = morningKcal
-        intakeSettings.lunchCalories     = noonKcal
-        intakeSettings.snackCalories     = afternoonKcal
-        intakeSettings.dinnerCalories    = eveningKcal
-        intakeSettings.dailyCalorieGoal  = dailyIntakeGoal
-        await AuthenticationManager.shared.saveIntakeSettings(intakeSettings)
 
         TimeSlotManager.shared.syncMealGoalFromDietGoal()
         await TimeSlotManager.shared.saveTodaySettings()

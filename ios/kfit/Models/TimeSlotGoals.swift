@@ -104,7 +104,7 @@ struct StretchGoal: Codable, Equatable {
 
 // MARK: - 時間帯ごとの目標
 
-struct TimeSlotGoal: Codable, Identifiable {
+struct TimeSlotGoal: Codable, Identifiable, Equatable {
     var id: String { timeSlot.rawValue }
     let timeSlot: TimeSlot
     var trainingGoal: Int           // トレーニングセット数
@@ -127,7 +127,7 @@ struct TimeSlotGoal: Codable, Identifiable {
 
 // MARK: - ログ目標
 
-struct LogGoal: Codable {
+struct LogGoal: Codable, Equatable {
     var mealGoal: Int = 400          // 0=不要, N=目標kcal
     var drinkGoal: Int = 400         // 0=不要, N=目標ml
     var mindInputRequired: Bool = false
@@ -142,7 +142,7 @@ struct LogGoal: Codable {
 
 // MARK: - 時間帯ごとの実績
 
-struct TimeSlotProgress: Codable, Identifiable {
+struct TimeSlotProgress: Codable, Identifiable, Equatable {
     var id: String { timeSlot.rawValue }
     let timeSlot: TimeSlot
     var trainingCompleted: Int = 0       // 完了したトレーニングセット数
@@ -213,7 +213,7 @@ struct TimeSlotProgress: Codable, Identifiable {
 
 // MARK: - ログ進捗
 
-struct LogProgress: Codable {
+struct LogProgress: Codable, Equatable {
     var mealLogged: Int = 0  // この時間帯の累積摂取kcal
     var drinkLogged: Int = 0  // この時間帯の累積ml
     var mindInputLogged: Int = 0  // 記録されたマインド入力の回数
@@ -267,7 +267,7 @@ struct DailyGlobalGoals: Codable {
     var mealEnabled: Bool = true               // 食事カロリー目標を使用するか
     var dailyMealKcal: Int = 2000             // 1日の食事カロリー目標（4時間帯に均等配分）
     var drinkEnabled: Bool = true              // 水分目標を使用するか
-    var dailyDrinkMl: Int = 2000             // 1日の水分目標ml（4時間帯に均等配分）
+    var dailyDrinkMl: Int = 1000             // 1日の水分目標ml（4時間帯に均等配分）
     var customGoals: [CustomDailyGoal] = []    // ユーザー定義のカスタム目標
 }
 

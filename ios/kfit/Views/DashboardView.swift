@@ -572,26 +572,29 @@ struct DashboardView: View {
 
                 // 右側: 数値情報
                 HStack(spacing: 8) {
-                    // 連続記録
-                    HStack(spacing: 2) {
+                    // 連続記録 + 日付
+                    HStack(spacing: 3) {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 12))
+                            .font(.system(size: 14))
                             .foregroundColor(.orange)
                         Text("\(authManager.userProfile?.streak ?? 0)日")
-                            .font(.system(size: 8, design: .rounded))
+                            .font(.system(size: 10, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
+                        Text(mandalaDateLabel)
+                            .font(.system(size: 10, design: .rounded))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white.opacity(0.85))
                     }
 
-                    // 到達度
-                    HStack(spacing: 2) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
-                        Text("\(todayCurrentProgressPercent)%")
-                            .font(.system(size: 8, design: .rounded))
+                    // Mandala時間帯進捗率
+                    let nc = mandalaOverallCount
+                    if nc.total > 0 {
+                        let pct = Int(Double(nc.done) / Double(nc.total) * 100)
+                        Text("\(pct)%")
+                            .font(.system(size: 10, design: .rounded))
                             .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundColor(pct >= 80 ? Color.duoYellow : .white)
                     }
                 }
                 .padding(.trailing, 6)
@@ -2391,7 +2394,7 @@ struct DashboardView: View {
         let achieved = total > 0 && done == total
         HStack(spacing: 2) {
             Circle().fill(color).frame(width: 5, height: 5)
-            Text(total > 0 ? "\(label)(\(done)/\(total))" : label)
+            Text(total > 0 ? "\(label) \(done)/\(total)" : label)
                 .font(.system(size: 9, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(achieved ? color : Color.duoSubtitle)
@@ -2476,57 +2479,7 @@ struct DashboardView: View {
     }
 
     private var mandalaContent: some View {
-        let nc = mandalaOverallCount
-        let streak = authManager.userProfile?.streak ?? 0
-        return VStack(alignment: .leading, spacing: 4) {
-            // ヘッダー（緑グラデーション背景・連続記録表示）
-            HStack(spacing: 6) {
-                HStack(spacing: 4) {
-                    Text("🌀").font(.subheadline)
-                    Text("Mandala").fontWeight(.black).font(.subheadline)
-                }
-                .foregroundColor(.white)
-                .fixedSize()
-
-                HStack(spacing: 2) {
-                    Text("🔥").font(.caption)
-                    Text("\(streak)日").font(.caption).fontWeight(.black)
-                }
-                .foregroundColor(.white)
-                .fixedSize()
-
-                Spacer(minLength: 4)
-
-                Text(mandalaDateLabel)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .fixedSize()
-
-                if nc.total > 0 {
-                    let pct = Double(nc.done) / Double(nc.total)
-                    Text("\(Int(pct * 100))%（\(nc.done)/\(nc.total)）")
-                        .font(.caption).fontWeight(.black)
-                        .foregroundColor(pct >= 0.8 ? Color.duoYellow : .white)
-                        .lineLimit(1)
-                        .fixedSize()
-                } else {
-                    Text("--")
-                        .font(.caption).fontWeight(.black)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                LinearGradient(
-                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.22)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .cornerRadius(10)
-            )
-
+        return VStack(alignment: .leading, spacing: 0) {
             MandalaChartView(
                 settings: timeSlotManager.settings,
                 progress: timeSlotManager.progress,
@@ -2557,31 +2510,18 @@ struct DashboardView: View {
                     mandalaLegendRow
                         .padding(.vertical, 3)
                         .padding(.horizontal, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(.systemBackground).opacity(0.82))
                         .cornerRadius(6)
                         .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-                    Spacer(minLength: 0)
-                    HStack(spacing: 6) {
-                        Button {
-                            Task { await loadData() }
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption)
-                                .foregroundColor(Color.duoBlue)
-                                .padding(7)
-                                .background(Color(.systemBackground).opacity(0.88))
-                                .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
-                        }
-                        Button { showMandalaDetail = true } label: {
-                            Image(systemName: "gearshape.fill")
-                                .font(.caption)
-                                .foregroundColor(Color.duoOrange)
-                                .padding(7)
-                                .background(Color(.systemBackground).opacity(0.88))
-                                .clipShape(Circle())
-                                .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
-                        }
+                    Button { showMandalaDetail = true } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.caption)
+                            .foregroundColor(Color.duoOrange)
+                            .padding(7)
+                            .background(Color(.systemBackground).opacity(0.88))
+                            .clipShape(Circle())
+                            .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
                     }
                 }
                 .padding(.top, 6)

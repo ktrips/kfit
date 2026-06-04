@@ -17,6 +17,7 @@ struct MindfulSession: Identifiable {
     var sessionTypeLabel: String {
         if sessionTypeHint == "Breathe" { return "Breathe" }
         if sessionTypeHint == "Reflect" { return "Reflect" }
+        if sessionTypeHint == "Stand" { return "Stand" }
         if durationMinutes >= 2.5 && durationMinutes <= 3.5 { return "Reflect" }
         let b = sourceBundleId.lowercased()
         let n = sourceName.lowercased()
@@ -33,6 +34,7 @@ struct MindfulSession: Identifiable {
         switch sessionTypeLabel {
         case "Breathe":         return "🧘"
         case "Reflect":         return "🤸"
+        case "Stand":           return "🧍"
         case "マインドフルネス": return "🧘"
         case "Headspace":       return "🟠"
         case "Calm":            return "🌊"
@@ -396,12 +398,16 @@ final class HealthKitManager: ObservableObject {
             .dietarySugar,          // 糖質
             .dietaryFiber,          // 食物繊維
             .dietarySodium,         // ナトリウム（塩分）
+            .numberOfAlcoholicBeverages, // 飲酒量（標準ドリンク数）
         ]
         for id in writeIds {
             if let t = HKQuantityType.quantityType(forIdentifier: id) { set.insert(t) }
         }
         if let mindfulness = HKCategoryType.categoryType(forIdentifier: .mindfulSession) {
             set.insert(mindfulness)
+        }
+        if let toothbrushing = HKCategoryType.categoryType(forIdentifier: .toothbrushingEvent) {
+            set.insert(toothbrushing)
         }
         set.insert(HKWorkoutType.workoutType())
         return set
@@ -1692,27 +1698,65 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// アルコール摂取を Apple Health に記録
-    /// NOTE: HealthKit にはアルコール専用の型がないため、dietaryEnergyConsumed にメタデータとして保存
+    /// - dietaryEnergyConsumed にカロリーとしてメタデータ付きで保存
+    /// - numberOfAlcoholicBeverages に標準ドリンク数（alcoholG / 12g）で保存
+    /// - dietaryWater に液量（amountMl）として保存
     func saveAlcoholIntake(amountMl: Double, alcoholG: Double, timestamp: Date) async {
         guard isAvailable, isAuthorized else {
             print("[HealthKit] ⚠️ Not authorized - skipping alcohol save")
             return
         }
-        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return }
-        // 純アルコール量(g)からカロリーを計算（アルコール1g = 約7kcal）
-        let estimatedCalories = alcoholG * 7.0
-        let quantity = HKQuantity(unit: .kilocalorie(), doubleValue: estimatedCalories)
-        let metadata: [String: Any] = [
-            "intake_type": "alcohol",
-            "amount_ml": amountMl,
-            "alcohol_grams": alcoholG
-        ]
-        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
+
+        var samples: [HKSample] = []
+
+        // 1. カロリー（dietaryEnergyConsumed）
+        if let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed), alcoholG > 0 {
+            let estimatedCalories = alcoholG * 7.0
+            let metadata: [String: Any] = ["intake_type": "alcohol", "amount_ml": amountMl, "alcohol_grams": alcoholG]
+            samples.append(HKQuantitySample(type: type,
+                quantity: HKQuantity(unit: .kilocalorie(), doubleValue: estimatedCalories),
+                start: timestamp, end: timestamp, metadata: metadata))
+        }
+
+        // 2. 飲酒量（numberOfAlcoholicBeverages）: 1標準ドリンク = 12g純アルコール
+        if let type = HKQuantityType.quantityType(forIdentifier: .numberOfAlcoholicBeverages), alcoholG > 0 {
+            let drinks = alcoholG / 12.0
+            samples.append(HKQuantitySample(type: type,
+                quantity: HKQuantity(unit: .count(), doubleValue: drinks),
+                start: timestamp, end: timestamp))
+        }
+
+        // 3. 液量（dietaryWater）
+        if let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater), amountMl > 0 {
+            samples.append(HKQuantitySample(type: type,
+                quantity: HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl),
+                start: timestamp, end: timestamp))
+        }
+
+        guard !samples.isEmpty else { return }
         do {
-            try await store.save(sample)
-            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml (\(alcoholG)g純アルコール, \(Int(estimatedCalories))kcal)")
+            try await store.save(samples)
+            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml, \(alcoholG)g → \(String(format: "%.2f", alcoholG / 12.0))drinks")
         } catch {
             print("[HealthKit] ❌ アルコール記録エラー: \(error.localizedDescription)")
+        }
+    }
+
+    /// 歯磨きを Apple Health に記録（toothbrushingEvent: 1分）
+    func saveToothbrushing(durationSeconds: Double = 60, timestamp: Date = Date()) async {
+        guard isAvailable, isAuthorized else {
+            print("[HealthKit] ⚠️ Not authorized - skipping toothbrushing save")
+            return
+        }
+        guard let type = HKCategoryType.categoryType(forIdentifier: .toothbrushingEvent) else { return }
+        let start = timestamp.addingTimeInterval(-durationSeconds)
+        let sample = HKCategorySample(type: type, value: HKCategoryValue.notApplicable.rawValue,
+                                      start: start, end: timestamp)
+        do {
+            try await store.save(sample)
+            print("[HealthKit] ✅ Saved toothbrushing: \(Int(durationSeconds))s")
+        } catch {
+            print("[HealthKit] ❌ 歯磨き記録エラー: \(error.localizedDescription)")
         }
     }
 
@@ -2012,7 +2056,7 @@ final class HealthKitManager: ObservableObject {
 
         let normalizedDuration = max(60, durationSeconds)
         let normalizedEndDate = startDate.addingTimeInterval(normalizedDuration)
-        let normalizedSessionType = sessionType == "Reflect" ? "Reflect" : "Breathe"
+        let normalizedSessionType = ["Reflect", "Stand"].contains(sessionType) ? sessionType : "Breathe"
         let sample = HKCategorySample(
             type: type,
             value: HKCategoryValue.notApplicable.rawValue,

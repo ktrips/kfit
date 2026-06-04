@@ -38,6 +38,7 @@ struct WatchDashboardView: View {
     @State private var showFlow = false
     @State private var showBreatheFlow = false
     @State private var showStretchFlow = false
+    @State private var showStandFlow = false
     @State private var selectedTab = 1  // 初期表示は真ん中（今日のメニュー）
     @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
     @State private var pendingIntakeType: String = ""  // 保留中の摂取タイプ
@@ -89,6 +90,9 @@ struct WatchDashboardView: View {
         }
         .fullScreenCover(isPresented: $showStretchFlow) {
             WatchStretchFlowView(isPresented: $showStretchFlow)
+        }
+        .fullScreenCover(isPresented: $showStandFlow) {
+            WatchStandFlowView(isPresented: $showStandFlow)
         }
         .alert(intakeConfirmMessage, isPresented: $showIntakeConfirm) {
             Button("キャンセル", role: .cancel) { }
@@ -444,6 +448,8 @@ struct WatchDashboardView: View {
 
                     stretchButton
 
+                    standButton
+
                     // ── スワイプヒント ────────────────────
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -654,6 +660,7 @@ struct WatchDashboardView: View {
                 .buttonStyle(.plain)
 
                 stretchButton
+                standButton
                 mindfulnessHistorySection
 
                 Spacer(minLength: 8)
@@ -681,6 +688,33 @@ struct WatchDashboardView: View {
             .background(
                 LinearGradient(
                     colors: [Color(red: 0.35, green: 0.80, blue: 0.55), Color(red: 0.10, green: 0.62, blue: 0.75)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var standButton: some View {
+        Button {
+            showStandFlow = true
+        } label: {
+            VStack(spacing: 5) {
+                Text("🍅").font(.system(size: 30))
+                Text("20分スタンド")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                Text("立って作業に集中")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.75))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.99, green: 0.55, blue: 0.12), Color(red: 0.94, green: 0.27, blue: 0.15)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -1136,6 +1170,9 @@ struct WatchDashboardView: View {
         let totalCount = positions.count
         let trainingGoal = max(connectivity.totalTrainingGoal, 0)
         let mindfulnessGoal = max(connectivity.totalMindfulnessGoal, 0)
+        let standGoal = connectivity.totalStandGoal
+        let standDone = connectivity.totalStand
+        let standColor = Color(red: 0.0, green: 0.60, blue: 0.85)
         let spiralScale = watchFaceSpiralMetrics(for: totalCount)
 
         return ZStack {
@@ -1265,18 +1302,30 @@ struct WatchDashboardView: View {
                         action: { openMindfulnessApp() }
                     )
                     Spacer()
-                    watchFaceCornerSection(
-                        icon: "✓",
-                        title: "TODAY",
-                        value: "\(doneCount)/\(totalCount)",
-                        color: doneCount == totalCount && totalCount > 0 ? duoGreen : .white.opacity(0.72),
-                        horizontalAlignment: .trailing,
-                        frameAlignment: .trailing,
-                        action: {
-                            confirmIntake(type: "meal", subtype: "dinner",
-                                          message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
-                        }
-                    )
+                    if standGoal > 0 {
+                        watchFaceCornerSection(
+                            icon: "🧍",
+                            title: "STAND",
+                            value: "\(standDone)/\(standGoal)",
+                            color: standDone >= standGoal ? standColor : .white.opacity(0.72),
+                            horizontalAlignment: .trailing,
+                            frameAlignment: .trailing,
+                            action: { showStandFlow = true }
+                        )
+                    } else {
+                        watchFaceCornerSection(
+                            icon: "✓",
+                            title: "TODAY",
+                            value: "\(doneCount)/\(totalCount)",
+                            color: doneCount == totalCount && totalCount > 0 ? duoGreen : .white.opacity(0.72),
+                            horizontalAlignment: .trailing,
+                            frameAlignment: .trailing,
+                            action: {
+                                confirmIntake(type: "meal", subtype: "dinner",
+                                              message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
+                            }
+                        )
+                    }
                 }
             }
             .padding(.horizontal, 5)
@@ -1375,6 +1424,7 @@ struct WatchDashboardView: View {
         let waterColor   = Color(red: 0.27,  green: 0.67,  blue: 1.0)
         let mealColor    = Color(red: 0.345, green: 0.80,  blue: 0.008)
         let stretchColor = Color(red: 0.3,   green: 0.85,  blue: 0.75)
+        let standColor   = Color(red: 0.0,   green: 0.60,  blue: 0.85)
 
         func color(for key: String) -> Color {
             switch key {
@@ -1383,6 +1433,7 @@ struct WatchDashboardView: View {
             case "water": return waterColor
             case "meal": return mealColor
             case "stretch": return stretchColor
+            case "stand": return standColor
             default: return .white.opacity(0.72)
             }
         }
@@ -1464,6 +1515,9 @@ struct WatchDashboardView: View {
                 intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 66),
             (WatchFaceTaskNode(id:"md", emoji:"🧘", accentColor:mindColor,
                 isDone: mDone >= 1, actionType:"mindfulness"), 262, 66),
+            (WatchFaceTaskNode(id:"sd", emoji:"🧍", accentColor:standColor,
+                isDone: connectivity.totalStand >= 1 && connectivity.totalStandGoal > 0,
+                actionType:"stand"), 286, 66),
         ]
     }
 
@@ -1487,6 +1541,7 @@ struct WatchDashboardView: View {
             case "training":  showFlow = true
             case "mindfulness": openMindfulnessApp()
             case "stretch": showStretchFlow = true
+            case "stand": showStandFlow = true
             case "meal", "water":
                 if !node.intakeMessage.isEmpty {
                     confirmIntake(type: node.actionType == "water" ? "water" : "meal",
@@ -1938,6 +1993,228 @@ private struct WatchStretchFlowView: View {
                 isSaving = false
                 isPresented = false
             }
+        }
+    }
+
+    private func playCompletionHaptic() {
+        Task {
+            for index in 0..<4 {
+                await MainActor.run {
+                    WKInterfaceDevice.current().play(index % 2 == 0 ? .notification : .success)
+                }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
+        }
+    }
+}
+
+// MARK: - 20分スタンドポモドーロ（Watch）
+
+private struct WatchStandFlowView: View {
+    @Binding var isPresented: Bool
+    @State private var elapsedSeconds = 0
+    @State private var isSaving = false
+    @State private var didComplete = false
+    @State private var sessionStartDate = Date()
+    @State private var extSession: WKExtendedRuntimeSession?
+    @State private var showCompletion = false  // 完了画面フラグ
+    @State private var completionPulse = false
+
+    private let totalSeconds = 20 * 60
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let tomatoRed      = Color(red: 0.94, green: 0.27, blue: 0.15)
+    private let tomatoOrange   = Color(red: 0.99, green: 0.55, blue: 0.12)
+    private let tomatoDark     = Color(red: 0.45, green: 0.06, blue: 0.01)
+    private let completionGreen = Color(red: 0.15, green: 0.72, blue: 0.38)
+
+    private var remainingSeconds: Int { max(0, totalSeconds - elapsedSeconds) }
+    private var remainProgress: Double { min(1.0, Double(elapsedSeconds) / Double(totalSeconds)) }
+    private var timeText: String {
+        String(format: "%02d:%02d", remainingSeconds / 60, remainingSeconds % 60)
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.18, green: 0.05, blue: 0.02), Color(red: 0.30, green: 0.10, blue: 0.03)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            if showCompletion {
+                // 完了画面
+                watchCompletionScreen
+            } else {
+                // タイマー進行画面
+                watchTimerScreen
+            }
+        }
+        .onAppear {
+            sessionStartDate = Date()
+            WKInterfaceDevice.current().play(.start)
+            let s = WKExtendedRuntimeSession()
+            s.start()
+            extSession = s
+        }
+        .onDisappear {
+            extSession?.invalidate()
+            extSession = nil
+        }
+        .onReceive(timer) { _ in
+            guard !didComplete else { return }
+            elapsedSeconds = Int(Date().timeIntervalSince(sessionStartDate))
+            if elapsedSeconds % 60 == 0 && elapsedSeconds > 0 && elapsedSeconds < totalSeconds {
+                WKInterfaceDevice.current().play(.click)
+            }
+            if elapsedSeconds >= totalSeconds && !showCompletion {
+                // タイマー自然終了 → 完了画面（記録はまだしない）
+                showCompletion = true
+                startCompletionHaptics()
+            }
+        }
+    }
+
+    // MARK: - タイマー進行画面
+
+    private var watchTimerScreen: some View {
+        VStack(spacing: 6) {
+            VStack(spacing: 1) {
+                Text("🍅 20分スタンド")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(tomatoOrange)
+                Text("ポモドーロで集中")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(tomatoOrange.opacity(0.75))
+            }
+
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 8)
+                Circle()
+                    .trim(from: 0, to: CGFloat(remainProgress))
+                    .stroke(
+                        AngularGradient(colors: [tomatoOrange, tomatoRed, tomatoOrange], center: .center),
+                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.8), value: remainProgress)
+
+                // トマト型中央
+                ZStack {
+                    // 本体（赤いラジアルグラデーション）
+                    Circle()
+                        .fill(RadialGradient(
+                            colors: [Color(red: 0.98, green: 0.32, blue: 0.17),
+                                     Color(red: 0.62, green: 0.07, blue: 0.03)],
+                            center: UnitPoint(x: 0.38, y: 0.32),
+                            startRadius: 2, endRadius: 28
+                        ))
+                        .frame(width: 54, height: 54)
+                    // 光沢
+                    Ellipse()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(width: 16, height: 10)
+                        .offset(x: -9, y: -11)
+                        .blur(radius: 2)
+                    // 時間テキスト
+                    Text(timeText)
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .shadow(color: Color(red: 0.4, green: 0.0, blue: 0.0).opacity(0.6), radius: 1, y: 1)
+                        .monospacedDigit()
+                    // 葉（左）
+                    Ellipse()
+                        .fill(Color(red: 0.16, green: 0.58, blue: 0.16))
+                        .frame(width: 13, height: 5)
+                        .rotationEffect(.degrees(38))
+                        .offset(x: -8, y: -30)
+                    // 葉（右）
+                    Ellipse()
+                        .fill(Color(red: 0.16, green: 0.58, blue: 0.16))
+                        .frame(width: 13, height: 5)
+                        .rotationEffect(.degrees(-38))
+                        .offset(x: 8, y: -30)
+                    // ヘタ（茎）
+                    Capsule()
+                        .fill(Color(red: 0.13, green: 0.54, blue: 0.13))
+                        .frame(width: 5, height: 11)
+                        .offset(y: -33)
+                }
+            }
+            .frame(width: 90, height: 90)
+
+            Button { finishAndRecord() } label: {
+                Text("完了にする")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(LinearGradient(colors: [tomatoOrange, tomatoRed],
+                                               startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - 完了画面
+
+    private var watchCompletionScreen: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(tomatoRed.opacity(0.18))
+                    .frame(width: 100, height: 100)
+                    .scaleEffect(completionPulse ? 1.2 : 1.0)
+                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                               value: completionPulse)
+                Text("🍅")
+                    .font(.system(size: 52))
+            }
+            Text("ポモドーロ達成！")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundColor(tomatoOrange)
+            Text("20分、よく立ってました！")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.6))
+            Spacer()
+            Button { finishAndRecord() } label: {
+                Text("記録して閉じる")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(LinearGradient(colors: [completionGreen, Color(red: 0.08, green: 0.55, blue: 0.28)],
+                                               startPoint: .leading, endPoint: .trailing))
+                    .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
+        }
+        .onAppear { completionPulse = true }
+    }
+
+    // MARK: - ハプティクス・記録
+
+    private func startCompletionHaptics() {
+        playCompletionHaptic()
+        // 3秒おきに繰り返し（合計3回）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { WKInterfaceDevice.current().play(.success) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { WKInterfaceDevice.current().play(.success) }
+    }
+
+    private func finishAndRecord() {
+        guard !didComplete else { return }
+        didComplete = true
+        isSaving = true
+        WatchConnectivityManager.shared.sendStandCompleted()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isSaving = false
+            isPresented = false
         }
     }
 

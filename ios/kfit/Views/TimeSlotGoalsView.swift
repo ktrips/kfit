@@ -4,7 +4,17 @@ struct TimeSlotGoalsView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @StateObject private var notif = NotificationManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var widgetProgressPercent: Int = 0
     @State private var streakPickerTime: Date = Date()
+    @State private var goals: [String: TimeSlotGoal] = [:]
+    @State private var reminderPickerTimes: [String: Date] = [:]
+    @State private var expandingSlot: String? = nil
+    @State private var newActivityName: String = ""
+    @State private var newActivityEmoji: String = ""
+
+    private let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+    private let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+    private let standColor   = Color(red: 0.0,  green: 0.6,  blue: 0.85)
 
     var body: some View {
         ZStack {
@@ -13,32 +23,28 @@ struct TimeSlotGoalsView: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        headerSection
-
                         if timeSlotManager.isLoading {
                             ProgressView()
                                 .tint(Color.duoGreen)
                                 .scaleEffect(1.4)
                                 .padding(.vertical, 40)
                         } else {
-                            ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { timeSlot in
-                                if let goal = timeSlotManager.settings.goalFor(timeSlot),
-                                   let progress = timeSlotManager.progress.progressFor(timeSlot) {
-                                    timeSlotCard(timeSlot: timeSlot, goal: goal, progress: progress)
-                                        .id(timeSlot.rawValue)
-                                }
+                            ForEach(activeSlots, id: \.self) { slot in
+                                timeSlotCard(slot: slot)
                             }
-
                             mandalaSection(scrollProxy: proxy)
-
                             streakAlertSection
                         }
-
                         Spacer(minLength: 40)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 20)
+                }
+                .refreshable {
+                    await loadAll()
+                    await HealthKitManager.shared.fetchGoalHealth(force: true)
+                    widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
                 }
             }
         }
@@ -46,24 +52,379 @@ struct TimeSlotGoalsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("完了") {
-                    dismiss()
-                }
-                .foregroundColor(Color.duoGreen)
-                .fontWeight(.bold)
+                Button("完了") { dismiss() }
+                    .foregroundColor(Color.duoGreen)
+                    .fontWeight(.bold)
             }
         }
-        .task {
-            await timeSlotManager.loadTodaySettings()
-            await timeSlotManager.loadTodayProgress()
-            let cfg = notif.prefs[NotificationManager.ID.streakAlert]
-            streakPickerTime = Calendar.current.date(
+        .task { await loadAll() }
+    }
+
+    // MARK: - Load / Save
+
+    private func loadAll() async {
+        await timeSlotManager.loadTodaySettings()
+        await timeSlotManager.loadTodayProgress()
+        widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
+        for slot in activeSlots {
+            goals[slot.rawValue] = timeSlotManager.settings.goalFor(slot) ?? TimeSlotGoal(timeSlot: slot)
+        }
+        for slot in activeSlots {
+            let id = notifId(for: slot)
+            let cfg = notif.prefs[id]
+            reminderPickerTimes[slot.rawValue] = Calendar.current.date(
                 bySettingHour: cfg.hour, minute: cfg.minute, second: 0, of: Date()
             ) ?? Date()
         }
+        let sc = notif.prefs[NotificationManager.ID.streakAlert]
+        streakPickerTime = Calendar.current.date(
+            bySettingHour: sc.hour, minute: sc.minute, second: 0, of: Date()
+        ) ?? Date()
     }
 
-    // MARK: - ストリーク・アラート
+    private func notifId(for slot: TimeSlot) -> String {
+        switch slot {
+        case .morning:   return NotificationManager.ID.amReminder
+        case .noon:      return NotificationManager.ID.noonReminder
+        case .afternoon: return NotificationManager.ID.afternoonReminder
+        case .evening:   return NotificationManager.ID.pmReminder
+        default:         return ""
+        }
+    }
+
+    private func modifyGoal(slot: TimeSlot, update: (inout TimeSlotGoal) -> Void) {
+        var g = goals[slot.rawValue] ?? TimeSlotGoal(timeSlot: slot)
+        update(&g)
+        goals[slot.rawValue] = g
+        timeSlotManager.settings.updateGoal(g)
+        Task { await timeSlotManager.saveTodaySettings() }
+    }
+
+    // MARK: - Time Slot Card
+
+    private func timeSlotCard(slot: TimeSlot) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ヘッダー
+            HStack(spacing: 10) {
+                Text(slot.emoji).font(.title2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(slot.displayName)
+                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
+                    Text(slot.timeRange)
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 12)
+
+            Divider()
+
+            reminderRow(slot: slot)
+
+            Divider()
+
+            counterRow(icon: "💪", label: "トレーニング", color: Color.duoGreen,
+                       value: goals[slot.rawValue]?.trainingGoal ?? 1, min: 0, max: 10,
+                       onMinus: { modifyGoal(slot: slot) { $0.trainingGoal = max(0, $0.trainingGoal - 1) } },
+                       onPlus:  { modifyGoal(slot: slot) { $0.trainingGoal = min(10, $0.trainingGoal + 1) } })
+
+            Divider().padding(.leading, 44)
+
+            counterRow(icon: "🧘", label: "マインドフルネス", color: Color.duoPurple,
+                       value: goals[slot.rawValue]?.mindfulnessGoal ?? 1, min: 0, max: 10,
+                       onMinus: { modifyGoal(slot: slot) { $0.mindfulnessGoal = max(0, $0.mindfulnessGoal - 1) } },
+                       onPlus:  { modifyGoal(slot: slot) { $0.mindfulnessGoal = min(10, $0.mindfulnessGoal + 1) } })
+
+            Divider().padding(.leading, 44)
+
+            stretchRow(slot: slot)
+
+            Divider().padding(.leading, 44)
+
+            standRow(slot: slot)
+
+            Divider().padding(.leading, 44)
+
+            mindInputRow(slot: slot)
+
+            Divider()
+
+            customActivitiesSection(slot: slot)
+        }
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    // MARK: - Reminder Row
+
+    private func reminderRow(slot: TimeSlot) -> some View {
+        let id = notifId(for: slot)
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.fill")
+                    .font(.subheadline)
+                    .foregroundColor(notif.prefs[id].enabled ? Color.duoOrange : Color(.systemGray3))
+                    .frame(width: 28)
+                Text("リマインダー")
+                    .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                Spacer()
+                if notif.prefs[id].enabled {
+                    Text(String(format: "%02d:%02d", notif.prefs[id].hour, notif.prefs[id].minute))
+                        .font(.caption).fontWeight(.bold).foregroundColor(Color.duoOrange)
+                }
+                Toggle("", isOn: Binding(
+                    get: { notif.prefs[id].enabled },
+                    set: { v in
+                        var cfg = notif.prefs[id]
+                        cfg.enabled = v
+                        notif.prefs[id] = cfg
+                        notif.savePrefs()
+                        notif.applyOne(id: id)
+                    }
+                ))
+                .tint(Color.duoOrange)
+                .labelsHidden()
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+
+            if notif.prefs[id].enabled {
+                reminderTimePicker(slot: slot, id: id)
+            }
+        }
+    }
+
+    private func reminderTimePicker(slot: TimeSlot, id: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock")
+                .font(.caption).foregroundColor(Color.duoSubtitle)
+            DatePicker("",
+                selection: Binding(
+                    get: { reminderPickerTimes[slot.rawValue] ?? Date() },
+                    set: { newVal in
+                        reminderPickerTimes[slot.rawValue] = newVal
+                        let comps = Calendar.current.dateComponents([.hour, .minute], from: newVal)
+                        var cfg = notif.prefs[id]
+                        cfg.hour   = comps.hour   ?? cfg.hour
+                        cfg.minute = comps.minute ?? cfg.minute
+                        notif.prefs[id] = cfg
+                        notif.savePrefs()
+                        notif.applyOne(id: id)
+                    }
+                ),
+                displayedComponents: .hourAndMinute
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .tint(Color.duoOrange)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
+        .background(Color.duoOrange.opacity(0.05))
+    }
+
+    // MARK: - Counter Row
+
+    private func counterRow(icon: String, label: String, color: Color, value: Int, min: Int, max: Int,
+                             onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text(icon).font(.title3).frame(width: 28)
+            Text(label)
+                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+            Spacer()
+            HStack(spacing: 2) {
+                Button(action: onMinus) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(value > min ? color : Color(.systemGray4))
+                }
+                .disabled(value <= min).buttonStyle(.plain)
+
+                Text("\(value)")
+                    .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
+                    .frame(width: 36)
+
+                Button(action: onPlus) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(value < max ? color : Color(.systemGray4))
+                }
+                .disabled(value >= max).buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    // MARK: - Stretch Row
+
+    private func stretchRow(slot: TimeSlot) -> some View {
+        let enabled = goals[slot.rawValue]?.stretchGoal.enabled ?? false
+        let minutes = goals[slot.rawValue]?.stretchGoal.stretchMinutes ?? 3
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text("🤸").font(.title3).frame(width: 28)
+                Text("ストレッチ・ヨガ")
+                    .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { goals[slot.rawValue]?.stretchGoal.enabled ?? false },
+                    set: { v in modifyGoal(slot: slot) { $0.stretchGoal.enabled = v } }
+                ))
+                .tint(stretchColor).labelsHidden()
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+
+            if enabled {
+                HStack(spacing: 10) {
+                    Image(systemName: "timer")
+                        .font(.caption).foregroundColor(stretchColor).frame(width: 28)
+                    Text("目標時間")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                    HStack(spacing: 2) {
+                        Button {
+                            modifyGoal(slot: slot) { $0.stretchGoal.stretchMinutes = max(1, $0.stretchGoal.stretchMinutes - 1) }
+                        } label: {
+                            Image(systemName: "minus.circle.fill").font(.title3)
+                                .foregroundColor(minutes > 1 ? stretchColor : Color(.systemGray4))
+                        }
+                        .disabled(minutes <= 1).buttonStyle(.plain)
+                        Text("\(minutes)分")
+                            .font(.subheadline).fontWeight(.black).foregroundColor(Color.duoDark)
+                            .frame(width: 46)
+                        Button {
+                            modifyGoal(slot: slot) { $0.stretchGoal.stretchMinutes = min(30, $0.stretchGoal.stretchMinutes + 1) }
+                        } label: {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                                .foregroundColor(minutes < 30 ? stretchColor : Color(.systemGray4))
+                        }
+                        .disabled(minutes >= 30).buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.bottom, 12)
+                .background(stretchColor.opacity(0.05))
+            }
+        }
+    }
+
+    // MARK: - Stand Row
+
+    private func standRow(slot: TimeSlot) -> some View {
+        HStack(spacing: 10) {
+            Text("🧍").font(.title3).frame(width: 28)
+            Text("20分スタンド")
+                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { goals[slot.rawValue]?.standGoal.enabled ?? false },
+                set: { v in modifyGoal(slot: slot) { $0.standGoal.enabled = v } }
+            ))
+            .tint(standColor).labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    // MARK: - Mind Input Row
+
+    private func mindInputRow(slot: TimeSlot) -> some View {
+        HStack(spacing: 10) {
+            Text("💭").font(.title3).frame(width: 28)
+            Text("マインド入力")
+                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { goals[slot.rawValue]?.logGoal.mindInputRequired ?? false },
+                set: { v in modifyGoal(slot: slot) { $0.logGoal.mindInputRequired = v } }
+            ))
+            .tint(Color.duoPurple).labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    // MARK: - Custom Activities Section
+
+    private func customActivitiesSection(slot: TimeSlot) -> some View {
+        let activities = goals[slot.rawValue]?.customActivities ?? []
+        let isExpanding = expandingSlot == slot.rawValue
+
+        return VStack(alignment: .leading, spacing: 0) {
+            if !activities.isEmpty {
+                ForEach(activities) { activity in
+                    HStack(spacing: 10) {
+                        Text(activity.emoji).font(.title3).frame(width: 28)
+                        Text(activity.name)
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Spacer()
+                        Button {
+                            modifyGoal(slot: slot) { $0.customActivities.removeAll { $0.id == activity.id } }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundColor(Color(.systemGray3))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    Divider().padding(.leading, 44)
+                }
+            }
+
+            if isExpanding {
+                HStack(spacing: 8) {
+                    TextField("絵", text: $newActivityEmoji)
+                        .font(.title3).multilineTextAlignment(.center)
+                        .frame(width: 44, height: 36)
+                        .background(Color(.systemGray6)).cornerRadius(8)
+                    TextField("項目名を入力", text: $newActivityName)
+                        .font(.subheadline)
+                        .padding(.horizontal, 10)
+                        .frame(height: 36)
+                        .background(Color(.systemGray6)).cornerRadius(8)
+                    Button {
+                        let emoji = newActivityEmoji.isEmpty ? "⭐" : String(newActivityEmoji.prefix(2))
+                        let name  = newActivityName.trimmingCharacters(in: .whitespaces)
+                        guard !name.isEmpty else { return }
+                        modifyGoal(slot: slot) { $0.customActivities.append(CustomActivity(name: name, emoji: emoji)) }
+                        newActivityName  = ""
+                        newActivityEmoji = ""
+                        expandingSlot = nil
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2).foregroundColor(Color.duoGreen)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newActivityName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(Color.duoGreen.opacity(0.04))
+            }
+
+            Button {
+                if isExpanding {
+                    expandingSlot    = nil
+                    newActivityName  = ""
+                    newActivityEmoji = ""
+                } else {
+                    expandingSlot    = slot.rawValue
+                    newActivityName  = ""
+                    newActivityEmoji = ""
+                }
+            } label: {
+                Label(isExpanding ? "キャンセル" : "カスタム項目を追加",
+                      systemImage: isExpanding ? "xmark" : "plus")
+                    .font(.caption).fontWeight(.semibold)
+                    .foregroundColor(isExpanding ? Color.duoSubtitle : Color.duoGreen)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isExpanding ? Color(.systemGray6).opacity(0.5) : Color.duoGreen.opacity(0.07))
+                    .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
+        }
+    }
+
+    // MARK: - Streak Alert Section
 
     private var streakAlertSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -138,240 +499,6 @@ struct TimeSlotGoalsView: View {
         }
     }
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(
-                            colors: [Color.duoGreen, Color(hex: "#58CC02").opacity(0.7)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "clock.fill")
-                        .font(.title3)
-                        .foregroundColor(.white)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("時間帯別の目標設定")
-                        .font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("1日を5つの時間帯に分けて管理")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-
-            Text("夜中・朝・昼・午後・夜の時間帯ごとに、トレーニング、マインドフルネス、ログ記録の目標を設定できます。")
-                .font(.caption)
-                .foregroundColor(Color.duoSubtitle)
-                .padding(.top, 4)
-        }
-        .padding(.vertical, 8)
-    }
-
-    // MARK: - Time Slot Card
-
-    private func timeSlotCard(timeSlot: TimeSlot, goal: TimeSlotGoal, progress: TimeSlotProgress) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // ヘッダー
-            HStack {
-                Text(timeSlot.emoji)
-                    .font(.title2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(timeSlot.displayName)
-                        .font(.headline).fontWeight(.black)
-                        .foregroundColor(Color.duoDark)
-                    Text(timeSlot.timeRange)
-                        .font(.caption)
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-
-                // 達成率
-                let rate = progress.completionRate(goal: goal)
-                CircularProgressView(progress: rate, isCompleted: progress.isFullyCompleted(goal: goal))
-            }
-
-            Divider()
-
-            // トレーニング目標
-            goalRow(
-                icon: "💪",
-                label: "トレーニング",
-                current: progress.trainingCompleted,
-                goal: goal.trainingGoal,
-                color: Color.duoGreen
-            )
-
-            // マインドフルネス目標
-            goalRow(
-                icon: "🧘",
-                label: "マインドフルネス",
-                current: progress.mindfulnessCompleted,
-                goal: goal.mindfulnessGoal,
-                color: Color.duoPurple
-            )
-
-            // ストレッチ・ヨガ目標（夜中以外、有効時のみ）
-            if timeSlot != .midnight && goal.stretchGoal.enabled {
-                let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
-                goalRow(
-                    icon: "🤸",
-                    label: "ストレッチ・ヨガ",
-                    current: progress.stretchSetsCompleted,
-                    goal: goal.stretchGoal.stretchMinutes,
-                    color: stretchColor
-                )
-            }
-
-            // ログ目標（マインド入力のみ。食事・水分は1日全体の目標で管理）
-            if goal.logGoal.mindInputRequired {
-                logGoalRow(logGoal: goal.logGoal, logProgress: progress.logProgress)
-            }
-
-            // カスタムアクティビティ（完了ボタン付き）
-            if !goal.customActivities.filter({ $0.isEnabled }).isEmpty {
-                Divider()
-                ForEach(goal.customActivities.filter { $0.isEnabled }) { activity in
-                    customActivityRow(activity: activity, timeSlot: timeSlot, progress: progress)
-                }
-            }
-
-            // 編集ボタン
-            NavigationLink {
-                TimeSlotGoalEditView(timeSlot: timeSlot)
-            } label: {
-                HStack {
-                    Image(systemName: "pencil")
-                    Text("目標を編集")
-                        .fontWeight(.semibold)
-                }
-                .font(.subheadline)
-                .foregroundColor(Color.duoGreen)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.duoGreen.opacity(0.1))
-                .cornerRadius(10)
-            }
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    // MARK: - Goal Row
-
-    private func goalRow(icon: String, label: String, current: Int, goal: Int, color: Color) -> some View {
-        HStack(spacing: 12) {
-            Text(icon)
-                .font(.title3)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundColor(Color.duoDark)
-
-                HStack(spacing: 8) {
-                    Text("\(current) / \(goal)")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(current >= goal ? Color.duoGreen : Color.duoSubtitle)
-
-                    // プログレスバー
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color(.systemGray5))
-                                .frame(height: 4)
-                            Capsule()
-                                .fill(color)
-                                .frame(width: goal > 0 ? min(geo.size.width, geo.size.width * CGFloat(current) / CGFloat(goal)) : 0, height: 4)
-                        }
-                    }
-                    .frame(height: 4)
-                }
-            }
-
-            Spacer()
-
-            if current >= goal {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(Color.duoGreen)
-                    .font(.title3)
-            }
-        }
-    }
-
-    // MARK: - Log Goal Row
-
-    private func logGoalRow(logGoal: LogGoal, logProgress: LogProgress) -> some View {
-        HStack(spacing: 12) {
-            Text("📝")
-                .font(.title3)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("ログ記録")
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundColor(Color.duoDark)
-
-                HStack(spacing: 8) {
-                    logBadge(label: "マインド", completed: logProgress.mindInputLogged)
-                }
-            }
-
-            Spacer()
-
-            if logProgress.mindInputLogged > 0 {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(Color.duoGreen)
-                    .font(.title3)
-            }
-        }
-    }
-
-    // MARK: - Custom Activity Row
-
-    private func customActivityRow(activity: CustomActivity, timeSlot: TimeSlot, progress: TimeSlotProgress) -> some View {
-        let isCompleted = progress.completedActivityIds.contains(activity.id)
-        return HStack(spacing: 12) {
-            Text(activity.emoji)
-                .font(.title3)
-            Text(activity.name)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
-                .strikethrough(isCompleted, color: Color.duoGreen.opacity(0.6))
-            Spacer()
-            Button {
-                Task { await timeSlotManager.toggleCustomActivity(id: activity.id, at: timeSlot) }
-            } label: {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundColor(isCompleted ? Color.duoGreen : Color(uiColor: .systemGray3))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func logBadge(label: String, completed: Int) -> some View {
-        HStack(spacing: 4) {
-            if completed != 0 {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption2)
-                    .foregroundColor(Color.duoGreen)
-            }
-            Text(label)
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundColor(completed != 0 ? Color.duoGreen : Color.duoSubtitle)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(completed != 0 ? Color.duoGreen.opacity(0.1) : Color(.systemGray6))
-        .cornerRadius(6)
-    }
-
     // MARK: - Mandala Section
 
     private var mandalaTodayDateText: String {
@@ -391,6 +518,7 @@ struct TimeSlotGoalsView: View {
             if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
             if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
             if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
+            if goal.standGoal.enabled { total += 1; if prog.standCompleted >= 1 { done += 1 } }
             if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
             if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
             for act in goal.customActivities.filter({ $0.isEnabled }) {
@@ -421,9 +549,9 @@ struct TimeSlotGoalsView: View {
                     .font(.caption2)
                     .foregroundColor(Color.duoSubtitle)
                     .layoutPriority(1)
-                Text(nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--")
+                Text(widgetProgressPercent > 0 ? "\(widgetProgressPercent)%" : (nc.total > 0 ? "\(nc.done)/\(nc.total)" : "--"))
                     .font(.caption).fontWeight(.black)
-                    .foregroundColor(nc.total > 0 && nc.done == nc.total
+                    .foregroundColor(widgetProgressPercent >= 100 || (widgetProgressPercent == 0 && nc.total > 0 && nc.done == nc.total)
                                      ? Color.duoGreen : Color.duoDark)
             }
 
@@ -487,7 +615,7 @@ extension TimeSlot {
 // MARK: - Mandala Node Type
 
 enum MandalaNodeType {
-    case training, mindfulness, stretch, meal, drink, sleep, pfc, custom, weight, activity
+    case training, mindfulness, stretch, stand, meal, drink, sleep, pfc, custom, weight, activity
 }
 
 // MARK: - Mandala Node Data
@@ -541,11 +669,11 @@ struct MandalaChartView: View {
             totalDrinkLogged += prog.logProgress.drinkLogged
             totalDrinkGoal += goal.logGoal.drinkGoal
         }
-        let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingCompleted >= totalTrainingGoal
+        let dailyTrainingDone    = totalTrainingGoal > 0    && totalTrainingCompleted    >= totalTrainingGoal
         let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulnessCompleted >= totalMindfulnessGoal
-        let dailyStretchDone = totalStretchGoal > 0 && totalStretchCompleted >= totalStretchGoal
-        let dailyMealDone = totalMealGoal > 0 && totalMealLogged >= totalMealGoal
-        let dailyDrinkDone = totalDrinkGoal > 0 && totalDrinkLogged >= totalDrinkGoal
+        let dailyStretchDone     = totalStretchGoal > 0     && totalStretchCompleted     >= totalStretchGoal
+        let dailyMealDone        = totalMealGoal > 0        && totalMealLogged           >= totalMealGoal
+        let dailyDrinkDone       = totalDrinkGoal > 0       && totalDrinkLogged          >= totalDrinkGoal
 
         for slot in activeSlots {
             guard let goal = settings.goalFor(slot),
@@ -585,6 +713,16 @@ struct MandalaChartView: View {
                         type: .stretch
                     ))
                 }
+            }
+            if goal.standGoal.enabled {
+                result.append(MandalaNodeData(
+                    id: "\(slot.rawValue)-stand",
+                    emoji: "🧍",
+                    label: "20分スタンド",
+                    isCompleted: prog.standCompleted >= 1,
+                    slot: slot,
+                    type: .stand
+                ))
             }
             if goal.logGoal.mealGoal > 0 {
                 let mealEmoji: String = {

@@ -74,6 +74,12 @@ class TimeSlotManager: ObservableObject {
                                     ?? stretchData["setsGoal"] as? Int ?? 3
                             }
 
+                            // 20分スタンド目標を読み込み
+                            if let standData = goalData["standGoal"] as? [String: Any] {
+                                goal.standGoal.enabled = standData["enabled"] as? Bool ?? false
+                                goal.standGoal.standMinutes = standData["standMinutes"] as? Int ?? 20
+                            }
+
                             // カスタムアクティビティを読み込み
                             if let activitiesData = goalData["customActivities"] as? [[String: Any]] {
                                 var activities: [CustomActivity] = []
@@ -164,6 +170,10 @@ class TimeSlotManager: ObservableObject {
                     "enabled": goal.stretchGoal.enabled,
                     "stretchMinutes": goal.stretchGoal.stretchMinutes
                 ],
+                "standGoal": [
+                    "enabled": goal.standGoal.enabled,
+                    "standMinutes": goal.standGoal.standMinutes
+                ],
                 "customActivities": goal.customActivities.map { activity in
                     [
                         "id": activity.id,
@@ -239,6 +249,7 @@ class TimeSlotManager: ObservableObject {
                             prog.trainingCompleted = progData["trainingCompleted"] as? Int ?? 0
                             prog.mindfulnessCompleted = progData["mindfulnessCompleted"] as? Int ?? 0
                             prog.stretchSetsCompleted = progData["stretchSetsCompleted"] as? Int ?? 0
+                            prog.standCompleted = progData["standCompleted"] as? Int ?? 0
 
                             if let logProgressData = progData["logProgress"] as? [String: Any] {
                                 // Bool型との後方互換性のため、BoolとIntの両方をサポート
@@ -518,6 +529,7 @@ class TimeSlotManager: ObservableObject {
                     "mindInputLogged": prog.logProgress.mindInputLogged
                 ],
                 "stretchSetsCompleted": prog.stretchSetsCompleted,
+                "standCompleted": prog.standCompleted,
                 "completedActivityIds": Array(prog.completedActivityIds),
                 "lastUpdated": Timestamp(date: prog.lastUpdated)
             ]
@@ -580,6 +592,24 @@ class TimeSlotManager: ObservableObject {
 
             await saveTodayProgress()
             print("✅ TimeSlot: Mindfulness recorded for \(timeSlot.displayName) - \(prog.mindfulnessCompleted)")
+        }
+    }
+
+    /// 20分スタンド完了を記録（タイマー完了 or Watchの連続スタンド検知時）
+    func recordStandCompleted(at timeSlot: TimeSlot) async {
+        if var prog = progress.progressFor(timeSlot) {
+            // 1セッションで完了とする（重複記録を防ぐ）
+            guard prog.standCompleted < 1 else { return }
+            prog.standCompleted = 1
+            prog.lastUpdated = Date()
+
+            // struct全体を再作成してSwiftUIに変更を通知
+            var updatedProgress = progress
+            updatedProgress.updateProgress(prog)
+            progress = updatedProgress
+
+            await saveTodayProgress()
+            print("✅ TimeSlot: Stand recorded for \(timeSlot.displayName)")
         }
     }
 
@@ -667,10 +697,16 @@ class TimeSlotManager: ObservableObject {
     /// 時間帯別カスタム活動の達成状態をトグル
     func toggleCustomActivity(id: String, at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
-            if prog.completedActivityIds.contains(id) {
+            let wasCompleted = prog.completedActivityIds.contains(id)
+            if wasCompleted {
                 prog.completedActivityIds.remove(id)
             } else {
                 prog.completedActivityIds.insert(id)
+                // 歯磨き・フロスをHealthKitに記録
+                let activityName = settings.goalFor(timeSlot)?.customActivities.first { $0.id == id }?.name ?? ""
+                if activityName.contains("歯磨き") {
+                    await HealthKitManager.shared.saveToothbrushing(durationSeconds: 60, timestamp: Date())
+                }
             }
             prog.lastUpdated = Date()
             var updatedProgress = progress

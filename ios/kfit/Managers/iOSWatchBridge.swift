@@ -176,6 +176,17 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 return
             }
 
+            // ④-2 Watch側で20分スタンド完了
+            if (message["action"] as? String) == "stand_completed" {
+                Task {
+                    let currentSlot = TimeSlot.current()
+                    await TimeSlotManager.shared.recordStandCompleted(at: currentSlot)
+                    await Self.saveMindfulStandSession(at: currentSlot)
+                    print("[iOSWatchBridge] 🧍 Watch stand completed at \(currentSlot.displayName)")
+                }
+                return
+            }
+
             // ⑤ 摂取記録（Watch からの記録）
             if (message["action"] as? String) == "record_intake" {
                 let type = message["type"] as? String ?? ""
@@ -270,6 +281,37 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
                                  todaySets: summary.completedSets, todayExercises: todayExercises)
             }
+
+            if (applicationContext["action"] as? String) == "stand_completed" {
+                let slot = TimeSlot.current()
+                await TimeSlotManager.shared.recordStandCompleted(at: slot)
+                await Self.saveMindfulStandSession(at: slot)
+                print("[iOSWatchBridge] 🧍 Watch stand completed (context)")
+            }
+        }
+    }
+
+    // 20分スタンド完了をHealthKitにマインドフルセッションとして保存し、TimeSlotに反映
+    private static func saveMindfulStandSession(at slot: TimeSlot) async {
+        let endDate = Date()
+        let startDate = endDate.addingTimeInterval(-20 * 60)
+        let saved = await HealthKitManager.shared.saveMindfulnessSession(
+            startDate: startDate,
+            endDate: endDate,
+            durationSeconds: 20 * 60,
+            sessionType: "Stand"
+        )
+        guard saved else { return }
+        await HealthKitManager.shared.refreshMindfulness()
+        let hkCount = HealthKitManager.shared.todayMindfulnessSessions
+        let totalInSlots = TimeSlot.allCases.compactMap {
+            TimeSlotManager.shared.progress.progressFor($0)?.mindfulnessCompleted
+        }.reduce(0, +)
+        let needed = hkCount - totalInSlots
+        if needed > 0 {
+            for _ in 0..<needed {
+                await TimeSlotManager.shared.recordMindfulnessCompleted(at: slot)
+            }
         }
     }
 
@@ -303,6 +345,15 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             let totalDrinkLogged   = ud.integer(forKey: "drinkLogged")
             let totalDrinkGoal     = ud.integer(forKey: "drinkGoal")
 
+            let manager = TimeSlotManager.shared
+            let totalStand = TimeSlot.allCases.reduce(0) { acc, slot in
+                guard let goal = manager.settings.goalFor(slot), goal.standGoal.enabled else { return acc }
+                return acc + (manager.progress.progressFor(slot)?.standCompleted ?? 0)
+            }
+            let totalStandGoal = TimeSlot.allCases.filter {
+                manager.settings.goalFor($0)?.standGoal.enabled == true
+            }.count
+
             // 少なくとも目標が設定されていれば有効なデータとみなす
             if totalTrainingGoal > 0 || totalMindfulnessGoal > 0 {
                 return TimeSlotProgressData(
@@ -313,7 +364,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     totalMealLogged: totalMealLogged,
                     totalMealGoal: totalMealGoal,
                     totalDrinkLogged: totalDrinkLogged,
-                    totalDrinkGoal: totalDrinkGoal
+                    totalDrinkGoal: totalDrinkGoal,
+                    totalStand: totalStand,
+                    totalStandGoal: totalStandGoal
                 )
             }
         }
@@ -331,6 +384,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         var totalMealGoal = 0
         var totalDrinkLogged = 0
         var totalDrinkGoal = 0
+        var totalStandFallback = 0
+        var totalStandGoalFallback = 0
 
         for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
@@ -359,6 +414,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     totalDrinkGoal += goal.logGoal.drinkGoal
                     totalDrinkLogged += progress.logProgress.drinkLogged
                 }
+                if goal.standGoal.enabled {
+                    totalStandGoalFallback += 1
+                    totalStandFallback += progress.standCompleted
+                }
             }
         }
         return TimeSlotProgressData(
@@ -369,7 +428,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             totalMealLogged: totalMealLogged,
             totalMealGoal: totalMealGoal,
             totalDrinkLogged: totalDrinkLogged,
-            totalDrinkGoal: totalDrinkGoal
+            totalDrinkGoal: totalDrinkGoal,
+            totalStand: totalStandFallback,
+            totalStandGoal: totalStandGoalFallback
         )
     }
 
@@ -403,6 +464,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["totalMealGoal"] = timeSlotProgress.totalMealGoal
             payload["totalDrinkLogged"] = timeSlotProgress.totalDrinkLogged
             payload["totalDrinkGoal"] = timeSlotProgress.totalDrinkGoal
+            payload["totalStand"] = timeSlotProgress.totalStand
+            payload["totalStandGoal"] = timeSlotProgress.totalStandGoal
 
             let watchFaceTasks = await buildWatchFaceTasks()
             if let data = try? JSONEncoder().encode(watchFaceTasks) {
@@ -739,6 +802,8 @@ struct TimeSlotProgressData {
     let totalMealGoal: Int
     let totalDrinkLogged: Int
     let totalDrinkGoal: Int
+    let totalStand: Int
+    let totalStandGoal: Int
 }
 
 struct WatchFaceTaskConfigForWatch: Codable {

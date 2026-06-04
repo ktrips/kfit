@@ -1693,8 +1693,9 @@ class AuthenticationManager: ObservableObject {
             .collection("logs").addDocument(data: data)
         await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
 
-        // Apple Healthにカフェイン記録
+        // Apple Healthにカフェイン記録＋コーヒーの液量を水分として記録
         await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 

@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct MindView: View {
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+    private static let hm: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "H:mm"; return f
+    }()
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
     @StateObject private var healthKit = HealthKitManager.shared
@@ -430,12 +436,13 @@ struct MindView: View {
     }
 
     private func mindfulHistoryRow(_ session: MindfulSession) -> some View {
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "HH:mm"
+        let timeFormatter = MindView.hhmm
         let isReflect = session.sessionTypeLabel == "Reflect"
-        let typeColor: Color = isReflect ? Color.duoPurple : Color(hex: "#1CB0F6")
-        let japaneseLabel: String = isReflect ? "3分ストレッチ" : "1分瞑想"
-        let xp = isReflect ? 30 : 10
+        let isStand = session.sessionTypeLabel == "Stand"
+        let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
+        let typeColor: Color = isStand ? standColor : (isReflect ? Color.duoPurple : Color(hex: "#1CB0F6"))
+        let japaneseLabel: String = isStand ? "20分スタンド" : (isReflect ? "3分ストレッチ" : "1分瞑想")
+        let xp = isStand ? 50 : (isReflect ? 30 : 10)
 
         return HStack(spacing: 6) {
             Text(timeFormatter.string(from: session.startDate))
@@ -602,9 +609,7 @@ struct MindView: View {
                                     value: "\(analysis.bedtimeScore)/30",
                                     note: {
                                         if let t = analysis.firstSleepTime {
-                                            let f = DateFormatter()
-                                            f.dateFormat = "H:mm"
-                                            return f.string(from: t)
+                                            return MindView.hm.string(from: t)
                                         }
                                         return "—"
                                     }()
@@ -1401,6 +1406,13 @@ private struct HRVTrendChart: View {
 }
 
 private struct WeeklyHRVAverageChart: View {
+    private static let dayOfWeek: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        return f
+    }()
+
     let days: [DailyHRVAverage]
     private let lowerLimit = 20.0
 
@@ -1521,10 +1533,7 @@ private struct WeeklyHRVAverageChart: View {
     }
 
     private func dayLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "E"
-        return formatter.string(from: date)
+        WeeklyHRVAverageChart.dayOfWeek.string(from: date)
     }
 }
 

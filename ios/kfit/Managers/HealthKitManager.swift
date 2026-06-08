@@ -300,6 +300,7 @@ final class HealthKitManager: ObservableObject {
     // 摂取サンプル（時刻付き）
     @Published var todayWaterSamples: [DietarySample] = []  // 水分サンプル（ml）
     @Published var todayMealSamples:  [DietarySample] = []  // 食事カロリーサンプル（kcal）
+    @Published var todayToothbrushingSamples: [Date] = []   // 歯磨きイベント（終了時刻）
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
     private var lastFetchAllAt: Date? = nil
     private var lastScopedFetchAt: [String: Date] = [:]
@@ -585,6 +586,7 @@ final class HealthKitManager: ObservableObject {
         async let activityRings = fetchTodayActivitySummary()
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples  = fetchTodayMealSamplesRaw()
+        async let toothbrushing = fetchTodayToothbrushingRaw()
 
         todaySteps          = await steps
         todayActiveCalories = await activeCalories
@@ -653,6 +655,7 @@ final class HealthKitManager: ObservableObject {
         activityStandGoal       = rings.standGoal
         todayWaterSamples       = await waterSamples
         todayMealSamples        = await mealSamples
+        todayToothbrushingSamples = await toothbrushing
         weeklyCalorieData       = await fetchWeeklyCalories()
 
         print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
@@ -673,6 +676,7 @@ final class HealthKitManager: ObservableObject {
         async let activityRings = fetchTodayActivitySummary()
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples = fetchTodayMealSamplesRaw()
+        async let toothbrushing = fetchTodayToothbrushingRaw()
 
         todaySteps = await steps
         todayActiveCalories = await activeCalories
@@ -693,6 +697,7 @@ final class HealthKitManager: ObservableObject {
         activityStandGoal = rings.standGoal
         todayWaterSamples = await waterSamples
         todayMealSamples = await mealSamples
+        todayToothbrushingSamples = await toothbrushing
     }
 
     func fetchMindHealth(force: Bool = false) async {
@@ -1755,6 +1760,8 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.save(sample)
             print("[HealthKit] ✅ Saved toothbrushing: \(Int(durationSeconds))s")
+            todayToothbrushingSamples = await fetchTodayToothbrushingRaw()
+            await TimeSlotManager.shared.syncToothbrushingFromHealthKit()
         } catch {
             print("[HealthKit] ❌ 歯磨き記録エラー: \(error.localizedDescription)")
         }
@@ -1844,6 +1851,21 @@ final class HealthKitManager: ObservableObject {
                     DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .kilocalorie()))
                 } ?? []
                 continuation.resume(returning: result)
+            }
+            self.store.execute(q)
+        }
+    }
+
+    /// 今日の歯磨きイベントを取得（終了時刻の配列）
+    private func fetchTodayToothbrushingRaw() async -> [Date] {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .toothbrushingEvent) else { return [] }
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+                let dates = (samples as? [HKCategorySample])?.map { $0.endDate } ?? []
+                continuation.resume(returning: dates)
             }
             self.store.execute(q)
         }

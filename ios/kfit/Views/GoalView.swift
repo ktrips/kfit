@@ -1428,20 +1428,9 @@ struct GoalView: View {
     // MARK: - 週間カロリー収支カード
 
     private var weeklyCalorieCard: some View {
-        let settings = dietManager.settings
-        // Apple Health トグル OFF の場合は目標値で差し替え
-        let adjustedData: [DailyCalorieBalance] = healthKit.weeklyCalorieData.map { day in
-            let intake = settings.useHealthKitForIntake ? day.consumed : Double(settings.dailyIntakeGoal)
-            let burn   = settings.useHealthKitForBurn   ? day.burned   : Double(settings.dailyBurnGoal)
-            var d = DailyCalorieBalance(date: day.date, burned: burn, consumed: intake)
-            d.bodyMass = day.bodyMass
-            d.bodyFatPercentage = day.bodyFatPercentage
-            d.steps = day.steps
-            return d
-        }
-        return GoalWeeklyCalorieCard(
-            data: adjustedData,
-            dailyGoal: settings.dailyDeficitGoal
+        GoalWeeklyCalorieCard(
+            data: healthKit.weeklyCalorieData,
+            dailyGoal: dietManager.settings.dailyDeficitGoal
         )
     }
 

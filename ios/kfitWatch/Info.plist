@@ -32,5 +32,9 @@
 	<string>kfit writes workout data to Apple Health.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>kfit uses motion sensors to automatically count your exercise reps and track workout form.</string>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>self-care</string>
+	</array>
 </dict>
 </plist>

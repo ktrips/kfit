@@ -59,6 +59,7 @@ struct SettingsView: View {
     @State private var permStatus: UNAuthorizationStatus = .notDetermined
     @State private var showHabitStack = false
     @State private var showHabitSettings = false
+    @State private var showTimeSlotGoals = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
@@ -136,6 +137,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showHabitSettings) { habitSettingsSheet }
+        .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
         .sheet(isPresented: $showSetEditor) {
             SetConfigurationEditorView(configuration: $setConfiguration)
@@ -509,32 +511,34 @@ struct SettingsView: View {
                 // 曜日毎の目標
                 weekdayGoalsSection
 
-                // 時間帯別の目標サブヘッダー
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(spacing: 6) {
+                // 時間帯別設定ボタン
+                Button { showTimeSlotGoals = true } label: {
+                    HStack(spacing: 10) {
                         Image(systemName: "clock.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(Color.duoGreen)
-                        Text("時間帯別の目標")
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                        Text("朝・昼・午後・夜")
-                            .font(.system(size: 10))
+                            .frame(width: 32, height: 32)
+                            .background(Color.duoGreen.opacity(0.10))
+                            .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("時間帯別の目標")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text("朝・昼・午後・夜の時間帯ごとに設定")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
                             .foregroundColor(Color.duoSubtitle)
                     }
-                    Spacer(minLength: 8)
-                    smallDefaultButton {
-                        resetTimeSlotGoalsToDefault()
-                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
                 }
-
-                // 時間帯別カード
-                ForEach(TimeSlot.allCases.filter { $0 != .midnight }, id: \.self) { slot in
-                    if let goal = timeSlotManager.settings.goalFor(slot),
-                       let progress = timeSlotManager.progress.progressFor(slot) {
-                        timeSlotCardInline(slot: slot, goal: goal, progress: progress)
-                    }
-                }
+                .buttonStyle(.plain)
 
                 // ストリーク・アラート
                 reminderSection

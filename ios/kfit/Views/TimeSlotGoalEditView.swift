@@ -7,10 +7,7 @@ struct TimeSlotGoalEditView: View {
 
     @State private var trainingGoal: Int = 1
     @State private var mindfulnessGoal: Int = 1
-    @State private var mindInputRequired: Bool = false
-    // ストレッチ・ヨガ
-    @State private var stretchEnabled: Bool = false
-    @State private var stretchMinutes: Int = 3
+    @State private var standEnabled: Bool = false
 
     var body: some View {
         ZStack {
@@ -22,9 +19,9 @@ struct TimeSlotGoalEditView: View {
 
                     trainingSection
                     mindfulnessSection
-                    if timeSlot != .midnight { stretchSection }
-                    logSection
+                    if timeSlot != .midnight { standSection }
 
+                    resetButton
                     saveButton
 
                     Spacer(minLength: 40)
@@ -116,7 +113,7 @@ struct TimeSlotGoalEditView: View {
             sectionTitle(icon: "🧘", title: "マインドフルネス")
 
             HStack {
-                Text("目標回数")
+                Text("目標時間（分）")
                     .font(.subheadline).fontWeight(.semibold)
                     .foregroundColor(Color.duoDark)
                 Spacer()
@@ -137,16 +134,17 @@ struct TimeSlotGoalEditView: View {
                         .frame(width: 40)
 
                     Button {
-                        if mindfulnessGoal < 10 { mindfulnessGoal += 1 }
+                        if mindfulnessGoal < 60 { mindfulnessGoal += 1 }
                     } label: {
                         Image(systemName: "plus.circle.fill")
                             .font(.title2)
                             .foregroundColor(Color.duoPurple)
                     }
+                    .disabled(mindfulnessGoal >= 60)
                 }
             }
 
-            Text("この時間帯に実施するマインドフルネスの目標回数")
+            Text("1分瞑想・3分ストレッチの合計分数で達成")
                 .font(.caption)
                 .foregroundColor(Color.duoSubtitle)
         }
@@ -156,28 +154,26 @@ struct TimeSlotGoalEditView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
-    // MARK: - Stretch Section
+    // MARK: - Stand Section（20分スタンド）
 
-    private let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
+    private let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
 
-    private var stretchSection: some View {
+    private var standSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                sectionTitle(icon: "🤸", title: "ストレッチ・ヨガ")
+                sectionTitle(icon: "🧍", title: "20分スタンド")
                 Spacer()
-                Toggle("", isOn: $stretchEnabled)
-                    .tint(stretchColor)
+                Toggle("", isOn: $standEnabled)
+                    .tint(standColor)
                     .labelsHidden()
             }
 
-            if stretchEnabled {
-                stretchStepperRow(icon: "🤸", label: "目標時間（分）", value: $stretchMinutes, max: 30)
-
+            if standEnabled {
                 HStack(spacing: 4) {
                     Image(systemName: "info.circle")
                         .font(.caption2)
-                        .foregroundColor(stretchColor)
-                    Text("マインドフルネス（種類不問）合計\(stretchMinutes)分で達成")
+                        .foregroundColor(standColor)
+                    Text("20分タイマー完了、またはWatchで20分連続スタンド検知で達成")
                         .font(.caption)
                         .foregroundColor(Color.duoSubtitle)
                 }
@@ -189,65 +185,24 @@ struct TimeSlotGoalEditView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
     }
 
-    private func stretchStepperRow(icon: String, label: String, value: Binding<Int>, max: Int) -> some View {
-        HStack {
-            Text(icon).font(.title3)
-            Text(label)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundColor(Color.duoDark)
-            Spacer()
-            HStack(spacing: 12) {
-                Button {
-                    if value.wrappedValue > 1 { value.wrappedValue -= 1 }
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(value.wrappedValue > 1 ? stretchColor : Color(.systemGray4))
-                }
-                .disabled(value.wrappedValue <= 1)
+    // MARK: - Reset Button
 
-                Text("\(value.wrappedValue)")
-                    .font(.title2).fontWeight(.black)
-                    .foregroundColor(Color.duoDark)
-                    .frame(width: 40)
-
-                Button {
-                    if value.wrappedValue < max { value.wrappedValue += 1 }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(value.wrappedValue < max ? stretchColor : Color(.systemGray4))
-                }
-                .disabled(value.wrappedValue >= max)
-            }
+    private var resetButton: some View {
+        Button {
+            trainingGoal    = 1
+            mindfulnessGoal = 1
+            standEnabled    = false
+        } label: {
+            Text("デフォルトに戻す")
+                .font(.subheadline).fontWeight(.bold)
+                .foregroundColor(Color.duoOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color(.systemBackground))
+                .cornerRadius(14)
         }
+        .buttonStyle(.plain)
     }
-
-    // MARK: - Log Section
-
-    private var logSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle(icon: "📝", title: "ログ記録")
-
-            Toggle(isOn: $mindInputRequired) {
-                HStack(spacing: 8) {
-                    Text("💭")
-                        .font(.title3)
-                    Text("マインド入力")
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundColor(Color.duoDark)
-                }
-            }
-            .tint(Color.duoPurple)
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    // MARK: - Reminder Section
-
 
     // MARK: - Save Button
 
@@ -285,22 +240,18 @@ struct TimeSlotGoalEditView: View {
         if let goal = timeSlotManager.settings.goalFor(timeSlot) {
             trainingGoal = goal.trainingGoal
             mindfulnessGoal = goal.mindfulnessGoal
-            mindInputRequired = goal.logGoal.mindInputRequired
-            stretchEnabled = goal.stretchGoal.enabled
-            stretchMinutes = goal.stretchGoal.stretchMinutes
+            standEnabled = goal.standGoal.enabled
         }
     }
 
     private func saveGoal() {
-        // 既存値（customActivities、reminderEnabled 等）を保持して更新
         var goal = timeSlotManager.settings.goalFor(timeSlot) ?? TimeSlotGoal(timeSlot: timeSlot)
         goal.trainingGoal = trainingGoal
         goal.mindfulnessGoal = mindfulnessGoal
-        goal.logGoal.mindInputRequired = mindInputRequired
-        goal.stretchGoal.enabled = stretchEnabled
-        goal.stretchGoal.stretchMinutes = stretchMinutes
+        goal.standGoal.enabled = standEnabled
 
         timeSlotManager.settings.updateGoal(goal)
+        timeSlotManager.saveGoalTemplate()
 
         Task {
             await timeSlotManager.saveTodaySettings()

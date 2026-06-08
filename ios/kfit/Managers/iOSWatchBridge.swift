@@ -375,10 +375,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         let timeSlotManager = TimeSlotManager.shared
         await timeSlotManager.loadTodaySettings()
         await timeSlotManager.loadTodayProgress()
-        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-        let calendar = Calendar.current
         var totalTraining = 0
         var totalTrainingGoal = 0
+        var totalMindfulness = 0
         var totalMindfulnessGoal = 0
         var totalMealLogged = 0
         var totalMealGoal = 0
@@ -390,21 +389,11 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         for slot in TimeSlot.allCases {
             if let goal = timeSlotManager.settings.goalFor(slot),
                let progress = timeSlotManager.progress.progressFor(slot) {
-                let slotExercises = todayExercises.filter { exercise in
-                    let hour = calendar.component(.hour, from: exercise.timestamp)
-                    return hour >= slot.startHour && hour < slot.endHour
-                }.sorted { $0.timestamp < $1.timestamp }
-                var setsInSlot = 0
-                var lastTime: Date? = nil
-                for ex in slotExercises {
-                    if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
-                    } else {
-                        setsInSlot += 1
-                    }
-                    lastTime = ex.timestamp
-                }
-                totalTraining += setsInSlot
+                // 永続化されたTimeSlot進捗を使用（Firestore依存より正確）
+                totalTraining += progress.trainingCompleted
                 totalTrainingGoal += goal.trainingGoal
+                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分）
+                totalMindfulness += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3
                 totalMindfulnessGoal += goal.mindfulnessGoal
                 if goal.logGoal.mealGoal > 0 {
                     totalMealGoal += goal.logGoal.mealGoal
@@ -423,7 +412,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         return TimeSlotProgressData(
             totalTraining: totalTraining,
             totalTrainingGoal: totalTrainingGoal,
-            totalMindfulness: HealthKitManager.shared.todayMindfulnessSessions,
+            totalMindfulness: totalMindfulness,
             totalMindfulnessGoal: totalMindfulnessGoal,
             totalMealLogged: totalMealLogged,
             totalMealGoal: totalMealGoal,
@@ -615,62 +604,54 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         let timeSlotManager = TimeSlotManager.shared
         await timeSlotManager.loadTodaySettings()
         await timeSlotManager.loadTodayProgress(syncHealthKit: true)
-        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-        let calendar = Calendar.current
 
-        func countSets(in slot: TimeSlot) -> Int {
-            let slotExercises = todayExercises.filter { exercise in
-                let hour = calendar.component(.hour, from: exercise.timestamp)
-                return hour >= slot.startHour && hour < slot.endHour
-            }.sorted { $0.timestamp < $1.timestamp }
+        let settings = timeSlotManager.settings
+        let prog = timeSlotManager.progress
+        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
 
-            var setCount = 0
-            var lastTime: Date?
-            for exercise in slotExercises {
-                if let lastTime, exercise.timestamp.timeIntervalSince(lastTime) <= 30 * 60 {
-                    // 同じ30分内の種目は同一セットとして扱う
-                } else {
-                    setCount += 1
-                }
-                lastTime = exercise.timestamp
-            }
-            return setCount
-        }
+        // 1日合計を事前集計（iOS buildNodes() と同じロジック）
+        var totalTrainingCompleted = 0, totalTrainingGoal = 0
+        var totalMindfulMinutes = 0, totalMindfulnessGoal = 0
+        var totalMealLogged = 0, totalMealGoal = 0
+        var totalDrinkLogged = 0, totalDrinkGoal = 0
+        var dailyStandDone = false
+        var completedActivityNames: Set<String> = []
 
-        func mealSubtype(for slot: TimeSlot) -> String {
-            switch slot {
-            case .midnight: return "snack"
-            case .morning: return "breakfast"
-            case .noon: return "lunch"
-            case .afternoon: return "snack"
-            case .evening: return "dinner"
+        for slot in activeSlots {
+            guard let goal = settings.goalFor(slot), let p = prog.progressFor(slot) else { continue }
+            totalTrainingCompleted += p.trainingCompleted
+            totalTrainingGoal += goal.trainingGoal
+            totalMindfulMinutes += p.mindfulnessCompleted * 1 + p.stretchSetsCompleted * 3
+            totalMindfulnessGoal += goal.mindfulnessGoal
+            totalMealLogged += p.logProgress.mealLogged
+            totalMealGoal += goal.logGoal.mealGoal
+            totalDrinkLogged += p.logProgress.drinkLogged
+            totalDrinkGoal += goal.logGoal.drinkGoal
+            if goal.standGoal.enabled && p.standCompleted >= 1 { dailyStandDone = true }
+            for activity in goal.customActivities where activity.isEnabled && p.completedActivityIds.contains(activity.id) {
+                completedActivityNames.insert(activity.name)
             }
         }
 
-        func mealEmoji(for slot: TimeSlot) -> String {
-            switch slot {
-            case .midnight: return "🍃"
-            case .morning: return "🍳"
-            case .noon: return "🍱"
-            case .afternoon: return "🍃"
-            case .evening: return "🍽️"
-            }
-        }
+        let dailyTrainingDone    = totalTrainingGoal > 0    && totalTrainingCompleted >= totalTrainingGoal
+        let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulMinutes    >= totalMindfulnessGoal
+        let dailyMealDone        = totalMealGoal > 0        && totalMealLogged        >= totalMealGoal
+        let dailyDrinkDone       = totalDrinkGoal > 0       && totalDrinkLogged       >= totalDrinkGoal
 
         var tasks: [WatchFaceTaskConfigForWatch] = []
-        for slot in TimeSlot.allCases {
-            guard let goal = timeSlotManager.settings.goalFor(slot),
-                  let progress = timeSlotManager.progress.progressFor(slot) else { continue }
+
+        for slot in activeSlots {
+            guard let goal = settings.goalFor(slot),
+                  let p = prog.progressFor(slot) else { continue }
             let prefix = slot.rawValue
 
             if goal.trainingGoal > 0 {
-                let setsCompleted = max(progress.trainingCompleted, countSets(in: slot))
-                for index in 1...goal.trainingGoal {
+                for i in 1...goal.trainingGoal {
                     tasks.append(WatchFaceTaskConfigForWatch(
-                        id: "\(prefix)-training-\(index)",
+                        id: "\(prefix)-training-\(i)",
                         emoji: "💪",
                         color: "training",
-                        isDone: setsCompleted >= index,
+                        isDone: dailyTrainingDone || p.trainingCompleted >= i,
                         actionType: "training",
                         mealSubtype: nil,
                         intakeMessage: ""
@@ -678,13 +659,55 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 }
             }
 
+            if goal.mindfulnessGoal > 0 {
+                let slotMindfulMinutes = p.mindfulnessCompleted * 1 + p.stretchSetsCompleted * 3
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-mindfulness",
+                    emoji: "🧘",
+                    color: "mind",
+                    isDone: dailyMindfulnessDone || slotMindfulMinutes >= goal.mindfulnessGoal,
+                    actionType: "mindfulness",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+
+            if goal.standGoal.enabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "\(prefix)-stand",
+                    emoji: "🧍",
+                    color: "stand",
+                    isDone: dailyStandDone || p.standCompleted >= 1,
+                    actionType: "stand",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+
             if goal.logGoal.mealGoal > 0 {
-                let subtype = mealSubtype(for: slot)
+                let mealEmoji: String = {
+                    switch slot {
+                    case .midnight:  return "🌙"
+                    case .morning:   return "🥐"
+                    case .noon:      return "🍱"
+                    case .afternoon: return "🍎"
+                    case .evening:   return "🍛"
+                    }
+                }()
+                let subtype: String = {
+                    switch slot {
+                    case .midnight:  return "snack"
+                    case .morning:   return "breakfast"
+                    case .noon:      return "lunch"
+                    case .afternoon: return "snack"
+                    case .evening:   return "dinner"
+                    }
+                }()
                 tasks.append(WatchFaceTaskConfigForWatch(
                     id: "\(prefix)-meal",
-                    emoji: mealEmoji(for: slot),
+                    emoji: mealEmoji,
                     color: "meal",
-                    isDone: progress.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    isDone: dailyMealDone || p.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     actionType: "meal",
                     mealSubtype: subtype,
                     intakeMessage: "\(slot.displayName)の食事を追加しますか？"
@@ -696,64 +719,110 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     id: "\(prefix)-drink",
                     emoji: "💧",
                     color: "water",
-                    isDone: progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    isDone: dailyDrinkDone || p.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
                     actionType: "water",
                     mealSubtype: nil,
                     intakeMessage: "\(slot.displayName)の水分を追加しますか？"
                 ))
             }
 
-            if goal.logGoal.mindInputRequired {
-                tasks.append(WatchFaceTaskConfigForWatch(
-                    id: "\(prefix)-mind-input",
-                    emoji: "📝",
-                    color: "mind",
-                    isDone: progress.logProgress.mindInputLogged > 0,
-                    actionType: "custom",
-                    mealSubtype: nil,
-                    intakeMessage: ""
-                ))
-            }
-
-            if goal.mindfulnessGoal > 0 {
-                for index in 1...goal.mindfulnessGoal {
-                    tasks.append(WatchFaceTaskConfigForWatch(
-                        id: "\(prefix)-mindfulness-\(index)",
-                        emoji: "🧘",
-                        color: "mind",
-                        isDone: progress.mindfulnessCompleted >= index,
-                        actionType: "mindfulness",
-                        mealSubtype: nil,
-                        intakeMessage: ""
-                    ))
-                }
-            }
-
-            if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 && slot != .midnight {
-                tasks.append(WatchFaceTaskConfigForWatch(
-                    id: "\(prefix)-stretch",
-                    emoji: "🤸",
-                    color: "stretch",
-                    isDone: progress.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes,
-                    actionType: "stretch",
-                    mealSubtype: nil,
-                    intakeMessage: ""
-                ))
-            }
-
-            for activity in goal.customActivities where activity.isEnabled {
+            for activity in goal.customActivities.filter({ $0.isEnabled }) {
                 tasks.append(WatchFaceTaskConfigForWatch(
                     id: "\(prefix)-custom-\(activity.id)",
                     emoji: activity.emoji,
                     color: "custom",
-                    isDone: progress.completedActivityIds.contains(activity.id),
+                    isDone: completedActivityNames.contains(activity.name) || p.completedActivityIds.contains(activity.id),
                     actionType: "custom",
                     mealSubtype: nil,
                     intakeMessage: ""
                 ))
             }
         }
-        return tasks
+
+        // 睡眠・体重グローバルノード
+        if let fixedData = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: fixedData) {
+            let gp = prog.globalProgress
+            if fixed.sleepEnabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "global-sleep",
+                    emoji: "😴",
+                    color: "custom",
+                    isDone: gp.sleepHours >= Double(fixed.sleepHoursGoal) || gp.sleepScore >= settings.globalGoals.sleepScoreThreshold,
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+            if fixed.weightEnabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "global-weight",
+                    emoji: "⚖️",
+                    color: "custom",
+                    isDone: gp.weightMeasured,
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+            for cg in fixed.customGoals {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "daily-\(cg.id.uuidString)",
+                    emoji: cg.emoji,
+                    color: "custom",
+                    isDone: gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)"),
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+        }
+
+        // 曜日別カスタム目標
+        let weekdayNum: Int = {
+            let wd = Calendar.current.component(.weekday, from: Date())
+            return wd == 1 ? 7 : wd - 1
+        }()
+        if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+           let wdGoals = try? JSONDecoder().decode([WeekdayGoal].self, from: data),
+           let wg = wdGoals.first(where: { $0.weekday == weekdayNum && $0.hasAnyGoal }) {
+            let gp = prog.globalProgress
+            if wg.studyEnabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "wd-study",
+                    emoji: "📚",
+                    color: "custom",
+                    isDone: gp.completedCustomGoalIds.contains("wd_study_\(weekdayNum)"),
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+            if wg.noAlcoholEnabled {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "wd-noalcohol",
+                    emoji: "🚫",
+                    color: "custom",
+                    isDone: gp.completedCustomGoalIds.contains("wd_noalcohol_\(weekdayNum)"),
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+            for cg in wg.customGoals {
+                tasks.append(WatchFaceTaskConfigForWatch(
+                    id: "wd-\(cg.id.uuidString)",
+                    emoji: cg.emoji,
+                    color: "custom",
+                    isDone: gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)"),
+                    actionType: "custom",
+                    mealSubtype: nil,
+                    intakeMessage: ""
+                ))
+            }
+        }
+
+        return Array(tasks.prefix(40))
     }
 }
 

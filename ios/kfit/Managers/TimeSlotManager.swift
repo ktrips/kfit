@@ -137,8 +137,14 @@ class TimeSlotManager: ObservableObject {
                 // グローバル食事・水分目標をスロットに反映
                 applyGlobalMealDrinkToSlots()
             } else {
-                // デフォルト設定を作成
-                settings = DailyTimeSlotSettings(date: today)
+                // 新しい日：前回保存したテンプレートから目標を引き継ぐ
+                if let template = loadGoalTemplate() {
+                    settings = DailyTimeSlotSettings(date: today)
+                    for goal in template.goals { settings.updateGoal(goal) }
+                    settings.globalGoals = template.globalGoals
+                } else {
+                    settings = DailyTimeSlotSettings(date: today)
+                }
                 applyGlobalMealDrinkToSlots()
                 await saveTodaySettings()
             }
@@ -356,6 +362,9 @@ class TimeSlotManager: ObservableObject {
         // ReflectセッションからストレッチセットをSync
         await syncStretchFromHealthKit()
 
+        // 歯磨きイベントをカスタムアクティビティにSync
+        await syncToothbrushingFromHealthKit()
+
         // Firestoreにも保存
         await saveTodayProgress()
     }
@@ -407,6 +416,51 @@ class TimeSlotManager: ObservableObject {
         }
     }
 
+    /// HealthKitの歯磨きイベントを、対応する時間帯の「歯磨き・フロス」カスタムアクティビティに反映
+    func syncToothbrushingFromHealthKit() async {
+        let hk = HealthKitManager.shared
+        guard hk.isAuthorized else { return }
+
+        let toothbrushingDates = hk.todayToothbrushingSamples
+        guard !toothbrushingDates.isEmpty else { return }
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var changed = false
+
+        for slot in TimeSlot.allCases {
+            guard var prog = progress.progressFor(slot),
+                  let goal = settings.goalFor(slot) else { continue }
+
+            let slotStart = cal.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
+            let slotEnd: Date = slot.endHour >= 24
+                ? (cal.date(byAdding: .day, value: 1, to: today) ?? today)
+                : (cal.date(bySettingHour: slot.endHour, minute: 0, second: 0, of: today) ?? today)
+
+            let hasEvent = toothbrushingDates.contains { $0 >= slotStart && $0 < slotEnd }
+            guard hasEvent else { continue }
+
+            var slotChanged = false
+            for activity in goal.customActivities where activity.isEnabled && activity.name.contains("歯磨き") {
+                if !prog.completedActivityIds.contains(activity.id) {
+                    prog.completedActivityIds.insert(activity.id)
+                    slotChanged = true
+                }
+            }
+            if slotChanged {
+                var updated = progress
+                updated.updateProgress(prog)
+                progress = updated
+                changed = true
+            }
+        }
+
+        if changed {
+            await saveTodayProgress()
+            print("[TimeSlot] 🦷 Synced toothbrushing from HealthKit")
+        }
+    }
+
     /// HealthKitの水分・食事サンプルを時間帯別進捗に反映
     func syncIntakeFromHealthKit() async {
         let hk = HealthKitManager.shared
@@ -453,7 +507,7 @@ class TimeSlotManager: ObservableObject {
             let newDrink = max(prog.logProgress.drinkLogged, Int(waterBySlot[slot] ?? 0))
             let newMeal = useHealthKitForMeal
                 ? Int(mealBySlot[slot] ?? 0)
-                : scheduledMealLogged(for: slot, now: now)
+                : prog.logProgress.mealLogged
 
             if prog.logProgress.drinkLogged != newDrink || prog.logProgress.mealLogged != newMeal {
                 prog.logProgress.drinkLogged = newDrink
@@ -490,25 +544,8 @@ class TimeSlotManager: ObservableObject {
             return
         }
 
-        var changed = false
-        let now = Date()
-
-        for slot in TimeSlot.allCases {
-            guard var prog = progress.progressFor(slot) else { continue }
-            let newMeal = scheduledMealLogged(for: slot, now: now)
-            if prog.logProgress.mealLogged != newMeal {
-                prog.logProgress.mealLogged = newMeal
-                prog.lastUpdated = now
-                var updated = progress
-                updated.updateProgress(prog)
-                progress = updated
-                changed = true
-            }
-        }
-
-        if changed && saveProgress {
-            await saveTodayProgress()
-        }
+        // Non-HealthKit path: meal progress is set only via explicit recordMealLog() calls.
+        // Do not auto-complete based on time.
     }
 
     /// 今日の実績を保存
@@ -770,6 +807,24 @@ class TimeSlotManager: ObservableObject {
         let today = Calendar.current.startOfDay(for: now)
         let slotStart = Calendar.current.date(bySettingHour: slot.startHour, minute: 0, second: 0, of: today) ?? today
         return now >= slotStart ? mealGoal(for: slot) : 0
+    }
+
+    // MARK: - 目標テンプレート（日付をまたいで設定を引き継ぐ）
+
+    private static let goalTemplateKey = "kfit_timeslot_goals_template_v1"
+
+    /// 現在の目標設定をUserDefaultsにテンプレートとして保存
+    func saveGoalTemplate() {
+        if let data = try? JSONEncoder().encode(settings) {
+            UserDefaults.standard.set(data, forKey: TimeSlotManager.goalTemplateKey)
+        }
+    }
+
+    private func loadGoalTemplate() -> DailyTimeSlotSettings? {
+        guard let data = UserDefaults.standard.data(forKey: TimeSlotManager.goalTemplateKey),
+              let s = try? JSONDecoder().decode(DailyTimeSlotSettings.self, from: data)
+        else { return nil }
+        return s
     }
 
     // MARK: - ヘルパー

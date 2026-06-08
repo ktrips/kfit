@@ -102,6 +102,13 @@ struct StretchGoal: Codable, Equatable {
     var stretchMinutes: Int = 3     // 目標マインドフルネス時間（分）
 }
 
+// MARK: - 20分スタンド目標（ポモドーロ）
+
+struct StandGoal: Codable, Equatable {
+    var enabled: Bool = false       // デフォルトはオフ
+    var standMinutes: Int = 20      // 1セッションの目標スタンド時間（分）
+}
+
 // MARK: - 時間帯ごとの目標
 
 struct TimeSlotGoal: Codable, Identifiable, Equatable {
@@ -111,6 +118,7 @@ struct TimeSlotGoal: Codable, Identifiable, Equatable {
     var mindfulnessGoal: Int        // マインドフルネス回数
     var logGoal: LogGoal            // ログ目標
     var stretchGoal: StretchGoal = StretchGoal() // ストレッチ・ヨガ目標
+    var standGoal: StandGoal = StandGoal()       // 20分スタンド目標
     var customActivities: [CustomActivity] = [] // カスタムアクティビティ
     var reminderEnabled: Bool       // リマインダー有効
     var reminderTime: Date?         // リマインダー時刻
@@ -149,6 +157,7 @@ struct TimeSlotProgress: Codable, Identifiable, Equatable {
     var mindfulnessCompleted: Int = 0    // 完了したマインドフルネス回数
     var logProgress: LogProgress = LogProgress()
     var stretchSetsCompleted: Int = 0    // 完了したストレッチ・ヨガセット数
+    var standCompleted: Int = 0          // 完了した20分スタンドセッション数
     var completedActivityIds: Set<String> = [] // 完了したカスタムアクティビティのID
     var lastUpdated: Date = Date()
 
@@ -165,12 +174,11 @@ struct TimeSlotProgress: Codable, Identifiable, Equatable {
             }
         }
 
-        // マインドフルネス
+        // マインドフルネス（分）: 瞑想1セッション=1分, ストレッチ1セット=3分
         if goal.mindfulnessGoal > 0 {
             totalGoals += 1
-            if mindfulnessCompleted >= goal.mindfulnessGoal {
-                completed += 1
-            }
+            let totalMindfulMinutes = mindfulnessCompleted * 1 + stretchSetsCompleted * 3
+            if totalMindfulMinutes >= goal.mindfulnessGoal { completed += 1 }
         }
 
         // ログ（食事・水分は1日全体の目標で管理するため除外）
@@ -182,15 +190,11 @@ struct TimeSlotProgress: Codable, Identifiable, Equatable {
             totalGoals += 1
             if logProgress.drinkLogged >= goal.logGoal.drinkGoal { completed += 1 }
         }
-        if goal.logGoal.mindInputRequired {
-            totalGoals += 1
-            if logProgress.mindInputLogged > 0 { completed += 1 }
-        }
 
-        // ストレッチ・ヨガ（夜中以外）
-        if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 && goal.timeSlot != .midnight {
+        // 20分スタンド（夜中以外）
+        if goal.standGoal.enabled && goal.timeSlot != .midnight {
             totalGoals += 1
-            if stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { completed += 1 }
+            if standCompleted >= 1 { completed += 1 }
         }
 
         // カスタムアクティビティ

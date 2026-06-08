@@ -69,20 +69,9 @@ struct WidgetStats {
     var standGoal: Int = 0
     var syncedProgressPercent: Int? = nil
 
-    // iOSホームの「現在までの進捗」と同じ値を優先して表示
+    // アプリヘッダーと同じ値を使用（常にsyncedProgressPercentを優先、未同期時は0）
     var progressPercent: Int {
-        if let syncedProgressPercent {
-            return min(100, max(0, syncedProgressPercent))
-        }
-        var totalGoals = 0
-        var completed = 0
-        if trainingGoal > 0    { totalGoals += 1; if trainingCompleted >= trainingGoal       { completed += 1 } }
-        if mindfulnessGoal > 0 { totalGoals += 1; if mindfulnessCompleted >= mindfulnessGoal { completed += 1 } }
-        if mealGoal > 0        { totalGoals += 1; if mealLogged >= mealGoal                  { completed += 1 } }
-        if drinkGoal > 0       { totalGoals += 1; if drinkLogged >= drinkGoal                { completed += 1 } }
-        if workoutGoal > 0     { totalGoals += 1; if workoutMinutes >= workoutGoal            { completed += 1 } }
-        if standGoal > 0       { totalGoals += 1; if standHours >= standGoal                  { completed += 1 } }
-        return totalGoals > 0 ? Int(Double(completed) / Double(totalGoals) * 100) : 0
+        return min(100, max(0, syncedProgressPercent ?? 0))
     }
 
     var progressColor: Color {
@@ -188,6 +177,7 @@ struct SmallWidgetView: View {
                 .font(.system(size: 15, weight: .black, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1).minimumScaleFactor(0.6)
+                .widgetAccentable()
             Text(sub)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundColor(.white.opacity(0.85))
@@ -275,6 +265,7 @@ struct MediumWidgetView: View {
                     .font(.system(size: 22, weight: .black, design: .rounded))
                     .foregroundColor(.white)
                     .lineLimit(1).minimumScaleFactor(0.5)
+                    .widgetAccentable()
                 if let badge = badge {
                     Text(badge)
                         .font(.system(size: 13, weight: .black))
@@ -445,6 +436,217 @@ extension Color {
         let g = Double((hexNumber & 0x00ff00) >> 8) / 255
         let b = Double(hexNumber & 0x0000ff) / 255
         self.init(red: r, green: g, blue: b)
+    }
+}
+
+// MARK: - Circular Progress Arc
+
+private struct CircularProgressArc: Shape {
+    var progress: Double
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let start = -CGFloat.pi / 2
+        let end = start + CGFloat(2 * Double.pi * min(1, max(0, progress)))
+        p.addArc(center: center, radius: radius, startAngle: .radians(Double(start)),
+                 endAngle: .radians(Double(end)), clockwise: false)
+        return p
+    }
+}
+
+// MARK: - Focus Widget Cell（Training / Mindfulness / Meal 共通ベース）
+
+private struct FocusWidgetCell: View {
+    let icon: String
+    let label: String
+    let numerator: String
+    let denominator: String
+    let unit: String
+    let progress: Double
+    let achieved: Bool
+    let accentColor: Color
+
+    var body: some View {
+        ZStack {
+            // ─ 背景グラデーション ─
+            LinearGradient(
+                colors: achieved
+                    ? [Color(hex: "#58CC02"), Color(hex: "#45A300")]
+                    : [accentColor, accentColor.opacity(0.75)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ラベル行（上）
+                HStack(spacing: 4) {
+                    Text(icon).font(.system(size: 13))
+                    Text(label)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Spacer()
+                    if achieved {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+
+                Spacer()
+
+                // 円弧プログレス + 数値
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.22), lineWidth: 6)
+                        .frame(width: 76, height: 76)
+                    CircularProgressArc(progress: progress)
+                        .stroke(Color.white,
+                                style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 76, height: 76)
+                    VStack(spacing: 0) {
+                        Text(numerator)
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .widgetAccentable()
+                        HStack(spacing: 2) {
+                            Text("/\(denominator)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.75))
+                            if !unit.isEmpty {
+                                Text(unit)
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Fitingo ロゴ（下左）
+                HStack {
+                    Image("fitingo_button_mascot")
+                        .resizable().aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .clipShape(Circle())
+                        .opacity(0.8)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}
+
+// MARK: - Training Widget
+
+struct TrainingWidgetView: View {
+    let stats: WidgetStats
+    private var progress: Double {
+        guard stats.trainingGoal > 0 else { return 0 }
+        return min(1, Double(stats.trainingCompleted) / Double(stats.trainingGoal))
+    }
+    private var achieved: Bool { stats.trainingGoal > 0 && stats.trainingCompleted >= stats.trainingGoal }
+
+    var body: some View {
+        FocusWidgetCell(
+            icon: "💪", label: "トレーニング",
+            numerator: "\(stats.trainingCompleted)",
+            denominator: stats.trainingGoal > 0 ? "\(stats.trainingGoal)" : "-",
+            unit: "セット",
+            progress: progress, achieved: achieved,
+            accentColor: Color(hex: "#1CB0F6")
+        )
+        .widgetURL(.fitingoWorkout)
+        .containerBackground(achieved ? Color(hex: "#58CC02") : Color(hex: "#1CB0F6"), for: .widget)
+    }
+}
+
+struct TrainingWidget: Widget {
+    let kind = "TrainingWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            TrainingWidgetView(stats: entry.stats)
+        }
+        .configurationDisplayName("💪 トレーニング")
+        .description("今日のセット数を表示")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+// MARK: - Mindfulness Widget
+
+struct MindfulnessWidgetView: View {
+    let stats: WidgetStats
+    private var progress: Double {
+        guard stats.mindfulnessGoal > 0 else { return 0 }
+        return min(1, Double(stats.mindfulnessCompleted) / Double(stats.mindfulnessGoal))
+    }
+    private var achieved: Bool { stats.mindfulnessGoal > 0 && stats.mindfulnessCompleted >= stats.mindfulnessGoal }
+
+    var body: some View {
+        FocusWidgetCell(
+            icon: "🧘", label: "マインドフル",
+            numerator: "\(stats.mindfulnessCompleted)",
+            denominator: stats.mindfulnessGoal > 0 ? "\(stats.mindfulnessGoal)" : "-",
+            unit: "分",
+            progress: progress, achieved: achieved,
+            accentColor: Color(hex: "#9B59B6")
+        )
+        .widgetURL(.fitingoMindfulness)
+        .containerBackground(achieved ? Color(hex: "#58CC02") : Color(hex: "#9B59B6"), for: .widget)
+    }
+}
+
+struct MindfulnessWidget: Widget {
+    let kind = "MindfulnessWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            MindfulnessWidgetView(stats: entry.stats)
+        }
+        .configurationDisplayName("🧘 マインドフルネス")
+        .description("今日のマインドフルネス達成度を表示")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+// MARK: - Meal Widget
+
+struct MealWidgetView: View {
+    let stats: WidgetStats
+    private var progress: Double {
+        guard stats.mealGoal > 0 else { return 0 }
+        return min(1, Double(stats.mealLogged) / Double(stats.mealGoal))
+    }
+    private var achieved: Bool { stats.mealGoal > 0 && stats.mealLogged >= stats.mealGoal }
+
+    var body: some View {
+        FocusWidgetCell(
+            icon: "🍽️", label: "食事記録",
+            numerator: "\(stats.mealLogged)",
+            denominator: stats.mealGoal > 0 ? "\(stats.mealGoal)" : "-",
+            unit: "kcal",
+            progress: progress, achieved: achieved,
+            accentColor: Color(hex: "#FF9600")
+        )
+        .widgetURL(.fitingoFood)
+        .containerBackground(achieved ? Color(hex: "#58CC02") : Color(hex: "#FF9600"), for: .widget)
+    }
+}
+
+struct MealWidget: Widget {
+    let kind = "MealWidget"
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            MealWidgetView(stats: entry.stats)
+        }
+        .configurationDisplayName("🍽️ 食事記録")
+        .description("今日の摂取カロリーを表示")
+        .supportedFamilies([.systemSmall])
     }
 }
 

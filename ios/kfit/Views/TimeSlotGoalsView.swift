@@ -13,8 +13,7 @@ struct TimeSlotGoalsView: View {
     @State private var newActivityEmoji: String = ""
 
     private let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
-    private let stretchColor = Color(red: 0.22, green: 0.75, blue: 0.56)
-    private let standColor   = Color(red: 0.0,  green: 0.6,  blue: 0.85)
+    private let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
 
     var body: some View {
         ZStack {
@@ -97,6 +96,7 @@ struct TimeSlotGoalsView: View {
         update(&g)
         goals[slot.rawValue] = g
         timeSlotManager.settings.updateGoal(g)
+        timeSlotManager.saveGoalTemplate()
         Task { await timeSlotManager.saveTodaySettings() }
     }
 
@@ -130,22 +130,14 @@ struct TimeSlotGoalsView: View {
 
             Divider().padding(.leading, 44)
 
-            counterRow(icon: "🧘", label: "マインドフルネス", color: Color.duoPurple,
-                       value: goals[slot.rawValue]?.mindfulnessGoal ?? 1, min: 0, max: 10,
+            counterRow(icon: "🧘", label: "マインドフルネス（分）", color: Color.duoPurple,
+                       value: goals[slot.rawValue]?.mindfulnessGoal ?? 1, min: 0, max: 60,
                        onMinus: { modifyGoal(slot: slot) { $0.mindfulnessGoal = max(0, $0.mindfulnessGoal - 1) } },
-                       onPlus:  { modifyGoal(slot: slot) { $0.mindfulnessGoal = min(10, $0.mindfulnessGoal + 1) } })
-
-            Divider().padding(.leading, 44)
-
-            stretchRow(slot: slot)
+                       onPlus:  { modifyGoal(slot: slot) { $0.mindfulnessGoal = min(60, $0.mindfulnessGoal + 1) } })
 
             Divider().padding(.leading, 44)
 
             standRow(slot: slot)
-
-            Divider().padding(.leading, 44)
-
-            mindInputRow(slot: slot)
 
             Divider()
 
@@ -255,58 +247,6 @@ struct TimeSlotGoalsView: View {
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
-    // MARK: - Stretch Row
-
-    private func stretchRow(slot: TimeSlot) -> some View {
-        let enabled = goals[slot.rawValue]?.stretchGoal.enabled ?? false
-        let minutes = goals[slot.rawValue]?.stretchGoal.stretchMinutes ?? 3
-        return VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Text("🤸").font(.title3).frame(width: 28)
-                Text("ストレッチ・ヨガ")
-                    .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { goals[slot.rawValue]?.stretchGoal.enabled ?? false },
-                    set: { v in modifyGoal(slot: slot) { $0.stretchGoal.enabled = v } }
-                ))
-                .tint(stretchColor).labelsHidden()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-
-            if enabled {
-                HStack(spacing: 10) {
-                    Image(systemName: "timer")
-                        .font(.caption).foregroundColor(stretchColor).frame(width: 28)
-                    Text("目標時間")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                    Spacer()
-                    HStack(spacing: 2) {
-                        Button {
-                            modifyGoal(slot: slot) { $0.stretchGoal.stretchMinutes = max(1, $0.stretchGoal.stretchMinutes - 1) }
-                        } label: {
-                            Image(systemName: "minus.circle.fill").font(.title3)
-                                .foregroundColor(minutes > 1 ? stretchColor : Color(.systemGray4))
-                        }
-                        .disabled(minutes <= 1).buttonStyle(.plain)
-                        Text("\(minutes)分")
-                            .font(.subheadline).fontWeight(.black).foregroundColor(Color.duoDark)
-                            .frame(width: 46)
-                        Button {
-                            modifyGoal(slot: slot) { $0.stretchGoal.stretchMinutes = min(30, $0.stretchGoal.stretchMinutes + 1) }
-                        } label: {
-                            Image(systemName: "plus.circle.fill").font(.title3)
-                                .foregroundColor(minutes < 30 ? stretchColor : Color(.systemGray4))
-                        }
-                        .disabled(minutes >= 30).buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.bottom, 12)
-                .background(stretchColor.opacity(0.05))
-            }
-        }
-    }
-
     // MARK: - Stand Row
 
     private func standRow(slot: TimeSlot) -> some View {
@@ -320,23 +260,6 @@ struct TimeSlotGoalsView: View {
                 set: { v in modifyGoal(slot: slot) { $0.standGoal.enabled = v } }
             ))
             .tint(standColor).labelsHidden()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-    }
-
-    // MARK: - Mind Input Row
-
-    private func mindInputRow(slot: TimeSlot) -> some View {
-        HStack(spacing: 10) {
-            Text("💭").font(.title3).frame(width: 28)
-            Text("マインド入力")
-                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { goals[slot.rawValue]?.logGoal.mindInputRequired ?? false },
-                set: { v in modifyGoal(slot: slot) { $0.logGoal.mindInputRequired = v } }
-            ))
-            .tint(Color.duoPurple).labelsHidden()
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
@@ -516,8 +439,11 @@ struct TimeSlotGoalsView: View {
             guard let goal = settings.goalFor(slot),
                   let prog = progress.progressFor(slot) else { continue }
             if goal.trainingGoal > 0 { total += 1; if prog.trainingCompleted >= goal.trainingGoal { done += 1 } }
-            if goal.mindfulnessGoal > 0 { total += 1; if prog.mindfulnessCompleted >= goal.mindfulnessGoal { done += 1 } }
-            if goal.stretchGoal.enabled { total += 1; if prog.stretchSetsCompleted >= goal.stretchGoal.stretchMinutes { done += 1 } }
+            if goal.mindfulnessGoal > 0 {
+                total += 1
+                let mindfulMinutes = prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
+                if mindfulMinutes >= goal.mindfulnessGoal { done += 1 }
+            }
             if goal.standGoal.enabled { total += 1; if prog.standCompleted >= 1 { done += 1 } }
             if goal.logGoal.mealGoal > 0 { total += 1; if prog.logProgress.mealLogged >= goal.logGoal.mealGoal { done += 1 } }
             if goal.logGoal.drinkGoal > 0 { total += 1; if prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal { done += 1 } }
@@ -640,40 +566,58 @@ struct MandalaChartView: View {
     @State private var appeared = false
     @State private var pulseCenter = false
 
-    private let minRadius: Double = 42
+    private var adaptiveNodeSize: CGFloat {
+        let count = nodes.count
+        switch count {
+        case 0...6:   return 52
+        case 7...10:  return 46
+        case 11...16: return 40
+        default:      return 36
+        }
+    }
+
+    private var minRadius: Double { Double(adaptiveNodeSize) * (42.0 / 36.0) }
+    private var nodeSpacing: Double { Double(adaptiveNodeSize) + 10 }
 
     var nodes: [MandalaNodeData] { Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone) }
 
     static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress, activityRingsDone: Bool = false) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
+        let fixedGoals: DailyFixedGoals? = {
+            guard let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+                  let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) else { return nil }
+            return fixed
+        }()
+        let foodEnabled = fixedGoals?.foodEnabled ?? true
+
         // 1日合計を事前集計して、1日目標達成済みかチェック
         let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
         var totalTrainingCompleted = 0, totalTrainingGoal = 0
-        var totalMindfulnessCompleted = 0, totalMindfulnessGoal = 0
-        var totalStretchCompleted = 0, totalStretchGoal = 0
+        var totalMindfulMinutes = 0, totalMindfulnessGoal = 0
         var totalMealLogged = 0, totalMealGoal = 0
         var totalDrinkLogged = 0, totalDrinkGoal = 0
+        var dailyStandDone = false
+        var completedActivityNames: Set<String> = []
         for slot in activeSlots {
             guard let goal = settings.goalFor(slot), let prog = progress.progressFor(slot) else { continue }
             totalTrainingCompleted += prog.trainingCompleted
             totalTrainingGoal += goal.trainingGoal
-            totalMindfulnessCompleted += prog.mindfulnessCompleted
+            totalMindfulMinutes += prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
             totalMindfulnessGoal += goal.mindfulnessGoal
-            if goal.stretchGoal.enabled {
-                totalStretchCompleted += prog.stretchSetsCompleted
-                totalStretchGoal += goal.stretchGoal.stretchMinutes
-            }
             totalMealLogged += prog.logProgress.mealLogged
             totalMealGoal += goal.logGoal.mealGoal
             totalDrinkLogged += prog.logProgress.drinkLogged
             totalDrinkGoal += goal.logGoal.drinkGoal
+            if goal.standGoal.enabled && prog.standCompleted >= 1 { dailyStandDone = true }
+            for activity in goal.customActivities where activity.isEnabled && prog.completedActivityIds.contains(activity.id) {
+                completedActivityNames.insert(activity.name)
+            }
         }
-        let dailyTrainingDone    = totalTrainingGoal > 0    && totalTrainingCompleted    >= totalTrainingGoal
-        let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulnessCompleted >= totalMindfulnessGoal
-        let dailyStretchDone     = totalStretchGoal > 0     && totalStretchCompleted     >= totalStretchGoal
-        let dailyMealDone        = totalMealGoal > 0        && totalMealLogged           >= totalMealGoal
-        let dailyDrinkDone       = totalDrinkGoal > 0       && totalDrinkLogged          >= totalDrinkGoal
+        let dailyTrainingDone    = totalTrainingGoal > 0    && totalTrainingCompleted >= totalTrainingGoal
+        let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulMinutes    >= totalMindfulnessGoal
+        let dailyMealDone        = totalMealGoal > 0        && totalMealLogged        >= totalMealGoal
+        let dailyDrinkDone       = totalDrinkGoal > 0       && totalDrinkLogged       >= totalDrinkGoal
 
         for slot in activeSlots {
             guard let goal = settings.goalFor(slot),
@@ -692,39 +636,27 @@ struct MandalaChartView: View {
                 }
             }
             if goal.mindfulnessGoal > 0 {
+                let slotMindfulMinutes = prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: dailyMindfulnessDone || prog.mindfulnessCompleted >= goal.mindfulnessGoal,
+                    isCompleted: dailyMindfulnessDone || slotMindfulMinutes >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))
-            }
-            if goal.stretchGoal.enabled && goal.stretchGoal.stretchMinutes > 0 {
-                let stretchUnits = max(1, goal.stretchGoal.stretchMinutes / 3)
-                for i in 1...stretchUnits {
-                    result.append(MandalaNodeData(
-                        id: "\(slot.rawValue)-stretch-\(i)",
-                        emoji: "🤸",
-                        label: "ストレッチ",
-                        isCompleted: dailyStretchDone || prog.stretchSetsCompleted >= i * 3,
-                        slot: slot,
-                        type: .stretch
-                    ))
-                }
             }
             if goal.standGoal.enabled {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-stand",
                     emoji: "🧍",
                     label: "20分スタンド",
-                    isCompleted: prog.standCompleted >= 1,
+                    isCompleted: dailyStandDone || prog.standCompleted >= 1,
                     slot: slot,
                     type: .stand
                 ))
             }
-            if goal.logGoal.mealGoal > 0 {
+            if foodEnabled && goal.logGoal.mealGoal > 0 {
                 let mealEmoji: String = {
                     switch slot {
                     case .midnight:  return "🌙"
@@ -752,7 +684,7 @@ struct MandalaChartView: View {
                     type: .meal
                 ))
             }
-            if goal.logGoal.drinkGoal > 0 {
+            if foodEnabled && goal.logGoal.drinkGoal > 0 {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
@@ -767,7 +699,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-\(activity.id)",
                     emoji: activity.emoji,
                     label: activity.name,
-                    isCompleted: prog.completedActivityIds.contains(activity.id),
+                    isCompleted: completedActivityNames.contains(activity.name) || prog.completedActivityIds.contains(activity.id),
                     slot: slot,
                     type: .custom
                 ))
@@ -775,15 +707,14 @@ struct MandalaChartView: View {
         }
 
         // 睡眠ノード（毎日の設定を参照）
-        if let fixedData = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
-           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: fixedData) {
+        if let fixed = fixedGoals {
             let p = progress.globalProgress
             if fixed.sleepEnabled {
                 result.append(MandalaNodeData(
                     id: "global-sleep",
                     emoji: "😴",
                     label: "睡眠",
-                    isCompleted: p.sleepHours >= Double(fixed.sleepHoursGoal),
+                    isCompleted: p.sleepHours >= Double(fixed.sleepHoursGoal) || p.sleepScore >= settings.globalGoals.sleepScoreThreshold,
                     slot: nil,
                     type: .sleep
                 ))
@@ -852,8 +783,7 @@ struct MandalaChartView: View {
         }
 
         // 毎日のカスタム目標
-        if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
-           let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
+        if let fixed = fixedGoals {
             let gp = progress.globalProgress
             for cg in fixed.customGoals {
                 result.append(MandalaNodeData(
@@ -939,9 +869,10 @@ struct MandalaChartView: View {
                         node: node,
                         delay: Double(index) * 0.045,
                         appeared: appeared,
+                        nodeSize: adaptiveNodeSize,
                         action: { onTapNode(node) }
                     )
-                    .frame(width: 36, height: 36)
+                    .frame(width: adaptiveNodeSize, height: adaptiveNodeSize)
                     .position(pos)
                 }
 
@@ -980,7 +911,7 @@ struct MandalaChartView: View {
     private func computePositions(center: CGPoint, canvasR: Double) -> (positions: [CGPoint], angles: [Double]) {
         let count = nodes.count
         guard count > 0 else { return ([], []) }
-        let D: Double = 46          // minimum center-to-center spacing (node 36pt + 10pt gap)
+        let D: Double = nodeSpacing  // minimum center-to-center spacing (adaptive)
         let b = D / (2 * .pi)       // growth rate: pitch 2πb = D
         var positions: [CGPoint] = []
         var angles: [Double] = []
@@ -1124,7 +1055,11 @@ struct MandalaNodeButton: View {
     let node: MandalaNodeData
     let delay: Double
     let appeared: Bool
+    var nodeSize: CGFloat = 36
     let action: () -> Void
+
+    private var emojiSize: CGFloat { nodeSize * (15.0 / 36.0) }
+    private var glowSize: CGFloat { nodeSize + 14 }
 
     @State private var tapped = false
 
@@ -1147,7 +1082,7 @@ struct MandalaNodeButton: View {
                     .strokeBorder(nodeColor, lineWidth: node.isCompleted ? 2.5 : 1)
                     .opacity(node.isCompleted ? 1.0 : 0.22)
                 Text(node.emoji)
-                    .font(.system(size: 15))
+                    .font(.system(size: emojiSize))
                     .opacity(node.isCompleted ? 1.0 : 0.55)
             }
         }
@@ -1165,7 +1100,7 @@ struct MandalaNodeButton: View {
             node.isCompleted
                 ? Circle()
                     .strokeBorder(nodeColor.opacity(0.55), lineWidth: 3)
-                    .frame(width: 50, height: 50)
+                    .frame(width: glowSize, height: glowSize)
                 : nil
         )
     }

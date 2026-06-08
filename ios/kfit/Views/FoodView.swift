@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct FoodView: View {
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
 
@@ -629,34 +636,66 @@ struct FoodView: View {
 
     private var foodHistorySection: some View {
         let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
 
-        // 食事: クイックログ + Watch同期
+        // ── 食事履歴の構築（優先度: Firestore > フォト > HK残余） ──────────────
+
+        // 1. Firestore クイックログ（型名あり・最優先）
         let quickMeals: [HistoryEntry] = todayIntake.meals.map {
             HistoryEntry(emoji: $0.mealType.emoji, primary: $0.mealType.displayName,
                 detail: "\($0.calories)kcal", sub: "クイック", time: $0.timestamp)
         }
-        // 食事: フォトログ（今日分のみ）
-        let photoMeals: [HistoryEntry] = photoLogManager.history
-            .filter { calendar.isDateInToday($0.timestamp) }
+        let firestoreTimestamps = todayIntake.meals.map { $0.timestamp }
+
+        // 2. フォトログ（Firestoreと5分以内に重なる場合はFirestore優先で除外）
+        let rawPhotoItems = photoLogManager.history
+            .filter { calendar.startOfDay(for: $0.timestamp) == today }
+        let photoMeals: [HistoryEntry] = rawPhotoItems
+            .filter { item in
+                !firestoreTimestamps.contains { abs($0.timeIntervalSince(item.timestamp)) < 300 }
+            }
             .map { HistoryEntry(emoji: "📸", primary: $0.displayName,
                 detail: "\($0.calories)kcal", sub: "フォト", time: $0.timestamp) }
-        let allMeals = (quickMeals + photoMeals).sorted { $0.time < $1.time }
+        let photoTimestamps = rawPhotoItems.map { $0.timestamp }
 
-        // 水分: クイックログ + Watch
-        let waterEntries: [HistoryEntry] = todayIntake.waterLogs.map {
+        // 3. HK残余（FirestoreともフォトログとB重なる場合は除外）
+        let usedTimestamps = firestoreTimestamps + photoTimestamps
+        let hkExtraMeals: [HistoryEntry] = healthKit.todayMealSamples
+            .filter { sample in
+                !usedTimestamps.contains { abs($0.timeIntervalSince(sample.startDate)) < 300 }
+            }
+            .map { HistoryEntry(emoji: "🍽️", primary: "食事",
+                detail: "\(Int($0.value)) kcal", sub: "クイック", time: $0.startDate) }
+
+        let allMeals = (quickMeals + photoMeals + hkExtraMeals).sorted { $0.time < $1.time }
+
+        // ── 飲料履歴 ──────────────────────────────────────────────────────────
+
+        // 水分（Firestore + HK fallback）
+        let waterFsTimestamps = todayIntake.waterLogs.map { $0.timestamp }
+        let waterFirestore: [HistoryEntry] = todayIntake.waterLogs.map {
             HistoryEntry(emoji: "💧", primary: "水", detail: "\($0.amountMl)ml", sub: "クイック", time: $0.timestamp)
         }
-        // コーヒー
-        let coffeeEntries: [HistoryEntry] = todayIntake.coffeeLogs.map {
-            HistoryEntry(emoji: "☕", primary: "コーヒー",
-                detail: "\($0.amountMl)ml · カフェイン\($0.caffeineMg)mg", sub: "クイック", time: $0.timestamp)
-        }
-        // アルコール
-        let alcoholEntries: [HistoryEntry] = todayIntake.alcoholLogs.map {
-            HistoryEntry(emoji: $0.alcoholType.emoji, primary: $0.alcoholType.displayName,
+        let waterHKExtra: [HistoryEntry] = healthKit.todayWaterSamples
+            .filter { sample in
+                !waterFsTimestamps.contains { abs($0.timeIntervalSince(sample.startDate)) < 300 }
+            }
+            .map { HistoryEntry(emoji: "💧", primary: "水",
+                detail: "\(Int($0.value))ml", sub: "HK", time: $0.startDate) }
+        let waterEntries = (waterFirestore + waterHKExtra).sorted { $0.time < $1.time }
+
+        // コーヒー（Firestoreのみ）
+        let coffeeEntries: [HistoryEntry] = todayIntake.coffeeLogs
+            .sorted { $0.timestamp < $1.timestamp }
+            .map { HistoryEntry(emoji: "☕", primary: "コーヒー",
+                detail: "\($0.amountMl)ml · カフェイン\($0.caffeineMg)mg", sub: "クイック", time: $0.timestamp) }
+
+        // アルコール（Firestoreのみ）
+        let alcoholEntries: [HistoryEntry] = todayIntake.alcoholLogs
+            .sorted { $0.timestamp < $1.timestamp }
+            .map { HistoryEntry(emoji: $0.alcoholType.emoji, primary: $0.alcoholType.displayName,
                 detail: "\($0.amountMl)ml · 純アルコール\(String(format: "%.1f", $0.alcoholG))g",
-                sub: "クイック", time: $0.timestamp)
-        }
+                sub: "クイック", time: $0.timestamp) }
 
         let totalCount = allMeals.count + waterEntries.count + coffeeEntries.count + alcoholEntries.count
 
@@ -701,11 +740,11 @@ struct FoodView: View {
                                 color: Color(red: 1.0, green: 0.45, blue: 0.0))
                             ForEach(allMeals) { e in historyEntryRow(e) }
                         }
-                        if !waterEntries.isEmpty || !coffeeEntries.isEmpty || !alcoholEntries.isEmpty {
+                        let allDrinks = (waterEntries + coffeeEntries + alcoholEntries)
+                            .sorted { $0.time < $1.time }
+                        if !allDrinks.isEmpty {
                             foodHistoryCategoryHeader(title: "飲料", icon: "drop.fill", color: Color.duoBlue)
-                            ForEach(waterEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
-                            ForEach(coffeeEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
-                            ForEach(alcoholEntries.sorted { $0.time < $1.time }) { e in historyEntryRow(e) }
+                            ForEach(allDrinks) { e in historyEntryRow(e) }
                         }
                     }
                 }
@@ -753,10 +792,7 @@ struct FoodView: View {
     }
 
     private func formatTime(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        FoodView.hhmm.string(from: date)
     }
 
     // MARK: - No Data
@@ -1135,6 +1171,13 @@ private struct PhotoFeedCard: View {
 // MARK: - Photo Feed Detail Sheet
 
 struct PhotoFeedDetailSheet: View {
+    private static let mdHhmm: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日 HH:mm"
+        return f
+    }()
+
     let item: PhotoLogHistoryItem
     @StateObject private var healthKit = HealthKitManager.shared
     @Environment(\.dismiss) private var dismiss
@@ -1421,23 +1464,24 @@ struct PhotoFeedDetailSheet: View {
     private var carbsPercent: Double { carbsCalories / macroTotal * 100 }
 
     private func timeLabel(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M月d日 HH:mm"
-        return f.string(from: date)
+        PhotoFeedDetailSheet.mdHhmm.string(from: date)
     }
 }
 
 // MARK: - EDU Feed Card
 
 private struct EduFeedCard: View {
-    let item: EduLogHistoryItem
-
-    private var dateLabel: String {
+    private static let mdHhmm: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "M/d HH:mm"
-        return f.string(from: item.timestamp)
+        return f
+    }()
+
+    let item: EduLogHistoryItem
+
+    private var dateLabel: String {
+        EduFeedCard.mdHhmm.string(from: item.timestamp)
     }
 
     var body: some View {
@@ -1490,15 +1534,19 @@ private struct EduFeedCard: View {
 // MARK: - EDU Feed Detail Sheet
 
 struct EduFeedDetailSheet: View {
+    private static let ymdHhmm: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 HH:mm"
+        return f
+    }()
+
     let item: EduLogHistoryItem
     @StateObject private var eduLogManager = EduLogManager.shared
     @Environment(\.dismiss) private var dismiss
 
     private var dateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年M月d日 HH:mm"
-        return f.string(from: item.timestamp)
+        EduFeedDetailSheet.ymdHhmm.string(from: item.timestamp)
     }
 
     var body: some View {

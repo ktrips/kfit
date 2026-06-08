@@ -1553,14 +1553,30 @@ class AuthenticationManager: ObservableObject {
             .collection("settings").document("intake-settings")
 
         guard let doc = try? await docRef.getDocument(),
-              let data = doc.data(),
-              let jsonData = try? JSONSerialization.data(withJSONObject: data),
-              let settings = try? JSONDecoder().decode(IntakeSettings.self, from: jsonData)
+              let data = doc.data()
         else {
             return IntakeSettings.defaultSettings
         }
 
-        return settings
+        // まず完全デコードを試み、失敗時は既知フィールドをデフォルトにマージ（新フィールド追加時の後方互換）
+        if let jsonData = try? JSONSerialization.data(withJSONObject: data),
+           let settings = try? JSONDecoder().decode(IntakeSettings.self, from: jsonData) {
+            return settings
+        }
+
+        var s = IntakeSettings.defaultSettings
+        if let v = data["breakfastCalories"] as? Int  { s.breakfastCalories = v }
+        if let v = data["lunchCalories"]     as? Int  { s.lunchCalories     = v }
+        if let v = data["dinnerCalories"]    as? Int  { s.dinnerCalories    = v }
+        if let v = data["snackCalories"]     as? Int  { s.snackCalories     = v }
+        if let v = data["waterPerCup"]       as? Int  { s.waterPerCup       = v }
+        if let v = data["coffeePerCup"]      as? Int  { s.coffeePerCup      = v }
+        if let v = data["caffeinePerCup"]    as? Int  { s.caffeinePerCup    = v }
+        if let v = data["dailyCalorieGoal"]  as? Int  { s.dailyCalorieGoal  = v }
+        if let v = data["dailyWaterGoal"]    as? Int  { s.dailyWaterGoal    = v }
+        if let v = data["dailyCaffeineLimit"] as? Int { s.dailyCaffeineLimit = v }
+        if let v = data["dailyAlcoholLimit"] as? Double { s.dailyAlcoholLimit = v }
+        return s
     }
 
     /// 摂取記録の設定を保存

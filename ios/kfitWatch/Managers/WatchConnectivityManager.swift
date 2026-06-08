@@ -1,5 +1,6 @@
 import WatchConnectivity
 import Foundation
+import WidgetKit
 
 @MainActor
 class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
@@ -24,6 +25,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var totalMealGoal: Int = 0
     @Published var totalDrinkLogged: Int = 0
     @Published var totalDrinkGoal: Int = 0
+    @Published var totalStand: Int = 0
+    @Published var totalStandGoal: Int = 0
     @Published var watchFaceTasks: [WatchFaceTaskConfig] = []
 
     // 後方互換性のため残す
@@ -141,6 +144,19 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
+    // MARK: - Watch → iOS: 20分スタンド完了
+    func sendStandCompleted() {
+        guard let session = session else { return }
+        let message: [String: Any] = ["action": "stand_completed"]
+        if session.isReachable {
+            session.sendMessage(message, replyHandler: nil) { error in
+                print("WatchConnectivity sendStandCompleted error: \(error)")
+            }
+        } else {
+            try? session.updateApplicationContext(message)
+        }
+    }
+
     // MARK: - Watch → iOS: 摂取記録
     func sendIntakeRecord(type: String, subtype: String? = nil) {
         guard let session = session else { return }
@@ -238,6 +254,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["totalMealGoal"] as? Int { self.totalMealGoal = val }
         if let val = message["totalDrinkLogged"] as? Int { self.totalDrinkLogged = val }
         if let val = message["totalDrinkGoal"] as? Int { self.totalDrinkGoal = val }
+        if let val = message["totalStand"] as? Int { self.totalStand = val }
+        if let val = message["totalStandGoal"] as? Int { self.totalStandGoal = val }
         if let data = message["watchFaceTasks"] as? Data,
            let tasks = try? JSONDecoder().decode([WatchFaceTaskConfig].self, from: data) {
             self.watchFaceTasks = tasks
@@ -330,9 +348,23 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let val = message["todayMindfulnessMinutes"] as? Double { self.todayMindfulnessMinutes = val }
         if let val = message["todayWorkoutMinutes"] as? Int { self.todayWorkoutMinutes = val }
 
+        // コンプリケーション用データを共有UserDefaultsに保存
+        updateComplicationData()
+
         // データ受信完了
         isLoading = false
         hasLoadedData = true
+    }
+
+    private func updateComplicationData() {
+        guard let ud = UserDefaults(suiteName: "group.com.kfit.app") else { return }
+        ud.set(totalTraining, forKey: "watch_totalTraining")
+        ud.set(totalTrainingGoal, forKey: "watch_totalTrainingGoal")
+        ud.set(totalMindfulness, forKey: "watch_totalMindfulness")
+        ud.set(totalMindfulnessGoal, forKey: "watch_totalMindfulnessGoal")
+        ud.set(totalMealLogged, forKey: "watch_totalMeal")
+        ud.set(totalMealGoal, forKey: "watch_totalMealGoal")
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func exerciseEmoji(_ id: String) -> String {

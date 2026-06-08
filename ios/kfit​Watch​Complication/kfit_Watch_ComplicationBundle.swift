@@ -5,5 +5,8 @@ import SwiftUI
 struct kfit_Watch_ComplicationBundle: WidgetBundle {
     var body: some Widget {
         kfit_Watch_Complication()
+        MindfulnessComplication()
+        MealComplication()
+        MotivationComplication()
     }
 }

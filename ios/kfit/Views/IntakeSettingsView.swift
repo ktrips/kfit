@@ -257,6 +257,9 @@ struct IntakeSettingsView: View {
                             )
                             timeSlotManager.syncMealGoalFromDietGoal()
                             timeSlotManager.applyGlobalMealDrinkToSlots()
+                            // 時間帯別設定をFirestoreに保存し、翌日も引き継ぐようテンプレートを更新
+                            await timeSlotManager.saveTodaySettings()
+                            timeSlotManager.saveGoalTemplate()
                             await authManager.saveIntakeSettings(settings)
                             isSaving = false
                             dismiss()

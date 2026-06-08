@@ -12,6 +12,9 @@ import SwiftUI
 struct kfitWidgetBundle: WidgetBundle {
     var body: some Widget {
         kfitWidget()
+        TrainingWidget()
+        MindfulnessWidget()
+        MealWidget()
         kfitWidgetControl()
         kfitWidgetLiveActivity()
     }

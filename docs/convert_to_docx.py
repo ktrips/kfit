@@ -46,13 +46,15 @@ if PAPERBACK_MODE:
     CODE_SIZE    = 9.0
     LINE_SPACING = Pt(20)
     # ── Paperback 画像サイズ（種別ごとに最適化）── 単位: cm（float）──────────
-    # テキスト幅 = 210 - 19 - 13 = 178mm
-    IMG_WIDTH        = 13.0   # 横長/Web スクリーンショット
-    IMG_MAX_H        = 8.0    # 横長の最大高さ
-    IMG_W_PHONE      = 9.0    # iPhone 縦長（比率 1.0–1.8）: 300 DPI 相当
-    IMG_MAX_H_PHONE  = 13.0   # 縦長の最大高さ
+    # テキスト幅 = 210 - 19 - 13 = 178mm、ページ本文高 = 257 - 19 - 19 = 219mm
+    # keep_together=True で画像段落を1ページ内に収めるため、
+    # 見出し・キャプション・余白を考慮して最大高を安全値に設定
+    IMG_WIDTH        = 13.0   # 横長/Web スクリーンショット（178mm内に収まる）
+    IMG_MAX_H        = 7.0    # 横長の最大高さ（安全余裕込み）
+    IMG_W_PHONE      = 8.5    # iPhone 縦長（比率 1.25–2.2）
+    IMG_MAX_H_PHONE  = 11.0   # 縦長の最大高さ（ページ内確実収容）
     IMG_W_WATCH      = 5.5    # Apple Watch（小解像度）
-    IMG_MAX_H_WATCH  = 7.0
+    IMG_MAX_H_WATCH  = 6.5
     H_SIZES          = {1: 22, 2: 17, 3: 14, 4: 12}
 else:
     # Kindle 電子書籍: A5 (148 x 210 mm)
@@ -435,6 +437,70 @@ def _set_image_alt_text(run, alt_text):
                 docPr.set('title', alt_text[:100])
             break
 
+def _apply_wrap_top_bottom(run):
+    """
+    run 内のインライン画像を Word の「テキストの折り返し：上下」に変換する。
+    <wp:inline> → <wp:anchor><wp:wrapTopAndBottom/></wp:anchor>
+    これにより画像の左右にテキストが流れ込まず、文字に埋もれるのを防ぐ。
+    """
+    drawing = run._r.find(qn('w:drawing'))
+    if drawing is None:
+        return
+    inline = drawing.find(qn('wp:inline'))
+    if inline is None:
+        return
+
+    # inline の子要素を取得
+    extent       = inline.find(qn('wp:extent'))
+    doc_pr       = inline.find(qn('wp:docPr'))
+    cnv_frame_pr = inline.find(qn('wp:cNvGraphicFramePr'))
+    graphic      = inline.find(qn('a:graphic'))
+
+    # anchor 要素を構築
+    anchor = OxmlElement('wp:anchor')
+    for attr, val in [
+        ('distT', '114300'), ('distB', '114300'),
+        ('distL', '0'),      ('distR', '0'),
+        ('simplePos', '0'),  ('relativeHeight', '251658240'),
+        ('behindDoc', '0'),  ('locked', '0'),
+        ('layoutInCell', '1'), ('allowOverlap', '0'),
+    ]:
+        anchor.set(qn(attr) if ':' in attr else attr, val)
+
+    sp = OxmlElement('wp:simplePos'); sp.set('x', '0'); sp.set('y', '0')
+    anchor.append(sp)
+
+    posH = OxmlElement('wp:positionH')
+    posH.set('relativeFrom', 'column')
+    alH  = OxmlElement('wp:align'); alH.text = 'center'
+    posH.append(alH)
+    anchor.append(posH)
+
+    posV = OxmlElement('wp:positionV')
+    posV.set('relativeFrom', 'paragraph')
+    posOff = OxmlElement('wp:posOffset'); posOff.text = '0'
+    posV.append(posOff)
+    anchor.append(posV)
+
+    if extent is not None:
+        anchor.append(extent)
+
+    ef = OxmlElement('wp:effectExtent')
+    for a in ('l', 't', 'r', 'b'):
+        ef.set(a, '0')
+    anchor.append(ef)
+
+    # ← これが「上下折り返し」の本体
+    anchor.append(OxmlElement('wp:wrapTopAndBottom'))
+
+    for el in [doc_pr, cnv_frame_pr, graphic]:
+        if el is not None:
+            anchor.append(el)
+
+    drawing.remove(inline)
+    drawing.append(anchor)
+
+
 def add_image(doc, img_path, caption=None, alt_text=None):
     """
     Word に画像を埋め込む。
@@ -488,9 +554,15 @@ def add_image(doc, img_path, caption=None, alt_text=None):
         # 画像段落（中央揃え・上下スペース）
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(8)
-        p.paragraph_format.space_after  = Pt(4)
-        p.paragraph_format.keep_with_next = False
+        p.paragraph_format.space_before    = Pt(8)
+        p.paragraph_format.space_after     = Pt(4)
+        # keep_together=True: 画像段落がページをまたいで分割されず、
+        # 入りきらない場合は次ページに移動させる（見切れ防止）
+        p.paragraph_format.keep_together   = True
+        p.paragraph_format.keep_with_next  = False
+        # インデントを明示的に0にしてマージン内に収める
+        p.paragraph_format.left_indent     = Cm(0)
+        p.paragraph_format.right_indent    = Cm(0)
         run = p.add_run()
 
         # 幅優先でサイズ決定（高さが制約を超えたら高さ基準）
@@ -499,6 +571,9 @@ def add_image(doc, img_path, caption=None, alt_text=None):
             run.add_picture(img_descriptor, width=target_w)
         else:
             run.add_picture(img_descriptor, height=max_h)
+
+        # 「テキストの折り返し：上下」に設定（文字に埋もれるのを防ぐ）
+        _apply_wrap_top_bottom(run)
 
         if alt_text:
             _set_image_alt_text(run, alt_text)
@@ -514,8 +589,11 @@ def add_image(doc, img_path, caption=None, alt_text=None):
     if caption and success:
         cp = doc.add_paragraph(caption)
         cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        cp.paragraph_format.space_before = Pt(2)
-        cp.paragraph_format.space_after  = Pt(12)
+        cp.paragraph_format.space_before  = Pt(2)
+        cp.paragraph_format.space_after   = Pt(12)
+        cp.paragraph_format.keep_together = True
+        cp.paragraph_format.left_indent   = Cm(0)
+        cp.paragraph_format.right_indent  = Cm(0)
         r = cp.runs[0] if cp.runs else cp.add_run(caption)
         base_run(r, size=9, italic=True, color=GRAY)
 
@@ -572,7 +650,7 @@ def add_table_from_md(doc, table_lines):
         cells = [c.strip() for c in line.strip().strip('|').split('|')]
         rows.append(cells)
     if not rows:
-        return
+        return None
     col_count = len(rows[0])
     table = doc.add_table(rows=len(rows), cols=col_count)
     table.style = 'Table Grid'
@@ -589,6 +667,7 @@ def add_table_from_md(doc, table_lines):
                 for run in para.runs:
                     base_run(run, size=9.5, bold=is_header,
                              color=GREEN_DARK if is_header else None)
+    return table
 
 def inline_format(para, text):
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
@@ -635,9 +714,10 @@ def _add_paperback_titlepage(doc):
     for _ in range(6):
         doc.add_paragraph()
 
-    _centered('AIで週末だけで', 24, bold=True, color=GREEN_DARK, space_after=4)
-    _centered('iOS、Apple Watch', 24, bold=True, color=GREEN_DARK, space_after=4)
-    _centered('フィットネスアプリを作る方法', 20, bold=True, color=GREEN_DARK, space_after=20)
+    _centered('Cursor + Claudeで', 22, bold=True, color=GREEN_DARK, space_after=4)
+    _centered('iPhoneアプリ・Apple Watch', 22, bold=True, color=GREEN_DARK, space_after=4)
+    _centered('フィットネスアプリを', 20, bold=True, color=GREEN_DARK, space_after=4)
+    _centered('週末だけで作る方法', 20, bold=True, color=GREEN_DARK, space_after=20)
 
     # 区切り線代わりの段落
     sep = doc.add_paragraph()
@@ -690,12 +770,16 @@ def convert_md_to_docx(md_path, docx_path):
 
     # ── パス2: 本文を生成 ──
     i = 0
-    in_code         = False
-    code_type       = ''        # 'text' / 'python' / 'swift' / ...
-    in_toc_sec      = False     # ## 目次 ～ 次の## までをスキップ
-    code_buf        = []
-    table_buf       = []
-    pending_prompt  = None      # [プロンプト例]: で読み取ったラベル
+    in_code            = False
+    code_type          = ''        # 'text' / 'python' / 'swift' / ...
+    in_toc_sec         = False     # ## 目次 ～ 次の## までをスキップ
+    in_disclaimer_sec  = False     # ## 免責事項 セクション（コンパクト表示用）
+    code_buf           = []
+    table_buf          = []
+    pending_prompt     = None      # [プロンプト例]: で読み取ったラベル
+
+    DISCLAIMER_BODY_SIZE = 7.5    # 免責事項の本文フォントサイズ（pt）
+    DISCLAIMER_HEADING   = '免責事項・著作権表示'
 
     while i < len(lines):
         raw = lines[i].rstrip('\n')
@@ -757,15 +841,30 @@ def convert_md_to_docx(md_path, docx_path):
             # ## 目次 セクション開始 → 目次を生成してスキップ開始
             if text == '目次':
                 in_toc_sec = True
+                in_disclaimer_sec = False
                 generate_toc(doc, toc_entries)
                 i += 1
                 continue
+
+            # 免責事項セクションの開始・終了を追跡
+            if text == DISCLAIMER_HEADING:
+                in_disclaimer_sec = True
+            elif lvl <= 2 and in_disclaimer_sec:
+                in_disclaimer_sec = False  # 次の H2 以上でセクション終了
 
             # 目次内のリスト行は in_toc_sec フラグで後処理
             if in_toc_sec:
                 in_toc_sec = False  # 次の見出しで目次セクション終了
 
-            add_heading_with_bookmark(doc, text, lvl, anchor_map)
+            if in_disclaimer_sec and text != DISCLAIMER_HEADING:
+                # 免責事項内の小見出し（**...** ではなく ### 表記）→ 9pt 太字段落
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after  = Pt(2)
+                r = p.add_run(text)
+                base_run(r, size=9, bold=True, color=DARK)
+            else:
+                add_heading_with_bookmark(doc, text, lvl, anchor_map)
             i += 1
             continue
 
@@ -780,13 +879,30 @@ def convert_md_to_docx(md_path, docx_path):
             i += 1
             next_s = lines[i].strip() if i < len(lines) else ''
             if not next_s.startswith('|'):
-                add_table_from_md(doc, table_buf)
+                tbl = add_table_from_md(doc, table_buf)
                 table_buf = []
+                # 免責事項セクション内のテーブルは小さいフォントに
+                if in_disclaimer_sec and tbl is not None:
+                    for row in tbl.rows:
+                        for cell in row.cells:
+                            for para in cell.paragraphs:
+                                for run in para.runs:
+                                    run.font.size = Pt(DISCLAIMER_BODY_SIZE)
+                                para.paragraph_format.space_before = Pt(1)
+                                para.paragraph_format.space_after  = Pt(1)
                 doc.add_paragraph()
             continue
         if table_buf:
-            add_table_from_md(doc, table_buf)
+            tbl = add_table_from_md(doc, table_buf)
             table_buf = []
+            if in_disclaimer_sec and tbl is not None:
+                for row in tbl.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = Pt(DISCLAIMER_BODY_SIZE)
+                            para.paragraph_format.space_before = Pt(1)
+                            para.paragraph_format.space_after  = Pt(1)
             doc.add_paragraph()
 
         # 水平線
@@ -849,7 +965,12 @@ def convert_md_to_docx(md_path, docx_path):
             clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
             clean = re.sub(r'<[^>]+>',               '',    clean)  # HTMLタグ除去
             r = p.add_run(clean)
-            base_run(r)
+            if in_disclaimer_sec:
+                base_run(r, size=DISCLAIMER_BODY_SIZE)
+                p.paragraph_format.space_before = Pt(1)
+                p.paragraph_format.space_after  = Pt(1)
+            else:
+                base_run(r)
             i += 1
             continue
 
@@ -866,6 +987,12 @@ def convert_md_to_docx(md_path, docx_path):
         # 通常段落
         p = doc.add_paragraph()
         inline_format(p, s)
+        if in_disclaimer_sec:
+            # 免責事項セクション内はコンパクト小フォント
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after  = Pt(2)
+            for r in p.runs:
+                r.font.size = Pt(DISCLAIMER_BODY_SIZE)
         i += 1
 
     doc.save(docx_path)

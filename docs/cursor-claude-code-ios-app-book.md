@@ -1,4 +1,4 @@
-# AIで週末だけでiOS、Apple Watchフィットネスアプリを作る方法
+# Cursor + ClaudeでiPhoneアプリ・Apple Watchフィットネスアプリを週末だけで作る方法
 
 **Cursor と Claude で SwiftUI・Apple Health・モーションセンサー を動かす個人アプリ開発完全ガイド**
 

@@ -2352,9 +2352,9 @@ class PhotoLogManager: ObservableObject {
             comment: entry.comment,
             analyzedNutrition: nutrition
         )
-        // サムネイル（100×100）を生成
+        // サムネイル（最大600px・高画質）を生成
         if let image = entry.image {
-            item.thumbnailData = makeThumbnail(from: image, size: CGSize(width: 100, height: 100))
+            item.thumbnailData = makeThumbnailHQ(from: image)
         }
         item.isFavorite = entry.isFavorite
         history.insert(item, at: 0)
@@ -2368,13 +2368,31 @@ class PhotoLogManager: ObservableObject {
         return String(name.prefix(20))
     }
 
-    /// UIImage からサムネイルを生成
+    /// UIImage からサムネイルを生成（固定サイズ版・旧形式互換）
     private func makeThumbnail(from image: UIImage, size: CGSize) -> Data? {
         let renderer = UIGraphicsImageRenderer(size: size)
         let thumb = renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
         return thumb.jpegData(compressionQuality: 0.6)
+    }
+
+    /// 高画質サムネイル（アスペクト比を保持して最大600px）
+    private func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 600) -> Data? {
+        let size = image.size
+        let maxSide = max(size.width, size.height)
+        let target: UIImage
+        if maxSide > maxDimension {
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            target = image
+        }
+        return target.jpegData(compressionQuality: 0.82)
     }
 
     /// API送信用に最大800px・低品質で圧縮

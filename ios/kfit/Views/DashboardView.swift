@@ -254,6 +254,9 @@ struct DashboardView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 60)
                     }
+                    .refreshable {
+                        await refreshFromHealthKit()
+                    }
                 }
             }
 
@@ -1131,8 +1134,10 @@ struct DashboardView: View {
             Divider()
                 .padding(.horizontal, 16)
 
-            MandalaSpiralCard(
-                nodes: mandalaNodes,
+            // MandalaSpiralCard を独立した View struct で包みレンダリング境界を作る
+            // → dailySetsCard.getter のスタックフレームから切り離す
+            DailySetsMandalaSectionView(
+                mandalaNodes: mandalaNodes,
                 timeSlotManager: timeSlotManager,
                 healthKit: healthKit,
                 showTracker: $showTracker,
@@ -1142,9 +1147,6 @@ struct DashboardView: View {
                 showMandalaDetail: $showMandalaDetail,
                 selectedMandalaNode: $selectedMandalaNode
             )
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                .padding(.bottom, 2)
 
             // タスクメッセージ + 展開シェブロン（タップで展開）
             Button {
@@ -1185,7 +1187,23 @@ struct DashboardView: View {
 
             // 今日の履歴（展開時のみ表示）
             if showTodayRecords {
-                todayExpandedHistorySection
+                TodayHistorySection(
+                    todayExercises: todayExercises,
+                    mindfulSessions: healthKit.todayMindfulnessSamples.sorted { $0.startDate < $1.startDate },
+                    mealSamples: healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate },
+                    waterSamples: healthKit.todayWaterSamples.sorted { $0.startDate < $1.startDate },
+                    toothbrushingSamples: healthKit.todayToothbrushingSamples.sorted(),
+                    todayPhotoLogs: {
+                        let cal = Calendar.current
+                        let today = cal.startOfDay(for: Date())
+                        return photoLogManager.history
+                            .filter { cal.startOfDay(for: $0.timestamp) == today }
+                            .sorted { $0.timestamp < $1.timestamp }
+                    }(),
+                    bodyMassRecord: healthKit.todayBodyMassRecord,
+                    latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
+                    expandedSetIds: $expandedSetIds
+                )
             }
 
             dailySetsCardButtons
@@ -1370,317 +1388,6 @@ struct DashboardView: View {
 
     // MARK: - 今日の統合履歴（フォトログ下）
 
-    private var todayExpandedHistorySection: some View {
-        let timeFmt = DashboardView.hhmm
-        let mindfulSessions = healthKit.todayMindfulnessSamples
-            .sorted { $0.startDate < $1.startDate }
-        let mealSamples = healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate }
-        let waterSamples = healthKit.todayWaterSamples.sorted { $0.startDate < $1.startDate }
-        let toothbrushingSamples = healthKit.todayToothbrushingSamples.sorted { $0 < $1 }
-        let todayPhotoLogs: [PhotoLogHistoryItem] = {
-            let cal = Calendar.current
-            let today = cal.startOfDay(for: Date())
-            return photoLogManager.history
-                .filter { cal.startOfDay(for: $0.timestamp) == today }
-                .sorted { $0.timestamp < $1.timestamp }
-        }()
-        // フォトログと5分以内に重なるHKサンプルは除外（重複表示を防ぐ）
-        let photoLogTimestamps = todayPhotoLogs.map { $0.timestamp }
-        let deduplicatedMealSamples = mealSamples.filter { sample in
-            !photoLogTimestamps.contains { abs($0.timeIntervalSince(sample.startDate)) < 300 }
-        }
-        // 30分以内に連続して記録された同じ時間帯の種目を1セットにまとめる
-        typealias ExerciseSet = (id: Int, slotLabel: String, setNum: Int, startTime: Date, exercises: [CompletedExercise])
-        let exerciseSets: [ExerciseSet] = {
-            let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
-            var rawGroups: [(slotLabel: String, exercises: [CompletedExercise])] = []
-            let gap: TimeInterval = 30 * 60
-            func slotFor(_ date: Date) -> String {
-                let h = Calendar.current.component(.hour, from: date)
-                if h < 6 { return "夜中" } else if h < 10 { return "朝" }
-                else if h < 14 { return "昼" } else if h < 18 { return "午後" }
-                else { return "夜" }
-            }
-            for ex in sorted {
-                let label = slotFor(ex.timestamp)
-                if let last = rawGroups.last,
-                   last.slotLabel == label,
-                   let prev = last.exercises.last,
-                   ex.timestamp.timeIntervalSince(prev.timestamp) < gap {
-                    rawGroups[rawGroups.count - 1].exercises.append(ex)
-                } else {
-                    rawGroups.append((slotLabel: label, exercises: [ex]))
-                }
-            }
-            var counters: [String: Int] = [:]
-            return rawGroups.enumerated().map { idx, g in
-                counters[g.slotLabel, default: 0] += 1
-                return (id: idx, slotLabel: g.slotLabel, setNum: counters[g.slotLabel]!,
-                        startTime: g.exercises.first!.timestamp, exercises: g.exercises)
-            }
-        }()
-
-        let hasAny = !todayExercises.isEmpty || !mindfulSessions.isEmpty
-            || healthKit.todayBodyMassRecord != nil || !deduplicatedMealSamples.isEmpty || !waterSamples.isEmpty
-            || !toothbrushingSamples.isEmpty || !todayPhotoLogs.isEmpty
-
-        guard hasAny else { return AnyView(EmptyView()) }
-
-        return AnyView(VStack(spacing: 0) {
-            Divider().padding(.horizontal, 16)
-
-            VStack(alignment: .leading, spacing: 12) {
-
-                // 1. トレーニングのセット（同スロット内30分以内をまとめ・タップで種目展開）
-                if !todayExercises.isEmpty {
-                    historyGroup(icon: "💪", label: "トレーニング") {
-                        AnyView(VStack(spacing: 4) {
-                            ForEach(exerciseSets, id: \.id) { set in
-                                exerciseSetGroupRow(
-                                    set: set, timeFmt: timeFmt,
-                                    isExpanded: expandedSetIds.contains(set.id)
-                                ) {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        if expandedSetIds.contains(set.id) { expandedSetIds.remove(set.id) }
-                                        else { expandedSetIds.insert(set.id) }
-                                    }
-                                }
-                            }
-                        })
-                    }
-                }
-
-                // 2. マインドフルネス（標準アプリ・kfitのBreathe/Reflectをまとめて表示）
-                if !mindfulSessions.isEmpty {
-                    historyGroup(icon: "🧘", label: "マインドフルネス") {
-                        AnyView(mindfulRows(sessions: mindfulSessions, color: Color(hex: "#CE93D8"), timeFmt: timeFmt, showStretch: true))
-                    }
-                }
-
-                // 4. 体重の計測
-                if let rec = healthKit.todayBodyMassRecord {
-                    historyGroup(icon: "⚖️", label: "体重") {
-                        AnyView(HStack(spacing: 8) {
-                            Text(timeFmt.string(from: rec.measuredAt))
-                                .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                .frame(width: 38, alignment: .leading)
-                            Text(String(format: "%.1f kg", rec.kg))
-                                .font(.system(size: 13, weight: .black, design: .rounded)).foregroundColor(Color.duoDark)
-                            if healthKit.latestBodyFatPercentage > 0 {
-                                Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                                    .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoSubtitle)
-                            }
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 11)).foregroundColor(Color.duoGreen)
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color(hex: "#1CB0F6").opacity(0.07))
-                        .cornerRadius(6))
-                    }
-                }
-
-                // 5. 食事のカロリー
-                if !deduplicatedMealSamples.isEmpty || !todayPhotoLogs.isEmpty {
-                    historyGroup(icon: "🍽️", label: "食事") {
-                        AnyView(VStack(spacing: 4) {
-                            ForEach(deduplicatedMealSamples) { s in
-                                HStack(spacing: 6) {
-                                    Text(timeFmt.string(from: s.startDate))
-                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 38, alignment: .leading)
-                                    Spacer()
-                                    Text(String(format: "%.0f kcal", s.value))
-                                        .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoOrange)
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.duoOrange.opacity(0.06))
-                                .cornerRadius(6)
-                            }
-                            ForEach(todayPhotoLogs) { item in
-                                HStack(spacing: 6) {
-                                    Text(timeFmt.string(from: item.timestamp))
-                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 38, alignment: .leading)
-                                    Text(item.displayName)
-                                        .font(.system(size: 11)).foregroundColor(Color.duoDark)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Image(systemName: "photo.fill")
-                                        .font(.system(size: 9)).foregroundColor(Color.duoOrange.opacity(0.6))
-                                    Text("\(item.calories) kcal")
-                                        .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoOrange)
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.duoOrange.opacity(0.06))
-                                .cornerRadius(6)
-                            }
-                        })
-                    }
-                }
-
-                // 6. 水分の記録
-                if !waterSamples.isEmpty {
-                    historyGroup(icon: "💧", label: "水分") {
-                        AnyView(VStack(spacing: 4) {
-                            ForEach(waterSamples) { s in
-                                HStack(spacing: 6) {
-                                    Text(timeFmt.string(from: s.startDate))
-                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 38, alignment: .leading)
-                                    Spacer()
-                                    Text(String(format: "%.0f ml", s.value))
-                                        .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoBlue)
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.duoBlue.opacity(0.06))
-                                .cornerRadius(6)
-                            }
-                        })
-                    }
-                }
-
-                // 7. 歯磨き・フロス
-                if !toothbrushingSamples.isEmpty {
-                    let toothColor = Color(hex: "#4DB6AC")
-                    historyGroup(icon: "🦷", label: "歯磨き・フロス") {
-                        AnyView(VStack(spacing: 4) {
-                            ForEach(Array(toothbrushingSamples.enumerated()), id: \.offset) { _, date in
-                                HStack(spacing: 6) {
-                                    Text(timeFmt.string(from: date))
-                                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 38, alignment: .leading)
-                                    Text("1分歯磨き・フロス")
-                                        .font(.system(size: 10, weight: .black)).foregroundColor(toothColor)
-                                    Spacer()
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 11)).foregroundColor(toothColor)
-                                }
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(toothColor.opacity(0.07))
-                                .cornerRadius(6)
-                            }
-                        })
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        })
-    }
-
-    private func exerciseSetGroupRow(
-        set: (id: Int, slotLabel: String, setNum: Int, startTime: Date, exercises: [CompletedExercise]),
-        timeFmt: DateFormatter,
-        isExpanded: Bool,
-        onToggle: @escaping () -> Void
-    ) -> some View {
-        let totalReps = set.exercises.reduce(0) { $0 + $1.reps }
-        let totalXP   = set.exercises.reduce(0) { $0 + $1.points }
-        let names     = set.exercises.map { $0.exerciseName }.joined(separator: "・")
-        return VStack(spacing: 2) {
-            Button(action: onToggle) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(timeFmt.string(from: set.startTime))
-                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                            .frame(width: 38, alignment: .leading)
-                        Text("\(set.slotLabel)セット\(set.setNum)")
-                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
-                        Spacer()
-                        Text("\(totalReps) rep")
-                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
-                        Text("+\(totalXP) XP")
-                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
-                    }
-                    Text(names)
-                        .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
-                        .padding(.leading, 44)
-                        .lineLimit(2)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 6)
-                .background(Color.duoGreen.opacity(0.08))
-                .cornerRadius(6)
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                ForEach(set.exercises, id: \.timestamp) { ex in
-                    HStack(spacing: 6) {
-                        Spacer().frame(width: 46)
-                        Text(ex.exerciseName)
-                            .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoDark)
-                        Spacer()
-                        Text("\(ex.reps) rep")
-                            .font(.system(size: 10, weight: .black)).foregroundColor(Color.duoGreen)
-                        Text("+\(ex.points) XP")
-                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color.duoGreen.opacity(0.03))
-                    .cornerRadius(4)
-                }
-            }
-        }
-    }
-
-    private func historyGroup(icon: String, label: String, @ViewBuilder content: () -> AnyView) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 4) {
-                Text(icon).font(.caption)
-                Text(label)
-                    .font(.caption).fontWeight(.bold)
-                    .foregroundColor(Color.duoDark)
-            }
-            content()
-        }
-    }
-
-    private func mindfulRows(sessions: [MindfulSession], color: Color, timeFmt: DateFormatter, showStretch: Bool) -> some View {
-        VStack(spacing: 4) {
-            ForEach(sessions) { s in
-                let isReflect = s.sessionTypeLabel == "Reflect"
-                let isStand = s.sessionTypeLabel == "Stand"
-                let japaneseLabel: String = isStand ? "20分スタンド" : (isReflect ? "3分ストレッチ" : (s.sessionTypeLabel == "Breathe" ? "1分瞑想" : s.sessionTypeLabel))
-                let xp = isStand ? 50 : (isReflect ? 30 : 10)
-                HStack(spacing: 6) {
-                    Text(timeFmt.string(from: s.startDate))
-                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                        .frame(width: 38, alignment: .leading)
-                    Text(japaneseLabel)
-                        .font(.system(size: 10, weight: .black)).foregroundColor(color)
-                    Spacer()
-                    if s.averageHeartRate > 0 {
-                        HStack(spacing: 2) {
-                            Text("❤️").font(.system(size: 10))
-                            Text("\(Int(s.averageHeartRate))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
-                        }
-                    }
-                    if s.averageHRV > 0 {
-                        HStack(spacing: 2) {
-                            Text("💙").font(.system(size: 10))
-                            Text("\(Int(s.averageHRV))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(hex: "#1CB0F6"))
-                        }
-                    }
-                    Text("+\(xp) XP")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                        .foregroundColor(Color(hex: "#FDCB6E"))
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Color(hex: "#FDCB6E").opacity(0.15))
-                        .cornerRadius(6)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(color.opacity(0.07))
-                .cornerRadius(6)
-            }
-        }
-    }
 
     // MARK: - Reflect履歴セクション（展開時）
 
@@ -5555,6 +5262,41 @@ struct DashboardView: View {
         todayWeekdayGoal = goals.first(where: { $0.weekday == mapped && $0.hasAnyGoal })
     }
 
+    private func refreshFromHealthKit() async {
+        guard authManager.isSignedIn else { return }
+
+        // HealthKitを強制再同期（TTLバイパス）
+        if healthKit.isAvailable && healthKit.isAuthorized {
+            await healthKit.fetchAll(force: true)
+            pfcAnalysis = healthKit.analyzePFCBalance()
+            sleepScore  = healthKit.analyzeSleepScore(
+                targetHours: Double(dailyFixedGoals.sleepHoursGoal)
+            )
+        }
+
+        // 時間帯別の実績を再読み込み（HealthKit同期付き）
+        await timeSlotManager.loadTodayProgress(syncHealthKit: true)
+
+        // Firestoreからも最新の摂取・運動データを取得
+        async let freshEx     = authManager.getTodayExercises()
+        async let freshIntake = authManager.getTodayIntakeSummary()
+        let (ex, intake) = await (freshEx, freshIntake)
+
+        todayExercises = ex
+        var mergedIntake = intake
+        if healthKit.isAvailable && healthKit.isAuthorized {
+            mergedIntake.totalCalories   = max(Int(healthKit.todayIntakeCalories), intake.totalCalories)
+            mergedIntake.totalWaterMl    = max(Int(healthKit.todayIntakeWater),    intake.totalWaterMl)
+            mergedIntake.totalCaffeineMg = max(Int(healthKit.todayIntakeCaffeine), intake.totalCaffeineMg)
+            mergedIntake.totalAlcoholG   = max(healthKit.todayIntakeAlcohol,       intake.totalAlcoholG)
+        }
+        todayIntake = mergedIntake
+
+        recomputePhotoLogTotals()
+        recalcTotals()
+        updateWidgetData()
+    }
+
     private func loadData() async {
         guard authManager.isSignedIn else {
             isLoading = false
@@ -5737,13 +5479,27 @@ struct DashboardView: View {
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         if newPhase == .active {
-            // 前回ロードから10分以上経過した場合のみ再取得（バッテリー節約）
-            let isStale = lastLoadDataTime.map { Date().timeIntervalSince($0) > 600 } ?? true
-            if isStale {
-                print("🔄 App became active (stale data) - refreshing HealthKit data")
-                Task { await periodicWidgetSync() }
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: Date())
+            let lastDate = lastLoadDataTime.map { cal.startOfDay(for: $0) } ?? Date.distantPast
+            if lastDate < today {
+                // 日付が変わっていたら設定・進捗を完全リロード
+                print("🗓 Date changed - reloading settings and progress")
+                Task {
+                    await timeSlotManager.loadTodaySettings()
+                    await timeSlotManager.loadTodayProgress(syncHealthKit: true)
+                    lastLoadDataTime = nil
+                    await loadData()
+                }
             } else {
-                print("✅ App became active (fresh data) - skipping refresh")
+                // 前回ロードから10分以上経過した場合のみ再取得（バッテリー節約）
+                let isStale = lastLoadDataTime.map { Date().timeIntervalSince($0) > 600 } ?? true
+                if isStale {
+                    print("🔄 App became active (stale data) - refreshing HealthKit data")
+                    Task { await periodicWidgetSync() }
+                } else {
+                    print("✅ App became active (fresh data) - skipping refresh")
+                }
             }
         } else if newPhase == .background {
             print("📲 App moved to background - flushing Widget data")
@@ -6310,6 +6066,39 @@ private struct TrainingVideoButton: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal, 16)
         .transition(.opacity.combined(with: .scale(scale: 0.97)))
+    }
+}
+
+// MARK: - マンダラセクション（dailySetsCard からの分離によるスタック分割）
+// dailySetsCard.getter 内で直接 MandalaSpiralCard を構築すると
+// SwiftUI レンダリングスタックが溢れるため、独立した View struct で境界を作る。
+
+private struct DailySetsMandalaSectionView: View {
+    let mandalaNodes: [MandalaNodeData]
+    @ObservedObject var timeSlotManager: TimeSlotManager
+    @ObservedObject var healthKit: HealthKitManager
+    @Binding var showTracker: Bool
+    @Binding var showMindfulnessSession: Bool
+    @Binding var showStretchSession: Bool
+    @Binding var showStandSession: Bool
+    @Binding var showMandalaDetail: Bool
+    @Binding var selectedMandalaNode: MandalaNodeData?
+
+    var body: some View {
+        MandalaSpiralCard(
+            nodes: mandalaNodes,
+            timeSlotManager: timeSlotManager,
+            healthKit: healthKit,
+            showTracker: $showTracker,
+            showMindfulnessSession: $showMindfulnessSession,
+            showStretchSession: $showStretchSession,
+            showStandSession: $showStandSession,
+            showMandalaDetail: $showMandalaDetail,
+            selectedMandalaNode: $selectedMandalaNode
+        )
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
     }
 }
 
@@ -7819,6 +7608,336 @@ struct StandPomodoroView: View {
         stopHaptics()
         onComplete()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { dismiss() }
+    }
+}
+
+// MARK: - TodayHistorySection
+private struct TodayHistorySection: View {
+    let todayExercises: [CompletedExercise]
+    let mindfulSessions: [MindfulSession]
+    let mealSamples: [DietarySample]
+    let waterSamples: [DietarySample]
+    let toothbrushingSamples: [Date]
+    let todayPhotoLogs: [PhotoLogHistoryItem]
+    let bodyMassRecord: BodyMassRecord?
+    let latestBodyFatPercentage: Double
+    @Binding var expandedSetIds: Set<Int>
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    struct ExerciseSetGroup: Identifiable {
+        let id: Int
+        let slotLabel: String
+        let setNum: Int
+        let startTime: Date
+        let exercises: [CompletedExercise]
+    }
+
+    private var deduplicatedMealSamples: [DietarySample] {
+        let photoTimestamps = todayPhotoLogs.map { $0.timestamp }
+        return mealSamples.filter { s in
+            !photoTimestamps.contains { abs($0.timeIntervalSince(s.startDate)) < 300 }
+        }
+    }
+
+    private var exerciseSets: [ExerciseSetGroup] {
+        let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
+        var rawGroups: [(slotLabel: String, exercises: [CompletedExercise])] = []
+        let gap: TimeInterval = 30 * 60
+        for ex in sorted {
+            let h = Calendar.current.component(.hour, from: ex.timestamp)
+            let label: String
+            if h < 6 { label = "夜中" } else if h < 10 { label = "朝" }
+            else if h < 14 { label = "昼" } else if h < 18 { label = "午後" }
+            else { label = "夜" }
+            if let last = rawGroups.last,
+               last.slotLabel == label,
+               let prev = last.exercises.last,
+               ex.timestamp.timeIntervalSince(prev.timestamp) < gap {
+                rawGroups[rawGroups.count - 1].exercises.append(ex)
+            } else {
+                rawGroups.append((slotLabel: label, exercises: [ex]))
+            }
+        }
+        var counters: [String: Int] = [:]
+        return rawGroups.enumerated().map { idx, g in
+            counters[g.slotLabel, default: 0] += 1
+            return ExerciseSetGroup(
+                id: idx,
+                slotLabel: g.slotLabel,
+                setNum: counters[g.slotLabel]!,
+                startTime: g.exercises.first!.timestamp,
+                exercises: g.exercises
+            )
+        }
+    }
+
+    var body: some View {
+        let timeFmt = Self.timeFmt
+        let dedupedMeals = deduplicatedMealSamples
+        let sets = exerciseSets
+        let toothColor = Color(hex: "#4DB6AC")
+
+        let hasAny = !todayExercises.isEmpty || !mindfulSessions.isEmpty
+            || bodyMassRecord != nil || !dedupedMeals.isEmpty
+            || !waterSamples.isEmpty || !toothbrushingSamples.isEmpty || !todayPhotoLogs.isEmpty
+
+        if hasAny {
+            VStack(spacing: 0) {
+                Divider().padding(.horizontal, 16)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    if !todayExercises.isEmpty {
+                        sectionGroup(icon: "💪", label: "トレーニング") {
+                            VStack(spacing: 4) {
+                                ForEach(sets) { set in
+                                    setGroupRow(set: set, timeFmt: timeFmt,
+                                                isExpanded: expandedSetIds.contains(set.id)) {
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            if expandedSetIds.contains(set.id) { expandedSetIds.remove(set.id) }
+                                            else { expandedSetIds.insert(set.id) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !mindfulSessions.isEmpty {
+                        sectionGroup(icon: "🧘", label: "マインドフルネス") {
+                            mindfulnessRows(sessions: mindfulSessions,
+                                            color: Color(hex: "#CE93D8"),
+                                            timeFmt: timeFmt)
+                        }
+                    }
+
+                    if let rec = bodyMassRecord {
+                        sectionGroup(icon: "⚖️", label: "体重") {
+                            HStack(spacing: 8) {
+                                Text(timeFmt.string(from: rec.measuredAt))
+                                    .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                    .frame(width: 38, alignment: .leading)
+                                Text(String(format: "%.1f kg", rec.kg))
+                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .foregroundColor(Color.duoDark)
+                                if latestBodyFatPercentage > 0 {
+                                    Text(String(format: "%.1f%%", latestBodyFatPercentage))
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                }
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11)).foregroundColor(Color.duoGreen)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color(hex: "#1CB0F6").opacity(0.07))
+                            .cornerRadius(6)
+                        }
+                    }
+
+                    if !dedupedMeals.isEmpty || !todayPhotoLogs.isEmpty {
+                        sectionGroup(icon: "🍽️", label: "食事") {
+                            VStack(spacing: 4) {
+                                ForEach(dedupedMeals) { s in
+                                    HStack(spacing: 6) {
+                                        Text(timeFmt.string(from: s.startDate))
+                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .frame(width: 38, alignment: .leading)
+                                        Spacer()
+                                        Text(String(format: "%.0f kcal", s.value))
+                                            .font(.system(size: 11, weight: .black))
+                                            .foregroundColor(Color.duoOrange)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.duoOrange.opacity(0.06))
+                                    .cornerRadius(6)
+                                }
+                                ForEach(todayPhotoLogs) { item in
+                                    HStack(spacing: 6) {
+                                        Text(timeFmt.string(from: item.timestamp))
+                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .frame(width: 38, alignment: .leading)
+                                        Text(item.displayName)
+                                            .font(.system(size: 11)).foregroundColor(Color.duoDark)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "photo.fill")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(Color.duoOrange.opacity(0.6))
+                                        Text("\(item.calories) kcal")
+                                            .font(.system(size: 11, weight: .black))
+                                            .foregroundColor(Color.duoOrange)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.duoOrange.opacity(0.06))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+
+                    if !waterSamples.isEmpty {
+                        sectionGroup(icon: "💧", label: "水分") {
+                            VStack(spacing: 4) {
+                                ForEach(waterSamples) { s in
+                                    HStack(spacing: 6) {
+                                        Text(timeFmt.string(from: s.startDate))
+                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .frame(width: 38, alignment: .leading)
+                                        Spacer()
+                                        Text(String(format: "%.0f ml", s.value))
+                                            .font(.system(size: 11, weight: .black))
+                                            .foregroundColor(Color.duoBlue)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.duoBlue.opacity(0.06))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+
+                    if !toothbrushingSamples.isEmpty {
+                        sectionGroup(icon: "🦷", label: "歯磨き・フロス") {
+                            VStack(spacing: 4) {
+                                ForEach(Array(toothbrushingSamples.enumerated()), id: \.offset) { _, date in
+                                    HStack(spacing: 6) {
+                                        Text(timeFmt.string(from: date))
+                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .frame(width: 38, alignment: .leading)
+                                        Text("1分歯磨き・フロス")
+                                            .font(.system(size: 10, weight: .black))
+                                            .foregroundColor(toothColor)
+                                        Spacer()
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 11)).foregroundColor(toothColor)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(toothColor.opacity(0.07))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionGroup<Content: View>(icon: String, label: String,
+                                              @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text(icon).font(.caption)
+                Text(label).font(.caption).fontWeight(.bold).foregroundColor(Color.duoDark)
+            }
+            content()
+        }
+    }
+
+    private func setGroupRow(set: ExerciseSetGroup, timeFmt: DateFormatter,
+                              isExpanded: Bool, onToggle: @escaping () -> Void) -> some View {
+        let totalReps = set.exercises.reduce(0) { $0 + $1.reps }
+        let totalXP   = set.exercises.reduce(0) { $0 + $1.points }
+        let names     = set.exercises.map { $0.exerciseName }.joined(separator: "・")
+        return VStack(spacing: 2) {
+            Button(action: onToggle) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(timeFmt.string(from: set.startTime))
+                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                            .frame(width: 38, alignment: .leading)
+                        Text("\(set.slotLabel)セット\(set.setNum)")
+                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
+                        Spacer()
+                        Text("\(totalReps) rep")
+                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
+                        Text("+\(totalXP) XP")
+                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                    }
+                    Text(names)
+                        .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                        .padding(.leading, 44)
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .background(Color.duoGreen.opacity(0.08))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                ForEach(set.exercises, id: \.timestamp) { ex in
+                    HStack(spacing: 6) {
+                        Spacer().frame(width: 46)
+                        Text(ex.exerciseName)
+                            .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoDark)
+                        Spacer()
+                        Text("\(ex.reps) rep")
+                            .font(.system(size: 10, weight: .black)).foregroundColor(Color.duoGreen)
+                        Text("+\(ex.points) XP")
+                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.duoGreen.opacity(0.03))
+                    .cornerRadius(4)
+                }
+            }
+        }
+    }
+
+    private func mindfulnessRows(sessions: [MindfulSession], color: Color,
+                                  timeFmt: DateFormatter) -> some View {
+        VStack(spacing: 4) {
+            ForEach(sessions) { s in
+                let isReflect = s.sessionTypeLabel == "Reflect"
+                let isStand   = s.sessionTypeLabel == "Stand"
+                let label: String = isStand ? "20分スタンド"
+                    : (isReflect ? "3分ストレッチ"
+                    : (s.sessionTypeLabel == "Breathe" ? "1分瞑想" : s.sessionTypeLabel))
+                let xp = isStand ? 50 : (isReflect ? 30 : 10)
+                HStack(spacing: 6) {
+                    Text(timeFmt.string(from: s.startDate))
+                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                        .frame(width: 38, alignment: .leading)
+                    Text(label)
+                        .font(.system(size: 10, weight: .black)).foregroundColor(color)
+                    Spacer()
+                    if s.averageHeartRate > 0 {
+                        HStack(spacing: 2) {
+                            Text("❤️").font(.system(size: 10))
+                            Text("\(Int(s.averageHeartRate))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
+                        }
+                    }
+                    if s.averageHRV > 0 {
+                        HStack(spacing: 2) {
+                            Text("💙").font(.system(size: 10))
+                            Text("\(Int(s.averageHRV))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(hex: "#1CB0F6"))
+                        }
+                    }
+                    Text("+\(xp) XP")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .foregroundColor(Color(hex: "#FDCB6E"))
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color(hex: "#FDCB6E").opacity(0.15))
+                        .cornerRadius(6)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(color.opacity(0.07))
+                .cornerRadius(6)
+            }
+        }
     }
 }
 

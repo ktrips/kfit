@@ -34,6 +34,7 @@ struct WatchWorkoutFlowView: View {
     @State private var plankSeconds = 0
     @State private var plankTimer: Timer?
     @State private var canDoubleTapAdvance = false  // ダブルタップで次へ進めるか
+    @Namespace private var focusNamespace
 
     private var current: FlowStep { flowSteps[stepIdx] }
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
@@ -49,6 +50,8 @@ struct WatchWorkoutFlowView: View {
                     goalReachedOverlay
                 }
             }
+            .focusScope(focusNamespace)
+            .interactiveDismissDisabled(true)
             .onChange(of: motionManager.repCount) { count in
                 if useMotionSensor && !isPlank { checkGoalReached(count) }
             }
@@ -108,6 +111,8 @@ struct WatchWorkoutFlowView: View {
                         .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
+                .handGestureShortcut(.primaryAction)
+                .prefersDefaultFocus(true, in: focusNamespace)
                 .padding(.top, 4)
                 .scaleEffect(showGoalReached ? 1.0 : 0.8)
                 .animation(.spring(response: 0.6, dampingFraction: 0.6).delay(0.4), value: showGoalReached)
@@ -165,16 +170,28 @@ struct WatchWorkoutFlowView: View {
     // MARK: - 種目画面
     private var exerciseView: some View {
         VStack(spacing: 3) {
-            // プログレスインジケーター（より小さく）
-            HStack(spacing: 4) {
-                ForEach(0..<flowSteps.count, id: \.self) { i in
-                    Circle()
-                        .fill(i < stepIdx ? duoGreen :
-                              i == stepIdx ? Color.white :
-                              Color.white.opacity(0.3))
-                        .frame(width: i == stepIdx ? 7 : 5,
-                               height: i == stepIdx ? 7 : 5)
+            // プログレスインジケーター + 右端に閉じるボタン
+            HStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    ForEach(0..<flowSteps.count, id: \.self) { i in
+                        Circle()
+                            .fill(i < stepIdx ? duoGreen :
+                                  i == stepIdx ? Color.white :
+                                  Color.white.opacity(0.3))
+                            .frame(width: i == stepIdx ? 7 : 5,
+                                   height: i == stepIdx ? 7 : 5)
+                    }
                 }
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.top, 2)
 
@@ -310,6 +327,7 @@ struct WatchWorkoutFlowView: View {
                 }
                 .buttonStyle(.plain)
                 .handGestureShortcut(.primaryAction)
+                .prefersDefaultFocus(true, in: focusNamespace)
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 4)

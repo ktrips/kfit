@@ -566,8 +566,10 @@ struct MandalaChartView: View {
     @State private var appeared = false
     @State private var pulseCenter = false
 
-    private var adaptiveNodeSize: CGFloat {
-        let count = nodes.count
+    // buildNodes() は UserDefaults 読み込みを含む高コスト処理のため、
+    // 毎回 computed property で呼ぶと1レンダリングで80回以上実行されてしまう。
+    // body で1度だけ計算して全体に渡す設計に変更。
+    static func adaptiveNodeSize(count: Int) -> CGFloat {
         switch count {
         case 0...6:   return 52
         case 7...10:  return 46
@@ -576,10 +578,8 @@ struct MandalaChartView: View {
         }
     }
 
-    private var minRadius: Double { Double(adaptiveNodeSize) * (42.0 / 36.0) }
-    private var nodeSpacing: Double { Double(adaptiveNodeSize) + 10 }
-
-    var nodes: [MandalaNodeData] { Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone) }
+    static func minRadius(nodeSize: CGFloat) -> Double { Double(nodeSize) * (42.0 / 36.0) }
+    static func nodeSpacing(nodeSize: CGFloat) -> Double { Double(nodeSize) + 10 }
 
     static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress, activityRingsDone: Bool = false) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
@@ -591,33 +591,14 @@ struct MandalaChartView: View {
         }()
         let foodEnabled = fixedGoals?.foodEnabled ?? true
 
-        // 1日合計を事前集計して、1日目標達成済みかチェック
         let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
-        var totalTrainingCompleted = 0, totalTrainingGoal = 0
-        var totalMindfulMinutes = 0, totalMindfulnessGoal = 0
-        var totalMealLogged = 0, totalMealGoal = 0
-        var totalDrinkLogged = 0, totalDrinkGoal = 0
-        var dailyStandDone = false
         var completedActivityNames: Set<String> = []
         for slot in activeSlots {
             guard let goal = settings.goalFor(slot), let prog = progress.progressFor(slot) else { continue }
-            totalTrainingCompleted += prog.trainingCompleted
-            totalTrainingGoal += goal.trainingGoal
-            totalMindfulMinutes += prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
-            totalMindfulnessGoal += goal.mindfulnessGoal
-            totalMealLogged += prog.logProgress.mealLogged
-            totalMealGoal += goal.logGoal.mealGoal
-            totalDrinkLogged += prog.logProgress.drinkLogged
-            totalDrinkGoal += goal.logGoal.drinkGoal
-            if goal.standGoal.enabled && prog.standCompleted >= 1 { dailyStandDone = true }
             for activity in goal.customActivities where activity.isEnabled && prog.completedActivityIds.contains(activity.id) {
                 completedActivityNames.insert(activity.name)
             }
         }
-        let dailyTrainingDone    = totalTrainingGoal > 0    && totalTrainingCompleted >= totalTrainingGoal
-        let dailyMindfulnessDone = totalMindfulnessGoal > 0 && totalMindfulMinutes    >= totalMindfulnessGoal
-        let dailyMealDone        = totalMealGoal > 0        && totalMealLogged        >= totalMealGoal
-        let dailyDrinkDone       = totalDrinkGoal > 0       && totalDrinkLogged       >= totalDrinkGoal
 
         for slot in activeSlots {
             guard let goal = settings.goalFor(slot),
@@ -629,7 +610,7 @@ struct MandalaChartView: View {
                         id: "\(slot.rawValue)-training-\(i)",
                         emoji: "💪",
                         label: "トレーニング",
-                        isCompleted: dailyTrainingDone || prog.trainingCompleted >= i,
+                        isCompleted: prog.trainingCompleted >= i,
                         slot: slot,
                         type: .training
                     ))
@@ -641,7 +622,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: dailyMindfulnessDone || slotMindfulMinutes >= goal.mindfulnessGoal,
+                    isCompleted: slotMindfulMinutes >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))
@@ -651,7 +632,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-stand",
                     emoji: "🧍",
                     label: "20分スタンド",
-                    isCompleted: dailyStandDone || prog.standCompleted >= 1,
+                    isCompleted: prog.standCompleted >= 1,
                     slot: slot,
                     type: .stand
                 ))
@@ -666,20 +647,21 @@ struct MandalaChartView: View {
                     case .evening:   return "🍛"
                     }
                 }()
-                let mealLabel: String = {
+                let mealBaseName: String = {
                     switch slot {
                     case .midnight:  return "夜食"
-                    case .morning:   return "朝食 400kcal"
-                    case .noon:      return "昼食 600kcal"
-                    case .afternoon: return "午後の食事 200kcal"
-                    case .evening:   return "夕食 800kcal"
+                    case .morning:   return "朝食"
+                    case .noon:      return "昼食"
+                    case .afternoon: return "午後の食事"
+                    case .evening:   return "夕食"
                     }
                 }()
+                let mealLabel = "\(mealBaseName) \(goal.logGoal.mealGoal)kcal"
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
                     emoji: mealEmoji,
                     label: mealLabel,
-                    isCompleted: dailyMealDone || prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    isCompleted: prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     slot: slot,
                     type: .meal
                 ))
@@ -688,8 +670,8 @@ struct MandalaChartView: View {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分 200ml",
-                    isCompleted: dailyDrinkDone || prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    label: "水分 \(goal.logGoal.drinkGoal)ml",
+                    isCompleted: prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
                 ))
@@ -815,15 +797,23 @@ struct MandalaChartView: View {
     }
 
     var body: some View {
-        let nodes = self.nodes  // 1回だけ計算（UserDefaults読み込み含む）
-        let allDone      = nodes.filter(\.isCompleted).count
-        let allTotal     = nodes.count
+        // buildNodes() は高コスト処理（UserDefaults読込）なので body で1度だけ計算し、
+        // adaptiveNodeSize / minRadius / nodeSpacing にも同じ値を使いまわす
+        let nodes     = Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone)
+        let nodeSize  = Self.adaptiveNodeSize(count: nodes.count)
+        let minR      = Self.minRadius(nodeSize: nodeSize)
+        let spacing   = Self.nodeSpacing(nodeSize: nodeSize)
+        let allDone   = nodes.filter(\.isCompleted).count
+        let allTotal  = nodes.count
 
         return GeometryReader { geo in
                 let size = min(geo.size.width, geo.size.height)
                 let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
                 let canvasR = size / 2 - 14
-                let (positions, nodeAngles) = computePositions(center: center, canvasR: canvasR)
+                let (positions, nodeAngles) = Self.computePositionsStatic(
+                    nodes: nodes, minRadius: minR, nodeSpacing: spacing,
+                    center: center, canvasR: canvasR
+                )
 
             ZStack {
                 // 背景円
@@ -869,10 +859,10 @@ struct MandalaChartView: View {
                         node: node,
                         delay: Double(index) * 0.045,
                         appeared: appeared,
-                        nodeSize: adaptiveNodeSize,
+                        nodeSize: nodeSize,
                         action: { onTapNode(node) }
                     )
-                    .frame(width: adaptiveNodeSize, height: adaptiveNodeSize)
+                    .frame(width: nodeSize, height: nodeSize)
                     .position(pos)
                 }
 
@@ -901,27 +891,31 @@ struct MandalaChartView: View {
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.5)) { appeared = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pulseCenter = true }
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            pulseCenter = true
         }
     }
 
     // MARK: - Spiral helpers
 
     /// Archimedean spiral with adaptive Δθ: pitch = 2πb = D → guaranteed no cross-arm or consecutive overlap
-    private func computePositions(center: CGPoint, canvasR: Double) -> (positions: [CGPoint], angles: [Double]) {
+    /// static 化: minRadius/nodeSpacing を引数で受け取ることで self.nodes の再計算を防ぐ
+    static func computePositionsStatic(nodes: [MandalaNodeData], minRadius: Double, nodeSpacing: Double,
+                                       center: CGPoint, canvasR: Double) -> (positions: [CGPoint], angles: [Double]) {
         let count = nodes.count
         guard count > 0 else { return ([], []) }
-        let D: Double = nodeSpacing  // minimum center-to-center spacing (adaptive)
-        let b = D / (2 * .pi)       // growth rate: pitch 2πb = D
+        let D: Double = nodeSpacing
+        let b = D / (2 * .pi)
         var positions: [CGPoint] = []
         var angles: [Double] = []
-        var angle = -Double.pi / 2  // start pointing upward
+        var angle = -Double.pi / 2
         var r = minRadius
         for _ in 0..<count {
             let cr = min(r, canvasR)
             positions.append(CGPoint(x: center.x + cr * cos(angle), y: center.y + cr * sin(angle)))
             angles.append(angle)
-            // Δθ ≈ D / √(r² + b²) keeps chord between consecutive nodes ≈ D
             let dt = D / sqrt(r * r + b * b)
             angle += dt
             r = minRadius + b * (angle + .pi / 2)

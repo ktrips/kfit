@@ -1011,7 +1011,7 @@ struct PhotoLogView: View {
 
         // フォトログを保存（履歴からの場合は履歴への再追加をスキップ）
         var entry = PhotoLogEntry()
-        entry.imageData = selectedImage?.jpegData(compressionQuality: 0.5)
+        entry.imageData = selectedImage?.jpegData(compressionQuality: 0.82)
         entry.comment = comment
         entry.analyzedNutrition = nutrition
         entry.isFavorite = markAsFavorite

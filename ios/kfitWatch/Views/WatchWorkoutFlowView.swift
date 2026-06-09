@@ -52,6 +52,21 @@ struct WatchWorkoutFlowView: View {
             }
             .focusScope(focusNamespace)
             .interactiveDismissDisabled(true)
+            // fullScreenCover のシステム閉じるボタン（左上の ✕ 丸）を
+            // onTapGesture ベースのビューに差し替えてフォーカス対象から外す。
+            // これにより Double Tap（フィスト）は .primaryAction の「次へ」ボタンのみに当たる。
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(6)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Circle())
+                        .contentShape(Circle())
+                        .onTapGesture { isPresented = false }
+                }
+            }
             .onChange(of: motionManager.repCount) { count in
                 if useMotionSensor && !isPlank { checkGoalReached(count) }
             }
@@ -170,28 +185,16 @@ struct WatchWorkoutFlowView: View {
     // MARK: - 種目画面
     private var exerciseView: some View {
         VStack(spacing: 3) {
-            // プログレスインジケーター + 右端に閉じるボタン
-            HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    ForEach(0..<flowSteps.count, id: \.self) { i in
-                        Circle()
-                            .fill(i < stepIdx ? duoGreen :
-                                  i == stepIdx ? Color.white :
-                                  Color.white.opacity(0.3))
-                            .frame(width: i == stepIdx ? 7 : 5,
-                                   height: i == stepIdx ? 7 : 5)
-                    }
+            // プログレスインジケーター（閉じるボタンは toolbar の ✕ に統一）
+            HStack(spacing: 4) {
+                ForEach(0..<flowSteps.count, id: \.self) { i in
+                    Circle()
+                        .fill(i < stepIdx ? duoGreen :
+                              i == stepIdx ? Color.white :
+                              Color.white.opacity(0.3))
+                        .frame(width: i == stepIdx ? 7 : 5,
+                               height: i == stepIdx ? 7 : 5)
                 }
-                Spacer()
-                Button {
-                    isPresented = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.35))
-                        .padding(4)
-                }
-                .buttonStyle(.plain)
             }
             .padding(.top, 2)
 

@@ -2079,12 +2079,41 @@ struct DashboardView: View {
     private var mandalaDateLabel: String { DashboardView.mdE.string(from: Date()) }
 
     // buildNodes() を1回だけ呼び出し、他のプロパティで再利用する
+    // 時間帯カードと同じ実績ソース（countSetsInTimeSlot / HealthKit）を使い、スパイラルの完了を正確に反映する
     private var currentMandalaNodes: [MandalaNodeData] {
-        MandalaChartView.buildNodes(
+        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+
+        // トレーニング: countSetsInTimeSlot() の結果（実際の運動履歴ベース）
+        var trainCounts: [String: Int] = [:]
+        for slot in activeSlots {
+            trainCounts[slot.rawValue] = countSetsInTimeSlot(slot)
+        }
+
+        // マインドフルネス: Firestore prog + HealthKitのセッション数をスロット時間帯で振り分け
+        var mindfulMinutes: [String: Int] = [:]
+        for slot in activeSlots {
+            let prog = timeSlotManager.progress.progressFor(slot)
+            // stretchSetsCompleted は Firestore の値を維持（スロット別に管理されているため）
+            let stretchMin = (prog?.stretchSetsCompleted ?? 0) * 3
+            // HealthKit のマインドフルネスセッションをスロット時間帯でフィルタ
+            let hkMin: Int = healthKit.todayMindfulnessSamples
+                .filter { session in
+                    let h = Calendar.current.component(.hour, from: session.startDate)
+                    return h >= slot.startHour && h < slot.endHour
+                }
+                .reduce(0) { $0 + max(1, Int($1.durationMinutes.rounded())) }
+            // Firestore の mindfulnessCompleted（アプリ内記録）とHealthKitの大きい方を採用
+            let firestoreMin = (prog?.mindfulnessCompleted ?? 0) * 1
+            mindfulMinutes[slot.rawValue] = max(firestoreMin, hkMin) + stretchMin
+        }
+
+        return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
             activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
-                healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
+                healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
+            slotTrainingCounts: trainCounts,
+            slotMindfulMinutes: mindfulMinutes
         )
     }
 

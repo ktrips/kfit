@@ -581,7 +581,17 @@ struct MandalaChartView: View {
     static func minRadius(nodeSize: CGFloat) -> Double { Double(nodeSize) * (42.0 / 36.0) }
     static func nodeSpacing(nodeSize: CGFloat) -> Double { Double(nodeSize) + 10 }
 
-    static func buildNodes(settings: DailyTimeSlotSettings, progress: DailyTimeSlotProgress, activityRingsDone: Bool = false) -> [MandalaNodeData] {
+    /// - slotTrainingCounts: 各スロットの実際のセット数（countSetsInTimeSlot結果）。
+    ///   nilの場合は prog.trainingCompleted にフォールバック。
+    /// - slotMindfulMinutes: 各スロットの実際のマインドフルネス分数（HealthKit+stretch合算）。
+    ///   nilの場合は prog.mindfulnessCompleted にフォールバック。
+    static func buildNodes(
+        settings: DailyTimeSlotSettings,
+        progress: DailyTimeSlotProgress,
+        activityRingsDone: Bool = false,
+        slotTrainingCounts: [String: Int]? = nil,
+        slotMindfulMinutes: [String: Int]? = nil
+    ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
         let fixedGoals: DailyFixedGoals? = {
@@ -604,25 +614,30 @@ struct MandalaChartView: View {
             guard let goal = settings.goalFor(slot),
                   let prog = progress.progressFor(slot) else { continue }
 
+            // 実際のセット数を優先（countSetsInTimeSlot結果）、なければFirestoreの値
+            let actualTrainingCount = slotTrainingCounts?[slot.rawValue] ?? prog.trainingCompleted
+            // 実際のマインドフルネス分数を優先、なければFirestoreの値
+            let actualMindfulMinutes = slotMindfulMinutes?[slot.rawValue]
+                ?? (prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3)
+
             if goal.trainingGoal > 0 {
                 for i in 1...goal.trainingGoal {
                     result.append(MandalaNodeData(
                         id: "\(slot.rawValue)-training-\(i)",
                         emoji: "💪",
                         label: "トレーニング",
-                        isCompleted: prog.trainingCompleted >= i,
+                        isCompleted: actualTrainingCount >= i,
                         slot: slot,
                         type: .training
                     ))
                 }
             }
             if goal.mindfulnessGoal > 0 {
-                let slotMindfulMinutes = prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: slotMindfulMinutes >= goal.mindfulnessGoal,
+                    isCompleted: actualMindfulMinutes >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))

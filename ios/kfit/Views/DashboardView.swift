@@ -2089,6 +2089,16 @@ struct DashboardView: View {
             mindfulMinutes[slot.rawValue] = max(firestoreMin, hkMin) + stretchMin
         }
 
+        // 1日合計のトレーニング完了・目標を計算
+        let totalTrainingDone = activeSlots.reduce(0) { $0 + (trainCounts[$1.rawValue] ?? 0) }
+        let totalTrainingGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
+        let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingDone >= totalTrainingGoal
+
+        // 1日合計のマインドフルネス完了・目標を計算
+        let totalMindfulDone = mindfulMinutes.values.reduce(0, +)
+        let totalMindfulGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0) }
+        let dailyMindfulnessDone = totalMindfulGoal > 0 && totalMindfulDone >= totalMindfulGoal
+
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
@@ -2097,7 +2107,9 @@ struct DashboardView: View {
             slotTrainingCounts: trainCounts,
             slotMindfulMinutes: mindfulMinutes,
             dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
-            dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal)
+            dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal),
+            dailyTrainingDone: dailyTrainingDone,
+            dailyMindfulnessDone: dailyMindfulnessDone
         )
     }
 
@@ -6238,6 +6250,7 @@ private struct MandalaSpiralCard: View {
         .padding(.trailing, 4)
     }
 
+
     private func progressBadge(done: Int, total: Int, label: String) -> some View {
         let pct = total > 0 ? Double(done) / Double(total) : 0.0
         let numColor: Color = done == total ? Color.duoGreen
@@ -7700,7 +7713,10 @@ private struct DailySetsExpandableSection: View {
                     toothbrushingSamples: healthKit.todayToothbrushingSamples.sorted(),
                     bodyMassRecord: healthKit.todayBodyMassRecord,
                     latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
-                    expandedSetIds: $expandedSetIds
+                    expandedSetIds: $expandedSetIds,
+                    mindfulGoalMinutes: totalMindfulGoalMinutes,
+                    dailyCalorieGoal: dailyCalorieGoal,
+                    dailyWaterGoal: dailyWaterGoal
                 )
             }
         }
@@ -7737,6 +7753,12 @@ private struct DailySetsExpandableSection: View {
         return healthKit.todayWaterSamples
             .filter { let h = cal.component(.hour, from: $0.startDate); return h >= slot.startHour && h < slot.endHour }
             .reduce(0.0) { $0 + $1.value }
+    }
+
+    private var totalMindfulGoalMinutes: Int {
+        [TimeSlot.morning, .noon, .afternoon, .evening].reduce(0) {
+            $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0)
+        }
     }
 
     private var dailyTrainingAllDone: Bool {
@@ -7899,6 +7921,9 @@ private struct TodayHistorySection: View {
     let bodyMassRecord: BodyMassRecord?
     let latestBodyFatPercentage: Double
     @Binding var expandedSetIds: Set<Int>
+    var mindfulGoalMinutes: Int = 0
+    var dailyCalorieGoal: Int = 0
+    var dailyWaterGoal: Int = 0
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
@@ -7975,7 +8000,10 @@ private struct TodayHistorySection: View {
                     }
 
                     if !mindfulSessions.isEmpty {
-                        sectionGroup(icon: "🧘", label: "マインドフルネス") {
+                        let mindfulDoneMin = Int(mindfulSessions.reduce(0.0) { $0 + $1.durationMinutes }.rounded())
+                        let mindfulProg = mindfulGoalMinutes > 0 ? "\(mindfulDoneMin)/\(mindfulGoalMinutes)分" : nil
+                        sectionGroup(icon: "🧘", label: "マインドフルネス",
+                                     progress: mindfulProg, progressDone: mindfulGoalMinutes > 0 && mindfulDoneMin >= mindfulGoalMinutes) {
                             mindfulnessRows(sessions: mindfulSessions,
                                             color: Color(hex: "#CE93D8"),
                                             timeFmt: timeFmt)
@@ -7988,15 +8016,15 @@ private struct TodayHistorySection: View {
                                 Text(timeFmt.string(from: rec.measuredAt))
                                     .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
                                     .frame(width: 38, alignment: .leading)
-                                Text(String(format: "%.1f kg", rec.kg))
-                                    .font(.system(size: 13, weight: .black, design: .rounded))
-                                    .foregroundColor(Color.duoDark)
+                                Spacer()
                                 if latestBodyFatPercentage > 0 {
                                     Text(String(format: "%.1f%%", latestBodyFatPercentage))
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundColor(Color.duoSubtitle)
                                 }
-                                Spacer()
+                                Text(String(format: "%.1f kg", rec.kg))
+                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .foregroundColor(Color.duoDark)
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 11)).foregroundColor(Color.duoGreen)
                             }
@@ -8007,7 +8035,10 @@ private struct TodayHistorySection: View {
                     }
 
                     if !mealSamples.isEmpty {
-                        sectionGroup(icon: "🍽️", label: "食事") {
+                        let mealTotalKcal = Int(mealSamples.reduce(0.0) { $0 + $1.value })
+                        let mealProg = dailyCalorieGoal > 0 ? "\(mealTotalKcal)/\(dailyCalorieGoal)kcal" : nil
+                        sectionGroup(icon: "🍽️", label: "食事",
+                                     progress: mealProg, progressDone: dailyCalorieGoal > 0 && mealTotalKcal >= dailyCalorieGoal) {
                             VStack(spacing: 4) {
                                 ForEach(mealSamples) { s in
                                     HStack(spacing: 6) {
@@ -8028,7 +8059,10 @@ private struct TodayHistorySection: View {
                     }
 
                     if !waterSamples.isEmpty {
-                        sectionGroup(icon: "💧", label: "水分") {
+                        let waterTotalMl = Int(waterSamples.reduce(0.0) { $0 + $1.value })
+                        let waterProg = dailyWaterGoal > 0 ? "\(waterTotalMl)/\(dailyWaterGoal)ml" : nil
+                        sectionGroup(icon: "💧", label: "水分",
+                                     progress: waterProg, progressDone: dailyWaterGoal > 0 && waterTotalMl >= dailyWaterGoal) {
                             VStack(spacing: 4) {
                                 ForEach(waterSamples) { s in
                                     HStack(spacing: 6) {
@@ -8079,11 +8113,18 @@ private struct TodayHistorySection: View {
 
     @ViewBuilder
     private func sectionGroup<Content: View>(icon: String, label: String,
+                                              progress: String? = nil, progressDone: Bool = false,
                                               @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
                 Text(icon).font(.caption)
                 Text(label).font(.caption).fontWeight(.bold).foregroundColor(Color.duoDark)
+                Spacer()
+                if let prog = progress {
+                    Text(prog)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(progressDone ? Color.duoGreen : Color.duoSubtitle)
+                }
             }
             content()
         }

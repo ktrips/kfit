@@ -594,7 +594,9 @@ struct MandalaChartView: View {
         slotTrainingCounts: [String: Int]? = nil,
         slotMindfulMinutes: [String: Int]? = nil,
         dailyCalorieDone: Bool = false,
-        dailyWaterDone: Bool = false
+        dailyWaterDone: Bool = false,
+        dailyTrainingDone: Bool = false,
+        dailyMindfulnessDone: Bool = false
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -630,7 +632,7 @@ struct MandalaChartView: View {
                         id: "\(slot.rawValue)-training-\(i)",
                         emoji: "💪",
                         label: "トレーニング",
-                        isCompleted: actualTrainingCount >= i,
+                        isCompleted: dailyTrainingDone || actualTrainingCount >= i,
                         slot: slot,
                         type: .training
                     ))
@@ -641,7 +643,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: actualMindfulMinutes >= goal.mindfulnessGoal,
+                    isCompleted: dailyMindfulnessDone || actualMindfulMinutes >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))

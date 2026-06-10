@@ -182,6 +182,23 @@ export const HelpView: React.FC = () => {
           </a>
         </div>
 
+        {/* Fitingoの作り方 */}
+        <a
+          href="https://amzn.to/3Qspdq9"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="duo-card p-4 flex items-center gap-3 no-underline hover:opacity-80 transition-opacity"
+        >
+          <span className="text-2xl shrink-0">📖</span>
+          <div className="flex-1">
+            <p className="font-black text-duo-dark text-sm">Fitingoの作り方</p>
+            <p className="text-duo-gray font-bold text-xs">
+              このアプリの開発ノウハウを解説した本
+            </p>
+          </div>
+          <span className="font-black text-sm shrink-0" style={{ color: '#58CC02' }}>→</span>
+        </a>
+
       </div>
     </div>
   );

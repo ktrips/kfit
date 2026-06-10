@@ -59,6 +59,12 @@ struct MoreView: View {
                     }
                     .listRowBackground(Color.white)
 
+                    // Fitingoの作り方
+                    Link(destination: URL(string: "https://amzn.to/3Qspdq9")!) {
+                        MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの作り方")
+                    }
+                    .listRowBackground(Color.white)
+
                     // ログアウト
                     Button(action: {
                         showLogoutConfirm = true

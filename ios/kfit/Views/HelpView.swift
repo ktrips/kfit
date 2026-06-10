@@ -352,6 +352,29 @@ struct HelpView: View {
                         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         .padding(.horizontal, 20)
 
+                        // Fitingoの作り方
+                        Link(destination: URL(string: "https://amzn.to/3Qspdq9")!) {
+                            HStack(spacing: 12) {
+                                Text("📖").font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Fitingoの作り方")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("このアプリの開発ノウハウを解説した本")
+                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color.duoGreen)
+                            }
+                            .padding(16)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                        .padding(.horizontal, 20)
+
                         Spacer(minLength: 40)
                     }
                     .padding(.bottom, 20)

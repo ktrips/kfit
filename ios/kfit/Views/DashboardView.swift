@@ -88,6 +88,14 @@ struct ActivityRingView: View {
     }
 }
 
+/// DispatchWorkItemをSwiftUIの@Stateに入れると毎回の代入で再レンダリングが
+/// トリガーされる。このクラスはObservableObjectだが@Publishedプロパティを
+/// 持たないため、workItemの更新がDashboardViewの再レンダリングを起こさない。
+private final class DashboardDebouncer: ObservableObject {
+    var widgetUpdate: DispatchWorkItem?
+    var widgetReload: DispatchWorkItem?
+}
+
 struct DashboardView: View {
 
     // DateFormatter は生成コストが高いため static で一度だけ生成
@@ -133,6 +141,7 @@ struct DashboardView: View {
     @State private var calorieGoal = DailyCalorieGoal()
     @State private var isLoading    = false  // 初期値をfalseに変更
     @State private var mascotBounce = false
+    @State private var showDrinkToast = false  // 水分記録後のトースト表示
     @State private var showTracker  = false
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
@@ -140,8 +149,6 @@ struct DashboardView: View {
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
     @State private var showPointsDetail   = false  // ポイント詳細シート
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
-    @State private var showTodayRecords = false  // 今日の記録を表示するか
-    @State private var expandedSetIds: Set<Int> = []
     @State private var showMenu = false  // ハンバーガーメニューの表示状態
     @State private var showHealthGoalEdit = false  // 健康目標編集モーダル
     @State private var tempSleepGoal = 7.0  // 一時的な睡眠目標
@@ -162,8 +169,7 @@ struct DashboardView: View {
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
     @State private var lastWidgetPayloadHash = ""
-    @State private var pendingWidgetReload: DispatchWorkItem?
-    @State private var pendingWidgetDataUpdate: DispatchWorkItem?
+    @StateObject private var debouncer = DashboardDebouncer()
     @State private var showMandalaDetail = false
     @State private var selectedMandalaNode: MandalaNodeData? = nil
     @State private var showEduPhotoLog = false
@@ -276,9 +282,25 @@ struct DashboardView: View {
             }
         }
         .navigationBarHidden(true)
-        .fullScreenCover(isPresented: $showTracker) {
-            ExerciseTrackerView(isPresented: $showTracker)
-                .environmentObject(authManager)
+        // 水分記録トースト
+        .overlay(alignment: .top) {
+            if showDrinkToast {
+                HStack(spacing: 8) {
+                    Text("💧")
+                        .font(.title3)
+                    Text("水分200ml")
+                        .font(.subheadline).fontWeight(.black)
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.duoBlue.opacity(0.92))
+                .clipShape(Capsule())
+                .shadow(color: Color.duoBlue.opacity(0.35), radius: 8, y: 4)
+                .padding(.top, 56)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .allowsHitTesting(false)
+            }
         }
         .onChange(of: showTracker) { _, newValue in
             if !newValue {
@@ -288,127 +310,155 @@ struct DashboardView: View {
                 }
             }
         }
-        .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
-        .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
-        .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
-        .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
-        .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
-        .sheet(isPresented: $showIntakeGoalEdit) {
-            IntakeSettingsView().environmentObject(authManager)
-        }
-        .sheet(item: $selectedMandalaNode) { node in
-            GoalCompletionSheet(
-                emoji: node.emoji,
-                name: node.label,
-                isDone: node.isCompleted,
-                onComplete: {
-                    selectedMandalaNode = nil
-                    Task { await handleMandalaComplete(node) }
-                },
-                onPhotoTap: node.type == .meal ? {
-                    selectedMandalaNode = nil
-                    showPhotoLog = true
-                } : node.type == .custom ? {
-                    eduPhotoLogNode = node
-                    selectedMandalaNode = nil
-                    showEduPhotoLog = true
-                } : nil,
-                isRecordType: node.type == .meal || node.type == .drink
-            )
-            .presentationDetents([.height(290)])
-            .presentationDragIndicator(.visible)
-        }
-        .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
-        .sheet(isPresented: $showEduPhotoLog) {
-            if let node = eduPhotoLogNode {
-                EduPhotoLogSheet(
-                    nodeEmoji: node.emoji,
-                    nodeName: node.label,
-                    onComplete: { saveToFeed, image, comment in
-                        showEduPhotoLog = false
+        // シート・アラート群をbackgroundに移すことで、メインコンテンツの
+        // SwiftUI描画ツリー深度を16段階削減しスタックオーバーフローを防止
+        .background(coreViewModals)
+    }
+
+    // MARK: - シート・アラート群（描画深度削減のためbackground分離）
+    private var coreViewModals: some View {
+        Color.clear
+            .fullScreenCover(isPresented: $showTracker) {
+                ExerciseTrackerView(isPresented: $showTracker)
+                    .environmentObject(authManager)
+            }
+            .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
+            .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
+            .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
+            .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
+            .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
+            .sheet(isPresented: $showIntakeGoalEdit) {
+                IntakeSettingsView().environmentObject(authManager)
+            }
+            .sheet(item: $selectedMandalaNode) { node in
+                GoalCompletionSheet(
+                    emoji: node.emoji,
+                    name: node.label,
+                    isDone: node.isCompleted,
+                    onComplete: {
+                        selectedMandalaNode = nil
+                        let isDrink = node.type == .drink
                         Task {
                             await handleMandalaComplete(node)
-                            if saveToFeed {
-                                EduLogManager.shared.addItem(
-                                    activityName: node.label,
-                                    activityEmoji: node.emoji,
-                                    comment: comment,
-                                    image: image
-                                )
+                            if isDrink {
+                                await MainActor.run {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        showDrinkToast = true
+                                    }
+                                }
+                                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                                await MainActor.run {
+                                    withAnimation(.easeOut(duration: 0.4)) {
+                                        showDrinkToast = false
+                                    }
+                                }
                             }
                         }
-                    }
+                    },
+                    onPhotoTap: node.type == .meal ? {
+                        selectedMandalaNode = nil
+                        showPhotoLog = true
+                    } : node.type == .custom ? {
+                        eduPhotoLogNode = node
+                        selectedMandalaNode = nil
+                        showEduPhotoLog = true
+                    } : nil,
+                    isRecordType: node.type == .meal || node.type == .drink
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.height(290)])
                 .presentationDragIndicator(.visible)
             }
-        }
-        .fullScreenCover(isPresented: $showMindfulnessSession) {
-            MindfulnessSessionView(
-                durationSeconds: 60,
-                title: "1分瞑想",
-                completedButtonTitle: "Breatheとして保存"
-            ) { startDate, endDate in
-                Task {
-                    let saved = await healthKit.saveMindfulnessSession(
-                        startDate: startDate,
-                        endDate: endDate,
-                        durationSeconds: 60,
-                        sessionType: "Breathe"
+            .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
+            .sheet(isPresented: $showEduPhotoLog) {
+                if let node = eduPhotoLogNode {
+                    EduPhotoLogSheet(
+                        nodeEmoji: node.emoji,
+                        nodeName: node.label,
+                        onComplete: { saveToFeed, image, comment in
+                            showEduPhotoLog = false
+                            Task {
+                                await handleMandalaComplete(node)
+                                if saveToFeed {
+                                    EduLogManager.shared.addItem(
+                                        activityName: node.label,
+                                        activityEmoji: node.emoji,
+                                        comment: comment,
+                                        image: image
+                                    )
+                                }
+                            }
+                        }
                     )
-                    if saved {
-                        await healthKit.refreshMindfulness()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                }
+            }
+            .fullScreenCover(isPresented: $showMindfulnessSession) {
+                MindfulnessSessionView(
+                    durationSeconds: 60,
+                    title: "1分瞑想",
+                    completedButtonTitle: "Breatheとして保存"
+                ) { startDate, endDate in
+                    Task {
+                        let saved = await healthKit.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: 60,
+                            sessionType: "Breathe"
+                        )
+                        if saved {
+                            await healthKit.refreshMindfulness()
+                        }
+                        updateWidgetData()
                     }
-                    updateWidgetData()
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showStretchSession) {
-            MindfulnessSessionView(
-                durationSeconds: 180,
-                title: "3分ストレッチ",
-                completedButtonTitle: "Reflectとして保存",
-                sessionVideos: StretchSessionVideo.defaultStretchVideos
-            ) { startDate, endDate in
-                Task {
-                    let saved = await healthKit.saveMindfulnessSession(
-                        startDate: startDate,
-                        endDate: endDate,
-                        durationSeconds: 180,
-                        sessionType: "Reflect"
-                    )
-                    if saved {
-                        await healthKit.refreshMindfulness()
+            .fullScreenCover(isPresented: $showStretchSession) {
+                MindfulnessSessionView(
+                    durationSeconds: 180,
+                    title: "3分ストレッチ",
+                    completedButtonTitle: "Reflectとして保存",
+                    sessionVideos: StretchSessionVideo.defaultStretchVideos
+                ) { startDate, endDate in
+                    Task {
+                        let saved = await healthKit.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: 180,
+                            sessionType: "Reflect"
+                        )
+                        if saved {
+                            await healthKit.refreshMindfulness()
+                        }
+                        updateWidgetData()
                     }
-                    updateWidgetData()
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showStandSession) {
-            StandPomodoroView(durationSeconds: 20 * 60) {
-                Task {
-                    let slot = TimeSlot.current()
-                    await timeSlotManager.recordStandCompleted(at: slot)
-                    let endDate = Date()
-                    let startDate = endDate.addingTimeInterval(-20 * 60)
-                    let saved = await healthKit.saveMindfulnessSession(
-                        startDate: startDate,
-                        endDate: endDate,
-                        durationSeconds: 20 * 60,
-                        sessionType: "Stand"
-                    )
-                    if saved { await healthKit.refreshMindfulness() }
-                    updateWidgetData()
+            .fullScreenCover(isPresented: $showStandSession) {
+                StandPomodoroView(durationSeconds: 20 * 60) {
+                    Task {
+                        let slot = TimeSlot.current()
+                        await timeSlotManager.recordStandCompleted(at: slot)
+                        let endDate = Date()
+                        let startDate = endDate.addingTimeInterval(-20 * 60)
+                        let saved = await healthKit.saveMindfulnessSession(
+                            startDate: startDate,
+                            endDate: endDate,
+                            durationSeconds: 20 * 60,
+                            sessionType: "Stand"
+                        )
+                        if saved { await healthKit.refreshMindfulness() }
+                        updateWidgetData()
+                    }
                 }
             }
-        }
-        .alert(confirmMessage, isPresented: $showIntakeConfirm) {
-            Button("キャンセル", role: .cancel) { }
-            Button("記録する") {
-                pendingIntakeAction?()
-                pendingIntakeAction = nil
+            .alert(confirmMessage, isPresented: $showIntakeConfirm) {
+                Button("キャンセル", role: .cancel) { }
+                Button("記録する") {
+                    pendingIntakeAction?()
+                    pendingIntakeAction = nil
+                }
             }
-        }
     }
 
     private func handleMindfulnessChange(old: Int, new: Int) {
@@ -1110,32 +1160,10 @@ struct DashboardView: View {
 
     // MARK: - 今日のセット状況カード
     private var dailySetsCard: some View {
-        // 現在時刻から表示すべき時間帯を決定
-        let currentHour = Calendar.current.component(.hour, from: Date())
-        let visibleSlots: [TimeSlot]
-
-        let nonMidnightSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
-        if currentHour < 6 {
-            visibleSlots = nonMidnightSlots
-        } else if currentHour < 10 {
-            visibleSlots = [.morning]
-        } else if currentHour < 14 {
-            visibleSlots = [.morning, .noon]
-        } else if currentHour < 18 {
-            visibleSlots = [.morning, .noon, .afternoon]
-        } else {
-            visibleSlots = nonMidnightSlots
-        }
-
-        // buildNodes() は高コストなため1回だけ計算して共有
         let mandalaNodes = currentMandalaNodes
+        return VStack(alignment: .leading, spacing: 0) {
+            Divider().padding(.horizontal, 16)
 
-        return AnyView(VStack(alignment: .leading, spacing: 0) {
-            Divider()
-                .padding(.horizontal, 16)
-
-            // MandalaSpiralCard を独立した View struct で包みレンダリング境界を作る
-            // → dailySetsCard.getter のスタックフレームから切り離す
             DailySetsMandalaSectionView(
                 mandalaNodes: mandalaNodes,
                 timeSlotManager: timeSlotManager,
@@ -1145,69 +1173,23 @@ struct DashboardView: View {
                 showStretchSession: $showStretchSession,
                 showStandSession: $showStandSession,
                 showMandalaDetail: $showMandalaDetail,
-                selectedMandalaNode: $selectedMandalaNode
+                selectedMandalaNode: $selectedMandalaNode,
+                dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
+                dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal)
             )
 
-            // タスクメッセージ + 展開シェブロン（タップで展開）
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showTodayRecords.toggle()
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(mandalaContextString(mandalaNodes))
-                        .font(.caption2)
-                        .foregroundColor(Color.duoSubtitle)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
-
-            // 時間帯別の進捗（アコーディオン）
-            if showTodayRecords {
-                VStack(spacing: 0) {
-                    Divider()
-                        .padding(.horizontal, 16)
-
-                    VStack(spacing: 10) {
-                        ForEach(visibleSlots, id: \.rawValue) { slot in
-                            timeSlotRow(for: slot)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-            }
-
-            // 今日の履歴（展開時のみ表示）
-            if showTodayRecords {
-                TodayHistorySection(
-                    todayExercises: todayExercises,
-                    mindfulSessions: healthKit.todayMindfulnessSamples.sorted { $0.startDate < $1.startDate },
-                    mealSamples: healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate },
-                    waterSamples: healthKit.todayWaterSamples.sorted { $0.startDate < $1.startDate },
-                    toothbrushingSamples: healthKit.todayToothbrushingSamples.sorted(),
-                    todayPhotoLogs: {
-                        let cal = Calendar.current
-                        let today = cal.startOfDay(for: Date())
-                        return photoLogManager.history
-                            .filter { cal.startOfDay(for: $0.timestamp) == today }
-                            .sorted { $0.timestamp < $1.timestamp }
-                    }(),
-                    bodyMassRecord: healthKit.todayBodyMassRecord,
-                    latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
-                    expandedSetIds: $expandedSetIds
-                )
-            }
+            // 展開ボタン + アコーディオン（独立 View でスタックオーバーフローを防止）
+            DailySetsExpandableSection(
+                timeSlotManager: timeSlotManager,
+                healthKit: healthKit,
+                todayExercises: todayExercises,
+                mandalaContextLabel: mandalaContextString(mandalaNodes),
+                dailyCalorieGoal: intakeGoals.dailyCalorieGoal,
+                dailyWaterGoal: intakeGoals.dailyWaterGoal
+            )
 
             dailySetsCardButtons
-        })
+        }
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -2113,7 +2095,9 @@ struct DashboardView: View {
             activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
                 healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
             slotTrainingCounts: trainCounts,
-            slotMindfulMinutes: mindfulMinutes
+            slotMindfulMinutes: mindfulMinutes,
+            dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
+            dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal)
         )
     }
 
@@ -5672,20 +5656,21 @@ struct DashboardView: View {
     }
 
     /// HealthKitプロパティが同時に複数変化しても updateWidgetData() を1回だけ呼ぶ
+    /// debouncer は @StateObject のため workItem 更新は再レンダリングを起こさない
     private func scheduleWidgetDataUpdate() {
-        pendingWidgetDataUpdate?.cancel()
+        debouncer.widgetUpdate?.cancel()
         let workItem = DispatchWorkItem { updateWidgetData() }
-        pendingWidgetDataUpdate = workItem
+        debouncer.widgetUpdate = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
 
     private func scheduleWidgetReload() {
-        pendingWidgetReload?.cancel()
+        debouncer.widgetReload?.cancel()
         let workItem = DispatchWorkItem {
             WidgetCenter.shared.reloadAllTimelines()
             print("[Widget] Reloaded timelines")
         }
-        pendingWidgetReload = workItem
+        debouncer.widgetReload = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
     }
 
@@ -6112,6 +6097,8 @@ private struct DailySetsMandalaSectionView: View {
     @Binding var showStandSession: Bool
     @Binding var showMandalaDetail: Bool
     @Binding var selectedMandalaNode: MandalaNodeData?
+    var dailyCalorieDone: Bool = false
+    var dailyWaterDone: Bool = false
 
     var body: some View {
         MandalaSpiralCard(
@@ -6123,7 +6110,9 @@ private struct DailySetsMandalaSectionView: View {
             showStretchSession: $showStretchSession,
             showStandSession: $showStandSession,
             showMandalaDetail: $showMandalaDetail,
-            selectedMandalaNode: $selectedMandalaNode
+            selectedMandalaNode: $selectedMandalaNode,
+            dailyCalorieDone: dailyCalorieDone,
+            dailyWaterDone: dailyWaterDone
         )
         .padding(.horizontal, 14)
         .padding(.top, 8)
@@ -6143,6 +6132,8 @@ private struct MandalaSpiralCard: View {
     @Binding var showStandSession: Bool
     @Binding var showMandalaDetail: Bool
     @Binding var selectedMandalaNode: MandalaNodeData?
+    var dailyCalorieDone: Bool = false
+    var dailyWaterDone: Bool = false
 
     private var currentHour: Int { Calendar.current.component(.hour, from: Date()) }
 
@@ -6217,6 +6208,8 @@ private struct MandalaSpiralCard: View {
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
             activityRingsDone: activityRingsDone,
+            dailyCalorieDone: dailyCalorieDone,
+            dailyWaterDone: dailyWaterDone,
             onTapNode: { node in
                 switch node.type {
                 case .training:       showTracker = true
@@ -7640,6 +7633,262 @@ struct StandPomodoroView: View {
     }
 }
 
+// MARK: - DailySetsExpandableSection
+// 展開ボタンと展開コンテンツを独立Viewに分離し、DashboardView の再レンダリングを防ぐ
+private struct DailySetsExpandableSection: View {
+    @ObservedObject var timeSlotManager: TimeSlotManager
+    @ObservedObject var healthKit: HealthKitManager
+    let todayExercises: [CompletedExercise]
+    let mandalaContextLabel: String
+    let dailyCalorieGoal: Int
+    let dailyWaterGoal: Int
+
+    @State private var showTodayRecords = false
+    @State private var expandedSetIds: Set<Int> = []
+
+    private var visibleSlots: [TimeSlot] {
+        let h = Calendar.current.component(.hour, from: Date())
+        let all: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        if h < 6 { return all }
+        else if h < 10 { return [.morning] }
+        else if h < 14 { return [.morning, .noon] }
+        else if h < 18 { return [.morning, .noon, .afternoon] }
+        else { return all }
+    }
+
+    var body: some View {
+        Group {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showTodayRecords.toggle()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(mandalaContextLabel)
+                        .font(.caption2)
+                        .foregroundColor(Color.duoSubtitle)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+
+            if showTodayRecords {
+                VStack(spacing: 0) {
+                    Divider().padding(.horizontal, 16)
+                    VStack(spacing: 10) {
+                        ForEach(visibleSlots, id: \.rawValue) { slot in
+                            timeSlotRow(for: slot)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+            }
+
+            if showTodayRecords {
+                TodayHistorySection(
+                    todayExercises: todayExercises,
+                    mindfulSessions: healthKit.todayMindfulnessSamples.sorted { $0.startDate < $1.startDate },
+                    mealSamples: healthKit.todayMealSamples.sorted { $0.startDate < $1.startDate },
+                    waterSamples: healthKit.todayWaterSamples.sorted { $0.startDate < $1.startDate },
+                    toothbrushingSamples: healthKit.todayToothbrushingSamples.sorted(),
+                    bodyMassRecord: healthKit.todayBodyMassRecord,
+                    latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
+                    expandedSetIds: $expandedSetIds
+                )
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
+        let cal = Calendar.current
+        let inSlot = todayExercises
+            .filter { let h = cal.component(.hour, from: $0.timestamp); return h >= slot.startHour && h < slot.endHour }
+            .sorted { $0.timestamp < $1.timestamp }
+        guard !inSlot.isEmpty else { return 0 }
+        var count = 0; var lastTime: Date? = nil
+        for ex in inSlot {
+            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 { }
+            else { count += 1 }
+            lastTime = ex.timestamp
+        }
+        return count
+    }
+
+    /// その時間帯に記録された食事カロリーの合計（kcal）
+    private func caloriesInSlot(_ slot: TimeSlot) -> Double {
+        let cal = Calendar.current
+        return healthKit.todayMealSamples
+            .filter { let h = cal.component(.hour, from: $0.startDate); return h >= slot.startHour && h < slot.endHour }
+            .reduce(0.0) { $0 + $1.value }
+    }
+
+    /// その時間帯に記録された水分量の合計（ml）
+    private func waterInSlot(_ slot: TimeSlot) -> Double {
+        let cal = Calendar.current
+        return healthKit.todayWaterSamples
+            .filter { let h = cal.component(.hour, from: $0.startDate); return h >= slot.startHour && h < slot.endHour }
+            .reduce(0.0) { $0 + $1.value }
+    }
+
+    private var dailyTrainingAllDone: Bool {
+        let slots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        let goal = slots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
+        let done = slots.reduce(0) { $0 + countSetsInTimeSlot($1) }
+        return goal > 0 && done >= goal
+    }
+    private var dailyMindfulnessAllDone: Bool {
+        let slots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        let goal = slots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0) }
+        let done = slots.reduce(0) {
+            let p = timeSlotManager.progress.progressFor($1)
+            return $0 + (p?.mindfulnessCompleted ?? 0) + (p?.stretchSetsCompleted ?? 0) * 3
+        }
+        return goal > 0 && done >= goal
+    }
+    private var dailyStandAllDone: Bool {
+        [TimeSlot.morning, .noon, .afternoon, .evening].contains {
+            timeSlotManager.settings.goalFor($0)?.standGoal.enabled == true &&
+            (timeSlotManager.progress.progressFor($0)?.standCompleted ?? 0) >= 1
+        }
+    }
+    private var dailyCompletedActivityNames: Set<String> {
+        var names = Set<String>()
+        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
+            guard let goal = timeSlotManager.settings.goalFor(slot),
+                  let prog = timeSlotManager.progress.progressFor(slot) else { continue }
+            for act in goal.customActivities where act.isEnabled && prog.completedActivityIds.contains(act.id) {
+                names.insert(act.name)
+            }
+        }
+        return names
+    }
+
+    private func progressCheckIcon(emoji: String, done: Bool, color: Color) -> some View {
+        HStack(spacing: 2) {
+            Text(emoji).font(.caption)
+            Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                .font(.caption2)
+                .foregroundColor(done ? color : Color(.systemGray4))
+        }
+    }
+
+    private func slotCustomActivityIcon(act: CustomActivity, progress: TimeSlotProgress?, slot: TimeSlot) -> some View {
+        let done = dailyCompletedActivityNames.contains(act.name) || (progress?.completedActivityIds.contains(act.id) ?? false)
+        return Button {
+            Task { await timeSlotManager.toggleCustomActivity(id: act.id, at: slot) }
+        } label: {
+            progressCheckIcon(emoji: act.emoji, done: done, color: Color.duoGreen)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func slotActivityIcons(goal: TimeSlotGoal?, progress: TimeSlotProgress?, slot: TimeSlot) -> some View {
+        let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
+        let mindMin = (progress?.mindfulnessCompleted ?? 0) + (progress?.stretchSetsCompleted ?? 0) * 3
+        let trainingDone = dailyTrainingAllDone || (goal.map { countSetsInTimeSlot(slot) >= $0.trainingGoal } ?? false)
+        let mindDone = dailyMindfulnessAllDone || (goal.map { mindMin >= $0.mindfulnessGoal } ?? false)
+        let standDone = dailyStandAllDone || (progress?.standCompleted ?? 0) >= 1
+        let customs = goal?.customActivities.filter { $0.isEnabled } ?? []
+        return HStack(spacing: 2) {
+            if let g = goal, g.trainingGoal > 0 {
+                progressCheckIcon(emoji: "💪", done: trainingDone, color: Color.duoGreen)
+            }
+            if let g = goal, g.mindfulnessGoal > 0 {
+                progressCheckIcon(emoji: "🧘", done: mindDone, color: Color.duoGreen)
+            }
+            if let g = goal, slot != .midnight, g.standGoal.enabled {
+                progressCheckIcon(emoji: "🧍", done: standDone, color: standColor)
+            }
+            ForEach(customs) { act in
+                slotCustomActivityIcon(act: act, progress: progress, slot: slot)
+            }
+        }
+    }
+
+    private func timeSlotRow(for slot: TimeSlot) -> some View {
+        let goal = timeSlotManager.settings.goalFor(slot)
+        let progress = timeSlotManager.progress.progressFor(slot)
+        let gp = timeSlotManager.progress.globalProgress
+        let gg = timeSlotManager.settings.globalGoals
+        return HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 4) {
+                    Text(slot.emoji).font(.subheadline)
+                    Text(slot.displayName)
+                        .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                }
+                Text("~\(slot.endHour):00")
+                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+            }
+            .frame(width: 50, alignment: .leading)
+            if slot == .midnight {
+                if gg.sleepEnabled {
+                    if gp.sleepScore > 0 {
+                        let achieved = gp.sleepScore >= gg.sleepScoreThreshold
+                        HStack(spacing: 3) {
+                            Text("😴").font(.caption)
+                            Text("\(gp.sleepScore)点")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(achieved ? Color.duoGreen : Color.duoSubtitle)
+                            if gp.sleepHours > 0 {
+                                Text(String(format: "%.1fh", gp.sleepHours))
+                                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            }
+                            if achieved {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption2).foregroundColor(Color.duoGreen)
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 3) {
+                            Text("😴").font(.caption)
+                            Text("データなし").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                }
+            } else {
+                slotActivityIcons(goal: goal, progress: progress, slot: slot)
+            }
+            Spacer()
+            if slot != .midnight, let goal = goal {
+                HStack(spacing: 4) {
+                    if goal.logGoal.mealGoal > 0 {
+                        // 1日の目標の1/4をその時間帯の完了閾値とし、
+                        // 1日合計が目標に達したら全スロット完了扱い
+                        // 集計済みプロパティを使用（body内でのreduce()を排除）
+                        let totalCalories = healthKit.todayIntakeCalories
+                        let slotCalories  = caloriesInSlot(slot)
+                        let mealDone = totalCalories >= Double(dailyCalorieGoal)
+                            || slotCalories >= Double(dailyCalorieGoal) / 4.0
+                        Image(systemName: mealDone ? "fork.knife.circle.fill" : "fork.knife.circle")
+                            .font(.title3).foregroundColor(mealDone ? Color.duoGreen : Color(.systemGray4))
+                    }
+                    if goal.logGoal.drinkGoal > 0 {
+                        // 水分も同様に1日の目標の1/4をその時間帯の完了閾値とする
+                        // 集計済みプロパティを使用（body内でのreduce()を排除）
+                        let totalWater = healthKit.todayIntakeWater
+                        let slotWater  = waterInSlot(slot)
+                        let drinkDone = totalWater >= Double(dailyWaterGoal)
+                            || slotWater >= Double(dailyWaterGoal) / 4.0
+                        Image(systemName: drinkDone ? "drop.circle.fill" : "drop.circle")
+                            .font(.title3).foregroundColor(drinkDone ? Color.duoBlue : Color(.systemGray4))
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 // MARK: - TodayHistorySection
 private struct TodayHistorySection: View {
     let todayExercises: [CompletedExercise]
@@ -7647,7 +7896,6 @@ private struct TodayHistorySection: View {
     let mealSamples: [DietarySample]
     let waterSamples: [DietarySample]
     let toothbrushingSamples: [Date]
-    let todayPhotoLogs: [PhotoLogHistoryItem]
     let bodyMassRecord: BodyMassRecord?
     let latestBodyFatPercentage: Double
     @Binding var expandedSetIds: Set<Int>
@@ -7662,13 +7910,6 @@ private struct TodayHistorySection: View {
         let setNum: Int
         let startTime: Date
         let exercises: [CompletedExercise]
-    }
-
-    private var deduplicatedMealSamples: [DietarySample] {
-        let photoTimestamps = todayPhotoLogs.map { $0.timestamp }
-        return mealSamples.filter { s in
-            !photoTimestamps.contains { abs($0.timeIntervalSince(s.startDate)) < 300 }
-        }
     }
 
     private var exerciseSets: [ExerciseSetGroup] {
@@ -7705,13 +7946,12 @@ private struct TodayHistorySection: View {
 
     var body: some View {
         let timeFmt = Self.timeFmt
-        let dedupedMeals = deduplicatedMealSamples
         let sets = exerciseSets
         let toothColor = Color(hex: "#4DB6AC")
 
         let hasAny = !todayExercises.isEmpty || !mindfulSessions.isEmpty
-            || bodyMassRecord != nil || !dedupedMeals.isEmpty
-            || !waterSamples.isEmpty || !toothbrushingSamples.isEmpty || !todayPhotoLogs.isEmpty
+            || bodyMassRecord != nil || !mealSamples.isEmpty
+            || !waterSamples.isEmpty || !toothbrushingSamples.isEmpty
 
         if hasAny {
             VStack(spacing: 0) {
@@ -7766,36 +8006,16 @@ private struct TodayHistorySection: View {
                         }
                     }
 
-                    if !dedupedMeals.isEmpty || !todayPhotoLogs.isEmpty {
+                    if !mealSamples.isEmpty {
                         sectionGroup(icon: "🍽️", label: "食事") {
                             VStack(spacing: 4) {
-                                ForEach(dedupedMeals) { s in
+                                ForEach(mealSamples) { s in
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: s.startDate))
                                             .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
                                             .frame(width: 38, alignment: .leading)
                                         Spacer()
                                         Text(String(format: "%.0f kcal", s.value))
-                                            .font(.system(size: 11, weight: .black))
-                                            .foregroundColor(Color.duoOrange)
-                                    }
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Color.duoOrange.opacity(0.06))
-                                    .cornerRadius(6)
-                                }
-                                ForEach(todayPhotoLogs) { item in
-                                    HStack(spacing: 6) {
-                                        Text(timeFmt.string(from: item.timestamp))
-                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                                            .frame(width: 38, alignment: .leading)
-                                        Text(item.displayName)
-                                            .font(.system(size: 11)).foregroundColor(Color.duoDark)
-                                            .lineLimit(1)
-                                        Spacer()
-                                        Image(systemName: "photo.fill")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(Color.duoOrange.opacity(0.6))
-                                        Text("\(item.calories) kcal")
                                             .font(.system(size: 11, weight: .black))
                                             .foregroundColor(Color.duoOrange)
                                     }
@@ -7926,41 +8146,13 @@ private struct TodayHistorySection: View {
                                   timeFmt: DateFormatter) -> some View {
         VStack(spacing: 4) {
             ForEach(sessions) { s in
-                let isReflect = s.sessionTypeLabel == "Reflect"
-                let isStand   = s.sessionTypeLabel == "Stand"
-                let label: String = isStand ? "20分スタンド"
-                    : (isReflect ? "3分ストレッチ"
-                    : (s.sessionTypeLabel == "Breathe" ? "1分瞑想" : s.sessionTypeLabel))
-                let xp = isStand ? 50 : (isReflect ? 30 : 10)
                 HStack(spacing: 6) {
                     Text(timeFmt.string(from: s.startDate))
                         .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
                         .frame(width: 38, alignment: .leading)
-                    Text(label)
-                        .font(.system(size: 10, weight: .black)).foregroundColor(color)
                     Spacer()
-                    if s.averageHeartRate > 0 {
-                        HStack(spacing: 2) {
-                            Text("❤️").font(.system(size: 10))
-                            Text("\(Int(s.averageHeartRate))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
-                        }
-                    }
-                    if s.averageHRV > 0 {
-                        HStack(spacing: 2) {
-                            Text("💙").font(.system(size: 10))
-                            Text("\(Int(s.averageHRV))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(hex: "#1CB0F6"))
-                        }
-                    }
-                    Text("+\(xp) XP")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                        .foregroundColor(Color(hex: "#FDCB6E"))
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Color(hex: "#FDCB6E").opacity(0.15))
-                        .cornerRadius(6)
+                    Text("\(Int(s.durationMinutes))分")
+                        .font(.system(size: 11, weight: .black)).foregroundColor(color)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(color.opacity(0.07))

@@ -28,6 +28,16 @@ private let flowSteps: [(emoji: String, name: String, target: Int, id: String, x
     ("🦵", "ランジ", 20, "lunge", 2),
 ]
 
+/// セット内の記録済み種目（Identifiableで安全なForEachを保証）
+private struct CompletedItem: Identifiable {
+    let id = UUID()
+    let exerciseId: String
+    let name: String
+    let emoji: String
+    let reps: Int
+    let points: Int
+}
+
 struct ExerciseTrackerView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var authManager: AuthenticationManager
@@ -49,7 +59,7 @@ struct ExerciseTrackerView: View {
     @State private var showWorkoutGIF = false
 
     /// セット内の記録済み種目
-    @State private var completedExercises: [(id: String, name: String, emoji: String, reps: Int, points: Int)] = []
+    @State private var completedExercises: [CompletedItem] = []
 
     private var current: (emoji: String, name: String, target: Int, id: String, xp: Int) {
         flowSteps[stepIdx]
@@ -154,15 +164,15 @@ struct ExerciseTrackerView: View {
             motionManager.stopDetection()
             stopPlankTimer()
         }
-        .onChange(of: motionManager.repCount) { count in
+        .onChange(of: motionManager.repCount) { _, count in
             guard !isManualMode && !isPlankSelected else { return }
             if count == current.target && !showGoalReached { triggerGoalReached() }
         }
-        .onChange(of: manualRepCount) { count in
+        .onChange(of: manualRepCount) { _, count in
             guard isManualMode && !isPlankSelected else { return }
             if count == current.target && !showGoalReached { triggerGoalReached() }
         }
-        .onChange(of: plankSeconds) { secs in
+        .onChange(of: plankSeconds) { _, secs in
             guard isPlankSelected else { return }
             if secs >= current.target && !showGoalReached { triggerGoalReached() }
         }
@@ -434,8 +444,7 @@ struct ExerciseTrackerView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("完了")
                 .font(.caption2).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
-            ForEach(0..<completedExercises.count, id: \.self) { idx in
-                let item = completedExercises[idx]
+            ForEach(completedExercises) { item in
                 HStack {
                     Text(item.emoji).font(.callout)
                     Text(item.name).font(.caption).fontWeight(.medium)
@@ -456,6 +465,7 @@ struct ExerciseTrackerView: View {
     }
 
     // MARK: - 目標達成フラッシュ
+
     private var goalReachedOverlay: some View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea()
@@ -550,8 +560,11 @@ struct ExerciseTrackerView: View {
             showGoalReached = true
         }
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation { showGoalReached = false }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run {
+                withAnimation { showGoalReached = false }
+            }
         }
     }
 
@@ -589,27 +602,25 @@ struct ExerciseTrackerView: View {
         stopPlankTimer()
         motionManager.stopDetection()
 
-        let xp = currentReps * current.xp
+        // 値を同期的にキャプチャ（Taskの遅延実行でstepIdxが変わっても安全）
+        let capturedId    = current.id
+        let capturedName  = current.name
+        let capturedEmoji = current.emoji
+        let capturedReps  = currentReps
+        let xp            = capturedReps * current.xp
         earnedXP += xp
-        completedExercises.append((current.id, current.name, current.emoji, currentReps, xp))
 
-        // 個別の種目をcompleted-exercisesに記録（種目ごと）
-        Task {
-            await authManager.recordExerciseOnly(
-                exerciseId: current.id,
-                exerciseName: current.name,
-                reps: currentReps,
-                points: xp
-            )
-        }
+        let newItem = CompletedItem(exerciseId: capturedId, name: capturedName, emoji: capturedEmoji, reps: capturedReps, points: xp)
+        completedExercises.append(newItem)
 
         if isLast {
-            // 全種目完了 → 1セットとして記録
+            // 全種目完了 → 全種目を1セットとして記録
+            // ※ recordExerciseOnlyは呼ばない（recordCompletedSetが一括記録するため二重記録を防止）
             isSubmitting = true
+            let allItems = completedExercises  // append済みなので最後の種目も含む
             Task {
-                // 全種目のデータを1セットとして記録
-                let setExercises = completedExercises.map { ex in
-                    (exerciseId: ex.id, exerciseName: ex.name, reps: ex.reps, points: ex.points)
+                let setExercises = allItems.map { ex in
+                    (exerciseId: ex.exerciseId, exerciseName: ex.name, reps: ex.reps, points: ex.points)
                 }
                 await authManager.recordCompletedSet(exercises: setExercises)
 
@@ -620,6 +631,15 @@ struct ExerciseTrackerView: View {
                 }
             }
         } else {
+            // 中間種目のみ個別記録（最終種目はrecordCompletedSetで一括記録）
+            Task {
+                await authManager.recordExerciseOnly(
+                    exerciseId: capturedId,
+                    exerciseName: capturedName,
+                    reps: capturedReps,
+                    points: xp
+                )
+            }
             // 次の種目へ
             stepIdx += 1
             manualRepCount = 0

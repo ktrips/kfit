@@ -1902,6 +1902,7 @@ class AuthenticationManager: ObservableObject {
     }
 
     deinit {
+        profileListener?.remove()
         if let authStateHandle = authStateHandle {
             Auth.auth().removeStateDidChangeListener(authStateHandle)
         }

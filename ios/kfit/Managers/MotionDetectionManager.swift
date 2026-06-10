@@ -39,6 +39,8 @@ class MotionDetectionManager: NSObject, ObservableObject {
     func calibrate() {
         guard motionManager.isAccelerometerAvailable else { return }
 
+        // 既存のアクセロメータリスナーを停止してから開始（重複コールバック防止）
+        motionManager.stopAccelerometerUpdates()
         motionManager.accelerometerUpdateInterval = 0.1
         var readings: [Double] = []
 
@@ -92,10 +94,10 @@ class MotionDetectionManager: NSObject, ObservableObject {
 
             // Calculate form score based on consistency（緩めに評価）
             formScore = max(70.0, min(100.0, consistency * 100))
-
-            // Reset for next rep
-            accelerationPeaks = []
         }
+
+        // 閾値未達でも必ずリセット（蓄積による誤検知・メモリ増大を防止）
+        accelerationPeaks = []
     }
 
     private func calculateConsistency() -> Double {

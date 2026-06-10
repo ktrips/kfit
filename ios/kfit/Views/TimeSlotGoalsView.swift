@@ -561,6 +561,8 @@ struct MandalaChartView: View {
     let settings: DailyTimeSlotSettings
     let progress: DailyTimeSlotProgress
     var activityRingsDone: Bool = false
+    var dailyCalorieDone: Bool = false
+    var dailyWaterDone: Bool = false
     let onTapNode: (MandalaNodeData) -> Void
 
     @State private var appeared = false
@@ -590,7 +592,9 @@ struct MandalaChartView: View {
         progress: DailyTimeSlotProgress,
         activityRingsDone: Bool = false,
         slotTrainingCounts: [String: Int]? = nil,
-        slotMindfulMinutes: [String: Int]? = nil
+        slotMindfulMinutes: [String: Int]? = nil,
+        dailyCalorieDone: Bool = false,
+        dailyWaterDone: Bool = false
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -676,7 +680,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-meal",
                     emoji: mealEmoji,
                     label: mealLabel,
-                    isCompleted: prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    isCompleted: dailyCalorieDone || prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
                     slot: slot,
                     type: .meal
                 ))
@@ -686,7 +690,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
                     label: "水分 \(goal.logGoal.drinkGoal)ml",
-                    isCompleted: prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    isCompleted: dailyWaterDone || prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
                 ))
@@ -814,7 +818,7 @@ struct MandalaChartView: View {
     var body: some View {
         // buildNodes() は高コスト処理（UserDefaults読込）なので body で1度だけ計算し、
         // adaptiveNodeSize / minRadius / nodeSpacing にも同じ値を使いまわす
-        let nodes     = Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone)
+        let nodes     = Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone, dailyCalorieDone: dailyCalorieDone, dailyWaterDone: dailyWaterDone)
         let nodeSize  = Self.adaptiveNodeSize(count: nodes.count)
         let minR      = Self.minRadius(nodeSize: nodeSize)
         let spacing   = Self.nodeSpacing(nodeSize: nodeSize)

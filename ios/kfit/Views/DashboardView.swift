@@ -2089,6 +2089,15 @@ struct DashboardView: View {
             mindfulMinutes[slot.rawValue] = max(firestoreMin, hkMin) + stretchMin
         }
 
+        // 時間帯別の実際の水分摂取量（HealthKit: ml）
+        var slotWaterMl: [String: Int] = [:]
+        for slot in activeSlots {
+            slotWaterMl[slot.rawValue] = Int(healthKit.todayWaterSamples
+                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
+                    return h >= slot.startHour && h < slot.endHour }
+                .reduce(0.0) { $0 + $1.value })
+        }
+
         // 1日合計のトレーニング完了・目標を計算
         let totalTrainingDone = activeSlots.reduce(0) { $0 + (trainCounts[$1.rawValue] ?? 0) }
         let totalTrainingGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
@@ -2106,6 +2115,7 @@ struct DashboardView: View {
                 healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
             slotTrainingCounts: trainCounts,
             slotMindfulMinutes: mindfulMinutes,
+            slotWaterMl: slotWaterMl,
             dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
             dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal),
             dailyTrainingDone: dailyTrainingDone,
@@ -6199,19 +6209,18 @@ private struct MandalaSpiralCard: View {
             .padding(.bottom, 1)
             .overlay(alignment: .top) { legendOverlay }
             .overlay(alignment: .topLeading) {
-                if nc.total > 0 {
-                    progressBadge(done: nc.done, total: nc.total, label: "現時点")
-                        .padding(.leading, 10)
+                HStack(alignment: .top, spacing: 6) {
+                    if nc.total > 0 {
+                        progressBadge(done: nc.done, total: nc.total, label: "現時点")
+                    }
+                    motivationBadge
                 }
+                .padding(.leading, 10)
+                .padding(.top, 34)
             }
             .overlay(alignment: .topTrailing) {
                 settingsButton
                     .padding(.trailing, 4)
-            }
-            .overlay(alignment: .bottomLeading) {
-                motivationBadge
-                    .padding(.bottom, 8)
-                    .padding(.leading, 10)
             }
     }
 
@@ -6269,7 +6278,6 @@ private struct MandalaSpiralCard: View {
         .background(Color(.systemBackground).opacity(0.85))
         .cornerRadius(8)
         .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-        .padding(.top, 34)
     }
 
     private var legendOverlay: some View {

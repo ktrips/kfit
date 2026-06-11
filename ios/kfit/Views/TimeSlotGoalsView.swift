@@ -593,6 +593,7 @@ struct MandalaChartView: View {
         activityRingsDone: Bool = false,
         slotTrainingCounts: [String: Int]? = nil,
         slotMindfulMinutes: [String: Int]? = nil,
+        slotWaterMl: [String: Int]? = nil,
         dailyCalorieDone: Bool = false,
         dailyWaterDone: Bool = false,
         dailyTrainingDone: Bool = false,
@@ -688,11 +689,14 @@ struct MandalaChartView: View {
                 ))
             }
             if foodEnabled && goal.logGoal.drinkGoal > 0 {
+                // 時間帯別の水分摂取量（ml）を使って達成判定。未提供の場合は1回200mlで換算
+                let slotActualWaterMl = slotWaterMl?[slot.rawValue]
+                    ?? (prog.logProgress.drinkLogged * 200)
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分 \(goal.logGoal.drinkGoal)ml",
-                    isCompleted: dailyWaterDone || prog.logProgress.drinkLogged >= goal.logGoal.drinkGoal,
+                    label: "水分 200ml",
+                    isCompleted: dailyWaterDone || slotActualWaterMl >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
                 ))

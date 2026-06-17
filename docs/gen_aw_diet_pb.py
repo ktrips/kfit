@@ -3148,11 +3148,46 @@ def main():
     _mind  = _imgs('mind')
     _main  = _imgs('main')
 
+    # AppleWatch_Diet_PB.docx から抽出した本物の写真
+    _pb_dir = os.path.join(SHOT_BASE, 'from_pb')
+    def _pb(name):
+        p = os.path.join(_pb_dir, name)
+        return p if os.path.exists(p) else None
+
+    # 画像の内容に合わせてカテゴリ別にプールを構成
+    # image1.png  = Apple Watch 文字盤（青バンド）     → 全般・アクティビティ
+    # image2.png  = Apple Watch 文字盤（夕焼け写真）   → 全般・ウォッチフェイス
+    # image3.png  = グラフ「1日の消費カロリー」        → 食事・代謝
+    # image4.jpeg = マインドフルネス/呼吸 サマリー     → 瞑想・睡眠・ストレス
+    # image5.jpeg = ワークアウト記録（カロリー・心拍） → 運動・トレーニング
+    _img_watch1   = _pb('image1.png')
+    _img_watch2   = _pb('image2.png')
+    _img_calorie  = _pb('image3.png')
+    _img_mind     = _pb('image4.jpeg')
+    _img_workout  = _pb('image5.jpeg')
+
+    # from_pb の画像が取れた場合は先頭に並べ、スクリーンショットで補完
+    def _pool_cat1():   # I. エネルギー消費を増やす
+        pool = [p for p in [_img_workout, _img_watch1, _img_watch2] if p]
+        return pool + _watch + _fit if pool else _watch + _fit
+
+    def _pool_cat2():   # II. 食事管理
+        pool = [p for p in [_img_calorie, _img_watch1] if p]
+        return pool + _food + _main if pool else _food + _main
+
+    def _pool_cat3():   # III. マインドフルネスと睡眠
+        pool = [p for p in [_img_mind, _img_watch1] if p]
+        return pool + _mind if pool else _mind
+
+    def _pool_cat4():   # IV. Fitingoアプリとの連携
+        pool = [p for p in [_img_watch1, _img_workout, _img_watch2] if p]
+        return pool + _main + _fit if pool else _main + _fit
+
     _cat_pools = {
-        "I. エネルギー消費を増やす":  _watch + _fit,
-        "II. 食事管理":               _food  + _main,
-        "III. マインドフルネスと睡眠": _mind,
-        "IV. Fitingoアプリとの連携":  _main  + _fit,
+        "I. エネルギー消費を増やす":  _pool_cat1(),
+        "II. 食事管理":               _pool_cat2(),
+        "III. マインドフルネスと睡眠": _pool_cat3(),
+        "IV. Fitingoアプリとの連携":  _pool_cat4(),
     }
     _cat_cnt = {k: 0 for k in _cat_pools}
 

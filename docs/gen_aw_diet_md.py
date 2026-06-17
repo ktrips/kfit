@@ -63,12 +63,34 @@ food_imgs  = imgs_in('food')
 mind_imgs  = imgs_in('mind')
 main_imgs  = imgs_in('main')
 
+# AppleWatch_Diet_PB.docx から抽出したリアル写真（from_pb/）
+PB_DIR = os.path.join(SCRIPT_DIR, 'screenshots', 'from_pb')
+
+def pb(fname):
+    p = os.path.join('screenshots', 'from_pb', fname)
+    return p if os.path.exists(os.path.join(SCRIPT_DIR, p)) else None
+
+# 画像内容 → カテゴリ適合度
+# image1.png  = Apple Watch 文字盤（青バンド）
+# image2.png  = Apple Watch 文字盤（夕焼け写真背景）
+# image3.png  = グラフ「1日の消費カロリー」
+# image4.jpeg = マインドフルネス/呼吸サマリー
+# image5.jpeg = ワークアウト記録（カロリー・心拍）
+_img1 = pb('image1.png')
+_img2 = pb('image2.png')
+_img3 = pb('image3.png')
+_img4 = pb('image4.jpeg')
+_img5 = pb('image5.jpeg')
+
+def _build_pool(*primaries, fallback=None):
+    return [p for p in primaries if p] + (fallback or [])
+
 # ── カテゴリ別 画像プール ─────────────────────────────────────────────
 CAT_IMGS = {
-    "I. エネルギー消費を増やす":  watch_imgs + fit_imgs,   # 26枚
-    "II. 食事管理":               food_imgs + main_imgs,   # 16枚
-    "III. マインドフルネスと睡眠": mind_imgs,               # 6枚
-    "IV. Fitingoアプリとの連携":  main_imgs + fit_imgs,    # 19枚
+    "I. エネルギー消費を増やす":  _build_pool(_img5, _img1, _img2, fallback=watch_imgs + fit_imgs),
+    "II. 食事管理":               _build_pool(_img3, _img1, fallback=food_imgs + main_imgs),
+    "III. マインドフルネスと睡眠": _build_pool(_img4, _img1, fallback=mind_imgs),
+    "IV. Fitingoアプリとの連携":  _build_pool(_img1, _img5, _img2, fallback=main_imgs + fit_imgs),
 }
 
 # カテゴリごとのカウンタ（ラウンドロビン）

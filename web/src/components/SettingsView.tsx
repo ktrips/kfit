@@ -193,7 +193,11 @@ const Toggle: React.FC<{
 
 // ── メインコンポーネント ─────────────────────────────────────────────────────
 
-export const SettingsView: React.FC = () => {
+interface SettingsViewProps {
+  onNavigateToTimeSlots?: () => void;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ onNavigateToTimeSlots }) => {
   const [settings, setSettings] = useState<AppSettings>(buildDefaults);
   const [permStatus, setPermStatus] = useState<NotificationPermission>('default');
   const [saved, setSaved] = useState(false);
@@ -278,6 +282,24 @@ export const SettingsView: React.FC = () => {
             <p className="text-duo-gray font-bold text-sm">通知・連動起動のカスタマイズ</p>
           </div>
         </div>
+
+        {/* ── 時間帯別目標 リンクカード ── */}
+        {onNavigateToTimeSlots && (
+          <button
+            onClick={onNavigateToTimeSlots}
+            className="w-full bg-white rounded-2xl p-4 text-left flex items-center justify-between active:scale-[0.98] transition-transform"
+            style={{ border: '2px solid #B8E0FF', boxShadow: '0 3px 0 #3080C0' }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🕐</span>
+              <div>
+                <p className="font-black text-duo-dark text-sm">時間帯別目標</p>
+                <p className="text-xs font-bold text-duo-gray">朝・昼・夜の時間帯ごとの目標を設定</p>
+              </div>
+            </div>
+            <span className="text-gray-300 text-lg">→</span>
+          </button>
+        )}
 
         {/* ── 通知権限バナー ─────────────────────────────── */}
         {notSupported ? (

@@ -73,7 +73,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [dailySets, setDailySets] = useState(2);
   const [todaySetCount, setTodaySetCount] = useState(0);
   const [todaySets, setTodaySets] = useState<CompletedSetRecord[]>([]);
-  const [globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
+  const [_globalProgress, setGlobalProgress] = useState<GlobalProgress | null>(null);
   const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -333,88 +333,147 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           </div>
         )}
 
-        {/* ── Health grid: DIET / SLEEP ── */}
+        {/* ── DIET card (大) ── */}
         {(() => {
-          // DIET
           const cw = dietGoal?.currentWeightKg ?? 0;
           const gw = dietGoal?.goalWeightKg ?? 0;
           const sw = dietGoal?.startWeightKg ?? 0;
-          const totalWd = sw - gw;
-          const doneWd  = sw - cw;
+          const cf = dietGoal?.currentBodyFatPercent ?? 0;
+          const sf = dietGoal?.startBodyFatPercent ?? 0;
+          const gf = dietGoal?.goalBodyFatPercent ?? 0;
+
+          const totalWd = sw > 0 && gw > 0 ? sw - gw : 0;
+          const doneWd  = sw > 0 && cw > 0 ? sw - cw : 0;
           const weightPct = totalWd !== 0 ? Math.min(100, Math.max(0, Math.round((doneWd / totalWd) * 100))) : 0;
-          const remainKg = cw > 0 && gw > 0 ? cw - gw : 0;
-          const daysLeft = (() => {
-            if (!dietGoal?.goalDate) return 0;
-            const t = new Date(); t.setHours(0,0,0,0);
-            const g = new Date(dietGoal.goalDate); g.setHours(0,0,0,0);
-            return Math.max(0, Math.round((g.getTime() - t.getTime()) / 86400000));
+
+          // 期間進捗
+          const timePct = (() => {
+            if (!dietGoal?.startDate || !dietGoal?.goalDate) return 0;
+            const s = new Date(dietGoal.startDate).getTime();
+            const g = new Date(dietGoal.goalDate).getTime();
+            const n = Date.now();
+            if (g <= s) return 0;
+            return Math.min(100, Math.max(0, Math.round(((n - s) / (g - s)) * 100)));
           })();
 
-          // SLEEP
-          const sh = globalProgress?.sleepHours ?? 0;
-          const ss = globalProgress?.sleepScore ?? 0;
-          const sleepColor = ss >= 80 ? '#58CC02' : ss >= 60 ? '#FF9600' : ss > 0 ? '#FF4B4B' : '#AFAFAF';
+          const diffFromStart = cw > 0 && sw > 0 ? cw - sw : 0;
+          const diffToGoal    = cw > 0 && gw > 0 ? cw - gw : 0;
+
+          const fmt = (d: string) => {
+            if (!d) return '—';
+            const dt = new Date(d);
+            return `${dt.getMonth() + 1}/${dt.getDate()}`;
+          };
+
+          const motivationMsg = (() => {
+            if (cw === 0) return null;
+            if (diffToGoal <= 0) return '🎉 目標達成！';
+            if (weightPct >= 50) return '👏 折り返し地点を超えました！';
+            if (weightPct >= 25) return '💪 順調です！食事記録を続けよう！';
+            return '🔥 食事記録を続けよう！';
+          })();
 
           return (
-            <div className="grid grid-cols-2 gap-3">
-
-              {/* DIET card */}
-              <button
-                onClick={onDietGoal}
-                className="bg-white rounded-2xl p-4 text-left active:scale-[0.97] transition-transform"
-                style={{ border: '2px solid #E8D0FF', boxShadow: '0 3px 0 #A15FD4' }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#CE82FF' }}>🎯 DIET</span>
-                  {daysLeft > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: '#CE82FF' }}>
-                      あと{daysLeft}日
-                    </span>
-                  )}
-                </div>
-                {cw > 0 ? (
-                  <>
-                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: '#CE82FF' }}>
-                      {cw.toFixed(1)}
-                    </p>
-                    <p className="text-[9px] font-bold text-duo-gray mb-2">kg現在</p>
-                    <p className="text-[10px] font-bold" style={{ color: remainKg > 0 ? '#FF9600' : '#58CC02' }}>
-                      {remainKg > 0 ? `-${remainKg.toFixed(1)}kg` : '目標達成！'}
-                    </p>
-                    <div className="mt-1 rounded-full bg-gray-100" style={{ height: 3 }}>
-                      <div className="rounded-full" style={{ height: 3, width: `${weightPct}%`, background: 'linear-gradient(90deg,#CE82FF,#58CC02)' }} />
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-[10px] font-bold text-duo-gray mt-2">未設定</p>
-                )}
-              </button>
-
-              {/* SLEEP card */}
-              <div
-                className="bg-white rounded-2xl p-4"
-                style={{ border: '2px solid #D8E8FF', boxShadow: '0 3px 0 #4060B0' }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black tracking-wider" style={{ color: '#4060B0' }}>😴 SLEEP</span>
-                  <span className="text-[9px] font-bold text-duo-gray">iOS同期</span>
-                </div>
-                {sh > 0 ? (
-                  <>
-                    <p className="font-black leading-none mb-0.5" style={{ fontSize: 22, color: sleepColor }}>
-                      {sh.toFixed(1)}
-                    </p>
-                    <p className="text-[9px] font-bold text-duo-gray mb-1">時間睡眠</p>
-                    <p className="text-[10px] font-bold" style={{ color: sleepColor }}>
-                      スコア {ss}点
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-[10px] font-bold text-duo-gray mt-2">未取得</p>
+            <button
+              onClick={onDietGoal}
+              className="w-full bg-white rounded-2xl p-5 text-left active:scale-[0.98] transition-transform"
+              style={{ border: '2px solid #E8D0FF', boxShadow: '0 4px 0 #A15FD4' }}
+            >
+              {/* ヘッダー */}
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-black tracking-wider" style={{ color: '#CE82FF' }}>🎯 DIET</span>
+                {dietGoal?.goalDate && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: '#CE82FF' }}>
+                    ゴール {fmt(dietGoal.goalDate)}
+                  </span>
                 )}
               </div>
 
-            </div>
+              {cw > 0 ? (
+                <>
+                  {/* ── 3列: スタート → 今日 → ゴール ── */}
+                  <div className="flex items-start justify-between mb-4">
+                    {/* スタート */}
+                    <div className="text-left">
+                      <p className="text-[9px] font-bold text-gray-400 mb-0.5">スタート</p>
+                      {dietGoal?.startDate && (
+                        <p className="text-[9px] font-bold text-gray-400 mb-1">{fmt(dietGoal.startDate)}</p>
+                      )}
+                      <p className="text-xl font-black text-gray-700">{sw.toFixed(1)}<span className="text-xs font-bold text-gray-400">kg</span></p>
+                      {sf > 0 && <p className="text-[9px] font-bold text-gray-400">体脂肪 {sf.toFixed(0)}%</p>}
+                    </div>
+
+                    {/* スタート→今日 差分 */}
+                    <div className="flex flex-col items-center justify-center pt-4 gap-0.5">
+                      <span className="text-[9px] font-black" style={{ color: diffFromStart <= 0 ? '#58CC02' : '#FF4B4B' }}>
+                        {diffFromStart !== 0 ? `${diffFromStart > 0 ? '+' : ''}${diffFromStart.toFixed(1)}kg` : ''}
+                      </span>
+                      <span className="text-gray-300 text-base">→</span>
+                    </div>
+
+                    {/* 今日 */}
+                    <div className="text-center">
+                      <p className="text-[9px] font-bold text-gray-400 mb-0.5">今日</p>
+                      <p className="text-[9px] font-bold text-gray-400 mb-1">今日</p>
+                      <p className="text-3xl font-black" style={{ color: '#58CC02' }}>{cw.toFixed(1)}<span className="text-sm font-bold text-gray-400">kg</span></p>
+                      {cf > 0 && <p className="text-[9px] font-bold text-gray-400">体脂肪 {cf.toFixed(0)}%</p>}
+                    </div>
+
+                    {/* 今日→ゴール 差分 */}
+                    <div className="flex flex-col items-center justify-center pt-4 gap-0.5">
+                      <span className="text-[9px] font-black" style={{ color: diffToGoal > 0 ? '#FF9600' : '#58CC02' }}>
+                        {diffToGoal !== 0 ? `${diffToGoal > 0 ? '' : '+'}${(-diffToGoal).toFixed(1)}kg` : ''}
+                      </span>
+                      <span className="text-gray-300 text-base">→</span>
+                    </div>
+
+                    {/* ゴール */}
+                    <div className="text-right">
+                      <p className="text-[9px] font-bold text-gray-400 mb-0.5">ゴール</p>
+                      {dietGoal?.goalDate && (
+                        <p className="text-[9px] font-bold text-gray-400 mb-1">{fmt(dietGoal.goalDate)}</p>
+                      )}
+                      <p className="text-xl font-black" style={{ color: '#58CC02' }}>{gw.toFixed(1)}<span className="text-xs font-bold text-gray-400">kg</span></p>
+                      {gf > 0 && <p className="text-[9px] font-bold text-gray-400">体脂肪 {gf.toFixed(0)}%</p>}
+                    </div>
+                  </div>
+
+                  {/* ── 進捗バー 2本 ── */}
+                  <div className="space-y-2.5">
+                    {/* 期間進捗 */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-black text-gray-600">期間進捗</span>
+                        <span className="text-[10px] font-black text-gray-600">{timePct}%</span>
+                      </div>
+                      <div className="rounded-full bg-gray-100" style={{ height: 8 }}>
+                        <div className="rounded-full h-full transition-all duration-500" style={{ width: `${timePct}%`, background: 'linear-gradient(90deg,#58CC02,#46A302)' }} />
+                      </div>
+                    </div>
+                    {/* 体重進捗 */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-black text-gray-600">体重進捗</span>
+                        <span className="text-[10px] font-black text-gray-600">{weightPct}%</span>
+                      </div>
+                      <div className="rounded-full bg-gray-100" style={{ height: 8 }}>
+                        <div className="rounded-full h-full transition-all duration-500" style={{ width: `${weightPct}%`, background: 'linear-gradient(90deg,#CE82FF,#58CC02)' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* モチベーションメッセージ */}
+                  {motivationMsg && (
+                    <p className="text-center text-sm font-black mt-3" style={{ color: '#58CC02' }}>{motivationMsg}</p>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm font-bold text-gray-400 mb-2">ダイエット目標が未設定です</p>
+                  <p className="text-xs font-bold" style={{ color: '#CE82FF' }}>タップして設定 →</p>
+                </div>
+              )}
+            </button>
           );
         })()}
 

@@ -18,8 +18,19 @@ import { FoodView } from './components/FoodView';
 import { DietGoalView } from './components/DietGoalView';
 import { MindView } from './components/MindView';
 import { signOutUser } from './services/firebase';
+import { BooksLanding } from './components/books/BooksLanding';
+import { BookViewer, BookId } from './components/books/BookViewer';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail';
+
+/** URL パスから初期ビューを判定する */
+function getInitialViewFromPath(): { view: View; bookId?: BookId } {
+  const path = window.location.pathname;
+  if (path.startsWith('/books/apple-watch-diet')) return { view: 'bookDetail', bookId: 'apple-watch-diet' };
+  if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
+  if (path.startsWith('/books')) return { view: 'books' };
+  return { view: 'login' };
+}
 
 function App() {
   const user = useAppStore((state) => state.user);
@@ -28,7 +39,9 @@ function App() {
   const setExercises = useAppStore((state) => state.setExercises);
   const setLoading = useAppStore((state) => state.setLoading);
 
-  const [currentView, setCurrentView] = useState<View>('login');
+  const initial = getInitialViewFromPath();
+  const [currentView, setCurrentView] = useState<View>(initial.view);
+  const [selectedBookId, setSelectedBookId] = useState<BookId | undefined>(initial.bookId);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -53,7 +66,11 @@ function App() {
         } else {
           setUser(null);
           setUserProfile(null);
-          setCurrentView('login');
+          // /books/* パスにいる場合はそのまま
+          const { view } = getInitialViewFromPath();
+          if (!view.startsWith('book')) {
+            setCurrentView('login');
+          }
         }
       } catch (error) {
         console.error('Auth change error:', error);
@@ -76,6 +93,17 @@ function App() {
   const navigate = (view: View) => {
     setCurrentView(view);
     setMenuOpen(false);
+    // /books 以外はアプリルート
+    if (view !== 'books' && view !== 'bookDetail') {
+      window.history.pushState({}, '', '/');
+    } else if (view === 'books') {
+      window.history.pushState({}, '', '/books');
+    }
+  };
+
+  const openBook = (id: BookId) => {
+    setSelectedBookId(id);
+    setCurrentView('bookDetail');
   };
 
   return (
@@ -141,11 +169,8 @@ function App() {
                     >
                       {[
                         { view: 'dashboard' as View, icon: '🏠', label: 'ホーム' },
-                        { view: 'dietGoal' as View, icon: '🎯', label: 'GOAL' },
-                        { view: 'mind' as View, icon: '🧠', label: 'MIND' },
-                        { view: 'food' as View, icon: '🍴', label: 'Food（栄養管理）' },
+                        { view: 'dietGoal' as View, icon: '🎯', label: 'DIET GOAL' },
                         { view: 'intake' as View, icon: '🍽️', label: '食事・ドリンク' },
-                        { view: 'timeSlots' as View, icon: '🕐', label: '時間帯目標' },
                         { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
                         { view: 'tracker' as View, icon: '💪', label: 'トレーニング' },
                         { view: 'weekly' as View, icon: '🎯', label: '週間目標' },
@@ -201,7 +226,21 @@ function App() {
       )}
 
       <main>
-        {currentView === 'login' && <LoginView />}
+        {/* ── 書籍ページ（ログイン不要・全画面） ── */}
+        {currentView === 'books' && (
+          <BooksLanding
+            onSelectBook={openBook}
+            onBackToApp={user ? () => navigate('dashboard') : undefined}
+          />
+        )}
+        {currentView === 'bookDetail' && selectedBookId && (
+          <BookViewer
+            bookId={selectedBookId}
+            onBack={() => navigate('books')}
+          />
+        )}
+
+        {currentView === 'login' && <LoginView onOpenBooks={() => navigate('books')} />}
         {currentView === 'dashboard' && user && (
           <DashboardView
             onStartWorkout={() => navigate('workout')}
@@ -233,7 +272,7 @@ function App() {
           <WorkoutPlanView />
         )}
         {currentView === 'settings' && user && (
-          <SettingsView />
+          <SettingsView onNavigateToTimeSlots={() => navigate('timeSlots')} />
         )}
         {currentView === 'achievements' && user && (
           <AchievementsView />
@@ -257,6 +296,18 @@ function App() {
           <MindView />
         )}
       </main>
+
+      {/* ── ログイン後フッター: Booksリンク ── */}
+      {user && currentView !== 'books' && currentView !== 'bookDetail' && (
+        <footer className="text-center py-4 border-t border-gray-100">
+          <button
+            onClick={() => navigate('books')}
+            className="text-xs text-gray-400 hover:text-green-600 transition-colors font-semibold"
+          >
+            📚 Books — AppleWatch Diet / Cursor開発書を読む
+          </button>
+        </footer>
+      )}
     </div>
   );
 }

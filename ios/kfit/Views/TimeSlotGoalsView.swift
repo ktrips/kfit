@@ -563,6 +563,8 @@ struct MandalaChartView: View {
     var activityRingsDone: Bool = false
     var dailyCalorieDone: Bool = false
     var dailyWaterDone: Bool = false
+    /// 外部で事前計算済みのノードを渡す場合はこちらを使う（HealthKit実績反映済み）
+    var precomputedNodes: [MandalaNodeData]? = nil
     let onTapNode: (MandalaNodeData) -> Void
 
     @State private var appeared = false
@@ -822,9 +824,10 @@ struct MandalaChartView: View {
     }
 
     var body: some View {
-        // buildNodes() は高コスト処理（UserDefaults読込）なので body で1度だけ計算し、
-        // adaptiveNodeSize / minRadius / nodeSpacing にも同じ値を使いまわす
-        let nodes     = Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone, dailyCalorieDone: dailyCalorieDone, dailyWaterDone: dailyWaterDone)
+        // precomputedNodes が渡されている場合（DashboardView の MandalaSpiralCard）は
+        // HealthKit 実績・時間帯別データを反映した事前計算済みノードをそのまま使う。
+        // 渡されていない場合は従来通り buildNodes() で計算（TimeSlotGoalsView など）。
+        let nodes     = precomputedNodes ?? Self.buildNodes(settings: settings, progress: progress, activityRingsDone: activityRingsDone, dailyCalorieDone: dailyCalorieDone, dailyWaterDone: dailyWaterDone)
         let nodeSize  = Self.adaptiveNodeSize(count: nodes.count)
         let minR      = Self.minRadius(nodeSize: nodeSize)
         let spacing   = Self.nodeSpacing(nodeSize: nodeSize)

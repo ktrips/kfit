@@ -414,21 +414,16 @@ struct PhotoLogView: View {
                         } else if fromHistory, let nutrition = analyzedNutrition {
                             historySelectedBanner
                             nutritionResultSection(nutrition)
-                            saveButton
 
                         // 状態C: 写真を撮影/選択して分析
                         } else if selectedImage != nil {
                             photoDisplaySection
                             commentSection
-                            if analyzedNutrition == nil && !photoLogManager.isAnalyzing {
-                                analyzeButton
-                            }
                             if !errorMessage.isEmpty && analyzedNutrition == nil {
                                 analysisErrorCard
                             }
                             if let nutrition = analyzedNutrition {
                                 nutritionResultSection(nutrition)
-                                saveButton
                             }
                         }
 
@@ -437,6 +432,24 @@ struct PhotoLogView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 20)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .bottom) {
+                    // 状態B/C でのみ下部固定ボタンを表示
+                    if selectedImage != nil || (fromHistory && analyzedNutrition != nil) {
+                        VStack(spacing: 10) {
+                            if !fromHistory && analyzedNutrition == nil && !photoLogManager.isAnalyzing {
+                                analyzeButton
+                            }
+                            if analyzedNutrition != nil {
+                                saveButton
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 20)
+                        .background(.regularMaterial)
+                    }
                 }
 
                 // ローディング
@@ -472,13 +485,23 @@ struct PhotoLogView: View {
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
+                ToolbarItem(placement: .keyboard) {
+                    Button("完了") {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+                    .foregroundColor(Color.duoGreen)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .fullScreenCover(isPresented: $showCamera) {
                 ImagePicker(sourceType: .camera, selectedImage: $selectedImage)
                     .ignoresSafeArea()
             }
             .sheet(isPresented: $showPhotoPicker) {
-                ImagePicker(sourceType: .photoLibrary, selectedImage: $selectedImage)
+                PHPhotoPicker(selectedImage: $selectedImage)
             }
             .alert("エラー", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
@@ -688,12 +711,12 @@ struct PhotoLogView: View {
     // MARK: - Photo Display
 
     private var photoDisplaySection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             if let image = selectedImage {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxHeight: 300)
+                    .frame(maxHeight: 220)
                     .cornerRadius(12)
                     .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
             }
@@ -714,22 +737,25 @@ struct PhotoLogView: View {
     // MARK: - Comment
 
     private var commentSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("💬 コメント（オプション）")
                 .font(.subheadline)
                 .fontWeight(.bold)
                 .foregroundColor(Color.duoDark)
 
-            Text("「朝食」「コーヒー」「ワイン」などと入力すると、より正確に分析できます")
-                .font(.caption)
-                .foregroundColor(Color.duoSubtitle)
-
-            TextField("例: 朝食、コーヒー、ワイン", text: $comment)
+            TextField("例: 朝食、コーヒー、ワイン（より正確な分析に）", text: $comment)
                 .font(.subheadline)
                 .padding(12)
                 .background(Color(.systemBackground))
                 .cornerRadius(10)
                 .shadow(color: Color.black.opacity(0.05), radius: 2, y: 1)
+                .submitLabel(.done)
+                .onSubmit {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                }
         }
     }
 
@@ -1389,6 +1415,61 @@ struct ImagePicker: UIViewControllerRepresentable {
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
+        }
+    }
+}
+
+// MARK: - PHPhotoPicker（フォトライブラリ選択）
+// UIImagePickerController.photoLibrary は iOS 14+ で非推奨のため PHPickerViewController を使用
+
+struct PHPhotoPicker: UIViewControllerRepresentable {
+    @Binding var selectedImage: UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PHPhotoPicker
+        init(_ parent: PHPhotoPicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.dismiss()
+            guard let provider = results.first?.itemProvider,
+                  provider.canLoadObject(ofClass: UIImage.self) else { return }
+            provider.loadObject(ofClass: UIImage.self) { image, _ in
+                DispatchQueue.main.async {
+                    if let uiImage = image as? UIImage {
+                        self.parent.selectedImage = self.resized(uiImage)
+                    }
+                }
+            }
+        }
+
+        private func resized(_ image: UIImage, maxDimension: CGFloat = 1440) -> UIImage {
+            let size = image.size
+            let maxSide = max(size.width, size.height)
+            guard maxSide > maxDimension else { return image }
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(
+                width: (size.width * scale).rounded(),
+                height: (size.height * scale).rounded()
+            )
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+            return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
         }
     }
 }

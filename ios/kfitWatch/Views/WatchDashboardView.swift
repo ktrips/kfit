@@ -1302,30 +1302,18 @@ struct WatchDashboardView: View {
                         action: { openMindfulnessApp() }
                     )
                     Spacer()
-                    if standGoal > 0 {
-                        watchFaceCornerSection(
-                            icon: "🧍",
-                            title: "STAND",
-                            value: "\(standDone)/\(standGoal)",
-                            color: standDone >= standGoal ? standColor : .white.opacity(0.72),
-                            horizontalAlignment: .trailing,
-                            frameAlignment: .trailing,
-                            action: { showStandFlow = true }
-                        )
-                    } else {
-                        watchFaceCornerSection(
-                            icon: "✓",
-                            title: "TODAY",
-                            value: "\(doneCount)/\(totalCount)",
-                            color: doneCount == totalCount && totalCount > 0 ? duoGreen : .white.opacity(0.72),
-                            horizontalAlignment: .trailing,
-                            frameAlignment: .trailing,
-                            action: {
-                                confirmIntake(type: "meal", subtype: "dinner",
-                                              message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
-                            }
-                        )
-                    }
+                    watchFaceCornerSection(
+                        icon: doneCount == totalCount && totalCount > 0 ? "🎉" : "✓",
+                        title: "TODAY",
+                        value: "\(doneCount)/\(totalCount)",
+                        color: doneCount == totalCount && totalCount > 0 ? duoGreen : .white.opacity(0.72),
+                        horizontalAlignment: .trailing,
+                        frameAlignment: .trailing,
+                        action: {
+                            confirmIntake(type: "meal", subtype: "dinner",
+                                          message: "夕食\(connectivity.dinnerCalories)kcalを追加しますか？")
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 5)

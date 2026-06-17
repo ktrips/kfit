@@ -6231,6 +6231,7 @@ private struct MandalaSpiralCard: View {
             activityRingsDone: activityRingsDone,
             dailyCalorieDone: dailyCalorieDone,
             dailyWaterDone: dailyWaterDone,
+            precomputedNodes: nodes,
             onTapNode: { node in
                 switch node.type {
                 case .training:       showTracker = true
@@ -7216,12 +7217,12 @@ private struct EduPhotoLogSheet: View {
                         .cornerRadius(10)
                         .lineLimit(3...5)
 
-                    // EDUフィード追加トグル
+                    // Dailyフィード追加トグル
                     Toggle(isOn: $saveToFeed) {
                         HStack(spacing: 6) {
                             Image(systemName: "rectangle.stack.fill")
                                 .foregroundColor(Color.duoPurple)
-                            Text("EDUフィードに追加")
+                            Text("Dailyフィードに追加")
                                 .font(.subheadline).fontWeight(.semibold)
                         }
                     }

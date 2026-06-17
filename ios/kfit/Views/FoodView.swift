@@ -1,5 +1,57 @@
 import SwiftUI
 
+// MARK: - User Avatar View
+/// Google アイコン（URL）があれば表示、なければイニシャルをグラデーション円で表示
+struct UserAvatarView: View {
+    let name: String
+    let photoURL: String
+    let gradient: LinearGradient
+    let size: CGFloat
+
+    init(name: String, photoURL: String = "",
+         gradient: LinearGradient = LinearGradient(
+            colors: [Color.duoBlue, Color.duoPurple],
+            startPoint: .topLeading, endPoint: .bottomTrailing),
+         size: CGFloat = 36) {
+        self.name     = name
+        self.photoURL = photoURL
+        self.gradient = gradient
+        self.size     = size
+    }
+
+    private var initial: String {
+        String((name.first ?? "?").uppercased())
+    }
+
+    var body: some View {
+        Group {
+            if let url = URL(string: photoURL), !photoURL.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        initialsView
+                    }
+                }
+            } else {
+                initialsView
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private var initialsView: some View {
+        ZStack {
+            Circle().fill(gradient)
+            Text(initial)
+                .font(.system(size: size * 0.42, weight: .black))
+                .foregroundColor(.white)
+        }
+    }
+}
+
 struct FoodView: View {
     private static let hhmm: DateFormatter = {
         let f = DateFormatter()
@@ -25,9 +77,7 @@ struct FoodView: View {
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
     @StateObject private var photoLogManager = PhotoLogManager.shared
-    @StateObject private var eduLogManager = EduLogManager.shared
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
-    @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var showFoodHistory = false
     @State private var showIntakeSettings = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -65,11 +115,6 @@ struct FoodView: View {
                         photoFeedSection
                     }
 
-                    // EDUフィード
-                    if !eduLogManager.history.isEmpty {
-                        eduFeedSection
-                    }
-
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -96,9 +141,6 @@ struct FoodView: View {
         }
         .sheet(item: $selectedFeedItem) { item in
             PhotoFeedDetailSheet(item: item)
-        }
-        .sheet(item: $selectedEduItem) { item in
-            EduFeedDetailSheet(item: item)
         }
         .alert(confirmMessage, isPresented: $showIntakeConfirm) {
             Button("記録する", role: .none) {
@@ -944,28 +986,6 @@ struct FoodView: View {
         }
     }
 
-    // MARK: - EDUフィード
-
-    private var eduFeedSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text("📚").font(.system(size: 12))
-                Text("EDUフィード")
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-                Text("\(eduLogManager.history.count)件")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-
-            ForEach(eduLogManager.history.prefix(20)) { item in
-                EduFeedCard(item: item)
-                    .onTapGesture { selectedEduItem = item }
-            }
-        }
-    }
-
     // MARK: - Helpers
 
     private func confirm(_ message: String, action: @escaping () -> Void) {
@@ -1468,70 +1488,222 @@ struct PhotoFeedDetailSheet: View {
     }
 }
 
-// MARK: - EDU Feed Card
+// MARK: - Daily Feed Card (Instagram style)
 
-private struct EduFeedCard: View {
-    private static let mdHhmm: DateFormatter = {
+struct EduFeedCard: View {
+    let item: EduLogHistoryItem
+    var onLike: (() -> Void)? = nil
+    var onComment: (() -> Void)? = nil
+    var onShare: (() -> Void)? = nil
+
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d HH:mm"
+        f.dateFormat = "HH:mm"
         return f
     }()
 
-    let item: EduLogHistoryItem
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.unitsStyle = .abbreviated
+        return f
+    }()
 
-    private var dateLabel: String {
-        EduFeedCard.mdHhmm.string(from: item.timestamp)
+    private var timeAgo: String {
+        let diff = Date().timeIntervalSince(item.timestamp)
+        if diff < 3600 { return EduFeedCard.relativeFormatter.localizedString(for: item.timestamp, relativeTo: Date()) }
+        return EduFeedCard.timeFormatter.string(from: item.timestamp)
+    }
+
+    private var accentGradient: LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+            [Color(hex: "#1CB5E0"), Color(hex: "#000851")],
+            [Color(hex: "#11998e"), Color(hex: "#38ef7d")],
+            [Color(hex: "#f7971e"), Color(hex: "#ffd200")],
+            [Color(hex: "#f953c6"), Color(hex: "#b91d73")],
+            [Color(hex: "#4776E6"), Color(hex: "#8E54E9")],
+        ]
+        let idx = abs(item.id.hashValue) % palettes.count
+        return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // サムネイル or 絵文字
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.duoPurple.opacity(0.12))
-                    .frame(width: 64, height: 64)
-                if let thumb = item.thumbnail {
-                    Image(uiImage: thumb)
-                        .resizable().scaledToFill()
-                        .frame(width: 64, height: 64)
-                        .cornerRadius(10).clipped()
-                } else {
-                    Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                        .font(.system(size: 28))
-                }
-            }
+        VStack(alignment: .leading, spacing: 0) {
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.activityName)
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundColor(Color.duoPurple)
-                    .lineLimit(1)
-                if !item.comment.isEmpty {
-                    Text(item.comment)
-                        .font(.system(size: 11))
+            // ── ヘッダー：アバター + 名前 + 時刻 ──────────────────────────
+            HStack(spacing: 10) {
+                UserAvatarView(
+                    name: item.authorFirstName,
+                    photoURL: item.authorPhotoURL.isEmpty
+                        ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+                        : item.authorPhotoURL,
+                    gradient: accentGradient,
+                    size: 36
+                )
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.authorFirstName)
+                        .font(.system(size: 13, weight: .black))
                         .foregroundColor(Color.duoDark)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                            .font(.system(size: 10))
+                        Text(item.activityName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color.duoPurple)
+                            .lineLimit(1)
+                    }
                 }
-                Text(dateLabel)
-                    .font(.system(size: 9))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(timeAgo)
+                    .font(.system(size: 10))
                     .foregroundColor(Color.duoSubtitle)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+
+            // ── メイン画像 or 絵文字バナー ───────────────────────────────
+            GeometryReader { geo in
+                ZStack(alignment: .bottomLeading) {
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geo.size.width, height: 240)
+                            .clipped()
+                    } else {
+                        ZStack {
+                            accentGradient
+                                .frame(width: geo.size.width, height: 180)
+                            VStack(spacing: 8) {
+                                Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                                    .font(.system(size: 64))
+                                    .shadow(color: .black.opacity(0.2), radius: 8)
+                                Text(item.activityName)
+                                    .font(.system(size: 16, weight: .black))
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black.opacity(0.4), radius: 4)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+                    }
+
+                    if item.thumbnail != nil {
+                        LinearGradient(
+                            colors: [.clear, Color.black.opacity(0.55)],
+                            startPoint: .center, endPoint: .bottom
+                        )
+                        .frame(width: geo.size.width, height: 240)
+
+                        HStack(spacing: 6) {
+                            Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                                .font(.system(size: 14))
+                            Text(item.activityName)
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.5), radius: 3)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                    }
+                }
+            }
+            .frame(height: item.thumbnail != nil ? 240 : 180)
+            .clipped()
+
+            // ── コメント ───────────────────────────────────────────────────
+            if !item.comment.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Text(item.authorFirstName)
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize()
+                    Text(item.comment)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.duoDark.opacity(0.85))
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
             }
 
-            Spacer()
+            // ── ボトムバー：ハート + コメント ──────────────────────────────
+            HStack(spacing: 0) {
+                // いいねボタン
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { onLike?() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.6))
+                            .scaleEffect(item.isLiked ? 1.15 : 1.0)
+                        if item.likeCount > 0 {
+                            Text("\(item.likeCount)")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.6))
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .padding(.trailing, 6)
+                }
+                .buttonStyle(.plain)
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
+                // コメントボタン
+                Button {
+                    onComment?()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundColor(Color.duoDark.opacity(0.6))
+                        if !item.feedComments.isEmpty {
+                            Text("\(item.feedComments.count)")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Color.duoDark.opacity(0.6))
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .padding(.leading, 6)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                // シェアボタン
+                Button {
+                    onShare?()
+                } label: {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color.duoDark.opacity(0.6))
+                        .padding(.vertical, 10)
+                        .padding(.leading, 8)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
         }
-        .padding(10)
+        .frame(maxWidth: .infinity)
         .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+        .cornerRadius(16)
+        .clipped()
+        .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 4)
     }
 }
 
-// MARK: - EDU Feed Detail Sheet
+// MARK: - Daily Feed Detail Sheet
 
 struct EduFeedDetailSheet: View {
     private static let ymdHhmm: DateFormatter = {
@@ -1544,9 +1716,166 @@ struct EduFeedDetailSheet: View {
     let item: EduLogHistoryItem
     @StateObject private var eduLogManager = EduLogManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
 
     private var dateLabel: String {
         EduFeedDetailSheet.ymdHhmm.string(from: item.timestamp)
+    }
+
+    private var accentGradient: LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+            [Color(hex: "#1CB5E0"), Color(hex: "#000851")],
+            [Color(hex: "#11998e"), Color(hex: "#38ef7d")],
+            [Color(hex: "#f7971e"), Color(hex: "#ffd200")],
+            [Color(hex: "#f953c6"), Color(hex: "#b91d73")],
+            [Color(hex: "#4776E6"), Color(hex: "#8E54E9")],
+        ]
+        let idx = abs(item.id.hashValue) % palettes.count
+        return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(Color(.systemGray4))
+                .frame(width: 36, height: 4)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+
+                    // ヘッダー
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle().fill(accentGradient).frame(width: 42, height: 42)
+                            Text(String((item.authorFirstName.first ?? "?").uppercased()))
+                                .font(.system(size: 18, weight: .black))
+                                .foregroundColor(.white)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.authorFirstName)
+                                .font(.system(size: 15, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text(dateLabel)
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Button { showDeleteConfirm = true } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 18))
+                                .foregroundColor(Color.duoDark.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                    // メイン画像
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        ZStack {
+                            accentGradient
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 240)
+                            VStack(spacing: 10) {
+                                Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                                    .font(.system(size: 80))
+                                Text(item.activityName)
+                                    .font(.system(size: 20, weight: .black))
+                                    .foregroundColor(.white)
+                                    .shadow(color: .black.opacity(0.4), radius: 4)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 24)
+                            }
+                        }
+                    }
+
+                    // アクション行
+                    HStack(spacing: 18) {
+                        Image(systemName: "heart")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(Color.duoDark.opacity(0.7))
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(Color.duoDark.opacity(0.7))
+                        Spacer()
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundColor(Color.duoDark.opacity(0.7))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                    // キャプション
+                    if !item.comment.isEmpty {
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(item.authorFirstName)
+                                .font(.system(size: 14, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text(item.comment)
+                                .font(.system(size: 14))
+                                .foregroundColor(Color.duoDark.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                    }
+
+                    // アクティビティバッジ
+                    HStack(spacing: 6) {
+                        Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
+                            .font(.system(size: 13))
+                        Text(item.activityName)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color.duoPurple)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.duoPurple.opacity(0.10))
+                    .cornerRadius(20)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .background(Color(.systemBackground))
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .confirmationDialog("この投稿を削除しますか？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("削除する", role: .destructive) {
+                eduLogManager.deleteItem(id: item.id)
+                dismiss()
+            }
+            Button("キャンセル", role: .cancel) {}
+        }
+    }
+}
+
+// MARK: - Feed Comments Sheet
+
+struct FeedCommentsSheet: View {
+    let item: EduLogHistoryItem
+    @ObservedObject var eduLogManager: EduLogManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var newCommentText = ""
+    @FocusState private var inputFocused: Bool
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d HH:mm"
+        return f
+    }()
+
+    private var currentItem: EduLogHistoryItem {
+        eduLogManager.history.first { $0.id == item.id } ?? item
     }
 
     var body: some View {
@@ -1557,67 +1886,745 @@ struct EduFeedDetailSheet: View {
                 .frame(width: 36, height: 4)
                 .padding(.top, 10)
 
+            // ナビ行
+            HStack {
+                Text("コメント")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Button("閉じる") { dismiss() }
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.duoBlue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // コメント一覧
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    // サムネイル
-                    if let thumb = item.thumbnail {
-                        Image(uiImage: thumb)
-                            .resizable().scaledToFill()
-                            .frame(maxWidth: .infinity).frame(height: 200)
-                            .cornerRadius(14).clipped()
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.duoPurple.opacity(0.10))
-                                .frame(maxWidth: .infinity).frame(height: 120)
-                            Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                                .font(.system(size: 52))
-                        }
+                VStack(spacing: 0) {
+                    // 投稿のキャプション（コメント風に表示）
+                    if !item.comment.isEmpty {
+                        commentRow(
+                            name: item.authorFirstName,
+                            photoURL: item.authorPhotoURL,
+                            text: item.comment,
+                            date: item.timestamp,
+                            isCaption: true,
+                            commentId: nil
+                        )
+                        Divider().padding(.leading, 52)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        // アクティビティ名
-                        HStack(spacing: 6) {
-                            Text(item.activityEmoji).font(.title2)
-                            Text(item.activityName)
-                                .font(.title3).fontWeight(.black)
-                                .foregroundColor(Color.duoDark)
-                        }
-
-                        // 日時
-                        Label(dateLabel, systemImage: "clock")
-                            .font(.caption)
+                    if currentItem.feedComments.isEmpty && item.comment.isEmpty {
+                        Text("まだコメントがありません\n最初のコメントを残しましょう！")
+                            .font(.system(size: 13))
                             .foregroundColor(Color.duoSubtitle)
+                            .multilineTextAlignment(.center)
+                            .padding(32)
+                    }
 
-                        // コメント
-                        if !item.comment.isEmpty {
-                            Divider()
-                            Text(item.comment)
-                                .font(.body)
-                                .foregroundColor(Color.duoDark)
-                        }
-
-                        Divider()
-
-                        // 削除ボタン
-                        Button(role: .destructive) {
-                            eduLogManager.deleteItem(id: item.id)
-                            dismiss()
-                        } label: {
-                            HStack {
-                                Image(systemName: "trash")
-                                Text("削除する")
-                            }
-                            .font(.subheadline)
+                    ForEach(currentItem.feedComments) { c in
+                        commentRow(
+                            name: c.authorFirstName,
+                            photoURL: c.authorPhotoURL,
+                            text: c.text,
+                            date: c.timestamp,
+                            isCaption: false,
+                            commentId: c.id
+                        )
+                        if c.id != currentItem.feedComments.last?.id {
+                            Divider().padding(.leading, 52)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(16)
+            }
+
+            Divider()
+
+            // コメント入力バー
+            HStack(spacing: 10) {
+                // 自分のアバター
+                UserAvatarView(
+                    name: AuthenticationManager.shared.userProfile?.username ?? "?",
+                    photoURL: UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "",
+                    size: 32
+                )
+
+                TextField("コメントを追加...", text: $newCommentText, axis: .vertical)
+                    .font(.system(size: 14))
+                    .lineLimit(1...4)
+                    .focused($inputFocused)
+                    .submitLabel(.send)
+                    .onSubmit { sendComment() }
+
+                Button {
+                    sendComment()
+                } label: {
+                    Text("投稿")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(newCommentText.trimmingCharacters(in: .whitespaces).isEmpty
+                            ? Color.duoBlue.opacity(0.3) : Color.duoBlue)
+                }
+                .buttonStyle(.plain)
+                .disabled(newCommentText.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(.systemBackground))
+        }
+        .background(Color(.systemBackground))
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
+        .onAppear { inputFocused = true }
+    }
+
+    private func commentRow(name: String, photoURL: String = "", text: String, date: Date,
+                            isCaption: Bool, commentId: String?) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            UserAvatarView(
+                name: name,
+                photoURL: photoURL,
+                gradient: LinearGradient(
+                    colors: isCaption
+                        ? [Color.duoPurple, Color(hex: "#b91d73")]
+                        : [Color.duoGreen, Color(hex: "#38ef7d")],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                size: 36
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    if isCaption {
+                        Text("投稿者")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.duoPurple)
+                            .cornerRadius(4)
+                    }
+                    Spacer()
+                    Text(FeedCommentsSheet.timeFormatter.string(from: date))
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Text(text)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color.duoDark.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .contextMenu {
+            if let cid = commentId {
+                Button(role: .destructive) {
+                    eduLogManager.deleteFeedComment(itemId: item.id, commentId: cid)
+                } label: {
+                    Label("削除", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func sendComment() {
+        let text = newCommentText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        eduLogManager.addFeedComment(id: item.id, text: text)
+        newCommentText = ""
+    }
+}
+
+// MARK: - Social Share Sheet
+
+struct SocialShareSheet: View {
+    let item: EduLogHistoryItem
+    @Environment(\.dismiss) private var dismiss
+    @State private var showSystemShare = false
+    @State private var shareImage: UIImage? = nil
+
+    private var shareText: String {
+        let emoji = item.activityEmoji.isEmpty ? "💪" : item.activityEmoji
+        let name  = item.activityName.isEmpty ? "アクティビティ" : item.activityName
+        var text  = "\(emoji) \(name) を達成！"
+        if !item.comment.isEmpty { text += "\n\(item.comment)" }
+        text += "\n\n#kfit #フィットネス #健康習慣"
+        return text
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ハンドル
+            Capsule()
+                .fill(Color(.systemGray4))
+                .frame(width: 36, height: 4)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+
+            Text("シェア")
+                .font(.system(size: 16, weight: .black))
+                .foregroundColor(Color.duoDark)
+                .padding(.bottom, 20)
+
+            // SNS ボタン行
+            HStack(spacing: 28) {
+                socialButton(
+                    label: "X (Twitter)",
+                    color: Color.black,
+                    icon: "x.square.fill"
+                ) { shareToX() }
+
+                socialButton(
+                    label: "Facebook",
+                    color: Color(hex: "#1877F2"),
+                    icon: "f.square.fill"
+                ) { shareToFacebook() }
+
+                socialButton(
+                    label: "Instagram",
+                    color: Color(hex: "#E1306C"),
+                    icon: "camera.fill"
+                ) { shareToInstagram() }
+
+                socialButton(
+                    label: "その他",
+                    color: Color.duoSubtitle,
+                    icon: "square.and.arrow.up"
+                ) { showSystemShare = true }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(Color(.systemBackground))
+        .presentationDetents([.height(180)])
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showSystemShare) {
+            let items: [Any] = item.thumbnail.map { [$0, shareText] } ?? [shareText]
+            SystemShareSheet(items: items)
+        }
+    }
+
+    private func socialButton(label: String, color: Color, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(color)
+                        .frame(width: 54, height: 54)
+                    Image(systemName: icon)
+                        .font(.system(size: 26))
+                        .foregroundColor(.white)
+                }
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Share Actions
+
+    private func shareToX() {
+        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let appURL  = URL(string: "twitter://post?message=\(encoded)")
+        let webURL  = URL(string: "https://x.com/intent/post?text=\(encoded)")
+        if let app = appURL, UIApplication.shared.canOpenURL(app) {
+            UIApplication.shared.open(app)
+        } else if let web = webURL {
+            UIApplication.shared.open(web)
+        }
+        dismiss()
+    }
+
+    private func shareToFacebook() {
+        // Facebook アプリ経由でシェア（テキスト）
+        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let appURL  = URL(string: "fb://publish/profile/me?text=\(encoded)")
+        let webURL  = URL(string: "https://www.facebook.com/")
+        if let app = appURL, UIApplication.shared.canOpenURL(app) {
+            UIApplication.shared.open(app)
+        } else if let web = webURL {
+            UIApplication.shared.open(web)
+        }
+        dismiss()
+    }
+
+    private func shareToInstagram() {
+        if let image = item.thumbnail {
+            // 画像がある場合：Instagram にシェア
+            guard let imageData = image.pngData() else { openInstagramApp(); return }
+            let tmpURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("kfit_share_\(UUID().uuidString).igo")
+            do {
+                try imageData.write(to: tmpURL)
+                let controller = UIDocumentInteractionController(url: tmpURL)
+                controller.uti = "com.instagram.exclusivegram"
+                controller.annotation = ["InstagramCaption": shareText]
+                if let root = UIApplication.shared.connectedScenes
+                    .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController })
+                    .first {
+                    controller.presentOpenInMenu(from: .zero, in: root.view, animated: true)
+                }
+            } catch { openInstagramApp() }
+        } else {
+            openInstagramApp()
+        }
+        dismiss()
+    }
+
+    private func openInstagramApp() {
+        let url = URL(string: "instagram://app")!
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        } else {
+            UIApplication.shared.open(URL(string: "https://www.instagram.com")!)
+        }
+    }
+}
+
+// MARK: - System Share Sheet Wrapper
+
+struct SystemShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Category Mini Card
+// 横スクロール行の中に並ぶ、カテゴリ単位のコンパクトカード
+
+struct CategoryMiniCard: View {
+    let group: TomoView.FeedCategoryGroup
+    var onTap: (EduLogHistoryItem) -> Void
+
+    private let cardW: CGFloat = 130
+    private let cardH: CGFloat = 182
+
+    private var accentGradient: LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+            [Color(hex: "#1CB5E0"), Color(hex: "#000851")],
+            [Color(hex: "#11998e"), Color(hex: "#38ef7d")],
+            [Color(hex: "#f7971e"), Color(hex: "#ffd200")],
+            [Color(hex: "#f953c6"), Color(hex: "#b91d73")],
+            [Color(hex: "#4776E6"), Color(hex: "#8E54E9")],
+        ]
+        let idx = abs(group.categoryKey.hashValue) % palettes.count
+        return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    var body: some View {
+        Button {
+            onTap(group.items.first!)
+        } label: {
+            ZStack(alignment: .bottom) {
+                // 背景：先頭投稿の写真 or グラデーション＋絵文字
+                backgroundView
+
+                // 下部グラデーション
+                LinearGradient(
+                    colors: [.clear, Color.black.opacity(0.72)],
+                    startPoint: .center, endPoint: .bottom
+                )
+
+                // 複数件：右上にサブサムネイルをスタック
+                if !group.isSingle {
+                    multiThumbBadge
+                }
+
+                // カテゴリ情報（下部）
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
+                            .font(.system(size: 13))
+                        Text(group.categoryKey)
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 8) {
+                        if !group.isSingle {
+                            Label("\(group.items.count)件", systemImage: "square.stack.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        let likes = group.items.reduce(0) { $0 + $1.likeCount }
+                        if likes > 0 {
+                            Label("\(likes)", systemImage: "heart.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color(hex: "#ED4956"))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+            }
+            .frame(width: cardW, height: cardH)
+            .cornerRadius(14)
+            .clipped()
+            .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var backgroundView: some View {
+        if let thumb = group.items.first?.thumbnail {
+            Image(uiImage: thumb)
+                .resizable()
+                .scaledToFill()
+                .frame(width: cardW, height: cardH)
+                .clipped()
+        } else {
+            ZStack {
+                accentGradient
+                Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
+                    .font(.system(size: 52))
+                    .shadow(color: .black.opacity(0.25), radius: 8)
+            }
+            .frame(width: cardW, height: cardH)
+        }
+    }
+
+    // 右上に2枚目以降のサムネをスタック表示
+    @ViewBuilder
+    private var multiThumbBadge: some View {
+        VStack {
+            HStack {
+                Spacer()
+                ZStack {
+                    ForEach(Array(group.items.dropFirst().prefix(2).enumerated()), id: \.element.id) { idx, item in
+                        Group {
+                            if let thumb = item.thumbnail {
+                                Image(uiImage: thumb)
+                                    .resizable().scaledToFill()
+                            } else {
+                                accentGradient
+                            }
+                        }
+                        .frame(width: 28, height: 28)
+                        .cornerRadius(6)
+                        .clipped()
+                        .offset(x: CGFloat(idx) * 6, y: CGFloat(idx) * 6)
+                    }
+                }
+                .padding(8)
+            }
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Category Group List Sheet
+// カテゴリ内の複数投稿を一覧表示するシート
+
+struct CategoryGroupListSheet: View {
+    let group: TomoView.FeedCategoryGroup
+    var onTapItem: (EduLogHistoryItem) -> Void
+    var onLike: ((EduLogHistoryItem) -> Void)? = nil
+    var onComment: ((EduLogHistoryItem) -> Void)? = nil
+    var onShare: ((EduLogHistoryItem) -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.dateFormat = "HH:mm"; return f
+    }()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ハンドル
+            Capsule().fill(Color(.systemGray4)).frame(width: 36, height: 4).padding(.top, 10)
+
+            // ヘッダー
+            HStack(spacing: 10) {
+                Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
+                    .font(.system(size: 24))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.categoryKey)
+                        .font(.system(size: 16, weight: .black)).foregroundColor(Color.duoDark)
+                    Text("\(group.items.count)件の記録")
+                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Button("閉じる") { dismiss() }
+                    .font(.system(size: 14)).foregroundColor(Color.duoBlue)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+
+            Divider()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    ForEach(group.items) { item in
+                        listRow(item: item)
+                        if item.id != group.items.last?.id { Divider().padding(.leading, 64) }
+                    }
+                }
             }
         }
         .background(Color(.systemBackground))
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
+    }
+
+    private func listRow(item: EduLogHistoryItem) -> some View {
+        HStack(spacing: 12) {
+            // アバター（左）
+            UserAvatarView(
+                name: item.authorFirstName,
+                photoURL: item.authorPhotoURL.isEmpty
+                    ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+                    : item.authorPhotoURL,
+                size: 36
+            )
+
+            // サムネイル
+            Group {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb).resizable().scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [Color.duoBlue.opacity(0.6), Color.duoPurple.opacity(0.6)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    .overlay(Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji).font(.system(size: 20)))
+                }
+            }
+            .frame(width: 48, height: 48).cornerRadius(10).clipped()
+
+            // テキスト
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.authorFirstName)
+                    .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoSubtitle)
+                Text(item.comment.isEmpty ? item.activityName : item.comment)
+                    .font(.system(size: 13, weight: .semibold)).foregroundColor(Color.duoDark).lineLimit(2)
+                HStack(spacing: 10) {
+                    Text(CategoryGroupListSheet.hhmm.string(from: item.timestamp))
+                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                    if item.likeCount > 0 {
+                        Label("\(item.likeCount)", systemImage: "heart.fill")
+                            .font(.system(size: 10)).foregroundColor(Color(hex: "#ED4956"))
+                    }
+                    if !item.feedComments.isEmpty {
+                        Label("\(item.feedComments.count)", systemImage: "bubble.right")
+                            .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            Spacer()
+
+            // アクション
+            HStack(spacing: 14) {
+                Button { onLike?(item) } label: {
+                    Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 18))
+                        .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.4))
+                }
+                Button { onTapItem(item) } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.duoDark.opacity(0.3))
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture { onTapItem(item) }
+    }
+}
+
+// MARK: - Compact Category Card (legacy, kept for reference)
+// 同日・同カテゴリに複数投稿がある場合、1行にまとめて表示するカード
+
+struct CompactCategoryCard: View {
+    let group: TomoView.FeedCategoryGroup
+    var onTapItem: (EduLogHistoryItem) -> Void
+    var onLike: ((EduLogHistoryItem) -> Void)? = nil
+    var onComment: ((EduLogHistoryItem) -> Void)? = nil
+    var onShare: ((EduLogHistoryItem) -> Void)? = nil
+
+    @State private var selectedItem: EduLogHistoryItem? = nil
+
+    private var accentGradient: LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+            [Color(hex: "#1CB5E0"), Color(hex: "#000851")],
+            [Color(hex: "#11998e"), Color(hex: "#38ef7d")],
+            [Color(hex: "#f7971e"), Color(hex: "#ffd200")],
+            [Color(hex: "#f953c6"), Color(hex: "#b91d73")],
+            [Color(hex: "#4776E6"), Color(hex: "#8E54E9")],
+        ]
+        let idx = abs(group.categoryKey.hashValue) % palettes.count
+        return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+
+            // ── カテゴリヘッダー ──────────────────────────────────────────
+            HStack(spacing: 8) {
+                // アイコン
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(accentGradient)
+                        .frame(width: 32, height: 32)
+                    Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
+                        .font(.system(size: 17))
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(group.categoryKey)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                    Text("\(group.items.count)件の記録")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+
+                // いいね合計
+                let totalLikes = group.items.reduce(0) { $0 + $1.likeCount }
+                if totalLikes > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "#ED4956"))
+                        Text("\(totalLikes)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(hex: "#ED4956"))
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+
+            Divider().padding(.horizontal, 12)
+
+            // ── 投稿サムネイル横スクロール ────────────────────────────────
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(group.items) { item in
+                        compactThumb(item: item)
+                            .onTapGesture { onTapItem(item) }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+
+            Divider().padding(.horizontal, 12)
+
+            // ── ボトムバー（先頭投稿に対してアクション） ─────────────────
+            if let first = group.items.first {
+                HStack(spacing: 0) {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                            onLike?(first)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: first.isLiked ? "heart.fill" : "heart")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(first.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.5))
+                            if first.likeCount > 0 {
+                                Text("\(first.likeCount)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(first.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.5))
+                            }
+                        }
+                        .padding(.vertical, 8).padding(.trailing, 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { onComment?(first) } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bubble.right")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Color.duoDark.opacity(0.5))
+                            if !first.feedComments.isEmpty {
+                                Text("\(first.feedComments.count)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(Color.duoDark.opacity(0.5))
+                            }
+                        }
+                        .padding(.vertical, 8).padding(.leading, 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button { onShare?(first) } label: {
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color.duoDark.opacity(0.5))
+                            .padding(.vertical, 8).padding(.leading, 8)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .clipped()
+        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 3)
+    }
+
+    // 各投稿の小さいサムネイルセル
+    @ViewBuilder
+    private func compactThumb(item: EduLogHistoryItem) -> some View {
+        let size: CGFloat = 74
+        ZStack(alignment: .bottomLeading) {
+            if let thumb = item.thumbnail {
+                Image(uiImage: thumb)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipped()
+            } else {
+                ZStack {
+                    accentGradient
+                    Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                        .font(.system(size: 28))
+                }
+                .frame(width: size, height: size)
+            }
+
+            // いいねバッジ
+            if item.likeCount > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.white)
+                    Text("\(item.likeCount)")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(Color.black.opacity(0.45))
+                .cornerRadius(4)
+                .padding(4)
+            }
+        }
+        .frame(width: size, height: size)
+        .cornerRadius(10)
+        .clipped()
     }
 }

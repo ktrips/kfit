@@ -1,6 +1,8 @@
 import WatchConnectivity
 import Foundation
+#if os(iOS)
 import WidgetKit
+#endif
 
 @MainActor
 class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
@@ -364,7 +366,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         ud.set(totalMindfulnessGoal, forKey: "watch_totalMindfulnessGoal")
         ud.set(totalMealLogged, forKey: "watch_totalMeal")
         ud.set(totalMealGoal, forKey: "watch_totalMealGoal")
+        #if os(iOS)
         WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     private func exerciseEmoji(_ id: String) -> String {

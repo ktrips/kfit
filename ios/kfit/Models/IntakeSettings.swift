@@ -261,16 +261,71 @@ struct AnalyzedNutrition: Codable {
 }
 
 /// EDUログ履歴アイテム（勉強・読書・Duolingo等）
+struct FeedComment: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var text: String
+    var authorName: String
+    var authorPhotoURL: String = ""
+    var timestamp: Date = Date()
+
+    var authorFirstName: String {
+        String(authorName.split(separator: " ").first ?? Substring(authorName))
+    }
+}
+
 struct EduLogHistoryItem: Codable, Identifiable {
     var id: String = UUID().uuidString
     var timestamp: Date = Date()
     var activityName: String = ""
     var activityEmoji: String = ""
     var comment: String = ""
+    var authorName: String = ""
+    var authorPhotoURL: String = ""
     var thumbnailData: Data?
+    var likeCount: Int = 0
+    var isLiked: Bool = false
+    var feedComments: [FeedComment] = []
+
+    // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id             = try c.decodeIfPresent(String.self,         forKey: .id)             ?? UUID().uuidString
+        timestamp      = try c.decodeIfPresent(Date.self,           forKey: .timestamp)      ?? Date()
+        activityName   = try c.decodeIfPresent(String.self,         forKey: .activityName)   ?? ""
+        activityEmoji  = try c.decodeIfPresent(String.self,         forKey: .activityEmoji)  ?? ""
+        comment        = try c.decodeIfPresent(String.self,         forKey: .comment)        ?? ""
+        authorName     = try c.decodeIfPresent(String.self,         forKey: .authorName)     ?? ""
+        authorPhotoURL = try c.decodeIfPresent(String.self,         forKey: .authorPhotoURL) ?? ""
+        thumbnailData  = try c.decodeIfPresent(Data.self,           forKey: .thumbnailData)
+        likeCount      = try c.decodeIfPresent(Int.self,            forKey: .likeCount)      ?? 0
+        isLiked        = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)        ?? false
+        feedComments   = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)   ?? []
+    }
+
+    // 明示的な通常のinitも定義（コード内で直接生成するため）
+    init(activityName: String = "", activityEmoji: String = "",
+         comment: String = "", authorName: String = "", authorPhotoURL: String = "") {
+        self.activityName   = activityName
+        self.activityEmoji  = activityEmoji
+        self.comment        = comment
+        self.authorName     = authorName
+        self.authorPhotoURL = authorPhotoURL
+    }
 
     var thumbnail: UIImage? {
         guard let data = thumbnailData else { return nil }
         return UIImage(data: data)
+    }
+
+    /// authorNameが空（旧データ）の場合はUserDefaultsキャッシュのユーザー名でフォールバック
+    var resolvedAuthorName: String {
+        if !authorName.isEmpty { return authorName }
+        return UserDefaults.standard.string(forKey: "cachedCurrentUserName") ?? "Kenichi Yoshida"
+    }
+
+    /// Googleの表示名から最初のスペース前の名前部分を返す
+    var authorFirstName: String {
+        let name = resolvedAuthorName
+        return String(name.split(separator: " ").first ?? Substring(name))
     }
 }

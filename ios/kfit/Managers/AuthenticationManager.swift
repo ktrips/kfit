@@ -125,6 +125,12 @@ class AuthenticationManager: ObservableObject {
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self, let snapshot, snapshot.exists else { return }
                 self.userProfile = try? snapshot.data(as: UserProfile.self)
+                if let name = self.userProfile?.username, !name.isEmpty {
+                    UserDefaults.standard.set(name, forKey: "cachedCurrentUserName")
+                }
+                if let photoURL = Auth.auth().currentUser?.photoURL?.absoluteString {
+                    UserDefaults.standard.set(photoURL, forKey: "cachedCurrentUserPhotoURL")
+                }
             }
     }
 
@@ -2724,13 +2730,17 @@ class EduLogManager: ObservableObject {
     private init() { loadHistory() }
 
     func addItem(activityName: String, activityEmoji: String, comment: String, image: UIImage?) {
+        let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
+        let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
         var item = EduLogHistoryItem(
             activityName: activityName,
             activityEmoji: activityEmoji,
-            comment: comment
+            comment: comment,
+            authorName: authorName,
+            authorPhotoURL: authorPhotoURL
         )
         if let image {
-            item.thumbnailData = makeThumbnail(from: image)
+            item.thumbnailData = makeThumbnail(from: image, maxDimension: 800)
         }
         history.insert(item, at: 0)
         persistHistory()
@@ -2738,6 +2748,28 @@ class EduLogManager: ObservableObject {
 
     func deleteItem(id: String) {
         history.removeAll { $0.id == id }
+        persistHistory()
+    }
+
+    func toggleLike(id: String) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx].isLiked.toggle()
+        history[idx].likeCount = max(0, history[idx].likeCount + (history[idx].isLiked ? 1 : -1))
+        persistHistory()
+    }
+
+    func addFeedComment(id: String, text: String) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        let authorName     = AuthenticationManager.shared.userProfile?.username ?? "Kenichi Yoshida"
+        let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+        let c = FeedComment(text: text, authorName: authorName, authorPhotoURL: authorPhotoURL)
+        history[idx].feedComments.append(c)
+        persistHistory()
+    }
+
+    func deleteFeedComment(itemId: String, commentId: String) {
+        guard let idx = history.firstIndex(where: { $0.id == itemId }) else { return }
+        history[idx].feedComments.removeAll { $0.id == commentId }
         persistHistory()
     }
 

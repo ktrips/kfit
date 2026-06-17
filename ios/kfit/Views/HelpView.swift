@@ -352,26 +352,49 @@ struct HelpView: View {
                         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         .padding(.horizontal, 20)
 
-                        // Fitingoの作り方
-                        Link(destination: URL(string: "https://amzn.to/3Qspdq9")!) {
-                            HStack(spacing: 12) {
-                                Text("📖").font(.title3)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Fitingoの作り方")
-                                        .font(.subheadline).fontWeight(.black)
-                                        .foregroundColor(Color.duoDark)
-                                    Text("このアプリの開発ノウハウを解説した本")
-                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                        // Fitingoの本を読んでみる
+                        VStack(spacing: 10) {
+                            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                                HStack(spacing: 12) {
+                                    Text("📱").font(.title3)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Fitingoの本を読んでみる")
+                                            .font(.subheadline).fontWeight(.black)
+                                            .foregroundColor(Color.duoDark)
+                                        Text("Cursor + Claudeで iOS・Apple Watch アプリを週末だけで作る方法")
+                                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                                            .lineLimit(2)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(Color.duoGreen)
                                 }
-                                Spacer()
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundColor(Color.duoGreen)
+                                .padding(16)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(14)
+                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                             }
-                            .padding(16)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(14)
-                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                            Link(destination: URL(string: "https://www.amazon.co.jp/dp/B0000000000")!) {
+                                HStack(spacing: 12) {
+                                    Text("⌚").font(.title3)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("AppleWatch Diet Ultra2")
+                                            .font(.subheadline).fontWeight(.black)
+                                            .foregroundColor(Color.duoDark)
+                                        Text("Apple Watchで痩せる100のメソッド")
+                                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                                }
+                                .padding(16)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(14)
+                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                            }
                         }
                         .padding(.horizontal, 20)
 

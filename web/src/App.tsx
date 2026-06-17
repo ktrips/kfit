@@ -120,8 +120,19 @@ function App() {
               <span className="text-2xl font-black text-duo-green tracking-tight">Fitingo</span>
             </button>
 
-            {/* Right side: Training shortcut + hamburger */}
+            {/* Right side: Home + Plan + Log + hamburger */}
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('dashboard')}
+                className={`px-3 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                  currentView === 'dashboard'
+                    ? 'bg-duo-green-light text-duo-green-dark'
+                    : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
+                }`}
+                aria-label="ホーム"
+              >
+                🏠
+              </button>
               <button
                 onClick={() => navigate('plan')}
                 className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${

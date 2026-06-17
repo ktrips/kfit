@@ -59,9 +59,9 @@ struct MoreView: View {
                     }
                     .listRowBackground(Color.white)
 
-                    // Fitingoの作り方
-                    Link(destination: URL(string: "https://amzn.to/3Qspdq9")!) {
-                        MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの作り方")
+                    // Fitingoの本を読んでみる
+                    Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                        MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの本を読んでみる")
                     }
                     .listRowBackground(Color.white)
 

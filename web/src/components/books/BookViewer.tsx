@@ -1,9 +1,19 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 // GitHub raw コンテンツのベース URL（画像パス変換に使用）
 const GITHUB_RAW = 'https://raw.githubusercontent.com/ktrips/kfit/main/docs';
+
+// 無料で読める文字数（おおよそ10ページ分）
+const FREE_CHAR_LIMIT = 8000;
+
+// Kindle 販売リンク（本ごとに設定）
+export const KINDLE_URLS: Record<BookId, string> = {
+  'apple-watch-diet': 'https://www.amazon.co.jp/dp/B0000000000', // ← AppleWatch Diet本のURLに差し替え
+  'cursor-claude-code': 'https://amzn.to/43GSmB6',
+};
 
 export type BookId = 'apple-watch-diet' | 'cursor-claude-code';
 
@@ -178,10 +188,19 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack }) => {
             <p className="text-gray-400 text-sm">{error}</p>
           </div>
         )}
-        {!loading && !error && (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
+        {!loading && !error && (() => {
+          // 無料分とペイウォール後に分割
+          // 章の区切り（## で始まる行）を探してちょうど良い切れ目にする
+          const isFree = content.length <= FREE_CHAR_LIMIT;
+          let freeContent = content;
+          if (!isFree) {
+            // FREE_CHAR_LIMIT 以降で最初の ## 見出しを切れ目にする
+            const idx = content.indexOf('\n## ', FREE_CHAR_LIMIT);
+            freeContent = idx !== -1 ? content.slice(0, idx) : content.slice(0, FREE_CHAR_LIMIT);
+          }
+          const kindleUrl = KINDLE_URLS[bookId];
+
+          const mdComponents = {
               // 画像: 相対パスを GitHub raw URL に変換、レスポンシブ
               img({ src, alt }) {
                 const resolved = resolveImageSrc(src ?? '');
@@ -282,11 +301,61 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack }) => {
               strong({ children }) {
                 return <strong className="font-bold text-gray-900">{children}</strong>;
               },
-            }}
-          >
-            {content}
-          </ReactMarkdown>
-        )}
+          };
+
+          return (
+            <>
+              {/* ── 無料本文 ── */}
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={mdComponents}
+              >
+                {freeContent}
+              </ReactMarkdown>
+
+              {/* ── ペイウォール（有料コンテンツがある場合のみ） ── */}
+              {!isFree && (
+                <div className="mt-8">
+                  {/* フェードアウト境界 */}
+                  <div className="relative h-32 -mt-32 pointer-events-none"
+                    style={{ background: 'linear-gradient(to bottom, transparent, white)' }} />
+
+                  {/* ペイウォールカード */}
+                  <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6 text-center shadow-lg">
+                    <div className="text-4xl mb-3">📖</div>
+                    <h3 className="text-xl font-black text-gray-800 mb-2">
+                      ここから先は Kindle 版でお読みいただけます
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-1 leading-relaxed">
+                      無料公開はここまでです。続きは Amazon Kindle で販売中。
+                    </p>
+                    <p className="text-xs text-gray-400 mb-5">
+                      Kindle Unlimited 対象・スマートフォン / PC でも読めます
+                    </p>
+
+                    <a
+                      href={kindleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-white font-black px-6 py-3 rounded-xl text-base transition-colors shadow-md"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7.07 22c-.28 0-.5-.22-.5-.5V2.5c0-.28.22-.5.5-.5h9.86c.28 0 .5.22.5.5v19c0 .28-.22.5-.5.5H7.07zm1-1h7.86V3H8.07v18zm1.5-3.5h4.86c.28 0 .5-.22.5-.5s-.22-.5-.5-.5H9.57c-.28 0-.5.22-.5.5s.22.5.5.5zm0-2h4.86c.28 0 .5-.22.5-.5s-.22-.5-.5-.5H9.57c-.28 0-.5.22-.5.5s.22.5.5.5z"/>
+                      </svg>
+                      Amazon Kindle で続きを読む →
+                    </a>
+
+                    <p className="text-xs text-gray-400 mt-4">
+                      <a href={kindleUrl} target="_blank" rel="noopener noreferrer"
+                        className="underline hover:text-gray-600 break-all">{kindleUrl}</a>
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </main>
 
       {/* ── フッター ── */}

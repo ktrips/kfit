@@ -256,6 +256,7 @@ struct DashboardView: View {
                             pointsCard
                             challengeCard
                             habitStackCard
+                            bookPromoSection
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -2308,6 +2309,111 @@ struct DashboardView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
     }
 
+
+    // MARK: - 本の紹介カード
+    private var bookPromoSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("関連情報")
+                .font(.caption).fontWeight(.black)
+                .foregroundColor(Color.duoSubtitle)
+                .textCase(.uppercase)
+                .tracking(1.5)
+                .padding(.horizontal, 4)
+
+            // iOSアプリ（App Store）
+            Link(destination: URL(string: "https://apps.apple.com/app/fitingo/id000000000")!) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12).fill(Color.black)
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "applelogo")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Fitingo iOS アプリ")
+                            .font(.subheadline).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("Apple Watch連携・モーションセンサーで本格トレーニング")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                        Text("App Store でダウンロード")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color.duoGreen)
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            }
+
+            // AppleWatch Diet 本
+            Link(destination: URL(string: "https://www.amazon.co.jp/dp/B0000000000")!) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.9, green: 0.97, blue: 0.93))
+                            .frame(width: 48, height: 48)
+                        Text("⌚").font(.title2)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AppleWatch Diet Ultra2")
+                            .font(.subheadline).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("Apple Watchで痩せる100のメソッド")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                        Text("📖 Kindle で読む")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            }
+
+            // Cursor + Claude 本
+            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.93, green: 0.95, blue: 1.0))
+                            .frame(width: 48, height: 48)
+                        Text("📱").font(.title2)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cursor + Claude で iOS アプリを作る")
+                            .font(.subheadline).fontWeight(.black)
+                            .foregroundColor(Color.duoDark)
+                        Text("週末だけで iPhone・Apple Watch アプリを個人開発")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                        Text("📖 Kindle で読む")
+                            .font(.caption2).fontWeight(.bold)
+                            .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            }
+        }
+        .padding(4)
+    }
 
     // MARK: - Apple Healthデータカード（2列レイアウト）
     private var calorieAndWeightCard: some View {

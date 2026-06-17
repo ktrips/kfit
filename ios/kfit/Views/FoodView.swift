@@ -80,6 +80,7 @@ struct FoodView: View {
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
     @State private var showFoodHistory = false
     @State private var showIntakeSettings = false
+    @State private var showOlderFoodFeed = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
     var body: some View {
@@ -959,7 +960,12 @@ struct FoodView: View {
     // MARK: - FOODフィード
 
     private var photoFeedSection: some View {
-        let favorites = photoLogManager.history.filter { $0.isFavorite }
+        let twoWeeksAgo  = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+        let allFavorites = photoLogManager.history.filter { $0.isFavorite }
+        let recent       = allFavorites.filter { $0.timestamp >= twoWeeksAgo }
+        let older        = allFavorites.filter { $0.timestamp < twoWeeksAgo }
+        let displayed    = showOlderFoodFeed ? allFavorites : recent
+
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "star.fill")
@@ -969,19 +975,69 @@ struct FoodView: View {
                     .font(.system(size: 13, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
-                Text("\(favorites.count)件")
+                Text("\(displayed.count)件")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
 
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                spacing: 8
-            ) {
-                ForEach(Array(favorites.enumerated()), id: \.element.id) { index, item in
-                    PhotoFeedCard(item: item, gradientIndex: index)
-                        .onTapGesture { selectedFeedItem = item }
+            if displayed.isEmpty {
+                Text("直近2週間のお気に入りはありません")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.duoSubtitle)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 16)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(Array(displayed.enumerated()), id: \.element.id) { index, item in
+                        PhotoFeedCard(item: item, gradientIndex: index)
+                            .onTapGesture { selectedFeedItem = item }
+                    }
                 }
+            }
+
+            // 過去フィード展開ボタン
+            if !showOlderFoodFeed && !older.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showOlderFoodFeed = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("過去のフィードを表示（\(older.count)件）")
+                            .font(.system(size: 12, weight: .bold))
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(Color(hex: "#FFD700"))
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .background(Color(hex: "#FFD700").opacity(0.08))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            } else if showOlderFoodFeed && !older.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showOlderFoodFeed = false
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("2週間以内のみ表示")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(Color.duoSubtitle)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -2224,6 +2280,20 @@ struct CategoryMiniCard: View {
         return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    /// カードに表示するラベルテキスト
+    /// 食事ログ → comment（食事名）、その他 → commentの1行目（なければactivityName）
+    private var cardLabel: String {
+        guard let item = group.items.first else { return "" }
+        if item.id.hasPrefix("food_") {
+            return item.comment.isEmpty ? "食事" : item.comment
+        }
+        let firstLine = item.comment
+            .split(separator: "\n", maxSplits: 1)
+            .first
+            .map(String.init) ?? ""
+        return firstLine.isEmpty ? item.activityName : firstLine
+    }
+
     var body: some View {
         Button {
             onTap(group.items.first!)
@@ -2248,7 +2318,7 @@ struct CategoryMiniCard: View {
                     HStack(spacing: 4) {
                         Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
                             .font(.system(size: 13))
-                        Text(group.categoryKey)
+                        Text(cardLabel)
                             .font(.system(size: 11, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1)
@@ -2486,7 +2556,12 @@ struct CompactCategoryCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(group.categoryKey)
+                    Text({
+                        guard let item = group.items.first else { return group.categoryKey }
+                        if item.id.hasPrefix("food_") { return item.comment.isEmpty ? "食事" : item.comment }
+                        let first = item.comment.split(separator: "\n").first.map(String.init) ?? ""
+                        return first.isEmpty ? item.activityName : first
+                    }())
                         .font(.system(size: 13, weight: .black))
                         .foregroundColor(Color.duoDark)
                         .lineLimit(1)

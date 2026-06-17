@@ -207,11 +207,12 @@ enum LLMProvider: String, Codable, CaseIterable {
 struct PhotoLogEntry: Codable, Identifiable {
     var id: String = UUID().uuidString
     var timestamp: Date = Date()
-    var imageData: Data?  // 写真データ
-    var comment: String = ""  // ユーザーコメント
-    var mealType: MealType?  // 食事タイプ（朝食、昼食、夕食）
-    var analyzedNutrition: AnalyzedNutrition?  // LLM分析結果
+    var imageData: Data?
+    var comment: String = ""
+    var mealType: MealType?
+    var analyzedNutrition: AnalyzedNutrition?
     var isFavorite: Bool = false
+    var isPublic: Bool = true   // TOMOのDailyフィードに公開するか
 
     var image: UIImage? {
         guard let data = imageData else { return nil }
@@ -223,18 +224,41 @@ struct PhotoLogEntry: Codable, Identifiable {
 struct PhotoLogHistoryItem: Codable, Identifiable {
     var id: String = UUID().uuidString
     var timestamp: Date = Date()
-    var foodName: String = ""         // 料理名（AI分析のdescription先頭部分）
+    var foodName: String = ""
     var comment: String = ""
     var analyzedNutrition: AnalyzedNutrition
-    var thumbnailData: Data?          // 小サムネイル（任意）
+    var thumbnailData: Data?
     var isFavorite: Bool = false
+    var isPublic: Bool = true   // TOMOのDailyフィードに公開するか（旧データ=全て公開）
+
+    // isPublic追加後も旧データを正常に読み込めるよう実装
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                 = try c.decodeIfPresent(String.self,             forKey: .id)                 ?? UUID().uuidString
+        timestamp          = try c.decodeIfPresent(Date.self,               forKey: .timestamp)          ?? Date()
+        foodName           = try c.decodeIfPresent(String.self,             forKey: .foodName)           ?? ""
+        comment            = try c.decodeIfPresent(String.self,             forKey: .comment)            ?? ""
+        analyzedNutrition  = try c.decode(AnalyzedNutrition.self,          forKey: .analyzedNutrition)
+        thumbnailData      = try c.decodeIfPresent(Data.self,               forKey: .thumbnailData)
+        isFavorite         = try c.decodeIfPresent(Bool.self,               forKey: .isFavorite)         ?? false
+        isPublic           = try c.decodeIfPresent(Bool.self,               forKey: .isPublic)           ?? true
+    }
+
+    init(foodName: String = "", comment: String = "",
+         analyzedNutrition: AnalyzedNutrition,
+         isFavorite: Bool = false, isPublic: Bool = true) {
+        self.foodName          = foodName
+        self.comment           = comment
+        self.analyzedNutrition = analyzedNutrition
+        self.isFavorite        = isFavorite
+        self.isPublic          = isPublic
+    }
 
     var thumbnail: UIImage? {
         guard let data = thumbnailData else { return nil }
         return UIImage(data: data)
     }
 
-    /// 表示用のラベル（料理名 or コメント）
     var displayName: String {
         if !foodName.isEmpty { return foodName }
         if !comment.isEmpty { return comment }
@@ -285,6 +309,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var likeCount: Int = 0
     var isLiked: Bool = false
     var feedComments: [FeedComment] = []
+    var isPublic: Bool = true   // TOMOのDailyフィードに公開するか（旧データ=全て公開）
 
     // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
     init(from decoder: Decoder) throws {
@@ -300,16 +325,19 @@ struct EduLogHistoryItem: Codable, Identifiable {
         likeCount      = try c.decodeIfPresent(Int.self,            forKey: .likeCount)      ?? 0
         isLiked        = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)        ?? false
         feedComments   = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)   ?? []
+        isPublic       = try c.decodeIfPresent(Bool.self,           forKey: .isPublic)       ?? true
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）
     init(activityName: String = "", activityEmoji: String = "",
-         comment: String = "", authorName: String = "", authorPhotoURL: String = "") {
+         comment: String = "", authorName: String = "", authorPhotoURL: String = "",
+         isPublic: Bool = true) {
         self.activityName   = activityName
         self.activityEmoji  = activityEmoji
         self.comment        = comment
         self.authorName     = authorName
         self.authorPhotoURL = authorPhotoURL
+        self.isPublic       = isPublic
     }
 
     var thumbnail: UIImage? {

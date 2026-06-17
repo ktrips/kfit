@@ -2357,13 +2357,14 @@ class PhotoLogManager: ObservableObject {
         var item = PhotoLogHistoryItem(
             foodName: foodName,
             comment: entry.comment,
-            analyzedNutrition: nutrition
+            analyzedNutrition: nutrition,
+            isFavorite: entry.isFavorite,
+            isPublic: entry.isPublic
         )
         // サムネイル（最大600px・高画質）を生成
         if let image = entry.image {
             item.thumbnailData = makeThumbnailHQ(from: image)
         }
-        item.isFavorite = entry.isFavorite
         history.insert(item, at: 0)
         persistHistory()
     }
@@ -2729,7 +2730,8 @@ class EduLogManager: ObservableObject {
 
     private init() { loadHistory() }
 
-    func addItem(activityName: String, activityEmoji: String, comment: String, image: UIImage?) {
+    func addItem(activityName: String, activityEmoji: String, comment: String,
+                 image: UIImage?, isPublic: Bool = true) {
         let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
         let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
         var item = EduLogHistoryItem(
@@ -2737,7 +2739,8 @@ class EduLogManager: ObservableObject {
             activityEmoji: activityEmoji,
             comment: comment,
             authorName: authorName,
-            authorPhotoURL: authorPhotoURL
+            authorPhotoURL: authorPhotoURL,
+            isPublic: isPublic
         )
         if let image {
             item.thumbnailData = makeThumbnail(from: image, maxDimension: 800)

@@ -4,6 +4,7 @@
 """
 
 import sys
+import os
 sys.path.insert(0, '/tmp/pip_pkgs')
 
 from docx import Document
@@ -1873,7 +1874,7 @@ def add_category_divider(doc, cat_text):
     add_run_with_font(p, "─" * 14, 8, color=RGBColor(0x88, 0x88, 0x88))
 
 
-def add_method_page(doc, m):
+def add_method_page(doc, m, img_path=None):
     """1つのダイエット方法を1ページ分追加"""
 
     # ── No. バッジ ──────────────────────────────────────
@@ -1930,6 +1931,19 @@ def add_method_page(doc, m):
         ind.set(qn('w:hanging'), '180')
         pPr.append(ind)
         add_run_with_font(p, "• " + step, 9)
+
+    # ── 画像（カテゴリに合ったスクリーンショット）────────────────────
+    if img_path and os.path.exists(img_path):
+        try:
+            p_img = doc.add_paragraph()
+            p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            set_para_spacing(p_img, before_pt=6, after_pt=4)
+            run_img = p_img.add_run()
+            # 画像幅は本文幅（128mm - 余白28mm = 100mm）の75%
+            from docx.shared import Mm as _Mm
+            run_img.add_picture(img_path, width=_Mm(72))
+        except Exception:
+            pass  # 画像が開けない場合はスキップ
 
     # ── ポイント ─────────────────────────────────────
     p = doc.add_paragraph()
@@ -3111,7 +3125,37 @@ def main():
     # ── 6. Daily Routine（平日・週末） ────────────────────
     add_daily_routine_section(doc)
 
-    # ── 7. 100のダイエット方法 ──────────────────────────────
+    # ── 7. 100のダイエット方法（画像付き） ──────────────────────────
+    import glob as _glob
+    SHOT_BASE = os.path.join(os.path.dirname(__file__), 'screenshots')
+
+    def _imgs(folder):
+        exts = ['*.jpg','*.JPG','*.png','*.PNG']
+        paths = []
+        for ext in exts:
+            paths.extend(_glob.glob(os.path.join(SHOT_BASE, folder, ext)))
+        seen, result = set(), []
+        for p in sorted(paths):
+            key = os.path.basename(p).lower()
+            if key not in seen:
+                seen.add(key)
+                result.append(p)
+        return result
+
+    _watch = _imgs('watch')
+    _fit   = _imgs('fit')
+    _food  = _imgs('food')
+    _mind  = _imgs('mind')
+    _main  = _imgs('main')
+
+    _cat_pools = {
+        "I. エネルギー消費を増やす":  _watch + _fit,
+        "II. 食事管理":               _food  + _main,
+        "III. マインドフルネスと睡眠": _mind,
+        "IV. Fitingoアプリとの連携":  _main  + _fit,
+    }
+    _cat_cnt = {k: 0 for k in _cat_pools}
+
     prev_cat = None
     for m in METHODS:
         add_page_break(doc)
@@ -3119,7 +3163,15 @@ def main():
             if prev_cat is not None:
                 pass  # カテゴリ区切りは方法ページ内に含める
             prev_cat = m['cat']
-        add_method_page(doc, m)
+
+        # カテゴリ別にラウンドロビンで画像を選択
+        pool = _cat_pools.get(m['cat'], [])
+        img  = None
+        if pool:
+            img = pool[_cat_cnt[m['cat']] % len(pool)]
+            _cat_cnt[m['cat']] += 1
+
+        add_method_page(doc, m, img_path=img)
 
     # ── 6. おわりに ─────────────────────────────────────
     add_page_break(doc)

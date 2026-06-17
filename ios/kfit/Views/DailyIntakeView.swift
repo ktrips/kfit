@@ -395,6 +395,7 @@ struct PhotoLogView: View {
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
     @State private var showManageView = false
     @State private var markAsFavorite = false
+    @State private var isPublicPost = true
 
     var body: some View {
         NavigationView {
@@ -945,6 +946,22 @@ struct PhotoLogView: View {
             }
             .tint(Color(hex: "#FFD700"))
 
+            Toggle(isOn: $isPublicPost) {
+                HStack(spacing: 6) {
+                    Image(systemName: isPublicPost ? "globe" : "lock.fill")
+                        .foregroundColor(isPublicPost ? Color.duoBlue : Color.duoSubtitle)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("TOMOのDailyフィードに公開")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color.duoDark)
+                        Text(isPublicPost ? "TOMOページに表示されます" : "自分だけに表示")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            .tint(Color.duoBlue)
+
             Button {
                 Task {
                     await savePhotoLog()
@@ -984,6 +1001,7 @@ struct PhotoLogView: View {
         fromHistory = false
         selectedHistoryId = nil
         markAsFavorite = false
+        isPublicPost = true
     }
 
     private func analyzePhoto() async {
@@ -1041,6 +1059,7 @@ struct PhotoLogView: View {
         entry.comment = comment
         entry.analyzedNutrition = nutrition
         entry.isFavorite = markAsFavorite
+        entry.isPublic   = isPublicPost
         if fromHistory {
             photoLogManager.savePhotoLogWithoutHistory(entry)
         } else {

@@ -835,3 +835,90 @@ class TimeSlotManager: ObservableObject {
         return formatter.string(from: date)
     }
 }
+
+// MARK: - Mandala Completion Logger
+
+/// スパイラルアイコンの完了をアイコンID＋時刻で確実に記録・保存するロガー。
+/// UserDefaults に日付別 JSON として永続化し、アプリ再起動後も表示に反映する。
+struct MandalaCompletionRecord: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var nodeId: String
+    var nodeEmoji: String
+    var nodeName: String
+    var completedAt: Date
+    var slotName: String?   // "morning" / "noon" / "afternoon" / "evening" / nil(global)
+}
+
+@MainActor
+class MandalaCompletionLogger: ObservableObject {
+    static let shared = MandalaCompletionLogger()
+
+    @Published private(set) var todayRecords: [MandalaCompletionRecord] = []
+
+    private var allRecords: [String: [MandalaCompletionRecord]] = [:]
+    private let storageKey = "mandalaCompletionLog_v1"
+
+    private static let df: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private init() { load() }
+
+    // MARK: - Public API
+
+    /// ノード完了を記録する（同一nodeIdの既存エントリは上書き）。
+    func record(nodeId: String, emoji: String, name: String, slot: String?) {
+        let key = todayKey()
+        let record = MandalaCompletionRecord(
+            nodeId: nodeId, nodeEmoji: emoji, nodeName: name,
+            completedAt: Date(), slotName: slot
+        )
+        if allRecords[key] == nil { allRecords[key] = [] }
+        allRecords[key]?.removeAll { $0.nodeId == nodeId }
+        allRecords[key]?.append(record)
+        todayRecords = allRecords[key] ?? []
+        persist()
+    }
+
+    /// ノード完了を取り消す（トグル時）。
+    func remove(nodeId: String) {
+        let key = todayKey()
+        allRecords[key]?.removeAll { $0.nodeId == nodeId }
+        todayRecords = allRecords[key] ?? []
+        persist()
+    }
+
+    /// 今日完了済みのノードIDセット（buildNodes に渡す）。
+    var todayCompletedIds: Set<String> {
+        Set(todayRecords.map { $0.nodeId })
+    }
+
+    /// 指定日の完了記録（全件）。
+    func records(for date: Date) -> [MandalaCompletionRecord] {
+        allRecords[Self.df.string(from: date)] ?? []
+    }
+
+    // MARK: - Persistence
+
+    private func todayKey() -> String { Self.df.string(from: Date()) }
+
+    private func persist() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(allRecords) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let decoded = try? decoder.decode([String: [MandalaCompletionRecord]].self, from: data) {
+            allRecords = decoded
+            todayRecords = allRecords[todayKey()] ?? []
+        }
+    }
+}

@@ -599,7 +599,9 @@ struct MandalaChartView: View {
         dailyCalorieDone: Bool = false,
         dailyWaterDone: Bool = false,
         dailyTrainingDone: Bool = false,
-        dailyMindfulnessDone: Bool = false
+        dailyMindfulnessDone: Bool = false,
+        dailyMindfulAndStandDone: Bool = false, // 瞑想+ストレッチ+スタンドの統合日次達成
+        loggedCompletionIds: Set<String> = []   // MandalaCompletionLogger からの確定済み完了ID
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -646,7 +648,7 @@ struct MandalaChartView: View {
                     id: "\(slot.rawValue)-mindfulness",
                     emoji: "🧘",
                     label: "マインドフルネス",
-                    isCompleted: dailyMindfulnessDone || actualMindfulMinutes >= goal.mindfulnessGoal,
+                    isCompleted: dailyMindfulAndStandDone || dailyMindfulnessDone || actualMindfulMinutes >= goal.mindfulnessGoal,
                     slot: slot,
                     type: .mindfulness
                 ))
@@ -655,8 +657,8 @@ struct MandalaChartView: View {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-stand",
                     emoji: "🧍",
-                    label: "20分スタンド",
-                    isCompleted: prog.standCompleted >= 1,
+                    label: "\(goal.standGoal.standMinutes)分スタンド",
+                    isCompleted: dailyMindfulAndStandDone || prog.standCompleted >= 1,
                     slot: slot,
                     type: .stand
                 ))
@@ -691,13 +693,12 @@ struct MandalaChartView: View {
                 ))
             }
             if foodEnabled && goal.logGoal.drinkGoal > 0 {
-                // 時間帯別の水分摂取量（ml）を使って達成判定。未提供の場合は1回200mlで換算
-                let slotActualWaterMl = slotWaterMl?[slot.rawValue]
-                    ?? (prog.logProgress.drinkLogged * 200)
+                // 時間帯別の水分摂取量（ml）を使って達成判定。drinkLogged は ml 単位
+                let slotActualWaterMl = slotWaterMl?[slot.rawValue] ?? prog.logProgress.drinkLogged
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分 200ml",
+                    label: "水分 \(goal.logGoal.drinkGoal)ml",
                     isCompleted: dailyWaterDone || slotActualWaterMl >= goal.logGoal.drinkGoal,
                     slot: slot,
                     type: .drink
@@ -806,7 +807,17 @@ struct MandalaChartView: View {
             }
         }
 
-        return Array(result.prefix(40))
+        // ログ済みID（MandalaCompletionLogger）をフォールバックとして補完：
+        // 進捗データ未反映でもタップ時刻の記録があれば完了表示する。
+        let patched: [MandalaNodeData] = result.map { node in
+            guard !node.isCompleted, loggedCompletionIds.contains(node.id) else { return node }
+            return MandalaNodeData(
+                id: node.id, emoji: node.emoji, label: node.label,
+                isCompleted: true, slot: node.slot, type: node.type
+            )
+        }
+
+        return Array(patched.prefix(40))
     }
 
     @ViewBuilder

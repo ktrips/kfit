@@ -151,10 +151,12 @@ struct TomoView: View {
     @State private var emailInput = ""
     @State private var showShareSheet = false
     @State private var shareText = ""
+    @StateObject private var photoLogManager = PhotoLogManager.shared
     @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var commentTargetItem: EduLogHistoryItem? = nil
     @State private var shareTargetItem: EduLogHistoryItem? = nil
     @State private var categoryGroupTarget: TomoView.FeedCategoryGroup? = nil
+    @State private var showOlderFeed = false
     @State private var showInviteSheet = false
     @FocusState private var emailFocused: Bool
 
@@ -283,6 +285,42 @@ struct TomoView: View {
         return f
     }()
 
+    private var twoWeeksAgo: Date {
+        Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+    }
+
+    /// PhotoLogHistoryItem → EduLogHistoryItem（表示用）変換
+    private func makeFoodFeedItem(_ food: PhotoLogHistoryItem) -> EduLogHistoryItem {
+        var item = EduLogHistoryItem(
+            activityName: "食事ログ",
+            activityEmoji: "🍽️",
+            comment: food.foodName.isEmpty ? food.comment : food.foodName,
+            authorName: UserDefaults.standard.string(forKey: "cachedCurrentUserName") ?? "Kenichi Yoshida",
+            authorPhotoURL: UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+        )
+        item.id = "food_\(food.id)"
+        item.timestamp = food.timestamp
+        item.thumbnailData = food.thumbnailData
+        return item
+    }
+
+    /// アクティビティ＋食事ログを統合したフィード全件（公開のもののみ）
+    private var allFeedItems: [EduLogHistoryItem] {
+        let activity = eduLogManager.history.filter { $0.isPublic }
+        let food     = photoLogManager.history.filter { $0.isPublic }.map { makeFoodFeedItem($0) }
+        return (activity + food).sorted { $0.timestamp > $1.timestamp }
+    }
+
+    /// 2週間以上前のデータが存在するか
+    private var hasOlderItems: Bool {
+        allFeedItems.contains { $0.timestamp < twoWeeksAgo }
+    }
+
+    /// 表示するフィード（直近2週間 or 全件）
+    private var displayFeedItems: [EduLogHistoryItem] {
+        showOlderFeed ? allFeedItems : allFeedItems.filter { $0.timestamp >= twoWeeksAgo }
+    }
+
     // カテゴリグループ：ユーザー×カテゴリ単位で集約
     struct FeedCategoryGroup: Identifiable {
         var id: String { categoryKey }
@@ -312,7 +350,7 @@ struct TomoView: View {
 
     private var groupedItems: [FeedDateSection] {
         let cal = Calendar.current
-        let byDay = Dictionary(grouping: eduLogManager.history.prefix(90)) { item in
+        let byDay = Dictionary(grouping: displayFeedItems) { item in
             cal.startOfDay(for: item.timestamp)
         }
         return byDay.keys.sorted(by: >).map { date in
@@ -334,20 +372,12 @@ struct TomoView: View {
                 let userItems = byUser[userKey]!
                 let firstItem = userItems.first!
 
-                // ② ユーザー内をカテゴリ別にグループ
-                var seenCats: [String] = []
-                var byCat: [String: [EduLogHistoryItem]] = [:]
-                for item in userItems {
-                    let key = item.activityName.isEmpty ? "その他" : item.activityName
-                    if byCat[key] == nil { seenCats.append(key); byCat[key] = [] }
-                    byCat[key]!.append(item)
-                }
-                let catGroups = seenCats.map { catKey -> FeedCategoryGroup in
-                    let items = byCat[catKey]!
-                    return FeedCategoryGroup(
-                        categoryKey: catKey,
-                        categoryEmoji: items.first?.activityEmoji ?? "",
-                        items: items
+                // ② 各投稿を時系列のまま1件ずつカードに（カテゴリ集約なし）
+                let catGroups = userItems.map { item in
+                    FeedCategoryGroup(
+                        categoryKey: item.id,
+                        categoryEmoji: item.activityEmoji,
+                        items: [item]
                     )
                 }
 
@@ -494,6 +524,50 @@ struct TomoView: View {
                     }
                 }
                 .padding(.bottom, 4)
+            }
+
+            // ── 過去フィード展開ボタン ────────────────────────────────────
+            if !showOlderFeed && hasOlderItems {
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showOlderFeed = true
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("過去のフィードを表示")
+                            .font(.system(size: 13, weight: .bold))
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(Color.duoBlue)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 14)
+                    .background(Color.duoBlue.opacity(0.07))
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            } else if showOlderFeed {
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        showOlderFeed = false
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("2週間以内のみ表示")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
             }
         }
         .padding(12)

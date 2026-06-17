@@ -126,6 +126,7 @@ struct DashboardView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @StateObject private var dietGoalManager = DietGoalManager.shared
     @StateObject private var photoLogManager = PhotoLogManager.shared
+    @StateObject private var completionLogger = MandalaCompletionLogger.shared
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
     @State private var todayExercises: [CompletedExercise] = []
@@ -374,7 +375,7 @@ struct DashboardView: View {
                     EduPhotoLogSheet(
                         nodeEmoji: node.emoji,
                         nodeName: node.label,
-                        onComplete: { saveToFeed, image, comment in
+                        onComplete: { saveToFeed, isPublic, image, comment in
                             showEduPhotoLog = false
                             Task {
                                 await handleMandalaComplete(node)
@@ -383,7 +384,8 @@ struct DashboardView: View {
                                         activityName: node.label,
                                         activityEmoji: node.emoji,
                                         comment: comment,
-                                        image: image
+                                        image: image,
+                                        isPublic: isPublic
                                     )
                                 }
                             }
@@ -1174,8 +1176,8 @@ struct DashboardView: View {
                 showStandSession: $showStandSession,
                 showMandalaDetail: $showMandalaDetail,
                 selectedMandalaNode: $selectedMandalaNode,
-                dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
-                dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal)
+                dailyCalorieDone: dailyCalorieDone,
+                dailyWaterDone: dailyWaterDone
             )
 
             // 展開ボタン + アコーディオン（独立 View でスタックオーバーフローを防止）
@@ -2060,6 +2062,35 @@ struct DashboardView: View {
 
     private var mandalaDateLabel: String { DashboardView.mdE.string(from: Date()) }
 
+    // MARK: - 日次目標達成フラグ（HealthKit + アプリ記録の合算で判定）
+
+    /// 1日の食事カロリー合計（HealthKit と Firestore スロット記録の大きい方）
+    private var bestDailyMealKcal: Int {
+        let fromApp = [TimeSlot.morning, .noon, .afternoon, .evening].reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.mealLogged ?? 0)
+        }
+        return max(Int(healthKit.todayIntakeCalories), fromApp)
+    }
+
+    /// 1日の水分摂取量 ml 合計（HealthKit と Firestore スロット記録の大きい方）
+    private var bestDailyWaterMl: Int {
+        // Firestore: drinkLogged はすでに ml 単位で累積保存されている
+        let fromApp = [TimeSlot.morning, .noon, .afternoon, .evening].reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.logProgress.drinkLogged ?? 0)
+        }
+        return max(Int(healthKit.todayIntakeWater), fromApp)
+    }
+
+    /// 日次カロリー目標達成: 全スロットの食事アイコンを一括完了にする
+    private var dailyCalorieDone: Bool {
+        bestDailyMealKcal >= intakeGoals.dailyCalorieGoal
+    }
+
+    /// 日次水分目標達成: 全スロットの水分アイコンを一括完了にする
+    private var dailyWaterDone: Bool {
+        bestDailyWaterMl >= intakeGoals.dailyWaterGoal
+    }
+
     // buildNodes() を1回だけ呼び出し、他のプロパティで再利用する
     // 時間帯カードと同じ実績ソース（countSetsInTimeSlot / HealthKit）を使い、スパイラルの完了を正確に反映する
     private var currentMandalaNodes: [MandalaNodeData] {
@@ -2075,8 +2106,10 @@ struct DashboardView: View {
         var mindfulMinutes: [String: Int] = [:]
         for slot in activeSlots {
             let prog = timeSlotManager.progress.progressFor(slot)
-            // stretchSetsCompleted は Firestore の値を維持（スロット別に管理されているため）
-            let stretchMin = (prog?.stretchSetsCompleted ?? 0) * 3
+            let goal = timeSlotManager.settings.goalFor(slot)
+            // ストレッチ目標分数（設定値を使用。未設定時は3分）
+            let stretchGoalMin = (goal?.stretchGoal.stretchMinutes ?? 3)
+            let stretchMin = (prog?.stretchSetsCompleted ?? 0) * stretchGoalMin
             // HealthKit のマインドフルネスセッションをスロット時間帯でフィルタ
             let hkMin: Int = healthKit.todayMindfulnessSamples
                 .filter { session in
@@ -2103,10 +2136,32 @@ struct DashboardView: View {
         let totalTrainingGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
         let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingDone >= totalTrainingGoal
 
-        // 1日合計のマインドフルネス完了・目標を計算
+        // 1日合計のマインドフルネス完了・目標を計算（瞑想のみ）
         let totalMindfulDone = mindfulMinutes.values.reduce(0, +)
         let totalMindfulGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0) }
         let dailyMindfulnessDone = totalMindfulGoal > 0 && totalMindfulDone >= totalMindfulGoal
+
+        // ── マインドフルネス統合目標（瞑想 + ストレッチ + スタンド合計分） ──
+        // 目標: 各スロットの (瞑想分 + ストレッチ分 + スタンド分) の総和
+        let totalMindfulStandGoal = activeSlots.reduce(0) { sum, slot in
+            guard let goal = timeSlotManager.settings.goalFor(slot) else { return sum }
+            let mindMin   = goal.mindfulnessGoal                                           // 1セッション=1分
+            let stretchMin = goal.stretchGoal.enabled ? goal.stretchGoal.stretchMinutes : 0
+            let standMin   = goal.standGoal.enabled   ? goal.standGoal.standMinutes   : 0
+            return sum + mindMin + stretchMin + standMin
+        }
+        // 実績: mindfulMinutes には瞑想+ストレッチが既に含まれる。スタンドを加算
+        let totalMindfulStandActual = activeSlots.reduce(0) { sum, slot in
+            let prog       = timeSlotManager.progress.progressFor(slot)
+            let goalInfo   = timeSlotManager.settings.goalFor(slot)
+            let mindAndStretch = mindfulMinutes[slot.rawValue] ?? 0
+            let standMin   = (prog?.standCompleted ?? 0) >= 1
+                ? (goalInfo?.standGoal.standMinutes ?? 20) : 0
+            return sum + mindAndStretch + standMin
+        }
+        // 統合目標達成 → 瞑想・ストレッチ・スタンド全アイコンを一括完了
+        let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
+            && totalMindfulStandActual >= totalMindfulStandGoal
 
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
@@ -2116,10 +2171,12 @@ struct DashboardView: View {
             slotTrainingCounts: trainCounts,
             slotMindfulMinutes: mindfulMinutes,
             slotWaterMl: slotWaterMl,
-            dailyCalorieDone: healthKit.todayIntakeCalories >= Double(intakeGoals.dailyCalorieGoal),
-            dailyWaterDone: healthKit.todayIntakeWater >= Double(intakeGoals.dailyWaterGoal),
+            dailyCalorieDone: dailyCalorieDone,
+            dailyWaterDone: dailyWaterDone,
             dailyTrainingDone: dailyTrainingDone,
-            dailyMindfulnessDone: dailyMindfulnessDone
+            dailyMindfulnessDone: dailyMindfulnessDone,
+            dailyMindfulAndStandDone: dailyMindfulAndStandDone,
+            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds
         )
     }
 
@@ -5448,6 +5505,9 @@ struct DashboardView: View {
             return wd == 1 ? 7 : wd - 1
         }()
         let id = node.id
+        // タップ前の完了状態（トグル判定に使用）
+        let wasCompleted = node.isCompleted
+
         if id == "wd-study" {
             await timeSlotManager.toggleCustomGoal(id: "wd_study_\(weekdayNum)")
         } else if id == "wd-noalcohol" {
@@ -5481,6 +5541,21 @@ struct DashboardView: View {
                 let activityId = String(id.dropFirst(slotPrefix.count))
                 await timeSlotManager.toggleCustomActivity(id: activityId, at: slot)
             }
+        }
+
+        // --- 完了時刻をローカルログに確実記録（Firestore 反映遅延の補完）---
+        let logger = MandalaCompletionLogger.shared
+        if wasCompleted {
+            // トグルで取り消した場合はログからも削除
+            logger.remove(nodeId: node.id)
+        } else {
+            // 新規完了：アイコンID・時刻・スロット名を記録
+            logger.record(
+                nodeId: node.id,
+                emoji: node.emoji,
+                name: node.label,
+                slot: node.slot?.rawValue
+            )
         }
     }
 
@@ -7168,12 +7243,13 @@ private struct DailyGoalPickerButton: View {
 private struct EduPhotoLogSheet: View {
     let nodeEmoji: String
     let nodeName: String
-    let onComplete: (Bool, UIImage?, String) -> Void
+    let onComplete: (Bool, Bool, UIImage?, String) -> Void
 
     @State private var selectedImage: UIImage? = nil
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var comment: String = ""
     @State private var saveToFeed: Bool = true
+    @State private var isPublic: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -7217,20 +7293,41 @@ private struct EduPhotoLogSheet: View {
                         .cornerRadius(10)
                         .lineLimit(3...5)
 
-                    // Dailyフィード追加トグル
-                    Toggle(isOn: $saveToFeed) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "rectangle.stack.fill")
-                                .foregroundColor(Color.duoPurple)
-                            Text("Dailyフィードに追加")
-                                .font(.subheadline).fontWeight(.semibold)
+                    // Dailyフィードに追加 + 公開設定
+                    VStack(spacing: 8) {
+                        Toggle(isOn: $saveToFeed) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "rectangle.stack.fill")
+                                    .foregroundColor(Color.duoPurple)
+                                Text("Dailyフィードに追加")
+                                    .font(.subheadline).fontWeight(.semibold)
+                            }
+                        }
+                        .tint(Color.duoPurple)
+
+                        if saveToFeed {
+                            Toggle(isOn: $isPublic) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isPublic ? "globe" : "lock.fill")
+                                        .foregroundColor(isPublic ? Color.duoBlue : Color.duoSubtitle)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("TOMOのDailyフィードに公開")
+                                            .font(.subheadline).fontWeight(.semibold)
+                                        Text(isPublic ? "TOMOページに表示されます" : "自分だけに表示")
+                                            .font(.caption)
+                                            .foregroundColor(Color.duoSubtitle)
+                                    }
+                                }
+                            }
+                            .tint(Color.duoBlue)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                    .tint(Color.duoPurple)
+                    .animation(.easeInOut(duration: 0.2), value: saveToFeed)
 
                     // 記録ボタン
                     Button {
-                        onComplete(saveToFeed, selectedImage, comment)
+                        onComplete(saveToFeed, isPublic, selectedImage, comment)
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill").font(.title3)

@@ -375,7 +375,7 @@ struct HelpView: View {
                                 .cornerRadius(14)
                                 .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                             }
-                            Link(destination: URL(string: "https://www.amazon.co.jp/dp/B0000000000")!) {
+                            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
                                 HStack(spacing: 12) {
                                     Text("⌚").font(.title3)
                                     VStack(alignment: .leading, spacing: 2) {

@@ -394,11 +394,11 @@ struct PhotoLogView: View {
     @State private var fromHistory = false          // 履歴から選択したか
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
     @State private var showManageView = false
-    @State private var markAsFavorite = false
+    @State private var markAsFavorite = true   // "フィードに追加" の同期用
     @State private var isPublicPost = true
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
 
@@ -935,32 +935,25 @@ struct PhotoLogView: View {
 
     private var saveButton: some View {
         VStack(spacing: 10) {
-            Toggle(isOn: $markAsFavorite) {
+            // フィードに追加（FOODフィード + TOMOフィードを同時制御）
+            Toggle(isOn: Binding(
+                get: { markAsFavorite },
+                set: { v in markAsFavorite = v; isPublicPost = v }
+            )) {
                 HStack(spacing: 6) {
-                    Image(systemName: markAsFavorite ? "star.fill" : "star")
-                        .foregroundColor(markAsFavorite ? Color(hex: "#FFD700") : Color.duoSubtitle)
-                    Text("FOODフィードに追加")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.duoDark)
-                }
-            }
-            .tint(Color(hex: "#FFD700"))
-
-            Toggle(isOn: $isPublicPost) {
-                HStack(spacing: 6) {
-                    Image(systemName: isPublicPost ? "globe" : "lock.fill")
-                        .foregroundColor(isPublicPost ? Color.duoBlue : Color.duoSubtitle)
+                    Image(systemName: markAsFavorite ? "rectangle.stack.fill" : "rectangle.stack")
+                        .foregroundColor(markAsFavorite ? Color.duoGreen : Color.duoSubtitle)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("TOMOのDailyフィードに公開")
+                        Text("フィードに追加")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(Color.duoDark)
-                        Text(isPublicPost ? "TOMOページに表示されます" : "自分だけに表示")
+                        Text(markAsFavorite ? "FOODフィード・TOMOフィードに公開" : "フィードには追加しない")
                             .font(.system(size: 10))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
             }
-            .tint(Color.duoBlue)
+            .tint(Color.duoGreen)
 
             Button {
                 Task {
@@ -1000,7 +993,7 @@ struct PhotoLogView: View {
         comment = ""
         fromHistory = false
         selectedHistoryId = nil
-        markAsFavorite = false
+        markAsFavorite = true
         isPublicPost = true
     }
 

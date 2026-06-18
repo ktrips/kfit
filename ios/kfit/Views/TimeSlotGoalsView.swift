@@ -596,12 +596,15 @@ struct MandalaChartView: View {
         slotTrainingCounts: [String: Int]? = nil,
         slotMindfulMinutes: [String: Int]? = nil,
         slotWaterMl: [String: Int]? = nil,
+        slotMealKcal: [String: Int]? = nil,      // 時間帯別の実際のカロリー摂取量（HealthKit）
         dailyCalorieDone: Bool = false,
         dailyWaterDone: Bool = false,
+        totalDailyCalorieGoal: Int = 0,          // 1日合計カロリー目標（1/4判定用）
+        totalDailyWaterGoal: Int = 0,            // 1日合計水分目標 ml（1/4判定用）
         dailyTrainingDone: Bool = false,
         dailyMindfulnessDone: Bool = false,
-        dailyMindfulAndStandDone: Bool = false, // 瞑想+ストレッチ+スタンドの統合日次達成
-        loggedCompletionIds: Set<String> = []   // MandalaCompletionLogger からの確定済み完了ID
+        dailyMindfulAndStandDone: Bool = false,  // 瞑想+ストレッチ+スタンドの統合日次達成
+        loggedCompletionIds: Set<String> = []    // MandalaCompletionLogger からの確定済み完了ID
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -683,23 +686,29 @@ struct MandalaChartView: View {
                     }
                 }()
                 let mealLabel = "\(mealBaseName) \(goal.logGoal.mealGoal)kcal"
+                // 時間帯別の実際のカロリー摂取量（HealthKit優先、なければ Firestore）
+                let slotActualMealKcal = slotMealKcal?[slot.rawValue] ?? prog.logProgress.mealLogged
+                // 1日合計目標の 1/4 以上摂取していれば、その時間帯は達成
+                let mealQuarterGoal = totalDailyCalorieGoal > 0 ? totalDailyCalorieGoal / 4 : goal.logGoal.mealGoal
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
                     emoji: mealEmoji,
                     label: mealLabel,
-                    isCompleted: dailyCalorieDone || prog.logProgress.mealLogged >= goal.logGoal.mealGoal,
+                    isCompleted: dailyCalorieDone || slotActualMealKcal >= mealQuarterGoal,
                     slot: slot,
                     type: .meal
                 ))
             }
             if foodEnabled && goal.logGoal.drinkGoal > 0 {
-                // 時間帯別の水分摂取量（ml）を使って達成判定。drinkLogged は ml 単位
+                // 時間帯別の水分摂取量（ml）を使って達成判定
                 let slotActualWaterMl = slotWaterMl?[slot.rawValue] ?? prog.logProgress.drinkLogged
+                // 1日合計目標の 1/4 以上摂取していれば、その時間帯は達成
+                let waterQuarterGoal = totalDailyWaterGoal > 0 ? totalDailyWaterGoal / 4 : goal.logGoal.drinkGoal
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
                     label: "水分 \(goal.logGoal.drinkGoal)ml",
-                    isCompleted: dailyWaterDone || slotActualWaterMl >= goal.logGoal.drinkGoal,
+                    isCompleted: dailyWaterDone || slotActualWaterMl >= waterQuarterGoal,
                     slot: slot,
                     type: .drink
                 ))

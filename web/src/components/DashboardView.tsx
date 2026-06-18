@@ -598,7 +598,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
             {/* AppleWatch Diet 本 */}
             <a
-              href="https://www.amazon.co.jp/dp/B0000000000"
+              href="https://amzn.to/43GSmB6"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-4 bg-white rounded-2xl p-4 hover:shadow-md active:scale-[0.98] transition-all"

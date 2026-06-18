@@ -11,7 +11,7 @@ const FREE_CHAR_LIMIT = 8000;
 
 // Kindle 販売リンク（本ごとに設定）
 export const KINDLE_URLS: Record<BookId, string> = {
-  'apple-watch-diet': 'https://www.amazon.co.jp/dp/B0000000000', // ← AppleWatch Diet本のURLに差し替え
+  'apple-watch-diet': 'https://amzn.to/43GSmB6',
   'cursor-claude-code': 'https://amzn.to/43GSmB6',
 };
 
@@ -325,13 +325,16 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack }) => {
                   <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-6 text-center shadow-lg">
                     <div className="text-4xl mb-3">📖</div>
                     <h3 className="text-xl font-black text-gray-800 mb-2">
-                      ここから先は Kindle 版でお読みいただけます
+                      10ページ分は試し読みが出来ます。
                     </h3>
-                    <p className="text-sm text-gray-600 mb-1 leading-relaxed">
-                      無料公開はここまでです。続きは Amazon Kindle で販売中。
+                    <p className="text-base text-gray-700 mb-1 leading-relaxed font-semibold">
+                      興味がある方は、Kindleで読んでみて下さい！
+                    </p>
+                    <p className="text-sm text-gray-500 mb-1 leading-relaxed">
+                      10ページ以降は有料コンテンツです。続きは Amazon Kindle でお求めいただけます。
                     </p>
                     <p className="text-xs text-gray-400 mb-5">
-                      Kindle Unlimited 対象・スマートフォン / PC でも読めます
+                      Kindle Unlimited 対象・スマートフォン / PC / タブレットでも読めます
                     </p>
 
                     <a

@@ -2132,6 +2132,15 @@ struct DashboardView: View {
                 .reduce(0.0) { $0 + $1.value })
         }
 
+        // 時間帯別の実際のカロリー摂取量（HealthKit: kcal）
+        var slotMealKcal: [String: Int] = [:]
+        for slot in activeSlots {
+            slotMealKcal[slot.rawValue] = Int(healthKit.todayMealSamples
+                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
+                    return h >= slot.startHour && h < slot.endHour }
+                .reduce(0.0) { $0 + $1.value })
+        }
+
         // 1日合計のトレーニング完了・目標を計算
         let totalTrainingDone = activeSlots.reduce(0) { $0 + (trainCounts[$1.rawValue] ?? 0) }
         let totalTrainingGoal = activeSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
@@ -2152,13 +2161,30 @@ struct DashboardView: View {
             return sum + mindMin + stretchMin + standMin
         }
         // 実績: mindfulMinutes には瞑想+ストレッチが既に含まれる。スタンドを加算
+        // HK mindfulness セッションにスタンドタイマーセッションも含まれるため、HK から検出
         let totalMindfulStandActual = activeSlots.reduce(0) { sum, slot in
-            let prog       = timeSlotManager.progress.progressFor(slot)
-            let goalInfo   = timeSlotManager.settings.goalFor(slot)
-            let mindAndStretch = mindfulMinutes[slot.rawValue] ?? 0
-            let standMin   = (prog?.standCompleted ?? 0) >= 1
-                ? (goalInfo?.standGoal.standMinutes ?? 20) : 0
-            return sum + mindAndStretch + standMin
+            let prog     = timeSlotManager.progress.progressFor(slot)
+            let goalInfo = timeSlotManager.settings.goalFor(slot)
+            let rawMindAndStretch = mindfulMinutes[slot.rawValue] ?? 0
+
+            guard let goalInfo, goalInfo.standGoal.enabled else {
+                return sum + rawMindAndStretch
+            }
+            let standGoalMin = goalInfo.standGoal.standMinutes
+
+            // HK の同スロット内に standGoalMin 分以上の mindfulness セッションがあれば
+            // スタンドタイマー達成とみなす（スタンドタイマーは HK に mindfulness として記録される）
+            let hasHKStand = healthKit.todayMindfulnessSamples
+                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
+                          return h >= slot.startHour && h < slot.endHour }
+                .contains { max(1, Int($0.durationMinutes.rounded())) >= standGoalMin }
+            let firestoreStandDone = (prog?.standCompleted ?? 0) >= 1
+            let standActual = (hasHKStand || firestoreStandDone) ? standGoalMin : 0
+
+            // HK スタンドセッション分は mindfulMinutes に含まれているため二重計上を防止
+            let mindAndStretch = hasHKStand ? max(0, rawMindAndStretch - standGoalMin) : rawMindAndStretch
+
+            return sum + mindAndStretch + standActual
         }
         // 統合目標達成 → 瞑想・ストレッチ・スタンド全アイコンを一括完了
         let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
@@ -2172,8 +2198,11 @@ struct DashboardView: View {
             slotTrainingCounts: trainCounts,
             slotMindfulMinutes: mindfulMinutes,
             slotWaterMl: slotWaterMl,
+            slotMealKcal: slotMealKcal,
             dailyCalorieDone: dailyCalorieDone,
             dailyWaterDone: dailyWaterDone,
+            totalDailyCalorieGoal: intakeGoals.dailyCalorieGoal,
+            totalDailyWaterGoal: intakeGoals.dailyWaterGoal,
             dailyTrainingDone: dailyTrainingDone,
             dailyMindfulnessDone: dailyMindfulnessDone,
             dailyMindfulAndStandDone: dailyMindfulAndStandDone,
@@ -2353,7 +2382,7 @@ struct DashboardView: View {
             }
 
             // AppleWatch Diet 本
-            Link(destination: URL(string: "https://www.amazon.co.jp/dp/B0000000000")!) {
+            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
                 HStack(spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.9, green: 0.97, blue: 0.93))
@@ -7392,44 +7421,37 @@ private struct EduPhotoLogSheet: View {
                     }
 
                     // コメント入力
-                    TextField("タイトル・メモ（本のタイトル・学んだこと等）", text: $comment, axis: .vertical)
+                    TextField("タイトル・メモ（本のタイトル・学んだこと等）", text: $comment)
                         .font(.body)
                         .padding(12)
                         .background(Color(.systemGray6))
                         .cornerRadius(10)
-                        .lineLimit(3...5)
-
-                    // Dailyフィードに追加 + 公開設定
-                    VStack(spacing: 8) {
-                        Toggle(isOn: $saveToFeed) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "rectangle.stack.fill")
-                                    .foregroundColor(Color.duoPurple)
-                                Text("Dailyフィードに追加")
-                                    .font(.subheadline).fontWeight(.semibold)
-                            }
+                        .submitLabel(.done)
+                        .onSubmit {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder),
+                                to: nil, from: nil, for: nil
+                            )
                         }
-                        .tint(Color.duoPurple)
 
-                        if saveToFeed {
-                            Toggle(isOn: $isPublic) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: isPublic ? "globe" : "lock.fill")
-                                        .foregroundColor(isPublic ? Color.duoBlue : Color.duoSubtitle)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text("TOMOのDailyフィードに公開")
-                                            .font(.subheadline).fontWeight(.semibold)
-                                        Text(isPublic ? "TOMOページに表示されます" : "自分だけに表示")
-                                            .font(.caption)
-                                            .foregroundColor(Color.duoSubtitle)
-                                    }
-                                }
+                    // フィードに追加（Dailyフィード + TOMOフィードを同時制御）
+                    Toggle(isOn: Binding(
+                        get: { saveToFeed },
+                        set: { v in saveToFeed = v; isPublic = v }
+                    )) {
+                        HStack(spacing: 6) {
+                            Image(systemName: saveToFeed ? "rectangle.stack.fill" : "rectangle.stack")
+                                .foregroundColor(saveToFeed ? Color.duoGreen : Color.duoSubtitle)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("フィードに追加")
+                                    .font(.subheadline).fontWeight(.semibold)
+                                Text(saveToFeed ? "Dailyフィード・TOMOフィードに公開" : "フィードには追加しない")
+                                    .font(.caption)
+                                    .foregroundColor(Color.duoSubtitle)
                             }
-                            .tint(Color.duoBlue)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: saveToFeed)
+                    .tint(Color.duoGreen)
 
                     // 記録ボタン
                     Button {
@@ -7968,8 +7990,12 @@ private struct DailySetsExpandableSection: View {
     }
 
     private var totalMindfulGoalMinutes: Int {
+        // 表示用: HealthKit の mindfulness セッションで追跡される瞑想+スタンドの合計目標
+        // （ストレッチは Firestore のみ管理のため除外）
         [TimeSlot.morning, .noon, .afternoon, .evening].reduce(0) {
-            $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0)
+            guard let goal = timeSlotManager.settings.goalFor($1) else { return $0 }
+            let standMin = goal.standGoal.enabled ? goal.standGoal.standMinutes : 0
+            return $0 + goal.mindfulnessGoal + standMin
         }
     }
 

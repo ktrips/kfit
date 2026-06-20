@@ -16,7 +16,7 @@ extension UIImage {
 /// 一括で「少しだけ大きく」表示する。1.0 に戻せば元のサイズに復帰できる。
 enum UIScale {
     /// フォント／アイコンの拡大率
-    static let font: CGFloat = 1.1
+    static let font: CGFloat = 1.2
 }
 
 extension Color {

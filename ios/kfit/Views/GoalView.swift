@@ -139,9 +139,9 @@ struct GoalView: View {
                 if dailyFixedGoals.weightEnabled {
                     Spacer(minLength: 6)
                     HStack(spacing: 2) {
-                        Text("⚖️").font(.system(size: 11 * UIScale.font))
+                        Text("⚖️").font(.system(size: 13 * UIScale.font))
                         Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
-                            .font(.system(size: 9 * UIScale.font, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                             .foregroundColor(todayWeightKg != nil ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                             .lineLimit(1)
                     }
@@ -149,31 +149,31 @@ struct GoalView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("💪").font(.system(size: 11 * UIScale.font))
+                    Text("💪").font(.system(size: 13 * UIScale.font))
                     Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(trainingGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("👟").font(.system(size: 11 * UIScale.font))
+                    Text("👟").font(.system(size: 13 * UIScale.font))
                     Text(stepsStr)
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🔥").font(.system(size: 11 * UIScale.font))
+                    Text("🔥").font(.system(size: 13 * UIScale.font))
                     Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     if healthKit.todayTotalCalories > 0 {
-                        Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(.white.opacity(0.7))
+                        Text("cal").font(.system(size: 9 * UIScale.font)).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .fixedSize()
@@ -408,7 +408,8 @@ struct GoalView: View {
                     timeProgress: timeProgress,
                     daysRemaining: daysRemaining,
                     startDate: goal.startDate,
-                    targetDate: goal.targetDate
+                    targetDate: goal.targetDate,
+                    onGearTap: { showDietGoalSettings = true }
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -441,37 +442,6 @@ struct GoalView: View {
                 .padding(.bottom, 10)
             }
 
-            HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    goalProgressChip(
-                        label: "進捗",
-                        value: "\(Int((timeProgress * 100).rounded()))%",
-                        color: Color(hex: "#1CB0F6")
-                    )
-                    goalProgressChip(
-                        label: "体重変化",
-                        value: "\(Int((weightProgress * 100).rounded()))%",
-                        color: Color.duoGreen
-                    )
-                }
-
-                Spacer()
-
-                Button {
-                    showDietGoalSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 13 * UIScale.font))
-                        .foregroundColor(Color.duoGreen)
-                        .padding(8)
-                        .background(Color.duoGreen.opacity(0.1))
-                        .cornerRadius(9)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-
             // グラフ展開ボタン
             Divider()
             Button {
@@ -497,21 +467,6 @@ struct GoalView: View {
         .background(Color(.systemBackground))
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.07), radius: 8, y: 3)
-    }
-
-    private func goalProgressChip(label: String, value: String, color: Color) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 9 * UIScale.font, weight: .bold))
-                .foregroundColor(Color.duoSubtitle)
-            Text(value)
-                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(color.opacity(0.10))
-        .cornerRadius(9)
     }
 
     private func refreshWatchData() {
@@ -923,46 +878,65 @@ struct GoalView: View {
     // MARK: - 今日のアクティビティカード
 
     private var fitingoTrainingButton: some View {
-        Button {
+        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
+        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
+        }
+        let done = totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal
+        let bgColors: [Color] = done
+            ? [Color(hex: "#E8FFB8"), Color(hex: "#6FE8D8")]
+            : [Color(hex: "#F5FFF3"), Color(hex: "#DDFBFF")]
+        let imageName = done ? "fitingo_button_mascot" : "fitingo_jdi"
+        let message: String = done
+            ? "今日の目標達成！おめでとう 🎉"
+            : totalTrainingGoal > 0
+                ? "あと\(totalTrainingGoal - totalTraining)セット完了しよう！"
+                : "Fitingoトレーニングを始めよう！"
+
+        return Button {
             NotificationCenter.default.post(name: .requestStartTraining, object: nil)
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 17 * UIScale.font, weight: .black))
-                    .foregroundColor(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.white.opacity(0.20))
-                    .clipShape(Circle())
+            ZStack {
+                LinearGradient(colors: bgColors, startPoint: .topLeading, endPoint: .bottomTrailing)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Fitingoトレーニング")
-                        .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("今日のセットを始める")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(.white.opacity(0.86))
-                }
+                Image(imageName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
 
-                Spacer()
-
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 20 * UIScale.font, weight: .black))
-                    .foregroundColor(.white.opacity(0.9))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(
                 LinearGradient(
-                    colors: [Color.duoGreen, Color(hex: "#1CB0F6")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    colors: [.clear, Color.black.opacity(done ? 0.16 : 0.36)],
+                    startPoint: .center,
+                    endPoint: .bottom
                 )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .shadow(color: Color.duoGreen.opacity(0.22), radius: 5, y: 2)
+
+                VStack {
+                    Spacer()
+                    Text(message)
+                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.black.opacity(0.42))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 14)
+            }
+            .frame(height: 140)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
     private var todayActivityWithHistoryCard: some View {
@@ -1912,76 +1886,90 @@ private struct GoalWeeklyBurnCard: View {
         let weekTotal = Int(data.reduce(0) { $0 + $1.totalCalories })
         let avgBurn: Int? = pastData.isEmpty ? nil : Int(pastData.reduce(0) { $0 + $1.totalCalories } / Double(pastData.count))
 
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color(hex: "#16A34A"), Color(hex: "#4ADE80")],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .frame(height: 4)
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Text("🔥")
-                        .font(.system(size: 15 * UIScale.font))
-                    Text("燃やしたカロリー")
-                        .font(.system(size: 12 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
-                    Spacer()
-                    if let avg = avgBurn, weekTotal > 0 {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(alignment: .lastTextBaseline, spacing: 3) {
-                                Text("平均 \(avg)")
-                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                                    .foregroundColor(Color.duoSubtitle)
-                                Text("/")
-                                    .font(.system(size: 9 * UIScale.font))
-                                    .foregroundColor(Color.duoSubtitle)
-                                Text("計 \(weekTotal)")
-                                    .font(.system(size: 14 * UIScale.font, weight: .black))
-                                    .foregroundColor(Color(hex: "#16A34A"))
-                            }
-                            Text("kcal")
-                                .font(.system(size: 8 * UIScale.font))
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                    }
-                }
-
-                // 凡例
-                HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 2).fill(restingColor).frame(width: 10, height: 8)
-                        Text("安静時").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                    }
-                    HStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 2).fill(activeColor).frame(width: 10, height: 8)
-                        Text("活動").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                }
-
-                if data.isEmpty {
-                    Text("データを読み込み中...")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                        .frame(maxWidth: .infinity).padding(.vertical, 20)
-                } else {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        ForEach(data) { day in
-                            GoalBurnDayColumn(
-                                day: day,
-                                maxTotal: maxTotal,
-                                restingColor: restingColor,
-                                activeColor: activeColor
-                            )
-                        }
-                    }
+        Button {
+            let schemes = ["x-apple-fitness://", "x-apple-health://"]
+            for scheme in schemes {
+                if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                    return
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
+        } label: {
+            VStack(spacing: 0) {
+                LinearGradient(
+                    colors: [Color(hex: "#16A34A"), Color(hex: "#4ADE80")],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .frame(height: 4)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 6) {
+                        Text("🔥")
+                            .font(.system(size: 15 * UIScale.font))
+                        Text("燃やしたカロリー")
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Spacer()
+                        if let avg = avgBurn, weekTotal > 0 {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                                    Text("平均 \(avg)")
+                                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                    Text("/")
+                                        .font(.system(size: 9 * UIScale.font))
+                                        .foregroundColor(Color.duoSubtitle)
+                                    Text("計 \(weekTotal)")
+                                        .font(.system(size: 14 * UIScale.font, weight: .black))
+                                        .foregroundColor(Color(hex: "#16A34A"))
+                                }
+                                Text("kcal")
+                                    .font(.system(size: 8 * UIScale.font))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+
+                    // 凡例
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 2).fill(restingColor).frame(width: 10, height: 8)
+                            Text("安静時").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                        }
+                        HStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 2).fill(activeColor).frame(width: 10, height: 8)
+                            Text("活動").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                    }
+
+                    if data.isEmpty {
+                        Text("データを読み込み中...")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                            .frame(maxWidth: .infinity).padding(.vertical, 20)
+                    } else {
+                        HStack(alignment: .bottom, spacing: 0) {
+                            ForEach(data) { day in
+                                GoalBurnDayColumn(
+                                    day: day,
+                                    maxTotal: maxTotal,
+                                    restingColor: restingColor,
+                                    activeColor: activeColor
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
         }
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
+        .buttonStyle(.plain)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
     }
 }
@@ -2244,6 +2232,7 @@ private struct GoalTimelineStrip: View {
     let daysRemaining: Int
     var startDate: Date? = nil
     var targetDate: Date? = nil
+    var onGearTap: (() -> Void)? = nil
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -2297,6 +2286,14 @@ private struct GoalTimelineStrip: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(spacing: 2) {
+                        if let gearTap = onGearTap {
+                            Button(action: gearTap) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 10 * UIScale.font))
+                                    .foregroundColor(Color.duoGreen)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         Text("ゴール")
                             .font(.system(size: 9 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoGreen)

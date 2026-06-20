@@ -230,8 +230,11 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
     var thumbnailData: Data?
     var isFavorite: Bool = false
     var isPublic: Bool = true   // TOMOのDailyフィードに公開するか（旧データ=全て公開）
+    var isLiked: Bool = false
+    var likeCount: Int = 0
+    var feedComments: [FeedComment] = []
 
-    // isPublic追加後も旧データを正常に読み込めるよう実装
+    // 新フィールド追加後も旧データを正常に読み込めるよう実装
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id                 = try c.decodeIfPresent(String.self,             forKey: .id)                 ?? UUID().uuidString
@@ -242,6 +245,9 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         thumbnailData      = try c.decodeIfPresent(Data.self,               forKey: .thumbnailData)
         isFavorite         = try c.decodeIfPresent(Bool.self,               forKey: .isFavorite)         ?? false
         isPublic           = try c.decodeIfPresent(Bool.self,               forKey: .isPublic)           ?? true
+        isLiked            = try c.decodeIfPresent(Bool.self,               forKey: .isLiked)            ?? false
+        likeCount          = try c.decodeIfPresent(Int.self,                forKey: .likeCount)          ?? 0
+        feedComments       = try c.decodeIfPresent([FeedComment].self,      forKey: .feedComments)       ?? []
     }
 
     init(foodName: String = "", comment: String = "",

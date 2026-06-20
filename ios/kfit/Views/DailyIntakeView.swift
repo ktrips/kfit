@@ -313,10 +313,86 @@ struct DailyIntakeView: View {
             Text("目安: たんぱく質15% / 脂質25% / 炭水化物60%")
                 .font(.caption2)
                 .foregroundColor(Color.duoSubtitle)
+
+            // ── 今日の食事履歴 ──────────────────────────────────────────
+            Divider()
+
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color.duoOrange)
+                    Text("今日の食事")
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundColor(Color.duoText)
+                }
+                Spacer()
+                let totalMealCal = todaySummary.meals.reduce(0) { $0 + $1.calories }
+                if totalMealCal > 0 {
+                    Text("\(totalMealCal) kcal")
+                        .font(.caption).fontWeight(.bold)
+                        .foregroundColor(Color.duoOrange)
+                }
+            }
+
+            if todaySummary.meals.isEmpty {
+                HStack {
+                    Spacer()
+                    Text("まだ記録がありません")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(MealType.allCases, id: \.self) { mealType in
+                        let logs = todaySummary.meals.filter { $0.mealType == mealType }
+                        if !logs.isEmpty {
+                            let cal = logs.reduce(0) { $0 + $1.calories }
+                            HStack(spacing: 8) {
+                                Text(mealType.emoji)
+                                    .font(.system(size: 16))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(mealType.displayName)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color.duoText)
+                                    if let last = logs.sorted(by: { $0.timestamp > $1.timestamp }).first {
+                                        Text(timeString(last.timestamp))
+                                            .font(.system(size: 10))
+                                            .foregroundColor(Color.duoSubtitle)
+                                    }
+                                }
+                                Spacer()
+                                if logs.count > 1 {
+                                    Text("×\(logs.count)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(Color(.systemGray5))
+                                        .cornerRadius(5)
+                                }
+                                Text("\(cal) kcal")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(Color.duoOrange)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(Color.duoBackground)
+                            .cornerRadius(10)
+                        }
+                    }
+                }
+            }
         }
         .padding()
         .background(Color.duoCard)
         .cornerRadius(16)
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
     }
 
     private func pfcRow(label: String, emoji: String, percent: Double, grams: Double, target: Double, color: Color) -> some View {

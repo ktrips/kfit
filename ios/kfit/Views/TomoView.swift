@@ -158,20 +158,22 @@ struct TomoView: View {
     @State private var categoryGroupTarget: TomoView.FeedCategoryGroup? = nil
     @State private var showOlderFeed = false
     @State private var showInviteSheet = false
+    @State private var deleteConfirmItem: EduLogHistoryItem? = nil
     @FocusState private var emailFocused: Bool
 
     var body: some View {
         NavigationView {
             ZStack {
-                Color.duoBg.ignoresSafeArea()
+                Color(UIColor.systemGroupedBackground).ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 0) {
                         rankingSection
+                            .padding(.horizontal, 14)
+                            .padding(.top, 10)
+                            .padding(.bottom, 14)
                         eduFeedSection
                         Spacer(minLength: 40)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
                     .padding(.bottom, 20)
                 }
                 .refreshable { await manager.load() }
@@ -187,7 +189,8 @@ struct TomoView: View {
             EduFeedDetailSheet(item: item)
         }
         .sheet(item: $commentTargetItem) { item in
-            FeedCommentsSheet(item: item, eduLogManager: eduLogManager)
+            FeedCommentsSheet(item: item, eduLogManager: eduLogManager,
+                              photoLogManager: photoLogManager)
         }
         .sheet(item: $shareTargetItem) { item in
             SocialShareSheet(item: item)
@@ -203,6 +206,16 @@ struct TomoView: View {
         }
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
+        }
+        .confirmationDialog("この投稿を削除しますか？", isPresented: Binding(
+            get: { deleteConfirmItem != nil },
+            set: { if !$0 { deleteConfirmItem = nil } }
+        ), titleVisibility: .visible) {
+            Button("削除", role: .destructive) {
+                if let item = deleteConfirmItem { deleteFeedItem(item) }
+                deleteConfirmItem = nil
+            }
+            Button("キャンセル", role: .cancel) { deleteConfirmItem = nil }
         }
     }
 
@@ -301,7 +314,40 @@ struct TomoView: View {
         item.id = "food_\(food.id)"
         item.timestamp = food.timestamp
         item.thumbnailData = food.thumbnailData
+        item.isLiked = food.isLiked
+        item.likeCount = food.likeCount
+        item.feedComments = food.feedComments
         return item
+    }
+
+    // MARK: - フィードアクションルーティング
+
+    /// いいね：food_ プレフィックスで PhotoLogManager か EduLogManager に振り分け
+    private func toggleLikeFeed(_ item: EduLogHistoryItem) {
+        if item.id.hasPrefix("food_") {
+            let originalId = String(item.id.dropFirst("food_".count))
+            photoLogManager.toggleLike(id: originalId)
+        } else {
+            eduLogManager.toggleLike(id: item.id)
+        }
+    }
+
+    /// 削除：自分の投稿のみ（確認ダイアログ経由）
+    private func deleteFeedItem(_ item: EduLogHistoryItem) {
+        if item.id.hasPrefix("food_") {
+            let originalId = String(item.id.dropFirst("food_".count))
+            photoLogManager.deleteHistoryItem(id: originalId)
+        } else {
+            eduLogManager.deleteItem(id: item.id)
+        }
+    }
+
+    /// 自分の投稿かどうか
+    private func isOwnPost(_ item: EduLogHistoryItem) -> Bool {
+        let myName = AuthenticationManager.shared.userProfile?.username
+            ?? UserDefaults.standard.string(forKey: "cachedCurrentUserName")
+            ?? ""
+        return item.authorName == myName || item.authorName.isEmpty
     }
 
     /// アクティビティ＋食事ログを統合したフィード全件（公開のもののみ）
@@ -392,138 +438,75 @@ struct TomoView: View {
         }
     }
 
+    // MARK: - Instagram 縦フィード
+
+    /// 日付ごとにグループ化した投稿リスト
+    private var instagramGroups: [(label: String, date: Date, items: [EduLogHistoryItem])] {
+        let cal = Calendar.current
+        let byDay = Dictionary(grouping: displayFeedItems) { item in
+            cal.startOfDay(for: item.timestamp)
+        }
+        return byDay.keys.sorted(by: >).map { date in
+            let label = cal.isDateInToday(date) ? "今日" :
+                        cal.isDateInYesterday(date) ? "昨日" :
+                        TomoView.dateGroupFormatter.string(from: date)
+            return (label: label, date: date,
+                    items: (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp })
+        }
+    }
+
     private var eduFeedSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-
-            // ── セクションヘッダー ──────────────────────────────────────────
-            HStack(spacing: 8) {
-                LinearGradient(
-                    colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-                .frame(width: 24, height: 24)
-                .mask(
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 13 * UIScale.font, weight: .bold))
-                )
-
-                Text("Daily")
-                    .font(.system(size: 16 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                + Text(" フィード")
-                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-
-                Spacer()
-
-                if !eduLogManager.history.isEmpty {
-                    Text("\(min(eduLogManager.history.count, 30))件")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoSubtitle.opacity(0.7))
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 12)
-
-            // ── 投稿なし空状態 ────────────────────────────────────────────
-            if groupedItems.isEmpty {
-                VStack(spacing: 14) {
-                    LinearGradient(
-                        colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                    .frame(width: 56, height: 56)
-                    .mask(
+        VStack(spacing: 0) {
+            // ── 空状態 ───────────────────────────────────────────────────
+            if instagramGroups.isEmpty {
+                VStack(spacing: 18) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(
+                                colors: [Color(hex: "#833ab4").opacity(0.15), Color(hex: "#fcb045").opacity(0.15)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 88, height: 88)
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 30 * UIScale.font))
-                    )
-                    Text("まだDailyフィードがありません")
-                        .font(.system(size: 14 * UIScale.font, weight: .bold))
+                            .font(.system(size: 34 * UIScale.font, weight: .light))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    Text("まだ投稿がありません")
+                        .font(.system(size: 16 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
-                    Text("スパイラルのアクティビティを記録すると\nここに写真と一緒に投稿されます")
-                        .font(.system(size: 12 * UIScale.font))
+                    Text("アクティビティを記録すると\nここに自動投稿されます")
+                        .font(.system(size: 13 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
+                .padding(.vertical, 48)
+                .background(Color(.systemBackground))
             }
 
-            // ── 日付グループ ───────────────────────────────────────────────
-            ForEach(groupedItems) { section in
-                VStack(alignment: .leading, spacing: 0) {
-                    // 日付ラベル
-                    HStack(spacing: 6) {
-                        Rectangle()
-                            .fill(LinearGradient(
-                                colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d")],
-                                startPoint: .leading, endPoint: .trailing
-                            ))
-                            .frame(width: 3, height: 14)
-                            .cornerRadius(2)
-                        Text(section.dateLabel)
-                            .font(.system(size: 12 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark.opacity(0.75))
-                        Text("・\(section.totalItems)件")
-                            .font(.system(size: 10 * UIScale.font))
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.top, 4)
-                    .padding(.bottom, 10)
-
-                    // ── ユーザー別行 ───────────────────────────────────────
-                    ForEach(section.userGroups) { userGroup in
-                        VStack(alignment: .leading, spacing: 8) {
-                            // ユーザーヘッダー：アバター＋名前＋件数
-                            HStack(spacing: 8) {
-                                UserAvatarView(
-                                    name: userGroup.authorFirstName,
-                                    photoURL: userGroup.authorPhotoURL.isEmpty
-                                        ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
-                                        : userGroup.authorPhotoURL,
-                                    size: 34
-                                )
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(userGroup.authorFirstName)
-                                        .font(.system(size: 13 * UIScale.font, weight: .black))
-                                        .foregroundColor(Color.duoDark)
-                                    Text("\(userGroup.totalItems)件の記録")
-                                        .font(.system(size: 10 * UIScale.font))
-                                        .foregroundColor(Color.duoSubtitle)
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, 4)
-
-                            // カテゴリを横一列に並べる（件数に関わらず統一）
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(alignment: .top, spacing: 10) {
-                                    ForEach(userGroup.categoryGroups) { catGroup in
-                                        CategoryMiniCard(group: catGroup) { tappedItem in
-                                            if catGroup.isSingle {
-                                                selectedEduItem = tappedItem
-                                            } else {
-                                                categoryGroupTarget = catGroup
-                                            }
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 4)
-                                .padding(.bottom, 4)
-                            }
-                        }
-                        .padding(.bottom, 12)
-
-                        // ユーザー間の区切り線
-                        if userGroup.id != section.userGroups.last?.id {
-                            Divider()
-                                .padding(.horizontal, 4)
-                                .padding(.bottom, 12)
-                        }
-                    }
+            // ── 投稿一覧 ──────────────────────────────────────────────────
+            ForEach(instagramGroups, id: \.label) { group in
+                // 日付ラベル
+                HStack {
+                    Text(group.label)
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoSubtitle)
+                    Spacer()
                 }
-                .padding(.bottom, 4)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(UIColor.systemGroupedBackground))
+
+                // 投稿カード
+                ForEach(group.items) { item in
+                    instaPostCard(item)
+                    Divider()
+                }
             }
 
             // ── 過去フィード展開ボタン ────────────────────────────────────
@@ -536,46 +519,221 @@ struct TomoView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 14 * UIScale.font, weight: .semibold))
-                        Text("過去のフィードを表示")
+                        Text("過去の投稿を見る")
                             .font(.system(size: 13 * UIScale.font, weight: .bold))
                         Spacer()
                         Image(systemName: "chevron.down")
                             .font(.system(size: 11 * UIScale.font, weight: .semibold))
                     }
                     .foregroundColor(Color.duoBlue)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 14)
-                    .background(Color.duoBlue.opacity(0.07))
-                    .cornerRadius(12)
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 20)
+                    .background(Color(.systemBackground))
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 4)
             } else if showOlderFeed {
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         showOlderFeed = false
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         Text("2週間以内のみ表示")
                             .font(.system(size: 12 * UIScale.font, weight: .bold))
                     }
                     .foregroundColor(Color.duoSubtitle)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.systemBackground))
                 }
                 .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 2)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Insta 投稿カード（1件）
+
+    private func instaPostCard(_ item: EduLogHistoryItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ── ポストヘッダー ────────────────────────────────────────────
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .fill(Color(.systemBackground))
+                        .frame(width: 37, height: 37)
+                    UserAvatarView(
+                        name: item.authorFirstName,
+                        photoURL: item.authorPhotoURL.isEmpty
+                            ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+                            : item.authorPhotoURL,
+                        size: 33
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.authorFirstName)
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text(relativeTimeString(item.timestamp))
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                Spacer()
+
+                // アクティビティタグ
+                HStack(spacing: 3) {
+                    Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                        .font(.system(size: 12 * UIScale.font))
+                    Text(item.activityName)
+                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+
+                // 三点メニュー（自分の投稿のみ削除を表示）
+                Menu {
+                    if isOwnPost(item) {
+                        Button(role: .destructive) {
+                            deleteConfirmItem = item
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
+                    }
+                    Button {
+                        shareTargetItem = item
+                    } label: {
+                        Label("シェア", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.leading, 4)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            // ── フルサイズ写真 or グラデーション＋絵文字 ──────────────────
+            Button { selectedEduItem = item } label: {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    ZStack {
+                        instaGradient(for: item)
+                        Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                            .font(.system(size: 96 * UIScale.font))
+                            .shadow(color: .black.opacity(0.25), radius: 12)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 260, maxHeight: 320)
+                }
+            }
+            .buttonStyle(.plain)
+
+            // ── アクションボタン行 ────────────────────────────────────────
+            HStack(spacing: 0) {
+                // いいね
+                Button {
+                    toggleLikeFeed(item)
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 24 * UIScale.font, weight: .regular))
+                            .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
+                        if item.likeCount > 0 {
+                            Text("\(item.likeCount)")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                // コメント
+                Button {
+                    commentTargetItem = item
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: 22 * UIScale.font, weight: .regular))
+                            .foregroundColor(Color.duoDark)
+                        if !item.feedComments.isEmpty {
+                            Text("\(item.feedComments.count)")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                // シェア
+                Button {
+                    shareTargetItem = item
+                } label: {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 22 * UIScale.font, weight: .regular))
+                        .foregroundColor(Color.duoDark)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
+            // ── キャプション ──────────────────────────────────────────────
+            if !item.comment.isEmpty {
+                (Text(item.authorFirstName + "  ").font(.system(size: 13 * UIScale.font, weight: .black))
+                 + Text(item.comment).font(.system(size: 13 * UIScale.font)))
+                    .foregroundColor(Color.duoDark)
+                    .lineLimit(4)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            } else {
+                Spacer().frame(height: 4)
+            }
+        }
         .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .clipped()
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
+
+    // MARK: - ヘルパー
+
+    private func relativeTimeString(_ date: Date) -> String {
+        let diff = Int(Date().timeIntervalSince(date))
+        if diff < 60 { return "たった今" }
+        if diff < 3600 { return "\(diff / 60)分前" }
+        if diff < 86400 { return "\(diff / 3600)時間前" }
+        return "\(diff / 86400)日前"
+    }
+
+    private func instaGradient(for item: EduLogHistoryItem) -> LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+            [Color(hex: "#1CB5E0"), Color(hex: "#4776E6")],
+            [Color(hex: "#11998e"), Color(hex: "#38ef7d")],
+            [Color(hex: "#f7971e"), Color(hex: "#ffd200")],
+            [Color(hex: "#f953c6"), Color(hex: "#b91d73")],
+            [Color(hex: "#00b09b"), Color(hex: "#96c93d")],
+        ]
+        let idx = abs(item.id.hashValue) % palettes.count
+        return LinearGradient(colors: palettes[idx], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     // MARK: - Header
@@ -588,6 +746,7 @@ struct TomoView: View {
             )
             .ignoresSafeArea(edges: .top)
             HStack(spacing: 8) {
+                // ロゴ
                 HStack(spacing: 4) {
                     Image("mascot")
                         .resizable().scaledToFill()
@@ -602,26 +761,28 @@ struct TomoView: View {
                     }
                     .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                 }
+
                 Spacer()
-                let tomoCount = manager.entries.filter { !$0.isMe }.count
-                Button { showInviteSheet = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 11 * UIScale.font, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                        Text("\(tomoCount)")
-                            .font(.system(size: 12 * UIScale.font, weight: .black))
-                            .foregroundColor(.white)
-                        Image(systemName: "plus")
-                            .font(.system(size: 9 * UIScale.font, weight: .black))
-                            .foregroundColor(.white.opacity(0.85))
+
+                // 参加者アバター（自分＋TOMO）をインライン表示
+                HStack(spacing: -8) {
+                    ForEach(manager.entries.prefix(4)) { entry in
+                        headerAvatarCircle(entry)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.2))
-                    .cornerRadius(10)
+                    // 招待ボタン
+                    Button { showInviteSheet = true } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.25))
+                                .frame(width: 32, height: 32)
+                                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
@@ -630,6 +791,26 @@ struct TomoView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 46)
+    }
+
+    private func headerAvatarCircle(_ entry: TomoManager.TomoEntry) -> some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ))
+                .frame(width: 34, height: 34)
+            Circle()
+                .fill(Color.white)
+                .frame(width: 30, height: 30)
+            UserAvatarView(
+                name: firstName(of: entry.username),
+                photoURL: "",
+                size: 26
+            )
+        }
+        .overlay(Circle().stroke(Color.white, lineWidth: 1.5).frame(width: 34, height: 34))
     }
 
     @ViewBuilder
@@ -679,7 +860,8 @@ struct TomoView: View {
         }
     }
 
-    // MARK: - Ranking
+
+    // MARK: - Ranking（コンパクトカード）
 
     @ViewBuilder
     private var rankingSection: some View {
@@ -690,19 +872,20 @@ struct TomoView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(32)
-            .background(Color.white)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
         } else if manager.entries.isEmpty {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 Image(systemName: "person.2.slash")
-                    .font(.system(size: 30 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
+                    .font(.system(size: 34 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.5))
                 Text("まだTOMOがいません")
-                    .font(.subheadline).fontWeight(.bold)
+                    .font(.system(size: 15 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
                 Text("右上の👥+ボタンからTOMOを招待しよう！")
-                    .font(.caption).foregroundColor(Color.duoSubtitle)
+                    .font(.system(size: 12 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
                     .multilineTextAlignment(.center)
                 Button { showInviteSheet = true } label: {
                     HStack(spacing: 6) {
@@ -711,135 +894,123 @@ struct TomoView: View {
                     }
                     .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 11)
                     .background(Color.duoBlue)
-                    .cornerRadius(10)
+                    .cornerRadius(12)
                 }
                 .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity)
             .padding(32)
-            .background(Color.white)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                rankingHeader
+            VStack(spacing: 0) {
+                // セクションタイトル
+                HStack {
+                    Text("🏆 今週のランキング")
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Text("今週pt")
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoBlue)
+                        .frame(width: 50, alignment: .trailing)
+                    Text("連続")
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(width: 40, alignment: .trailing)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#1CB5E0").opacity(0.08), Color(hex: "#4776E6").opacity(0.08)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+
                 ForEach(manager.entries) { entry in
                     rankRow(entry)
                     if entry.id != manager.entries.last?.id {
-                        Divider().padding(.leading, 52)
+                        Divider().padding(.leading, 62)
                     }
                 }
             }
-            .background(Color.white)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.07), radius: 8, y: 2)
         }
-    }
-
-    private var rankingHeader: some View {
-        HStack(spacing: 0) {
-            Text("順位")
-                .font(.system(size: 9 * UIScale.font, weight: .black))
-                .foregroundColor(Color.duoSubtitle)
-                .frame(width: 38, alignment: .center)
-            Text("名前")
-                .font(.system(size: 9 * UIScale.font, weight: .black))
-                .foregroundColor(Color.duoSubtitle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 6)
-            Text("今週pt")
-                .font(.system(size: 9 * UIScale.font, weight: .black))
-                .foregroundColor(Color.duoBlue)
-                .frame(width: 50, alignment: .trailing)
-            Text("累計")
-                .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
-                .frame(width: 44, alignment: .trailing)
-            Text("連続")
-                .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
-                .frame(width: 36, alignment: .trailing)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.duoBg)
     }
 
     private func rankRow(_ entry: TomoManager.TomoEntry) -> some View {
-        HStack(spacing: 0) {
-            ZStack {
+        HStack(spacing: 10) {
+            // アバター＋順位バッジ
+            ZStack(alignment: .bottomTrailing) {
+                UserAvatarView(name: firstName(of: entry.username), photoURL: "", size: 38)
+                    .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+
                 Circle()
                     .fill(rankBadgeColor(entry.rank))
-                    .frame(width: 26, height: 26)
-                Text("\(entry.rank)")
-                    .font(.system(size: 10 * UIScale.font, weight: .black))
-                    .foregroundColor(.white)
+                    .frame(width: 16, height: 16)
+                    .overlay(
+                        Text(entry.rank <= 3 ? rankEmoji(entry.rank) : "\(entry.rank)")
+                            .font(.system(size: entry.rank <= 3 ? 10 : 8, weight: .black))
+                            .foregroundColor(entry.rank <= 3 ? .white : .white)
+                    )
+                    .offset(x: 2, y: 2)
             }
-            .frame(width: 38)
+            .frame(width: 44)
 
-            HStack(spacing: 4) {
+            // 名前
+            HStack(spacing: 5) {
                 Text(firstName(of: entry.username))
-                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    .font(.system(size: 14 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
-                    .truncationMode(.tail)
                 if entry.isMe {
                     Text("YOU")
-                        .font(.system(size: 7 * UIScale.font, weight: .black))
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.duoBlue)
-                        .cornerRadius(4)
+                        .cornerRadius(5)
                 }
             }
-            .padding(.leading, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .clipped()
 
+            // 今週pt
             VStack(spacing: 0) {
                 Text("\(entry.weeklyPoints)")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .font(.system(size: 14 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoBlue)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
                 Text("pt")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 50, alignment: .trailing)
 
-            VStack(spacing: 0) {
-                Text("\(entry.totalPoints)")
-                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+            // 連続
+            HStack(spacing: 2) {
+                Text("🔥")
+                    .font(.system(size: 11 * UIScale.font))
+                Text("\(entry.streak)日")
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .minimumScaleFactor(0.7)
-                Text("pt")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
             }
-            .frame(width: 44, alignment: .trailing)
-
-            VStack(spacing: 0) {
-                HStack(spacing: 1) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 7 * UIScale.font))
-                        .foregroundColor(Color(hex: "#FF9600"))
-                    Text("\(entry.streak)")
-                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                        .minimumScaleFactor(0.7)
-                }
-                Text("日")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-            .frame(width: 36, alignment: .trailing)
+            .frame(width: 40, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(entry.isMe ? Color.duoBlue.opacity(0.05) : Color.clear)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(entry.isMe
+            ? LinearGradient(colors: [Color.duoBlue.opacity(0.06), Color.duoBlue.opacity(0.03)],
+                             startPoint: .leading, endPoint: .trailing)
+            : LinearGradient(colors: [Color.clear], startPoint: .leading, endPoint: .trailing)
+        )
         .contextMenu {
             if !entry.isMe {
                 Button(role: .destructive) {
@@ -851,6 +1022,15 @@ struct TomoView: View {
         }
     }
 
+    private func rankEmoji(_ rank: Int) -> String {
+        switch rank {
+        case 1: return "🥇"
+        case 2: return "🥈"
+        case 3: return "🥉"
+        default: return "\(rank)"
+        }
+    }
+
     /// スペース区切りで最初の単語（名前部分）だけを返す
     private func firstName(of name: String) -> String {
         guard !name.isEmpty else { return name }
@@ -859,10 +1039,10 @@ struct TomoView: View {
 
     private func rankBadgeColor(_ rank: Int) -> Color {
         switch rank {
-        case 1: return Color.duoYellow
+        case 1: return Color(hex: "#FFD700")
         case 2: return Color(hex: "#90A4AE")
-        case 3: return Color.duoOrange
-        default: return Color.duoBlue.opacity(0.55)
+        case 3: return Color(hex: "#CD7F32")
+        default: return Color.duoBlue.opacity(0.6)
         }
     }
 }

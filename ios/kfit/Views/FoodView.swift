@@ -86,30 +86,11 @@ struct FoodView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
-                    // PFCバランス（最上段）
-                    if let analysis = pfcAnalysis, analysis.score > 0 {
-                        pfcBalanceCard(analysis)
-                    } else {
-                        noPFCDataCard
-                    }
+                    // 栄養サマリーカード（PFC・水分・アドバイス・食事履歴）
+                    nutritionSummaryCard
 
-                    // 水分・カフェイン・アルコール（PFCカードの直下）
-                    hydrationRow
-
-                    // アドバイス
-                    improvementCard(pfcAnalysis)
-
-                    // 食事履歴
-                    foodHistorySection
-
-                    // フォトログ（大）
-                    photoLogButton
-
-                    // クイックログ
-                    quickLogSection
-
-                    // 詳細ログ
-                    detailLogButton
+                    // 食事記録カード（フォトログ＋クイックログ＋詳細ログ）
+                    mealRecordCard
 
                     // FOODフィード（お気に入りのみ）
                     if !photoLogManager.history.filter({ $0.isFavorite }).isEmpty {
@@ -200,31 +181,31 @@ struct FoodView: View {
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("💧").font(.system(size: 11 * UIScale.font))
+                    Text("💧").font(.system(size: 13 * UIScale.font))
                     Text(waterMl > 0 ? "\(waterMl)" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🍽️").font(.system(size: 11 * UIScale.font))
+                    Text("🍽️").font(.system(size: 13 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(foodGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("⚡").font(.system(size: 11 * UIScale.font))
+                    Text("⚡").font(.system(size: 13 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(calDiff > 200 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                     if totalIntakeCal > 0 {
-                        Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(.white.opacity(0.7))
+                        Text("cal").font(.system(size: 9 * UIScale.font)).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .fixedSize()
@@ -238,155 +219,259 @@ struct FoodView: View {
         .frame(height: 46)
     }
 
-    // MARK: - フォトログボタン
+    // MARK: - 栄養サマリーカード（PFC・水分・アドバイス・食事履歴）
 
-    private var photoLogButton: some View {
-        Button { showPhotoLog = true } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(Color(red: 1.0, green: 0.45, blue: 0.0).opacity(0.15))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 22 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("📸 フォトログ")
-                        .font(.system(size: 16 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
-                    Text("食事の写真を撮ってAIが栄養素を自動分析")
-                        .font(.system(size: 11 * UIScale.font))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+    private var nutritionSummaryCard: some View {
+        VStack(spacing: 0) {
+            // ── PFCバランス ──────────────────────────────────────────────
+            if let analysis = pfcAnalysis, analysis.score > 0 {
+                pfcBalanceCard(analysis)
+            } else {
+                noPFCDataCard
             }
-            .padding(14)
-            .frame(maxWidth: .infinity)
-            .background(Color(.systemBackground))
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+
+            Divider().padding(.horizontal, 12)
+
+            // ── 水分・カフェイン・アルコール ────────────────────────────
+            HStack(spacing: 6) {
+                Image(systemName: "drop.fill")
+                    .font(.system(size: 10 * UIScale.font))
+                    .foregroundColor(Color.duoBlue)
+                Text("飲料")
+                    .font(.system(size: 11 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+
+            hydrationRow
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+
+            Divider().padding(.horizontal, 12)
+
+            // ── 食事アドバイス ──────────────────────────────────────────
+            improvementCard(pfcAnalysis)
+
+            Divider().padding(.horizontal, 12)
+
+            // ── 食事履歴 ────────────────────────────────────────────────
+            foodHistorySection
         }
-        .buttonStyle(.plain)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 
-    // MARK: - クイックログ
+    // MARK: - 食事記録カード（フォトログ＋クイックログ＋詳細ログ）
 
-    private var quickLogSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 5) {
-                Image(systemName: "bolt.fill")
-                    .foregroundColor(Color.duoOrange)
-                    .font(.system(size: 11 * UIScale.font))
-                Text("クイックログ")
-                    .font(.system(size: 12 * UIScale.font, weight: .black))
+    private var mealRecordCard: some View {
+        VStack(spacing: 0) {
+            // カードヘッダー
+            HStack(spacing: 6) {
+                Text("🍽️")
+                    .font(.system(size: 14 * UIScale.font))
+                Text("食事を記録")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
+                Spacer()
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
-            // 行1: 朝食・昼食・夕食
-            HStack(spacing: 8) {
-                quickBtn(emoji: "🌅", label: "朝食", color: Color.duoOrange) {
-                    confirm("朝食 \(intakeGoals.caloriesFor(mealType: .breakfast))kcal を記録しますか？") {
-                        Task {
-                            await authManager.recordMeal(mealType: .breakfast)
-                            await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .breakfast))
-                            await loadData()
+            // ── フォトログ ──────────────────────────────────────────────
+            Button { showPhotoLog = true } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(LinearGradient(
+                                colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 52, height: 52)
+                        VStack(spacing: 2) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 20 * UIScale.font, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("AI")
+                                .font(.system(size: 8 * UIScale.font, weight: .black))
+                                .foregroundColor(.white.opacity(0.9))
                         }
                     }
-                }
-                quickBtn(emoji: "🍱", label: "昼食", color: Color.duoOrange) {
-                    confirm("昼食 \(intakeGoals.caloriesFor(mealType: .lunch))kcal を記録しますか？") {
-                        Task {
-                            await authManager.recordMeal(mealType: .lunch)
-                            await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .lunch))
-                            await loadData()
-                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("📸 フォトログ")
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("写真を撮ってAIカロリー計算")
+                            .font(.system(size: 11 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
                     }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoOrange.opacity(0.7))
                 }
-                quickBtn(emoji: "🍽️", label: "夕食", color: Color.duoOrange) {
-                    confirm("夕食 \(intakeGoals.caloriesFor(mealType: .dinner))kcal を記録しますか？") {
-                        Task {
-                            await authManager.recordMeal(mealType: .dinner)
-                            await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .dinner))
-                            await loadData()
-                        }
-                    }
-                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    LinearGradient(
+                        colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
+                )
+                .padding(.horizontal, 12)
             }
+            .buttonStyle(.plain)
 
-            // 行2: スナック・水・コーヒー
-            HStack(spacing: 8) {
-                quickBtn(emoji: "🍫", label: "スナック", color: Color.duoOrange) {
-                    confirm("スナック \(intakeGoals.caloriesFor(mealType: .snack))kcal を記録しますか？") {
-                        Task {
-                            await authManager.recordMeal(mealType: .snack)
-                            await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .snack))
-                            await loadData()
-                        }
-                    }
+            // ── クイックログ ────────────────────────────────────────────
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundColor(Color.duoOrange)
+                        .font(.system(size: 10 * UIScale.font))
+                    Text("クイックログ")
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
                 }
-                quickBtn(emoji: "💧", label: "水", color: Color.duoBlue) {
-                    confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
-                        Task {
-                            await authManager.recordWater()
-                            await updateSlotForDrink(ml: intakeGoals.waterPerCup)
-                            await loadData()
-                        }
-                    }
-                }
-                quickBtn(emoji: "☕", label: "コーヒー", color: Color(hex: "#8B5E3C")) {
-                    confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
-                        Task {
-                            await authManager.recordCoffee()
-                            await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
-                            await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
-                            await loadData()
-                        }
-                    }
-                }
-            }
+                .padding(.top, 12)
 
-            // 行3: ビール・ワイン・焼酎
-            HStack(spacing: 8) {
-                quickBtn(emoji: "🍺", label: "ビール", color: Color.duoPurple) {
-                    confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
-                        Task {
-                            await authManager.recordAlcohol(alcoholType: .beer)
-                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
-                            await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
-                            await loadData()
+                // 行1: 朝食・昼食・夕食
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "🌅", label: "朝食", color: Color.duoOrange) {
+                        confirm("朝食 \(intakeGoals.caloriesFor(mealType: .breakfast))kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .breakfast)
+                                await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .breakfast))
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "🍱", label: "昼食", color: Color.duoOrange) {
+                        confirm("昼食 \(intakeGoals.caloriesFor(mealType: .lunch))kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .lunch)
+                                await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .lunch))
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "🍽️", label: "夕食", color: Color.duoOrange) {
+                        confirm("夕食 \(intakeGoals.caloriesFor(mealType: .dinner))kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .dinner)
+                                await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .dinner))
+                                await loadData()
+                            }
                         }
                     }
                 }
-                quickBtn(emoji: "🍷", label: "ワイン", color: Color.duoPurple) {
-                    confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
-                        Task {
-                            await authManager.recordAlcohol(alcoholType: .wine)
-                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
-                            await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
-                            await loadData()
+
+                // 行2: スナック・水・コーヒー
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "🍫", label: "スナック", color: Color.duoOrange) {
+                        confirm("スナック \(intakeGoals.caloriesFor(mealType: .snack))kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordMeal(mealType: .snack)
+                                await updateSlotForMeal(calories: intakeGoals.caloriesFor(mealType: .snack))
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "💧", label: "水", color: Color.duoBlue) {
+                        confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
+                            Task {
+                                await authManager.recordWater()
+                                await updateSlotForDrink(ml: intakeGoals.waterPerCup)
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "☕", label: "コーヒー", color: Color(hex: "#8B5E3C")) {
+                        confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
+                            Task {
+                                await authManager.recordCoffee()
+                                await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
+                                await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
+                                await loadData()
+                            }
                         }
                     }
                 }
-                quickBtn(emoji: "🍶", label: "焼酎", color: Color.duoPurple) {
-                    confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
-                        Task {
-                            await authManager.recordAlcohol(alcoholType: .chuhai)
-                            await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
-                            await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
-                            await loadData()
+
+                // 行3: ビール・ワイン・焼酎
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "🍺", label: "ビール", color: Color.duoPurple) {
+                        confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .beer)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "🍷", label: "ワイン", color: Color.duoPurple) {
+                        confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .wine)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "🍶", label: "焼酎", color: Color.duoPurple) {
+                        confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .chuhai)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
+                                await loadData()
+                            }
                         }
                     }
                 }
             }
+            .padding(.horizontal, 12)
+
+            // ── 詳細ログ ────────────────────────────────────────────────
+            Divider()
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+
+            Button { showDetailLog = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "list.bullet.clipboard")
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoGreen)
+                    Text("詳細ログ")
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoGreen)
+                    Text("食事・ドリンクを詳しく登録")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle.opacity(0.6))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(12)
         .background(Color(.systemBackground))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 
     private func quickBtn(emoji: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -403,34 +488,6 @@ struct FoodView: View {
             .padding(.vertical, 10)
             .background(color.opacity(0.10))
             .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - 詳細ログボタン
-
-    private var detailLogButton: some View {
-        Button { showDetailLog = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 14 * UIScale.font))
-                    .foregroundColor(Color.duoGreen)
-                Text("詳細ログ")
-                    .font(.system(size: 14 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoGreen)
-                Text("食事・ドリンクを詳しく登録")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle.opacity(0.6))
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity)
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -502,9 +559,6 @@ struct FoodView: View {
             }
         }
         .padding(12)
-        .background(Color(.systemBackground))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double) -> some View {
@@ -559,9 +613,6 @@ struct FoodView: View {
             }
         }
         .padding(12)
-        .background(Color(.systemBackground))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     private struct FoodTip {
@@ -794,9 +845,6 @@ struct FoodView: View {
                 .padding(.bottom, 8)
             }
         }
-        .background(Color(.systemBackground))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     private func historyEntryRow(_ e: HistoryEntry) -> some View {
@@ -848,16 +896,13 @@ struct FoodView: View {
             Text("食事記録がありません")
                 .font(.system(size: 14 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
-            Text("上のボタンから食事を記録すると\nPFCバランスとアドバイスが表示されます")
+            Text("下のボタンから食事を記録すると\nPFCバランスとアドバイスが表示されます")
                 .font(.system(size: 11 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
                 .multilineTextAlignment(.center)
         }
         .padding(20)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemBackground))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
 
     // MARK: - Water / Caffeine / Alcohol
@@ -1919,6 +1964,7 @@ struct EduFeedDetailSheet: View {
 struct FeedCommentsSheet: View {
     let item: EduLogHistoryItem
     @ObservedObject var eduLogManager: EduLogManager
+    var photoLogManager: PhotoLogManager? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var newCommentText = ""
     @FocusState private var inputFocused: Bool
@@ -1930,8 +1976,19 @@ struct FeedCommentsSheet: View {
         return f
     }()
 
+    private var isFoodItem: Bool { item.id.hasPrefix("food_") }
+    private var foodOriginalId: String { String(item.id.dropFirst("food_".count)) }
+
     private var currentItem: EduLogHistoryItem {
-        eduLogManager.history.first { $0.id == item.id } ?? item
+        if isFoodItem, let pm = photoLogManager,
+           let food = pm.history.first(where: { $0.id == foodOriginalId }) {
+            var copy = item
+            copy.isLiked = food.isLiked
+            copy.likeCount = food.likeCount
+            copy.feedComments = food.feedComments
+            return copy
+        }
+        return eduLogManager.history.first { $0.id == item.id } ?? item
     }
 
     var body: some View {
@@ -2080,7 +2137,11 @@ struct FeedCommentsSheet: View {
         .contextMenu {
             if let cid = commentId {
                 Button(role: .destructive) {
-                    eduLogManager.deleteFeedComment(itemId: item.id, commentId: cid)
+                    if isFoodItem, let pm = photoLogManager {
+                        pm.deleteFeedComment(itemId: foodOriginalId, commentId: cid)
+                    } else {
+                        eduLogManager.deleteFeedComment(itemId: item.id, commentId: cid)
+                    }
                 } label: {
                     Label("削除", systemImage: "trash")
                 }
@@ -2091,7 +2152,11 @@ struct FeedCommentsSheet: View {
     private func sendComment() {
         let text = newCommentText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        eduLogManager.addFeedComment(id: item.id, text: text)
+        if isFoodItem, let pm = photoLogManager {
+            pm.addFeedComment(id: foodOriginalId, text: text)
+        } else {
+            eduLogManager.addFeedComment(id: item.id, text: text)
+        }
         newCommentText = ""
     }
 }

@@ -447,18 +447,18 @@ struct MainTabView: View {
             revealTabBar()
             showRecordMenu = true
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 ZStack {
                     Circle()
                         .fill(.white)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 28, height: 28)
                         .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
                     Image(systemName: "plus")
-                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                        .font(.system(size: 15 * UIScale.font, weight: .black))
                         .foregroundColor(Color(red: 0.22, green: 0.68, blue: 0.0))
                 }
                 Text("LOG")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(.white)
             }
             .frame(maxWidth: .infinity)
@@ -472,14 +472,14 @@ struct MainTabView: View {
             selectedTab = tag
             revealTabBar()
         } label: {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .font(.system(size: 15 * UIScale.font, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
             }
             .foregroundColor(isSelected ? Color(red: 0.22, green: 0.68, blue: 0.0) : .white.opacity(0.88))
-            .padding(.vertical, 3)
+            .padding(.vertical, 4)
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)

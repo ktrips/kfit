@@ -1,8 +1,6 @@
 import WatchConnectivity
 import Foundation
-#if os(iOS)
 import WidgetKit
-#endif
 
 @MainActor
 class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
@@ -366,9 +364,10 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         ud.set(totalMindfulnessGoal, forKey: "watch_totalMindfulnessGoal")
         ud.set(totalMealLogged, forKey: "watch_totalMeal")
         ud.set(totalMealGoal, forKey: "watch_totalMealGoal")
-        #if os(iOS)
-        WidgetCenter.shared.reloadAllTimelines()
-        #endif
+        // @MainActor コンテキストから呼ばれるが、DispatchQueue.main で保護
+        DispatchQueue.main.async {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     private func exerciseEmoji(_ id: String) -> String {
@@ -449,6 +448,24 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 print("📥 Watch: Received application context with intake data")
                 self.handleProfileUpdate(applicationContext)
             }
+        }
+    }
+
+    // コンプリケーション更新用 UserInfo 受信（Watch アプリ未起動でも配信される高優先度転送）
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        guard (userInfo["complication_update"] as? Bool) == true else { return }
+        guard let ud = UserDefaults(suiteName: "group.com.kfit.app") else { return }
+
+        if let v = userInfo["watch_totalTraining"]        as? Int { ud.set(v, forKey: "watch_totalTraining") }
+        if let v = userInfo["watch_totalTrainingGoal"]    as? Int { ud.set(v, forKey: "watch_totalTrainingGoal") }
+        if let v = userInfo["watch_totalMindfulness"]     as? Int { ud.set(v, forKey: "watch_totalMindfulness") }
+        if let v = userInfo["watch_totalMindfulnessGoal"] as? Int { ud.set(v, forKey: "watch_totalMindfulnessGoal") }
+        if let v = userInfo["watch_totalMeal"]            as? Int { ud.set(v, forKey: "watch_totalMeal") }
+        if let v = userInfo["watch_totalMealGoal"]        as? Int { ud.set(v, forKey: "watch_totalMealGoal") }
+
+        DispatchQueue.main.async {
+            WidgetCenter.shared.reloadAllTimelines()
+            print("📥 Watch: Received complication user info and reloaded timelines")
         }
     }
 

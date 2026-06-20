@@ -392,8 +392,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 // 永続化されたTimeSlot進捗を使用（Firestore依存より正確）
                 totalTraining += progress.trainingCompleted
                 totalTrainingGoal += goal.trainingGoal
-                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分）
-                totalMindfulness += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3
+                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分、ポモドーロ1回=20分）
+                totalMindfulness += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3 + progress.standCompleted * 20
                 totalMindfulnessGoal += goal.mindfulnessGoal
                 if goal.logGoal.mealGoal > 0 {
                     totalMealGoal += goal.logGoal.mealGoal
@@ -568,6 +568,31 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             } else {
                 try? session.updateApplicationContext(payload)
             }
+
+            // コンプリケーション更新: 重要な指標のみ高優先度で送信
+            self.transferComplicationStats(session: session)
+        }
+    }
+
+    /// Watch コンプリケーション専用の軽量データを高優先度で転送する
+    /// transferCurrentComplicationUserInfo は1日50件の上限があるため
+    /// 軽量なペイロード（watch_* 相当値のみ）を送る
+    private func transferComplicationStats(session: WCSession) {
+        guard session.activationState == .activated else { return }
+        guard session.isComplicationEnabled else { return }
+
+        if let ud = UserDefaults(suiteName: "group.com.kfit.app") {
+            let complicationPayload: [String: Any] = [
+                "complication_update": true,
+                "watch_totalTraining":      ud.integer(forKey: "trainingCompleted"),
+                "watch_totalTrainingGoal":  ud.integer(forKey: "trainingGoal"),
+                "watch_totalMindfulness":   ud.integer(forKey: "mindfulnessCompleted"),
+                "watch_totalMindfulnessGoal": ud.integer(forKey: "mindfulnessGoal"),
+                "watch_totalMeal":          ud.integer(forKey: "mealLogged"),
+                "watch_totalMealGoal":      ud.integer(forKey: "mealGoal"),
+            ]
+            session.transferCurrentComplicationUserInfo(complicationPayload)
+            print("[iOSWatchBridge] 📲 Transferred complication stats to Watch")
         }
     }
 

@@ -244,7 +244,7 @@ struct DashboardView: View {
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 10) {
                             dailySetsCard
-                            quickMenu
+                            foodLogCard
                             if goalTabVisible && healthKit.isAvailable && healthKit.isAuthorized {
                                 activityRingsCard
                                 calorieBalanceBarCard
@@ -690,24 +690,24 @@ struct DashboardView: View {
                     // 連続記録 + 日付
                     HStack(spacing: 3) {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 14 * UIScale.font))
+                            .font(.system(size: 16 * UIScale.font))
                             .foregroundColor(.orange)
                         Text("\(authManager.userProfile?.streak ?? 0)日")
-                            .font(.system(size: 10 * UIScale.font, design: .rounded))
+                            .font(.system(size: 13 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                         Text(mandalaDateLabel)
-                            .font(.system(size: 10 * UIScale.font, design: .rounded))
+                            .font(.system(size: 12 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white.opacity(0.85))
                     }
 
-                    // Mandala時間帯進捗率
+                    // Mandala現時点進捗率
                     let nc = mandalaOverallCount
                     if nc.total > 0 {
                         let pct = Int(Double(nc.done) / Double(nc.total) * 100)
                         Text("\(pct)%")
-                            .font(.system(size: 10 * UIScale.font, design: .rounded))
+                            .font(.system(size: 13 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(pct >= 80 ? Color.duoYellow : .white)
                     }
@@ -1483,7 +1483,6 @@ struct DashboardView: View {
             onOpenMindfulness: openMindfulness,
             onOpenStretch: openStretch,
             onOpenStand: openStand,
-            onOpenPhotoLog: { showPhotoLog = true },
             angerLevel: computeAngerLevel(),
             todaySessions: TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) },
             dailyGoal: fitingoDailyGoal(),
@@ -2215,6 +2214,13 @@ struct DashboardView: View {
         else { return [.morning, .noon, .afternoon, .evening] }
     }
 
+    private var mandalaOverallCount: (done: Int, total: Int) {
+        let visibleSlotSet = Set(mandalaVisibleSlots)
+        let nodes = currentMandalaNodes
+        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
+        return (visible.filter(\.isCompleted).count, visible.count)
+    }
+
     private func mandalaContextString(_ nodes: [MandalaNodeData]) -> String {
         let hour = currentMandalaHour
         let currentSlot: TimeSlot? = {
@@ -2238,13 +2244,6 @@ struct DashboardView: View {
             return "\(first.emoji) \(first.label)を記録しましょう"
         }
         return "今日のタスクはすべて完了！"
-    }
-
-    private var mandalaOverallCount: (done: Int, total: Int) {
-        let visibleSlotSet = Set(mandalaVisibleSlots)
-        let nodes = currentMandalaNodes
-        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
-        return (visible.filter(\.isCompleted).count, visible.count)
     }
 
     private var habitStackCard: some View {
@@ -2600,27 +2599,27 @@ struct DashboardView: View {
                                 fatPercent: analysis.fatPercent,
                                 carbsPercent: analysis.carbsPercent
                             )
-                            .frame(width: 54, height: 54)
+                            .frame(width: 62, height: 62)
                             VStack(spacing: 0) {
                                 Text("\(analysis.score)")
-                                    .font(.system(size: 15 * UIScale.font, weight: .black))
+                                    .font(.system(size: 17 * UIScale.font, weight: .black))
                                     .foregroundColor(scoreColorForPFC(analysis.score))
                                 Text("点")
-                                    .font(.system(size: 7 * UIScale.font))
+                                    .font(.system(size: 8 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                         }
-                        .frame(width: 54, height: 54)
+                        .frame(width: 62, height: 62)
                     } else {
                         ZStack {
                             Circle()
                                 .stroke(Color(.systemGray5), lineWidth: 5)
-                                .frame(width: 54, height: 54)
+                                .frame(width: 62, height: 62)
                             Image(systemName: "chart.pie")
-                                .font(.system(size: 20 * UIScale.font))
+                                .font(.system(size: 24 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle.opacity(0.4))
                         }
-                        .frame(width: 54, height: 54)
+                        .frame(width: 62, height: 62)
                     }
 
                     // 水分 / カフェイン / アルコール
@@ -4426,7 +4425,7 @@ struct DashboardView: View {
                 // 本体: 睡眠リング（左・二段に渡る）+ 右側二段
                 HStack(alignment: .top, spacing: 8) {
                     if let s = sleepScore, s.score > 0 {
-                        SleepScoreRingView(sleep: s, size: 48)
+                        SleepScoreRingView(sleep: s, size: 62)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -4602,20 +4601,96 @@ struct DashboardView: View {
         .cornerRadius(10)
     }
 
-    // MARK: - フォトログボタン
+    // MARK: - 食事カロリー記録（フォトログ＋クイックログ一体化カード）
 
-    // MARK: - クイックメニュー
-    private var quickMenu: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var foodLogCard: some View {
+        VStack(spacing: 0) {
+            // カードヘッダー
             HStack(spacing: 5) {
-                Image(systemName: "fork.knife")
-                    .foregroundColor(Color.duoOrange)
-                Text("クイック記録").fontWeight(.black)
+                Text("🍽️")
+                    .font(.system(size: 14 * UIScale.font))
+                Text("食事カロリー記録")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
                 Spacer()
             }
-            .font(.subheadline)
-            .foregroundColor(Color.duoDark)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
+            // フォトログボタン
+            photoLogButton
+
+            // 区切り線
+            Divider()
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+            // クイックログボタン群
+            quickMenuButtons
+        }
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    private var photoLogButton: some View {
+        Button(action: { showPhotoLog = true }) {
+            HStack(spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(LinearGradient(
+                            colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 62, height: 62)
+                        .shadow(color: Color.duoOrange.opacity(0.35), radius: 8, y: 4)
+                    VStack(spacing: 2) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 24 * UIScale.font))
+                            .foregroundColor(.white)
+                        Text("AI")
+                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white.opacity(0.90))
+                    }
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("食事フォトログ")
+                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                    Text("写真を撮ってAIカロリー計算")
+                        .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 20 * UIScale.font))
+                    .foregroundColor(Color.duoOrange.opacity(0.70))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                LinearGradient(
+                    colors: [Color.duoOrange.opacity(0.12), Color(red: 1.0, green: 0.55, blue: 0.1).opacity(0.06)],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.duoOrange.opacity(0.22), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - 食事カロリー記録ボタン群
+    private var quickMenuButtons: some View {
+        VStack(spacing: 8) {
             // 行1: 朝食・昼食・夕食
             HStack(spacing: 8) {
                 quickIntakeButton(emoji: "🌅", label: "朝食") {
@@ -4658,8 +4733,6 @@ struct DashboardView: View {
                         }
                     }
                 }
-
-                // ドリンク（水 / コーヒーを選択）
                 Menu {
                     Button {
                         confirmIntake(message: "水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
@@ -4691,9 +4764,7 @@ struct DashboardView: View {
                                 await refreshIntakeData()
                             }
                         }
-                    } label: {
-                        Label("🍺 ビール", systemImage: "")
-                    }
+                    } label: { Label("🍺 ビール", systemImage: "") }
                     Button {
                         confirmIntake(message: "ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
                             Task {
@@ -4702,9 +4773,7 @@ struct DashboardView: View {
                                 await refreshIntakeData()
                             }
                         }
-                    } label: {
-                        Label("🍷 ワイン", systemImage: "")
-                    }
+                    } label: { Label("🍷 ワイン", systemImage: "") }
                     Button {
                         confirmIntake(message: "酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
                             Task {
@@ -4713,9 +4782,7 @@ struct DashboardView: View {
                                 await refreshIntakeData()
                             }
                         }
-                    } label: {
-                        Label("🥃 酎ハイ", systemImage: "")
-                    }
+                    } label: { Label("🥃 酎ハイ", systemImage: "") }
                     Button {
                         confirmIntake(message: "ノンアルコール (アルコール 0g) を記録しますか？") {
                             Task {
@@ -4724,9 +4791,7 @@ struct DashboardView: View {
                                 await refreshIntakeData()
                             }
                         }
-                    } label: {
-                        Label("🚫 ノンアル", systemImage: "")
-                    }
+                    } label: { Label("🚫 ノンアル", systemImage: "") }
                 } label: {
                     VStack(spacing: 5) {
                         Text("🍺").font(.title3)
@@ -4741,10 +4806,8 @@ struct DashboardView: View {
                 }
             }
         }
-        .padding(12)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
     }
 
     private func quickIntakeButton(emoji: String, label: String, action: @escaping () -> Void) -> some View {
@@ -5820,9 +5883,10 @@ struct DashboardView: View {
                 // 永続化されたTimeSlot進捗を使用（Firestore依存のcountSetsより正確）
                 totalTrainingCompleted += prog.trainingCompleted
                 totalTrainingGoal += goal.trainingGoal
-                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分）
-                totalMindfulnessCompleted += prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3
-                totalMindfulnessGoal += goal.mindfulnessGoal
+                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分、ポモドーロ1回=20分）
+                totalMindfulnessCompleted += prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3 + prog.standCompleted * 20
+                let standGoalMinutes = (goal.standGoal.enabled && goal.timeSlot != .midnight) ? 20 : 0
+                totalMindfulnessGoal += goal.mindfulnessGoal + standGoalMinutes
 
                 if goal.logGoal.mealGoal > 0 {
                     totalMealGoal += goal.logGoal.mealGoal
@@ -5847,12 +5911,13 @@ struct DashboardView: View {
         sharedDefaults.set(todayCurrentProgressPercent, forKey: "progressPercent")
 
         // カロリー収支を計算して保存（摂取 - 消費）Apple Health方式
+        // アプリ内ログを優先、なければHealthKit値を使用
         let totalBurned = Int(healthKit.todayRestingCalories + healthKit.todayActiveCalories)
-        let totalIntake = Int(healthKit.todayIntakeCalories)
+        let totalIntake = todayIntake.totalCalories > 0 ? todayIntake.totalCalories : Int(healthKit.todayIntakeCalories)
         let calorieBalance = totalIntake - totalBurned
         sharedDefaults.set(calorieBalance, forKey: "calorieBalance")
 
-        print("[Widget] Updated: burned=\(totalBurned), intake=\(totalIntake), balance=\(calorieBalance)")
+        print("[Widget] Updated: burned=\(totalBurned), intake=\(totalIntake) (appLog=\(todayIntake.totalCalories), hk=\(Int(healthKit.todayIntakeCalories))), balance=\(calorieBalance)")
 
         // 総ポイントを保存
         let totalPoints = authManager.userProfile?.totalPoints ?? 0
@@ -6029,7 +6094,6 @@ private struct DailySetsCardButtonsView: View {
     let onOpenMindfulness: () -> Void
     let onOpenStretch: () -> Void
     let onOpenStand: () -> Void
-    let onOpenPhotoLog: () -> Void
     let angerLevel: Double
     let todaySessions: Int
     let dailyGoal: Int
@@ -6046,19 +6110,36 @@ private struct DailySetsCardButtonsView: View {
                 trainingVideoIndex: $trainingVideoIndex
             )
 
+            // ── マインドフルネス ──────────────────────────────────────────
+            sectionHeader(icon: "🧘‍♀️", title: "マインドフルネス")
+
             HStack(spacing: 8) {
                 compactActionButton(icon: "🧘", label: "1分瞑想",
                                     color: Color.duoPurple, action: onOpenMindfulness)
                 compactActionButton(icon: "🤸", label: "3分ストレッチ",
                                     color: Color.duoBlue, action: onOpenStretch)
-                compactActionButton(icon: "🍅", label: "ポモドーロ",
+                compactActionButton(icon: "🍅", label: "20分ポモドーロ",
                                     color: Color(red: 0.94, green: 0.27, blue: 0.15), action: onOpenStand)
             }
             .padding(.horizontal, 16)
             .padding(.top, 4)
+            .padding(.bottom, 8)
 
-            photoLogButton
         }
+    }
+
+    private func sectionHeader(icon: String, title: String) -> some View {
+        HStack(spacing: 5) {
+            Text(icon)
+                .font(.system(size: 13 * UIScale.font))
+            Text(title)
+                .font(.system(size: 12 * UIScale.font, weight: .black))
+                .foregroundColor(Color.duoSubtitle)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 2)
     }
 
     private var fitingoButton: some View {
@@ -6147,47 +6228,6 @@ private struct DailySetsCardButtonsView: View {
         .buttonStyle(.plain)
     }
 
-    private var photoLogButton: some View {
-        Button(action: onOpenPhotoLog) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(LinearGradient(
-                            colors: [Color.duoOrange, Color(red: 1.0, green: 0.55, blue: 0.1)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 18 * UIScale.font))
-                        .foregroundColor(.white)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("フォトログ")
-                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoDark)
-                    Text("AI食事分析")
-                        .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.callout)
-                    .foregroundColor(Color.duoOrange.opacity(0.6))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                LinearGradient(
-                    colors: [Color.duoOrange.opacity(0.10), Color(red: 1.0, green: 0.55, blue: 0.1).opacity(0.06)],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
-    }
 }
 
 // MARK: - fitingoスタートボタン（独立Viewでレンダリング境界を作り、スタックオーバーフローを防止）
@@ -6407,7 +6447,7 @@ private struct MandalaSpiralCard: View {
         return chart
             .frame(height: 340)
             .padding(.top, 1)
-            .padding(.bottom, 1)
+            .padding(.bottom, 0)
             .overlay(alignment: .top) { legendOverlay }
             .overlay(alignment: .topTrailing) {
                 settingsButton
@@ -6483,13 +6523,35 @@ private struct MandalaSpiralCard: View {
             .padding(.horizontal, 6)
     }
 
+    private var visibleCount: (done: Int, total: Int) {
+        let visibleSlotSet = Set(visibleSlots)
+        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
+        return (visible.filter(\.isCompleted).count, visible.count)
+    }
+
     private var legendRow: some View {
         let todayNodes = nodes.filter { $0.slot == nil }
+        let vc = visibleCount
+        let pct = vc.total > 0 ? Double(vc.done) / Double(vc.total) : 0.0
+        let abColor: Color = pct >= 1.0   ? Color(hex: "#4CAF50")
+                           : pct >= 0.7   ? Color(hex: "#A5D63B")
+                           : pct >= 0.4   ? Color(hex: "#FFD700")
+                           : pct >= 0.01  ? Color(hex: "#FF9500")
+                           : Color(.systemGray3)
         return HStack(spacing: 2) {
             legendCell(label: "今日", color: Color(hex: "CE82FF"),
                        done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
             ForEach(visibleSlots, id: \.self) { slot in
                 slotLegend(slot: slot)
+            }
+            Spacer()
+            if vc.total > 0 {
+                Text("\(vc.done)/\(vc.total)")
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(abColor)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(abColor.opacity(0.1))
+                    .cornerRadius(4)
             }
         }
     }
@@ -7063,7 +7125,6 @@ struct MindfulnessSessionView: View {
         guard !sessionVideos.isEmpty else { return nil }
         return sessionVideos[min(selectedVideoIndex, sessionVideos.count - 1)]
     }
-    // ringSize は body 内で GeometryReader から算出するため削除
     private var innerCircleBase: CGFloat { 70.0 }
     private var innerCircleRange: CGFloat { 160.0 }
     private var currentStretchIndex: Int {
@@ -7075,27 +7136,53 @@ struct MindfulnessSessionView: View {
         return sessionVideos[currentStretchIndex]
     }
 
+    // 瞑想 or ストレッチ判定
+    private var isMeditation: Bool { sessionVideos.isEmpty }
+
+    // ストレッチ各フェーズのSFシンボル
+    private var stretchIcon: String {
+        switch currentStretchIndex {
+        case 0: return "figure.flexibility"
+        case 1: return "figure.arms.open"
+        default: return "figure.cooldown"
+        }
+    }
+
+    // 背景グラデーション（種別で色分け）
+    private var bgGradient: LinearGradient {
+        isMeditation
+            ? LinearGradient(
+                colors: [Color(red: 0.15, green: 0.08, blue: 0.42),
+                         Color(red: 0.36, green: 0.14, blue: 0.68)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+            : LinearGradient(
+                colors: [Color(red: 0.04, green: 0.26, blue: 0.54),
+                         Color(red: 0.06, green: 0.55, blue: 0.66)],
+                startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    // リング・ハイライト色
+    private var accentColor: Color {
+        isMeditation
+            ? Color(red: 0.80, green: 0.62, blue: 1.0)
+            : Color(red: 0.35, green: 0.90, blue: 1.0)
+    }
+
     var body: some View {
         GeometryReader { geo in
             let ringSize = min(geo.size.width, geo.size.height) * 0.82
             ZStack {
-                LinearGradient(
-                    colors: [Color.duoPurple, Color(red: 0.35, green: 0.55, blue: 1.0), Color.duoGreen.opacity(0.85)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                bgGradient.ignoresSafeArea()
 
-                VStack(spacing: 16) {
-                    // タイトル行
+                VStack(spacing: 0) {
+
+                    // ── タイトル行 ──
                     ZStack(alignment: .leading) {
                         Text(title)
                             .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, alignment: .center)
-                        Button {
-                            dismiss()
-                        } label: {
+                        Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 15 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
@@ -7106,72 +7193,88 @@ struct MindfulnessSessionView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
+                    .padding(.bottom, 8)
 
-                    // リング（画面ギリギリ）
+                    // ── ストレッチ：フェーズステッパー ──
+                    if !isMeditation && !sessionVideos.isEmpty {
+                        HStack(spacing: 0) {
+                            ForEach(0..<sessionVideos.count, id: \.self) { i in
+                                HStack(spacing: 0) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(i <= currentStretchIndex
+                                                  ? accentColor
+                                                  : Color.white.opacity(0.22))
+                                            .frame(width: 26, height: 26)
+                                        Text("\(i + 1)")
+                                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(i <= currentStretchIndex ? Color(red:0.04,green:0.26,blue:0.54) : .white.opacity(0.7))
+                                    }
+                                    if i < sessionVideos.count - 1 {
+                                        Rectangle()
+                                            .fill(i < currentStretchIndex ? accentColor : Color.white.opacity(0.22))
+                                            .frame(width: 32, height: 2)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
+                        .animation(.easeInOut(duration: 0.4), value: currentStretchIndex)
+                    }
+
+                    // ── メインリング ──
                     ZStack {
+                        // 背景トラック
                         Circle()
-                            .stroke(Color.white.opacity(0.20), lineWidth: 14)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 14)
                             .frame(width: ringSize, height: ringSize)
 
+                        // 進捗アーク
                         Circle()
                             .trim(from: 0, to: progress)
-                            .stroke(Color.white, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                            .stroke(accentColor,
+                                    style: StrokeStyle(lineWidth: 14, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                             .frame(width: ringSize, height: ringSize)
                             .animation(.easeInOut(duration: 0.35), value: progress)
 
+                        // 呼吸バブル（拡縮）
                         let innerBase = ringSize * 0.25
-                        let innerRange = ringSize * 0.57
+                        let innerRange = ringSize * 0.55
                         Circle()
-                            .fill(Color.white.opacity(0.24))
+                            .fill(
+                                RadialGradient(
+                                    colors: [accentColor.opacity(0.38), Color.clear],
+                                    center: .center,
+                                    startRadius: 0, endRadius: ringSize * 0.38
+                                )
+                            )
                             .frame(
-                                width: isInhale ? innerBase + innerRange * phaseProgress : (innerBase + innerRange) - innerRange * phaseProgress,
-                                height: isInhale ? innerBase + innerRange * phaseProgress : (innerBase + innerRange) - innerRange * phaseProgress
+                                width:  isInhale ? innerBase + innerRange * phaseProgress
+                                                 : (innerBase + innerRange) - innerRange * phaseProgress,
+                                height: isInhale ? innerBase + innerRange * phaseProgress
+                                                 : (innerBase + innerRange) - innerRange * phaseProgress
                             )
                             .animation(.easeInOut(duration: 1.0), value: remainingSeconds)
 
-                        VStack(spacing: 10) {
-                            Text(isInhale ? "吸って" : "吐いて")
-                                .font(.system(size: 38 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                            Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
-                                .font(.system(size: 17 * UIScale.font, weight: .bold))
-                                .foregroundColor(.white.opacity(0.82))
-                            Text("\(remainingSeconds)")
-                                .font(.system(size: 52 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                                .monospacedDigit()
+                        // リング内コンテンツ
+                        if isMeditation {
+                            meditationRingContent
+                        } else {
+                            stretchRingContent
                         }
                     }
 
-                    // リング下テキスト / ストレッチ情報
-                    if sessionVideos.isEmpty {
-                        Text("目を瞑って、深い呼吸で、今に集中して下さい")
-                            .font(.system(size: 15 * UIScale.font, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.82))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
+                    Spacer(minLength: 6)
+
+                    // ── リング下の補足 ──
+                    if isMeditation {
+                        meditationTip
                     } else if let stretch = currentStretch {
-                        VStack(spacing: 6) {
-                            HStack(spacing: 8) {
-                                Text("\(currentStretchIndex + 1)/3")
-                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Color.white.opacity(0.22))
-                                    .cornerRadius(6)
-                                Text(stretch.name)
-                                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(.white)
-                            }
-                            Text(stretch.description)
-                                .font(.system(size: 14 * UIScale.font, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.82))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 24)
-                        }
-                        .animation(.easeInOut(duration: 0.5), value: currentStretchIndex)
+                        stretchDescriptionRow(stretch: stretch)
                     }
+
+                    Spacer(minLength: 10)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
@@ -7204,6 +7307,85 @@ struct MindfulnessSessionView: View {
             guard !isCompleting, remainingSeconds > 0, isInhale else { return }
             playInhalePulseHaptic()
         }
+    }
+
+    // ── 瞑想リング内コンテンツ ──
+    private var meditationRingContent: some View {
+        VStack(spacing: 8) {
+            Text("🧘")
+                .font(.system(size: 38 * UIScale.font))
+            Text(isInhale ? "吸って" : "吐いて")
+                .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+            Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
+                .font(.system(size: 15 * UIScale.font, weight: .semibold))
+                .foregroundColor(.white.opacity(0.82))
+                .animation(.easeInOut(duration: 0.4), value: isInhale)
+            Text("\(remainingSeconds)")
+                .font(.system(size: 50 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .monospacedDigit()
+        }
+    }
+
+    // ── ストレッチリング内コンテンツ ──
+    private var stretchRingContent: some View {
+        VStack(spacing: 6) {
+            Image(systemName: stretchIcon)
+                .font(.system(size: 40 * UIScale.font, weight: .medium))
+                .foregroundColor(accentColor)
+                .shadow(color: accentColor.opacity(0.4), radius: 6)
+                .animation(.easeInOut(duration: 0.4), value: currentStretchIndex)
+
+            if let stretch = currentStretch {
+                Text(stretch.name)
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .animation(.easeInOut(duration: 0.4), value: currentStretchIndex)
+            }
+
+            HStack(spacing: 6) {
+                Text(isInhale ? "💨" : "😮‍💨")
+                    .font(.system(size: 18 * UIScale.font))
+                Text(isInhale ? "吸って" : "吐いて")
+                    .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .animation(.easeInOut(duration: 0.4), value: isInhale)
+
+            Text("\(remainingSeconds)")
+                .font(.system(size: 44 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .monospacedDigit()
+        }
+    }
+
+    // ── 瞑想ヒント（リング下） ──
+    private var meditationTip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "moon.stars.fill")
+                .font(.system(size: 13 * UIScale.font))
+                .foregroundColor(accentColor)
+            Text("目を閉じて、呼吸だけに意識を向けて")
+                .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                .foregroundColor(.white.opacity(0.80))
+        }
+        .padding(.bottom, 6)
+    }
+
+    // ── ストレッチ説明（リング下） ──
+    private func stretchDescriptionRow(stretch: StretchSessionVideo) -> some View {
+        VStack(spacing: 4) {
+            Text(stretch.description)
+                .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                .foregroundColor(.white.opacity(0.80))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+        }
+        .padding(.bottom, 6)
+        .animation(.easeInOut(duration: 0.5), value: currentStretchIndex)
     }
 
     private func completeSession() {
@@ -7563,51 +7745,163 @@ private struct GoalCompletionSheet: View {
     }
 }
 
-// MARK: - 20分スタンドポモドーロタイマー
+// MARK: - 20分ポモドーロタイマー（プログレッシブ・トマトリビール）
 
-// MARK: - トマト柑橘スライス Shape
-
-private struct TomatoSliceShape: Shape {
-    let segments: Int
-
+// トマト断面の1セグメント（全8分割）
+private struct TomatoWedge: Shape {
+    let index: Int
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) / 2
-        let innerRadius = radius * 0.28
-        let anglePerSegment = (2.0 * Double.pi) / Double(segments)
-        let gapAngle = anglePerSegment * 0.08
-
-        for i in 0..<segments {
-            let startAngle = Double(i) * anglePerSegment - Double.pi / 2 + gapAngle
-            let endAngle = startAngle + anglePerSegment - gapAngle * 2
-
-            // セグメントの外側アーク
-            path.move(to: CGPoint(
-                x: center.x + innerRadius * cos(startAngle),
-                y: center.y + innerRadius * sin(startAngle)
-            ))
-            path.addLine(to: CGPoint(
-                x: center.x + radius * cos(startAngle),
-                y: center.y + radius * sin(startAngle)
-            ))
-            path.addArc(center: center, radius: radius,
-                        startAngle: .radians(startAngle),
-                        endAngle: .radians(endAngle), clockwise: false)
-            path.addLine(to: CGPoint(
-                x: center.x + innerRadius * cos(endAngle),
-                y: center.y + innerRadius * sin(endAngle)
-            ))
-            path.addArc(center: center, radius: innerRadius,
-                        startAngle: .radians(endAngle),
-                        endAngle: .radians(startAngle), clockwise: true)
-            path.closeSubpath()
-        }
-        return path
+        var p = Path()
+        let cx = rect.midX, cy = rect.midY
+        let r     = min(rect.width, rect.height) / 2.0 * 0.93
+        let inner = r * 0.22
+        let step  = 2.0 * .pi / 8.0
+        let gap   = step * 0.065
+        let s     = step * Double(index) - .pi / 2.0 + gap
+        let e     = s + step - gap * 2.0
+        p.move(to: CGPoint(x: cx + inner * cos(s), y: cy + inner * sin(s)))
+        p.addLine(to: CGPoint(x: cx + r * cos(s), y: cy + r * sin(s)))
+        p.addArc(center: CGPoint(x: cx, y: cy), radius: r,
+                 startAngle: .radians(s), endAngle: .radians(e), clockwise: false)
+        p.addLine(to: CGPoint(x: cx + inner * cos(e), y: cy + inner * sin(e)))
+        p.addArc(center: CGPoint(x: cx, y: cy), radius: inner,
+                 startAngle: .radians(e), endAngle: .radians(s), clockwise: true)
+        p.closeSubpath()
+        return p
     }
 }
 
-// MARK: - 20分スタンド ポモドーロタイマー（トマトデザイン）
+// 断面の放射状仕切り線（8本）
+private struct TomatoVeins: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let cx = rect.midX, cy = rect.midY
+        let r     = min(rect.width, rect.height) / 2.0 * 0.93
+        let inner = r * 0.22
+        for i in 0..<8 {
+            let a = 2.0 * .pi / 8.0 * Double(i) - .pi / 2.0
+            p.move(to: CGPoint(x: cx + inner * cos(a), y: cy + inner * sin(a)))
+            p.addLine(to: CGPoint(x: cx + r * cos(a), y: cy + r * sin(a)))
+        }
+        return p
+    }
+}
+
+// プログレッシブ・トマト断面ビュー（revealedSlices: 0〜8）
+private struct LargeTomatoView: View {
+    let revealedSlices: Int
+    var pulse: Bool = false
+
+    private let fleshColor = Color(red: 1.00, green: 0.62, blue: 0.22)
+    private let paleColor  = Color(red: 0.97, green: 0.91, blue: 0.89)
+    private let coreColor  = Color(red: 0.96, green: 0.90, blue: 0.68)
+    private let stemGreen  = Color(red: 0.15, green: 0.58, blue: 0.09)
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = min(geo.size.width, geo.size.height)
+            ZStack {
+                // 外皮（グラデーション）
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [Color(red: 0.97, green: 0.33, blue: 0.18),
+                                 Color(red: 0.64, green: 0.09, blue: 0.04)],
+                        startPoint: UnitPoint(x: 0.35, y: 0.15),
+                        endPoint: .bottomTrailing
+                    ))
+                    .scaleEffect(pulse ? 1.013 : 0.992)
+                    .animation(.easeInOut(duration: 1.9).repeatForever(autoreverses: true), value: pulse)
+
+                // 果肉セグメント（時間経過で1つずつ点灯）
+                ForEach(0..<8, id: \.self) { i in
+                    TomatoWedge(index: i)
+                        .fill(i < revealedSlices
+                              ? fleshColor.opacity(0.92)
+                              : paleColor.opacity(0.16))
+                        .animation(.easeIn(duration: 0.55), value: revealedSlices)
+                }
+
+                // 仕切り線（ヴェイン）
+                TomatoVeins()
+                    .stroke(Color.white.opacity(0.55),
+                            style: StrokeStyle(lineWidth: 1.4))
+
+                // 種（Canvas で描画）
+                Canvas { ctx, csz in
+                    let hw   = Double(csz.width)  / 2.0
+                    let hh   = Double(csz.height) / 2.0
+                    let dist = Double(s) * 0.305
+                    let sr   = Double(s) * 0.023
+                    let sep  = Double(s) * 0.038
+                    let shd  = GraphicsContext.Shading.color(
+                        Color(red: 0.95, green: 0.88, blue: 0.58))
+                    for i in 0..<min(revealedSlices, 8) {
+                        let mid  = (Double(i) * 45.0 - 90.0 + 22.5) * .pi / 180.0
+                        let perp = mid + .pi / 2.0
+                        let bcx  = hw + dist * cos(mid)
+                        let bcy  = hh + dist * sin(mid)
+                        for d in [-1.0, 0.0, 1.0] {
+                            let px = bcx + cos(perp) * sep * d
+                            let py = bcy + sin(perp) * sep * d
+                            ctx.fill(
+                                Path(ellipseIn: CGRect(x: px - sr, y: py - sr,
+                                                      width: sr * 2, height: sr * 2)),
+                                with: shd)
+                        }
+                    }
+                }
+                .frame(width: s, height: s)
+
+                // 中心核（種の集まり）
+                Circle()
+                    .fill(coreColor)
+                    .overlay(Circle().stroke(Color.white.opacity(0.40), lineWidth: 1))
+                    .frame(width: s * 0.22, height: s * 0.22)
+
+                // ヘタ（上部）
+                Group {
+                    Capsule()
+                        .fill(stemGreen)
+                        .frame(width: s * 0.048, height: s * 0.078)
+                        .offset(y: -(s * 0.465))
+                    ForEach([-1, 0, 1], id: \.self) { n in
+                        Ellipse()
+                            .fill(stemGreen)
+                            .frame(width: s * 0.096, height: s * 0.050)
+                            .rotationEffect(.degrees(Double(n) * 40.0))
+                            .offset(y: -(s * 0.448))
+                    }
+                }
+
+                // 光沢ハイライト
+                Ellipse()
+                    .fill(Color.white.opacity(0.14))
+                    .frame(width: s * 0.29, height: s * 0.17)
+                    .offset(x: -s * 0.10, y: -s * 0.20)
+                    .blendMode(.screen)
+            }
+            .frame(width: s, height: s)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+// 完了時：トマトの左右半分（splitting 演出用）
+private struct TomatoHalf: View {
+    let isLeft: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = geo.size.height      // 高さ = フルトマトの直径
+            LargeTomatoView(revealedSlices: 8, pulse: false)
+                .frame(width: side, height: side)
+                .offset(x: isLeft ? 0 : -(side / 2.0))
+        }
+        .clipped()
+    }
+}
+
+// MARK: - 20分ポモドーロタイマー本体
 
 struct StandPomodoroView: View {
     @Environment(\.dismiss) private var dismiss
@@ -7616,10 +7910,10 @@ struct StandPomodoroView: View {
     let onComplete: () -> Void
 
     @State private var remainingSeconds: Int
-    @State private var timerFinished = false   // タイマー自然終了フラグ
-    @State private var showCompletion = false  // 完了画面表示フラグ
-    @State private var pulse = false
-    @State private var completionPulse = false
+    @State private var timerFinished  = false
+    @State private var showCompletion = false
+    @State private var pulse          = false
+    @State private var splitOffset: CGFloat = 0
     @State private var hapticTimer: Timer?
 
     init(durationSeconds: Int = 20 * 60, onComplete: @escaping () -> Void) {
@@ -7628,50 +7922,48 @@ struct StandPomodoroView: View {
         _remainingSeconds = State(initialValue: durationSeconds)
     }
 
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
-    private let tomatoRed      = Color(red: 0.94, green: 0.27, blue: 0.15)
-    private let tomatoOrange   = Color(red: 0.99, green: 0.55, blue: 0.12)
-    private let tomatoLight    = Color(red: 1.0,  green: 0.88, blue: 0.84)
-    private let tomatoDark     = Color(red: 0.55, green: 0.08, blue: 0.02)
-    private let bgTop          = Color(red: 0.99, green: 0.97, blue: 0.96)
-    private let bgBottom       = Color(red: 0.98, green: 0.93, blue: 0.91)
-    private let completionGreen = Color(red: 0.15, green: 0.72, blue: 0.38)
+    private let tomatoRed   = Color(red: 0.86, green: 0.17, blue: 0.09)
+    private let tomatoSkin  = Color(red: 0.94, green: 0.28, blue: 0.15)
+    private let doneGreen   = Color(red: 0.15, green: 0.72, blue: 0.38)
 
+    // 経過時間 → 表示スライス数（2.5分ごとに1つ解禁、最大8）
+    private var revealedSlices: Int {
+        guard durationSeconds > 0 else { return 0 }
+        return min(8, elapsedSeconds * 8 / durationSeconds)
+    }
     private var elapsedSeconds: Int { durationSeconds - remainingSeconds }
     private var progress: Double {
         durationSeconds > 0 ? Double(elapsedSeconds) / Double(durationSeconds) : 0
     }
-    private var remainProgress: Double { progress }
     private var timeText: String {
-        let m = remainingSeconds / 60
-        let s = remainingSeconds % 60
-        return String(format: "%02d:%02d", m, s)
+        String(format: "%02d:%02d", remainingSeconds / 60, remainingSeconds % 60)
     }
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [bgTop, bgBottom], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            LinearGradient(
+                colors: [Color(red: 0.99, green: 0.97, blue: 0.95),
+                         Color(red: 0.97, green: 0.90, blue: 0.87)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-            // タイマー進行画面
-            if !showCompletion {
-                timerScreen
-            } else {
-                // 完了画面（タイマー自然終了時のみ）
-                completionScreen
-            }
+            if !showCompletion { timerScreen } else { completionScreen }
         }
         .onAppear { pulse = true }
-        .onReceive(timer) { _ in
+        .onReceive(ticker) { _ in
             guard !timerFinished else { return }
             if remainingSeconds > 0 {
                 remainingSeconds -= 1
             } else {
-                // タイマー自然終了 → 完了画面へ（記録はまだしない）
-                timerFinished = true
+                timerFinished  = true
                 showCompletion = true
                 startCompletionHaptics()
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.62)) {
+                    splitOffset = 48
+                }
             }
         }
         .onDisappear { stopHaptics() }
@@ -7681,88 +7973,111 @@ struct StandPomodoroView: View {
 
     private var timerScreen: some View {
         VStack(spacing: 0) {
-            // 右上クローズボタン
+            // 閉じるボタン
             HStack {
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 15 * UIScale.font, weight: .bold))
-                        .foregroundColor(tomatoDark.opacity(0.45))
+                        .foregroundColor(tomatoRed.opacity(0.42))
                         .padding(10)
-                        .background(tomatoRed.opacity(0.08))
+                        .background(tomatoSkin.opacity(0.08))
                         .clipShape(Circle())
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.top, 14)
 
-            Spacer()
-
+            // タイトル
             VStack(spacing: 4) {
-                Text("スタンドポモドーロ")
+                Text("20分ポモドーロ")
                     .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
-                    .foregroundColor(tomatoRed.opacity(0.65))
+                    .foregroundColor(tomatoRed.opacity(0.62))
                     .tracking(1.5)
-                Text("20分間、立って集中")
+                Text("立って集中する時間")
                     .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(tomatoDark)
+                    .foregroundColor(tomatoRed)
             }
-            .padding(.bottom, 28)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
 
-            // トマト柑橘タイマー
-            ZStack {
-                Circle()
-                    .stroke(tomatoLight, lineWidth: 18)
-                Circle()
-                    .trim(from: 0, to: CGFloat(remainProgress))
-                    .stroke(
-                        AngularGradient(colors: [tomatoOrange, tomatoRed, tomatoOrange], center: .center),
-                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.8), value: remainProgress)
-
+            // ── 大きなトマト ──
+            GeometryReader { geo in
+                let side = min(geo.size.width * 0.78, geo.size.height * 0.86)
+                let ringW: CGFloat = 12
+                let ringR = side / 2 + ringW / 2 + 5   // トマト外径 + 隙間
                 ZStack {
-                    TomatoSliceShape(segments: 8)
-                        .fill(tomatoOrange.opacity(0.80))
-                        .frame(width: 176, height: 176)
-                    TomatoSliceShape(segments: 8)
-                        .fill(RadialGradient(
-                            colors: [Color.white.opacity(0.30), Color.clear],
-                            center: .center, startRadius: 0, endRadius: 80
-                        ))
-                        .frame(width: 176, height: 176)
+                    // ── 進捗リング（トマトの外周）──
+                    // 背景トラック
                     Circle()
-                        .fill(bgTop)
-                        .frame(width: 52, height: 52)
+                        .stroke(tomatoSkin.opacity(0.18), lineWidth: ringW)
+                        .frame(width: ringR * 2, height: ringR * 2)
+
+                    // 進捗アーク（時計回りに伸びる）
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress))
+                        .stroke(
+                            AngularGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.70, blue: 0.20),
+                                    tomatoSkin,
+                                    tomatoRed,
+                                    tomatoRed
+                                ],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: ringW, lineCap: .round)
+                        )
+                        .frame(width: ringR * 2, height: ringR * 2)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.linear(duration: 1.0), value: progress)
+
+                    // 先端のドット（現在位置）
+                    if progress > 0 && progress < 1 {
+                        let angle = (progress * 360 - 90) * .pi / 180
+                        Circle()
+                            .fill(tomatoRed)
+                            .frame(width: ringW * 0.9, height: ringW * 0.9)
+                            .shadow(color: tomatoRed.opacity(0.5), radius: 3)
+                            .offset(
+                                x: CGFloat(cos(angle)) * ringR,
+                                y: CGFloat(sin(angle)) * ringR
+                            )
+                            .animation(.linear(duration: 1.0), value: progress)
+                    }
+
+                    // ── トマト本体 ──
+                    LargeTomatoView(revealedSlices: revealedSlices, pulse: pulse)
+                        .frame(width: side, height: side)
+
+                    // カウントダウン（中央オーバーレイ）
                     VStack(spacing: 2) {
                         Text(timeText)
-                            .font(.system(size: 26 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(tomatoDark)
+                            .font(.system(size: side * 0.145, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .shadow(color: Color.black.opacity(0.28), radius: 3, y: 1)
                             .monospacedDigit()
-                        Text("残り")
-                            .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
-                            .foregroundColor(tomatoDark.opacity(0.5))
+                        Text("\(revealedSlices)/8 スライス")
+                            .font(.system(size: side * 0.062, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.82))
+                            .shadow(color: Color.black.opacity(0.22), radius: 1)
                     }
                 }
-                .scaleEffect(pulse ? 1.015 : 1.0)
-                .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulse)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(width: 240, height: 240)
 
-            Spacer()
-
-            HStack(spacing: 6) {
+            // ヒント
+            HStack(spacing: 5) {
                 Image(systemName: "lightbulb.fill")
                     .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(tomatoOrange)
+                    .foregroundColor(tomatoSkin)
                 Text("立つことで集中力・代謝がアップ！")
                     .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
-                    .foregroundColor(tomatoDark.opacity(0.45))
+                    .foregroundColor(tomatoRed.opacity(0.42))
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, 14)
 
-            // 途中完了ボタン（明示的な完了）
+            // 完了ボタン
             Button { finishAndRecord() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "flag.checkered")
@@ -7773,52 +8088,47 @@ struct StandPomodoroView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(LinearGradient(colors: [tomatoOrange, tomatoRed],
-                                           startPoint: .leading, endPoint: .trailing))
+                .background(
+                    LinearGradient(colors: [tomatoSkin, tomatoRed],
+                                   startPoint: .leading, endPoint: .trailing)
+                )
                 .cornerRadius(18)
                 .shadow(color: tomatoRed.opacity(0.25), radius: 8, y: 3)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 24)
-            .padding(.bottom, 36)
+            .padding(.bottom, 38)
         }
     }
 
-    // MARK: - 完了画面（タイマー自然終了後）
+    // MARK: - 完了画面（真っ二つに割れたトマト）
 
     private var completionScreen: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 18) {
             Spacer()
 
-            // 完了アニメーション
-            ZStack {
-                Circle()
-                    .fill(completionGreen.opacity(0.15))
-                    .frame(width: 200, height: 200)
-                    .scaleEffect(completionPulse ? 1.15 : 1.0)
-                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                               value: completionPulse)
+            Text("🎉 20分完了！")
+                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(tomatoRed)
 
-                Circle()
-                    .fill(completionGreen.opacity(0.25))
-                    .frame(width: 160, height: 160)
-
-                VStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 64 * UIScale.font))
-                        .foregroundColor(completionGreen)
-                    Text("20分完了！")
-                        .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(Color(red: 0.08, green: 0.28, blue: 0.15))
-                    Text("お疲れ様でした")
-                        .font(.system(size: 14 * UIScale.font, weight: .semibold, design: .rounded))
-                        .foregroundColor(Color(red: 0.08, green: 0.28, blue: 0.15).opacity(0.6))
-                }
+            // 割れたトマト（左右に開くアニメーション）
+            HStack(alignment: .center, spacing: splitOffset) {
+                TomatoHalf(isLeft: true)
+                    .frame(width: 108, height: 216)
+                    .rotationEffect(.degrees(-11))
+                TomatoHalf(isLeft: false)
+                    .frame(width: 108, height: 216)
+                    .rotationEffect(.degrees(11))
             }
+            .frame(height: 240)
+
+            Text("お疲れ様でした！\n立ち仕事でよく頑張りました 🍅")
+                .font(.system(size: 14 * UIScale.font, weight: .semibold, design: .rounded))
+                .foregroundColor(tomatoRed.opacity(0.60))
+                .multilineTextAlignment(.center)
 
             Spacer()
 
-            // 閉じるボタンで記録確定
             Button { finishAndRecord() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
@@ -7829,28 +8139,27 @@ struct StandPomodoroView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .background(LinearGradient(colors: [completionGreen, Color(red: 0.08, green: 0.55, blue: 0.28)],
-                                           startPoint: .leading, endPoint: .trailing))
+                .background(
+                    LinearGradient(colors: [doneGreen, Color(red: 0.08, green: 0.55, blue: 0.28)],
+                                   startPoint: .leading, endPoint: .trailing)
+                )
                 .cornerRadius(18)
-                .shadow(color: completionGreen.opacity(0.5), radius: 10, y: 4)
+                .shadow(color: doneGreen.opacity(0.45), radius: 10, y: 4)
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 24)
             .padding(.bottom, 50)
         }
-        .onAppear { completionPulse = true }
     }
 
-    // MARK: - ハプティクス
+    // MARK: - ハプティクス・記録
 
     private func startCompletionHaptics() {
-        // 連続ハプティクスで気づかせる（2秒おきに3回）
         let gen = UINotificationFeedbackGenerator()
         gen.notificationOccurred(.success)
-        hapticTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { t in
+        hapticTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        // 10秒後に自動停止
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { stopHaptics() }
     }
 
@@ -7858,8 +8167,6 @@ struct StandPomodoroView: View {
         hapticTimer?.invalidate()
         hapticTimer = nil
     }
-
-    // MARK: - 記録・終了
 
     private func finishAndRecord() {
         stopHaptics()
@@ -7909,8 +8216,8 @@ private struct DailySetsExpandableSection: View {
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 2)
-                .padding(.bottom, 4)
+                .padding(.top, 0)
+                .padding(.bottom, 3)
             }
             .buttonStyle(.plain)
 

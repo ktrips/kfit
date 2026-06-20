@@ -2295,6 +2295,31 @@ class PhotoLogManager: ObservableObject {
         persistHistory()
     }
 
+    /// いいねをトグル
+    func toggleLike(id: String) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx].isLiked.toggle()
+        history[idx].likeCount = max(0, history[idx].likeCount + (history[idx].isLiked ? 1 : -1))
+        persistHistory()
+    }
+
+    /// フィードコメントを追加
+    func addFeedComment(id: String, text: String) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
+        let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+        let c = FeedComment(text: text, authorName: authorName, authorPhotoURL: authorPhotoURL)
+        history[idx].feedComments.append(c)
+        persistHistory()
+    }
+
+    /// フィードコメントを削除
+    func deleteFeedComment(itemId: String, commentId: String) {
+        guard let idx = history.firstIndex(where: { $0.id == itemId }) else { return }
+        history[idx].feedComments.removeAll { $0.id == commentId }
+        persistHistory()
+    }
+
     /// お気に入りをトグル
     func toggleFavorite(id: String) {
         if let idx = history.firstIndex(where: { $0.id == id }) {

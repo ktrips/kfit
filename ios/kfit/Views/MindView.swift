@@ -143,27 +143,27 @@ struct MindView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🧘").font(.system(size: 11 * UIScale.font))
+                    Text("🧘").font(.system(size: 13 * UIScale.font))
                     Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(mindGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🤸").font(.system(size: 11 * UIScale.font))
+                    Text("🤸").font(.system(size: 13 * UIScale.font))
                     Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(stretchGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("☀️").font(.system(size: 11 * UIScale.font))
+                    Text("☀️").font(.system(size: 13 * UIScale.font))
                     Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
-                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }

@@ -1039,19 +1039,6 @@ struct MandalaChartView: View {
                     )
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if allTotal > 0 {
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("\(allDone)/\(allTotal)")
-                        .font(.system(size: 13 * UIScale.font, weight: .black))
-                        .foregroundColor(allDone == allTotal ? Color.duoGreen : Color.duoDark)
-                    Text("全体")
-                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(8)
-            }
-        }
         .onAppear {
             withAnimation(.easeOut(duration: 0.5)) { appeared = true }
         }

@@ -43,7 +43,6 @@ struct ComplicationData {
     }
     var mealDone: Bool { mealGoal > 0 && mealLogged >= mealGoal }
 
-    /// 全目標のうち達成済みの数（目標が設定されているもののみカウント）
     var goalsCompleted: Int {
         var count = 0
         if trainingGoal > 0 && trainingDone   { count += 1 }
@@ -64,7 +63,6 @@ struct ComplicationData {
     }
     var allDone: Bool { goalsTotal > 0 && goalsCompleted == goalsTotal }
 
-    /// 未達成項目（やるべきこと）の一覧
     var pendingItems: [(icon: String, label: String)] {
         var items: [(String, String)] = []
         if trainingGoal > 0 && !trainingDone {
@@ -95,7 +93,7 @@ struct KfitEntry: TimelineEntry {
     let data: ComplicationData
 }
 
-// MARK: - Shared Provider (base)
+// MARK: - Shared Provider
 
 private func makeTimeline() -> Timeline<KfitEntry> {
     let entry = KfitEntry(date: Date(), data: .current())
@@ -103,26 +101,30 @@ private func makeTimeline() -> Timeline<KfitEntry> {
     return Timeline(entries: [entry], policy: .after(next))
 }
 
-// MARK: - Shared Circular Arc Shape
+// MARK: - Circular Progress Arc
 
 private struct ProgressArc: Shape {
     var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        let r = min(rect.width, rect.height) / 2 - 2
-        let start = -Double.pi / 2
-        let end = start + 2 * Double.pi * min(1, max(0, progress))
-        p.addArc(center: center, radius: r,
+        let radius = min(rect.width, rect.height) / 2 - 2
+        let start: Double = -.pi / 2
+        let end = start + 2 * .pi * min(1, max(0, progress))
+        p.addArc(center: center, radius: radius,
                  startAngle: .radians(start), endAngle: .radians(end),
                  clockwise: false)
         return p
     }
 }
 
-// MARK: - Shared Circular Base View
+// MARK: - Circular Complication View
 
-private struct CircularBase: View {
+private struct CircularComplicationView: View {
     let progress: Double
     let done: Bool
     let icon: String
@@ -133,11 +135,16 @@ private struct CircularBase: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(color.opacity(0.2), lineWidth: 3)
-            ProgressArc(progress: progress)
-                .stroke(done ? .green : color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-            VStack(spacing: 0) {
-                Text(icon).font(.system(size: 11))
+                .stroke(color.opacity(0.25), lineWidth: 4)
+            if progress > 0 {
+                ProgressArc(progress: progress)
+                    .stroke(done ? Color.green : color,
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            }
+            VStack(spacing: 1) {
+                Text(icon)
+                    .font(.system(size: 13))
+                    .widgetAccentable()
                 if denominator > 0 {
                     Text("\(numerator)/\(denominator)")
                         .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -149,6 +156,50 @@ private struct CircularBase: View {
                 }
             }
         }
+        .containerBackground(.clear, for: .widget)
+    }
+}
+
+// MARK: - Rectangular Complication View
+
+private struct RectangularComplicationView: View {
+    let icon: String
+    let title: String
+    let numerator: Int
+    let denominator: Int
+    let unit: String
+    let done: Bool
+    let progress: Double
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text(icon).font(.system(size: 13))
+                Text(title)
+                    .font(.headline)
+                    .widgetAccentable()
+                Spacer()
+                if done { Text("✅").font(.system(size: 12)) }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("\(numerator)")
+                    .font(.title3).bold()
+                    .widgetAccentable()
+                if denominator > 0 {
+                    Text("/ \(denominator) \(unit)")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(unit)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if denominator > 0 {
+                ProgressView(value: progress)
+                    .tint(done ? .green : color)
+            }
+        }
+        .containerBackground(.clear, for: .widget)
     }
 }
 
@@ -179,33 +230,19 @@ struct TrainingEntryView: View {
         let d = entry.data
         switch family {
         case .accessoryCircular:
-            CircularBase(progress: d.trainingProgress, done: d.trainingDone,
-                         icon: "💪", numerator: d.trainingCompleted,
-                         denominator: d.trainingGoal, color: .blue)
+            CircularComplicationView(
+                progress: d.trainingProgress, done: d.trainingDone,
+                icon: "💪", numerator: d.trainingCompleted,
+                denominator: d.trainingGoal, color: .blue)
         case .accessoryRectangular:
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text("💪").font(.system(size: 13))
-                    Text("トレーニング").font(.headline)
-                    Spacer()
-                    if d.trainingDone { Text("✅").font(.system(size: 12)) }
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(d.trainingCompleted)")
-                        .font(.title3).bold()
-                    if d.trainingGoal > 0 {
-                        Text("/ \(d.trainingGoal) セット")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("セット完了")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if d.trainingGoal > 0 {
-                    ProgressView(value: d.trainingProgress)
-                        .tint(d.trainingDone ? .green : .blue)
-                }
-            }
+            RectangularComplicationView(
+                icon: "💪", title: "トレーニング",
+                numerator: d.trainingCompleted,
+                denominator: d.trainingGoal,
+                unit: "セット",
+                done: d.trainingDone,
+                progress: d.trainingProgress,
+                color: .blue)
         case .accessoryInline:
             if d.trainingGoal > 0 {
                 Text("💪 \(d.trainingCompleted)/\(d.trainingGoal) セット")
@@ -213,9 +250,10 @@ struct TrainingEntryView: View {
                 Text("💪 \(d.trainingCompleted) セット")
             }
         default:
-            CircularBase(progress: d.trainingProgress, done: d.trainingDone,
-                         icon: "💪", numerator: d.trainingCompleted,
-                         denominator: d.trainingGoal, color: .blue)
+            CircularComplicationView(
+                progress: d.trainingProgress, done: d.trainingDone,
+                icon: "💪", numerator: d.trainingCompleted,
+                denominator: d.trainingGoal, color: .blue)
         }
     }
 }
@@ -235,6 +273,8 @@ struct kfit_Watch_Complication: Widget {
 // ===========================================================================
 // MARK: - 2. Mindfulness Complication
 // ===========================================================================
+
+private let mindfulColor = Color(red: 0.61, green: 0.35, blue: 0.71)
 
 struct MindfulnessProvider: TimelineProvider {
     func placeholder(in context: Context) -> KfitEntry {
@@ -259,34 +299,19 @@ struct MindfulnessEntryView: View {
         let d = entry.data
         switch family {
         case .accessoryCircular:
-            CircularBase(progress: d.mindfulnessProgress, done: d.mindfulnessDone,
-                         icon: "🧘", numerator: d.mindfulnessCompleted,
-                         denominator: d.mindfulnessGoal,
-                         color: Color(red: 0.61, green: 0.35, blue: 0.71))
+            CircularComplicationView(
+                progress: d.mindfulnessProgress, done: d.mindfulnessDone,
+                icon: "🧘", numerator: d.mindfulnessCompleted,
+                denominator: d.mindfulnessGoal, color: mindfulColor)
         case .accessoryRectangular:
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text("🧘").font(.system(size: 13))
-                    Text("マインドフルネス").font(.headline)
-                    Spacer()
-                    if d.mindfulnessDone { Text("✅").font(.system(size: 12)) }
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(d.mindfulnessCompleted)")
-                        .font(.title3).bold()
-                    if d.mindfulnessGoal > 0 {
-                        Text("/ \(d.mindfulnessGoal) 分")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("分")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if d.mindfulnessGoal > 0 {
-                    ProgressView(value: d.mindfulnessProgress)
-                        .tint(d.mindfulnessDone ? .green : Color(red: 0.61, green: 0.35, blue: 0.71))
-                }
-            }
+            RectangularComplicationView(
+                icon: "🧘", title: "マインドフルネス",
+                numerator: d.mindfulnessCompleted,
+                denominator: d.mindfulnessGoal,
+                unit: "分",
+                done: d.mindfulnessDone,
+                progress: d.mindfulnessProgress,
+                color: mindfulColor)
         case .accessoryInline:
             if d.mindfulnessGoal > 0 {
                 Text("🧘 \(d.mindfulnessCompleted)/\(d.mindfulnessGoal) 分")
@@ -294,10 +319,10 @@ struct MindfulnessEntryView: View {
                 Text("🧘 \(d.mindfulnessCompleted) 分")
             }
         default:
-            CircularBase(progress: d.mindfulnessProgress, done: d.mindfulnessDone,
-                         icon: "🧘", numerator: d.mindfulnessCompleted,
-                         denominator: d.mindfulnessGoal,
-                         color: Color(red: 0.61, green: 0.35, blue: 0.71))
+            CircularComplicationView(
+                progress: d.mindfulnessProgress, done: d.mindfulnessDone,
+                icon: "🧘", numerator: d.mindfulnessCompleted,
+                denominator: d.mindfulnessGoal, color: mindfulColor)
         }
     }
 }
@@ -309,7 +334,7 @@ struct MindfulnessComplication: Widget {
             MindfulnessEntryView(entry: entry)
         }
         .configurationDisplayName("マインドフルネス")
-        .description("今日のマインドフルネス達成回数/目標を表示")
+        .description("今日のマインドフルネス達成分数/目標を表示")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }
@@ -317,6 +342,8 @@ struct MindfulnessComplication: Widget {
 // ===========================================================================
 // MARK: - 3. Meal Complication
 // ===========================================================================
+
+private let mealOrange = Color(red: 1.0, green: 0.59, blue: 0.0)
 
 struct MealProvider: TimelineProvider {
     func placeholder(in context: Context) -> KfitEntry {
@@ -339,36 +366,21 @@ struct MealEntryView: View {
 
     var body: some View {
         let d = entry.data
-        let orange = Color(red: 1.0, green: 0.59, blue: 0.0)
         switch family {
         case .accessoryCircular:
-            CircularBase(progress: d.mealProgress, done: d.mealDone,
-                         icon: "🍽️", numerator: d.mealLogged,
-                         denominator: d.mealGoal, color: orange)
+            CircularComplicationView(
+                progress: d.mealProgress, done: d.mealDone,
+                icon: "🍽️", numerator: d.mealLogged,
+                denominator: d.mealGoal, color: mealOrange)
         case .accessoryRectangular:
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text("🍽️").font(.system(size: 13))
-                    Text("食事記録").font(.headline)
-                    Spacer()
-                    if d.mealDone { Text("✅").font(.system(size: 12)) }
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(d.mealLogged)")
-                        .font(.title3).bold()
-                    if d.mealGoal > 0 {
-                        Text("/ \(d.mealGoal) kcal")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("kcal")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if d.mealGoal > 0 {
-                    ProgressView(value: d.mealProgress)
-                        .tint(d.mealDone ? .green : orange)
-                }
-            }
+            RectangularComplicationView(
+                icon: "🍽️", title: "食事記録",
+                numerator: d.mealLogged,
+                denominator: d.mealGoal,
+                unit: "kcal",
+                done: d.mealDone,
+                progress: d.mealProgress,
+                color: mealOrange)
         case .accessoryInline:
             if d.mealGoal > 0 {
                 Text("🍽️ \(d.mealLogged)/\(d.mealGoal)kcal")
@@ -376,9 +388,10 @@ struct MealEntryView: View {
                 Text("🍽️ \(d.mealLogged)kcal")
             }
         default:
-            CircularBase(progress: d.mealProgress, done: d.mealDone,
-                         icon: "🍽️", numerator: d.mealLogged,
-                         denominator: d.mealGoal, color: orange)
+            CircularComplicationView(
+                progress: d.mealProgress, done: d.mealDone,
+                icon: "🍽️", numerator: d.mealLogged,
+                denominator: d.mealGoal, color: mealOrange)
         }
     }
 }
@@ -396,7 +409,7 @@ struct MealComplication: Widget {
 }
 
 // ===========================================================================
-// MARK: - 4. Motivation Complication（やるべきことメッセージ）
+// MARK: - 4. Motivation Complication（全体進捗）
 // ===========================================================================
 
 struct MotivationProvider: TimelineProvider {
@@ -424,25 +437,31 @@ struct MotivationEntryView: View {
         case .accessoryCircular:
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.15), lineWidth: 3)
-                ProgressArc(progress: d.overallProgress)
-                    .stroke(d.allDone ? .green : .yellow,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                VStack(spacing: 0) {
+                    .stroke(Color.yellow.opacity(0.25), lineWidth: 4)
+                if d.overallProgress > 0 {
+                    ProgressArc(progress: d.overallProgress)
+                        .stroke(d.allDone ? Color.green : Color.yellow,
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                }
+                VStack(spacing: 1) {
                     Text(d.allDone ? "🎉" : "⚡")
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
+                        .widgetAccentable()
                     Text(d.goalsTotal > 0
                          ? "\(d.goalsCompleted)/\(d.goalsTotal)"
                          : "-")
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                 }
             }
+            .containerBackground(.clear, for: .widget)
         case .accessoryRectangular:
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 if d.allDone {
                     HStack(spacing: 4) {
                         Text("🎉").font(.system(size: 13))
-                        Text("今日の目標達成！").font(.headline)
+                        Text("今日の目標達成！")
+                            .font(.headline)
+                            .widgetAccentable()
                     }
                     Text("全てクリアしました").font(.caption).foregroundStyle(.secondary)
                 } else if d.pendingItems.isEmpty {
@@ -451,7 +470,9 @@ struct MotivationEntryView: View {
                 } else {
                     HStack(spacing: 4) {
                         Text("⚡").font(.system(size: 12))
-                        Text("残りのタスク").font(.headline)
+                        Text("残りのタスク")
+                            .font(.headline)
+                            .widgetAccentable()
                     }
                     ForEach(Array(d.pendingItems.prefix(3).enumerated()), id: \.offset) { _, item in
                         HStack(spacing: 3) {
@@ -462,10 +483,12 @@ struct MotivationEntryView: View {
                     }
                 }
             }
+            .containerBackground(.clear, for: .widget)
         case .accessoryInline:
             Text(d.motivationInlineText)
         default:
             Text(d.motivationInlineText)
+                .containerBackground(.clear, for: .widget)
         }
     }
 }
@@ -489,6 +512,15 @@ struct MotivationComplication: Widget {
 } timeline: {
     KfitEntry(date: .now, data: ComplicationData(
         trainingCompleted: 3, trainingGoal: 5,
-        mindfulnessCompleted: 1, mindfulnessGoal: 2,
+        mindfulnessCompleted: 25, mindfulnessGoal: 40,
+        mealLogged: 800, mealGoal: 1800))
+}
+
+#Preview(as: .accessoryRectangular) {
+    kfit_Watch_Complication()
+} timeline: {
+    KfitEntry(date: .now, data: ComplicationData(
+        trainingCompleted: 3, trainingGoal: 5,
+        mindfulnessCompleted: 25, mindfulnessGoal: 40,
         mealLogged: 800, mealGoal: 1800))
 }

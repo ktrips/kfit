@@ -11,6 +11,14 @@ extension UIImage {
     }
 }
 
+/// アプリ全体のUIスケール設定。
+/// フォントやアイコン（SFシンボル・絵文字）の固定サイズ指定に掛けることで、
+/// 一括で「少しだけ大きく」表示する。1.0 に戻せば元のサイズに復帰できる。
+enum UIScale {
+    /// フォント／アイコンの拡大率
+    static let font: CGFloat = 1.1
+}
+
 extension Color {
     static let duoGreen     = Color(red: 0.345, green: 0.800, blue: 0.008) // #58CC02
     static let duoBg        = Color(.systemGroupedBackground)   // adaptive: light gray / dark

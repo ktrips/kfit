@@ -180,7 +180,7 @@ struct SettingsView: View {
             saveAndClose()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 15, weight: .black))
+                .font(.system(size: 15 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoGreen)
                 .frame(width: 40, height: 40)
                 .background(Color(.systemBackground))
@@ -275,9 +275,9 @@ struct SettingsView: View {
         } label: {
             VStack(spacing: 5) {
                 Image(systemName: tab.icon)
-                    .font(.system(size: 17, weight: .black))
+                    .font(.system(size: 17 * UIScale.font, weight: .black))
                 Text(tab.label)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
             }
             .foregroundColor(isSelected ? .white : Color.duoGreen)
             .frame(maxWidth: .infinity)
@@ -298,14 +298,14 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "target")
-                    .font(.system(size: 14, weight: .black))
+                    .font(.system(size: 14 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
                     .frame(width: 30, height: 30)
                     .background(Color.duoGreen)
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text("GOAL目標設定")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Text("体重・体脂肪・カロリー目標")
                         .font(.caption)
@@ -326,14 +326,14 @@ struct SettingsView: View {
     private var logTabVisibilityRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "plus.circle.fill")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 15 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoGreen)
                 .frame(width: 32, height: 32)
                 .background(Color.duoGreen.opacity(0.10))
                 .clipShape(Circle())
 
             Text("LOGタブ")
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 13 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoDark)
 
             Spacer()
@@ -356,14 +356,14 @@ struct SettingsView: View {
     private func tabVisibilityRow(tab: MainMenuTab, index: Int) -> some View {
         HStack(spacing: 8) {
             Image(systemName: tab.icon)
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 15 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoGreen)
                 .frame(width: 32, height: 32)
                 .background(Color.duoGreen.opacity(0.10))
                 .clipShape(Circle())
 
             Text(tab.settingsLabel)
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 13 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoDark)
 
             Spacer()
@@ -374,7 +374,7 @@ struct SettingsView: View {
                     moveTab(tab, direction: -1)
                 } label: {
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
                         .foregroundColor(index == 0 ? Color.gray.opacity(0.30) : Color.duoGreen)
                         .frame(width: 22, height: 22)
                 }
@@ -385,7 +385,7 @@ struct SettingsView: View {
                     moveTab(tab, direction: 1)
                 } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
                         .foregroundColor(index == orderedConfigurableTabs.count - 1 ? Color.gray.opacity(0.30) : Color.duoGreen)
                         .frame(width: 22, height: 22)
                 }
@@ -520,14 +520,14 @@ struct SettingsView: View {
                 Button { showTimeSlotGoals = true } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "clock.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoGreen)
                             .frame(width: 32, height: 32)
                             .background(Color.duoGreen.opacity(0.10))
                             .clipShape(Circle())
                         VStack(alignment: .leading, spacing: 2) {
                             Text("時間帯別の目標")
-                                .font(.system(size: 13, weight: .black))
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Text("朝・昼・午後・夜の時間帯ごとに設定")
                                 .font(.caption)
@@ -751,14 +751,14 @@ struct SettingsView: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "clock.fill")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 15 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoGreen)
                                 .frame(width: 32, height: 32)
                                 .background(Color.duoGreen.opacity(0.10))
                                 .clipShape(Circle())
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("時間帯別の目標")
-                                    .font(.system(size: 13, weight: .black))
+                                    .font(.system(size: 13 * UIScale.font, weight: .black))
                                     .foregroundColor(Color.duoDark)
                                 Text("朝・昼・午後・夜の時間帯ごとに設定")
                                     .font(.caption)
@@ -851,10 +851,10 @@ struct SettingsView: View {
             }
             HStack(spacing: 8) {
                 Image(systemName: "link")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoGreen)
                 TextField("https://yonda.ktrips.net", text: $studyBookUrl)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * UIScale.font))
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     .keyboardType(.URL)
@@ -874,7 +874,7 @@ struct SettingsView: View {
     private func weekdayRowView(idx: Int) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text(weekdayGoals[idx].label)
-                .font(.system(size: 14, weight: .black, design: .rounded))
+                .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(weekdayGoals[idx].hasAnyGoal ? Color.duoGreen : Color.duoSubtitle)
                 .frame(width: 24, alignment: .center)
 
@@ -900,7 +900,7 @@ struct SettingsView: View {
                         showAddWeekdayCustom = true
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.system(size: 10 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.horizontal, 8).padding(.vertical, 5)
                             .background(Color(.systemGray6))
@@ -916,9 +916,9 @@ struct SettingsView: View {
     private func weekdayToggleChip(_ emoji: String, _ label: String, _ isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Text(emoji).font(.system(size: 11))
+                Text(emoji).font(.system(size: 11 * UIScale.font))
                 Text(label)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(isOn ? .white : Color.duoSubtitle)
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
@@ -930,9 +930,9 @@ struct SettingsView: View {
 
     private func weekdayCustomChip(_ emoji: String, _ label: String, onRemove: @escaping () -> Void) -> some View {
         HStack(spacing: 3) {
-            Text(emoji).font(.system(size: 11))
+            Text(emoji).font(.system(size: 11 * UIScale.font))
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(.white)
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
@@ -958,7 +958,7 @@ struct SettingsView: View {
             VStack(spacing: 20) {
                 HStack(spacing: 12) {
                     TextField("絵文字", text: $newDailyGoalEmoji)
-                        .font(.system(size: 28))
+                        .font(.system(size: 28 * UIScale.font))
                         .multilineTextAlignment(.center)
                         .frame(width: 56)
                         .padding(8)
@@ -1032,7 +1032,7 @@ struct SettingsView: View {
             VStack(spacing: 20) {
                 HStack(spacing: 12) {
                     TextField("絵文字", text: $newWeekdayGoalEmoji)
-                        .font(.system(size: 28))
+                        .font(.system(size: 28 * UIScale.font))
                         .multilineTextAlignment(.center)
                         .frame(width: 56)
                         .padding(8)
@@ -1114,9 +1114,9 @@ struct SettingsView: View {
         Button(action: action) {
             HStack(spacing: 3) {
                 Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.system(size: 9 * UIScale.font, weight: .black))
                 Text("初期値")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
             }
             .foregroundColor(Color.duoSubtitle)
             .padding(.horizontal, 8)
@@ -1238,7 +1238,7 @@ struct SettingsView: View {
     private func settingsStepperButton(systemName: String, isEnabled: Bool, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .black))
+                .font(.system(size: 12 * UIScale.font, weight: .black))
                 .foregroundColor(isEnabled ? color : Color(.systemGray2))
                 .frame(width: 25, height: 25)
                 .background(isEnabled ? Color.white.opacity(0.92) : Color(.systemGray6))
@@ -1490,7 +1490,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("絵文字").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
                     TextField("絵文字を入力（例: 📚）", text: $newGoalEmoji)
-                        .font(.system(size: 36)).multilineTextAlignment(.center)
+                        .font(.system(size: 36 * UIScale.font)).multilineTextAlignment(.center)
                         .padding().background(Color(.systemGray6)).cornerRadius(12)
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -1590,7 +1590,7 @@ struct SettingsView: View {
             VStack(spacing: 20) {
                 HStack(spacing: 12) {
                     TextField("絵文字", text: $newActivityEmoji)
-                        .font(.system(size: 28))
+                        .font(.system(size: 28 * UIScale.font))
                         .multilineTextAlignment(.center)
                         .frame(width: 56)
                         .padding(8)

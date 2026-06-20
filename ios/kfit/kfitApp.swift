@@ -143,6 +143,9 @@ struct kfitApp: App {
                 }
             }
             .preferredColorScheme(colorSchemePref == "dark" ? .dark : .light)
+            // セマンティックフォント(.caption/.body等)も全体的に少しだけ大きく。
+            // 下限を1段階上げ、アクセシビリティでさらに大きくする設定は尊重する
+            .dynamicTypeSize(.xLarge ... .accessibility3)
         }
         // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -451,11 +454,11 @@ struct MainTabView: View {
                         .frame(width: 24, height: 24)
                         .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
                         .foregroundColor(Color(red: 0.22, green: 0.68, blue: 0.0))
                 }
                 Text("LOG")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(.white)
             }
             .frame(maxWidth: .infinity)
@@ -471,9 +474,9 @@ struct MainTabView: View {
         } label: {
             VStack(spacing: 1) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
             }
             .foregroundColor(isSelected ? Color(red: 0.22, green: 0.68, blue: 0.0) : .white.opacity(0.88))
             .padding(.vertical, 3)
@@ -586,7 +589,7 @@ struct HeaderNavigationMenu: View {
             }
         } label: {
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 13 * UIScale.font, weight: .black))
                 .foregroundColor(.white)
                 .frame(width: 26, height: 26)
                 .background(Color.white.opacity(0.18))

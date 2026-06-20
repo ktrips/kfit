@@ -207,9 +207,9 @@ struct DietGoalSettingsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                         Text("AIで計算")
-                            .font(.system(size: 11, weight: .black))
+                            .font(.system(size: 11 * UIScale.font, weight: .black))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -306,16 +306,16 @@ struct DietGoalSettingsView: View {
                         if currentWeight > 0 {
                             HStack(spacing: 4) {
                                 Text(String(format: "%.1f", currentWeight))
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Image(systemName: "arrow.right")
-                                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 Text(String(format: "%.1f", projectedEndWeight))
-                                    .font(.system(size: 14, weight: .black))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black))
                                     .foregroundColor(defColor)
                             }
                             Text((projectedWeightChange >= 0 ? "+" : "") + String(format: "%.1f kg", projectedWeightChange))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
                                 .foregroundColor(defColor)
                         } else {
                             Text("—").font(.caption).foregroundColor(Color.duoSubtitle)
@@ -341,16 +341,16 @@ struct DietGoalSettingsView: View {
                             let projectedEndFat = currentFat + projectedFatChange
                             HStack(spacing: 4) {
                                 Text(String(format: "%.1f", currentFat) + "%")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Image(systemName: "arrow.right")
-                                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 Text(String(format: "%.1f", projectedEndFat) + "%")
-                                    .font(.system(size: 14, weight: .black))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black))
                                     .foregroundColor(defColor)
                             }
                             Text((projectedFatChange >= 0 ? "+" : "") + String(format: "%.1f%%", projectedFatChange))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
                                 .foregroundColor(defColor)
                         } else {
                             Text("—").font(.caption).foregroundColor(Color.duoSubtitle)
@@ -399,7 +399,7 @@ struct DietGoalSettingsView: View {
 
     private func statBadge(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 4) {
-            Text(value).font(.system(size: 16, weight: .black)).foregroundColor(color)
+            Text(value).font(.system(size: 16 * UIScale.font, weight: .black)).foregroundColor(color)
             Text(label).font(.caption).foregroundColor(Color.duoSubtitle)
         }
     }
@@ -474,8 +474,8 @@ struct DietGoalSettingsView: View {
 
     private func summaryItem(label: String, value: String, unit: String, color: Color) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.system(size: 14, weight: .black)).foregroundColor(color)
-            Text(unit).font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+            Text(value).font(.system(size: 14 * UIScale.font, weight: .black)).foregroundColor(color)
+            Text(unit).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             Text(label).font(.caption).foregroundColor(Color.duoSubtitle)
         }
         .frame(maxWidth: .infinity)

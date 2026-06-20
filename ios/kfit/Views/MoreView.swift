@@ -26,7 +26,7 @@ struct MoreView: View {
                             }
                         } header: {
                             Text("タブ")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11 * UIScale.font, weight: .semibold))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }

@@ -120,7 +120,7 @@ struct HabitStackView: View {
         VStack(spacing: 20) {
             Spacer()
             Text("🔗")
-                .font(.system(size: 64))
+                .font(.system(size: 64 * UIScale.font))
             Text("習慣スタックを設定しよう")
                 .font(.headline).fontWeight(.black)
                 .foregroundColor(Color.duoDark)

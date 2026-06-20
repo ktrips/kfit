@@ -119,7 +119,7 @@ private struct DetailSheet: View {
 
             // ヘッダー
             HStack(spacing: 12) {
-                Text(exercise.emoji).font(.system(size: 44))
+                Text(exercise.emoji).font(.system(size: 44 * UIScale.font))
                     .frame(width: 64, height: 64)
                     .background(Color(.systemGray6))
                     .cornerRadius(16)
@@ -238,7 +238,7 @@ private struct DetailSheet: View {
         VStack(spacing: 24) {
             if done {
                 VStack(spacing: 12) {
-                    Text("✅").font(.system(size: 64))
+                    Text("✅").font(.system(size: 64 * UIScale.font))
                     Text("記録完了！").font(.title2).fontWeight(.black).foregroundColor(Color.duoGreen)
                     Text("+\(pts) XP 獲得！")
                         .font(.headline).fontWeight(.black)
@@ -260,7 +260,7 @@ private struct DetailSheet: View {
                     }
                     VStack(spacing: 4) {
                         Text("\(reps)")
-                            .font(.system(size: 72, weight: .black))
+                            .font(.system(size: 72 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoGreen)
                         Text("rep").font(.caption).foregroundColor(.secondary)
                     }
@@ -403,7 +403,7 @@ struct WorkoutPlanView: View {
     // MARK: 有酸素カード
     private func cardioCard(_ cardio: CardioSession) -> some View {
         HStack(spacing: 14) {
-            Text(cardio.emoji).font(.system(size: 36))
+            Text(cardio.emoji).font(.system(size: 36 * UIScale.font))
                 .frame(width: 60, height: 60)
                 .background(Color.duoBlue.opacity(0.1)).cornerRadius(14)
             VStack(alignment: .leading, spacing: 4) {

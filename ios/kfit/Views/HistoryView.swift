@@ -164,30 +164,30 @@ struct HistoryView: View {
     private func bodyWeightRow(for dateKey: String) -> some View {
         if let record = healthKit.bodyMassRecord(for: dateKey) {
             HStack(spacing: 6) {
-                Text("⚖️").font(.system(size: 12))
+                Text("⚖️").font(.system(size: 12 * UIScale.font))
                 Text(String(format: "%.1f kg", record.kg))
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Text(timeString(record.measuredAt))
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                 Spacer()
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color.duoGreen)
                 Text("計測済み")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoGreen)
             }
         } else {
             HStack(spacing: 6) {
-                Text("⚖️").font(.system(size: 12))
+                Text("⚖️").font(.system(size: 12 * UIScale.font))
                 Text("体重未計測")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                 Spacer()
                 Image(systemName: "circle")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle.opacity(0.4))
             }
         }

@@ -178,9 +178,10 @@ struct FoodView: View {
                 colors: [Color(red: 1.0, green: 0.45, blue: 0.0), Color(red: 0.85, green: 0.25, blue: 0.0)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
+            .ignoresSafeArea(edges: .top)
             HStack(spacing: 0) {
                 Text("FOOD")
-                    .font(.system(size: 8, weight: .black))
+                    .font(.system(size: 8 * UIScale.font, weight: .black))
                     .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Color.white.opacity(0.9))
@@ -199,31 +200,31 @@ struct FoodView: View {
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("💧").font(.system(size: 11))
+                    Text("💧").font(.system(size: 11 * UIScale.font))
                     Text(waterMl > 0 ? "\(waterMl)" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🍽️").font(.system(size: 11))
+                    Text("🍽️").font(.system(size: 11 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(foodGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("⚡").font(.system(size: 11))
+                    Text("⚡").font(.system(size: 11 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(calDiff > 200 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                     if totalIntakeCal > 0 {
-                        Text("cal").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+                        Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .fixedSize()
@@ -235,7 +236,6 @@ struct FoodView: View {
             .padding(.vertical, 7)
         }
         .frame(height: 46)
-        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - フォトログボタン
@@ -248,20 +248,20 @@ struct FoodView: View {
                         .fill(Color(red: 1.0, green: 0.45, blue: 0.0).opacity(0.15))
                         .frame(width: 52, height: 52)
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 22 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("📸 フォトログ")
-                        .font(.system(size: 16, weight: .black))
+                        .font(.system(size: 16 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Text("食事の写真を撮ってAIが栄養素を自動分析")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
             }
             .padding(14)
@@ -280,9 +280,9 @@ struct FoodView: View {
             HStack(spacing: 5) {
                 Image(systemName: "bolt.fill")
                     .foregroundColor(Color.duoOrange)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                 Text("クイックログ")
-                    .font(.system(size: 12, weight: .black))
+                    .font(.system(size: 12 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
             }
 
@@ -392,9 +392,9 @@ struct FoodView: View {
     private func quickBtn(emoji: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                Text(emoji).font(.system(size: 22))
+                Text(emoji).font(.system(size: 22 * UIScale.font))
                 Text(label)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -413,17 +413,17 @@ struct FoodView: View {
         Button { showDetailLog = true } label: {
             HStack(spacing: 8) {
                 Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * UIScale.font))
                     .foregroundColor(Color.duoGreen)
                 Text("詳細ログ")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 14 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoGreen)
                 Text("食事・ドリンクを詳しく登録")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle.opacity(0.6))
             }
             .padding(12)
@@ -442,24 +442,24 @@ struct FoodView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "chart.pie.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                 Text("PFCバランス")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 HStack(spacing: 2) {
                     Text("\(totalCalories)")
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                     Text("kcal")
-                        .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Color(red: 1.0, green: 0.45, blue: 0.0).opacity(0.1))
                 .cornerRadius(10)
                 Text(analysis.rating)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(pfcScoreColor(analysis.score))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(pfcScoreColor(analysis.score).opacity(0.15))
@@ -473,9 +473,9 @@ struct FoodView: View {
                     .frame(width: 80, height: 80)
                     VStack(spacing: 0) {
                         Text("\(analysis.score)")
-                            .font(.system(size: 22, weight: .black))
+                            .font(.system(size: 22 * UIScale.font, weight: .black))
                             .foregroundColor(pfcScoreColor(analysis.score))
-                        Text("点").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        Text("点").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
@@ -486,13 +486,13 @@ struct FoodView: View {
             }
             HStack {
                 Text("目安: P 15% / F 25% / C 60%")
-                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 Spacer()
                 Button {
                     showIntakeSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                         .foregroundColor(Color.duoOrange)
                         .padding(6)
                         .background(Color.duoOrange.opacity(0.12))
@@ -510,11 +510,11 @@ struct FoodView: View {
     private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double) -> some View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(label).font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoDark)
-            Text(name).font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+            Text(label).font(.system(size: 11 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
+            Text(name).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             Spacer()
-            Text(String(format: "%.0f%%", percent)).font(.system(size: 11, weight: .bold)).foregroundColor(color)
-            Text(String(format: "%.0fg", grams)).font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+            Text(String(format: "%.0f%%", percent)).font(.system(size: 11 * UIScale.font, weight: .bold)).foregroundColor(color)
+            Text(String(format: "%.0fg", grams)).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
         }
     }
 
@@ -535,10 +535,10 @@ struct FoodView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0.0))
                 Text("今日の食事アドバイス")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -546,11 +546,11 @@ struct FoodView: View {
                     HStack(alignment: .top, spacing: 8) {
                         ZStack {
                             Circle().fill(tip.color.opacity(0.15)).frame(width: 28, height: 28)
-                            Text(tip.emoji).font(.system(size: 14))
+                            Text(tip.emoji).font(.system(size: 14 * UIScale.font))
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(tip.title).font(.system(size: 12, weight: .bold)).foregroundColor(tip.color)
-                            Text(tip.message).font(.system(size: 12))
+                            Text(tip.title).font(.system(size: 12 * UIScale.font, weight: .bold)).foregroundColor(tip.color)
+                            Text(tip.message).font(.system(size: 12 * UIScale.font))
                                 .foregroundColor(Color.duoDark.opacity(0.85))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -748,19 +748,19 @@ struct FoodView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "list.bullet")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                     Text("今日の食事履歴")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     if totalCount > 0 {
                         Text("\(totalCount)件")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     Image(systemName: showFoodHistory ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 12)
@@ -773,7 +773,7 @@ struct FoodView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     if totalCount == 0 {
                         Text("今日の記録はまだありません")
-                            .font(.system(size: 12))
+                            .font(.system(size: 12 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 16)
@@ -801,22 +801,22 @@ struct FoodView: View {
 
     private func historyEntryRow(_ e: HistoryEntry) -> some View {
         HStack(spacing: 8) {
-            Text(e.emoji).font(.system(size: 14))
+            Text(e.emoji).font(.system(size: 14 * UIScale.font))
             VStack(alignment: .leading, spacing: 1) {
                 Text(e.primary)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoDark)
                 Text(e.detail)
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text(formatTime(e.time))
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle.opacity(0.7))
                 Text(e.sub)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle.opacity(0.5))
             }
         }
@@ -826,8 +826,8 @@ struct FoodView: View {
 
     private func foodHistoryCategoryHeader(title: String, icon: String, color: Color) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 10)).foregroundColor(color)
-            Text(title).font(.system(size: 10, weight: .bold)).foregroundColor(color)
+            Image(systemName: icon).font(.system(size: 10 * UIScale.font)).foregroundColor(color)
+            Text(title).font(.system(size: 10 * UIScale.font, weight: .bold)).foregroundColor(color)
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -843,13 +843,13 @@ struct FoodView: View {
     private var noPFCDataCard: some View {
         VStack(spacing: 12) {
             Image(systemName: "chart.pie")
-                .font(.system(size: 36))
+                .font(.system(size: 36 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle.opacity(0.4))
             Text("食事記録がありません")
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 14 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
             Text("上のボタンから食事を記録すると\nPFCバランスとアドバイスが表示されます")
-                .font(.system(size: 11))
+                .font(.system(size: 11 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
                 .multilineTextAlignment(.center)
         }
@@ -919,14 +919,14 @@ struct FoodView: View {
         }
         let advice = adviceText(label: label, value: value, goal: goal, isReverse: isReverse)
         let content = VStack(alignment: .center, spacing: 3) {
-            Image(systemName: icon).font(.system(size: 17)).foregroundColor(iconColor)
-            Text(label).font(.system(size: 9, weight: .bold)).foregroundColor(Color.duoDark)
+            Image(systemName: icon).font(.system(size: 17 * UIScale.font)).foregroundColor(iconColor)
+            Text(label).font(.system(size: 9 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
             VStack(spacing: 1) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor((isOver && isReverse) ? .red : displayColor)
                     .lineLimit(1).minimumScaleFactor(0.7)
-                Text(unit).font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                Text(unit).font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             }
             if let _ = goal {
                 GeometryReader { geo in
@@ -936,11 +936,11 @@ struct FoodView: View {
                             .frame(width: max(3, geo.size.width * CGFloat(min(percent, 100)) / 100), height: 3)
                     }
                 }.frame(height: 3)
-                Text("\(percent)%").font(.system(size: 8, weight: .bold)).foregroundColor(displayColor)
+                Text("\(percent)%").font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(displayColor)
             }
             if !advice.isEmpty {
                 Text(advice)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(displayColor.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -969,20 +969,20 @@ struct FoodView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "star.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color(hex: "#FFD700"))
                 Text("FOODフィード")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 Text("\(displayed.count)件")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
 
             if displayed.isEmpty {
                 Text("直近2週間のお気に入りはありません")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 16)
@@ -1007,12 +1007,12 @@ struct FoodView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13 * UIScale.font, weight: .semibold))
                         Text("過去のフィードを表示（\(older.count)件）")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
                         Spacer()
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
                     }
                     .foregroundColor(Color(hex: "#FFD700"))
                     .padding(.vertical, 10)
@@ -1029,9 +1029,9 @@ struct FoodView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
                         Text("2週間以内のみ表示")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                     }
                     .foregroundColor(Color.duoSubtitle)
                     .frame(maxWidth: .infinity)
@@ -1110,7 +1110,7 @@ struct FoodView: View {
         let sign = calDiff >= 0 ? "+" : ""
         return HStack(spacing: 6) {
             Text("FOOD")
-                .font(.system(size: 8, weight: .black))
+                .font(.system(size: 8 * UIScale.font, weight: .black))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(foodColor)
@@ -1125,24 +1125,24 @@ struct FoodView: View {
                 centerTextColor: (pfcAnalysis?.score ?? 0) >= 70 ? foodColor : Color.duoDark
             )
             HStack(spacing: 2) {
-                Text("💧").font(.system(size: 11))
+                Text("💧").font(.system(size: 11 * UIScale.font))
                 Text(waterMl > 0 ? "\(waterMl)" : "—")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
             }
             HStack(spacing: 2) {
-                Text("🍽️").font(.system(size: 11))
+                Text("🍽️").font(.system(size: 11 * UIScale.font))
                 Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(foodGoalDone ? foodColor : Color.duoDark)
             }
             HStack(spacing: 2) {
-                Text("⚡").font(.system(size: 11))
+                Text("⚡").font(.system(size: 11 * UIScale.font))
                 Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(calDiff > 200 ? Color(hex: "#FF4B4B") : calDiff < -200 ? foodColor : Color.duoDark)
                 if totalIntakeCal > 0 {
-                    Text("cal").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+                    Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
             }
             Spacer()
@@ -1186,7 +1186,7 @@ private struct PhotoFeedCard: View {
                     LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
                         .overlay(
                             Text(foodEmoji(for: item.displayName))
-                                .font(.system(size: 44))
+                                .font(.system(size: 44 * UIScale.font))
                         )
                 }
             }
@@ -1196,21 +1196,21 @@ private struct PhotoFeedCard: View {
             // 下部グラデーションオーバーレイ
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: 11 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .shadow(color: .black.opacity(0.5), radius: 2)
                 HStack(spacing: 3) {
                     Text("🔥")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9 * UIScale.font))
                     Text("\(item.calories)kcal")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.5), radius: 2)
                     Spacer()
                     if item.isFavorite {
                         Image(systemName: "star.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10 * UIScale.font))
                             .foregroundColor(Color(hex: "#FDCB6E"))
                     }
                 }
@@ -1322,7 +1322,7 @@ struct PhotoFeedDetailSheet: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
-                    .overlay(Text("🍽️").font(.system(size: 72)))
+                    .overlay(Text("🍽️").font(.system(size: 72 * UIScale.font)))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -1332,7 +1332,7 @@ struct PhotoFeedDetailSheet: View {
             // 日時バッジ
             HStack {
                 Text(timeLabel(item.timestamp))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.black.opacity(0.45))
@@ -1341,7 +1341,7 @@ struct PhotoFeedDetailSheet: View {
                 if item.isFavorite {
                     Image(systemName: "star.fill")
                         .foregroundColor(Color(hex: "#FDCB6E"))
-                        .font(.system(size: 16))
+                        .font(.system(size: 16 * UIScale.font))
                         .padding(8)
                         .background(Color.black.opacity(0.35))
                         .clipShape(Circle())
@@ -1359,10 +1359,10 @@ struct PhotoFeedDetailSheet: View {
         HStack(spacing: 16) {
             VStack(spacing: 2) {
                 Text("\(item.calories)")
-                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .font(.system(size: 34 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
                 Text("kcal")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             Divider().frame(height: 44)
@@ -1373,7 +1373,7 @@ struct PhotoFeedDetailSheet: View {
             }
             Spacer()
             Text(String(format: "確度\n%.0f%%", item.analyzedNutrition.confidence * 100))
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
                 .multilineTextAlignment(.center)
         }
@@ -1386,7 +1386,7 @@ struct PhotoFeedDetailSheet: View {
     private func pfcBar(label: String, percent: Double, color: Color) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 10, weight: .black))
+                .font(.system(size: 10 * UIScale.font, weight: .black))
                 .foregroundColor(color)
                 .frame(width: 12)
             GeometryReader { geo in
@@ -1398,7 +1398,7 @@ struct PhotoFeedDetailSheet: View {
             }
             .frame(height: 8)
             Text(String(format: "%.0f%%", percent))
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
                 .frame(width: 30, alignment: .trailing)
         }
@@ -1406,7 +1406,7 @@ struct PhotoFeedDetailSheet: View {
 
     private var descriptionCard: some View {
         Text(item.analyzedNutrition.description)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 13 * UIScale.font, weight: .semibold))
             .foregroundColor(Color.duoDark.opacity(0.85))
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
@@ -1420,7 +1420,7 @@ struct PhotoFeedDetailSheet: View {
         let n = item.analyzedNutrition
         return VStack(alignment: .leading, spacing: 10) {
             Text("栄養素")
-                .font(.system(size: 12, weight: .black))
+                .font(.system(size: 12 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoDark)
 
             LazyVGrid(
@@ -1458,13 +1458,13 @@ struct PhotoFeedDetailSheet: View {
 
     private func nutritionTile(icon: String, label: String, value: String, color: Color) -> some View {
         VStack(spacing: 4) {
-            Text(icon).font(.system(size: 20))
+            Text(icon).font(.system(size: 20 * UIScale.font))
             Text(value)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
                 .lineLimit(1).minimumScaleFactor(0.8)
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
@@ -1483,10 +1483,10 @@ struct PhotoFeedDetailSheet: View {
                     ProgressView().tint(.white).scaleEffect(0.9)
                 } else {
                     Image(systemName: savedOK ? "checkmark.circle.fill" : "plus.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 18 * UIScale.font, weight: .bold))
                 }
                 Text(savedOK ? "記録しました！" : "今日の食事として記録する")
-                    .font(.system(size: 15, weight: .black))
+                    .font(.system(size: 15 * UIScale.font, weight: .black))
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
@@ -1601,14 +1601,14 @@ struct EduFeedCard: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.authorFirstName)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                         .lineLimit(1)
                     HStack(spacing: 4) {
                         Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                            .font(.system(size: 10))
+                            .font(.system(size: 10 * UIScale.font))
                         Text(item.activityName)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoPurple)
                             .lineLimit(1)
                     }
@@ -1616,7 +1616,7 @@ struct EduFeedCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(timeAgo)
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .fixedSize()
             }
@@ -1639,10 +1639,10 @@ struct EduFeedCard: View {
                                 .frame(width: geo.size.width, height: 180)
                             VStack(spacing: 8) {
                                 Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                                    .font(.system(size: 64))
+                                    .font(.system(size: 64 * UIScale.font))
                                     .shadow(color: .black.opacity(0.2), radius: 8)
                                 Text(item.activityName)
-                                    .font(.system(size: 16, weight: .black))
+                                    .font(.system(size: 16 * UIScale.font, weight: .black))
                                     .foregroundColor(.white)
                                     .shadow(color: .black.opacity(0.4), radius: 4)
                                     .multilineTextAlignment(.center)
@@ -1661,9 +1661,9 @@ struct EduFeedCard: View {
 
                         HStack(spacing: 6) {
                             Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                                .font(.system(size: 14))
+                                .font(.system(size: 14 * UIScale.font))
                             Text(item.activityName)
-                                .font(.system(size: 13, weight: .black))
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
                                 .shadow(color: .black.opacity(0.5), radius: 3)
                                 .lineLimit(1)
@@ -1680,11 +1680,11 @@ struct EduFeedCard: View {
             if !item.comment.isEmpty {
                 HStack(alignment: .top, spacing: 6) {
                     Text(item.authorFirstName)
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                         .fixedSize()
                     Text(item.comment)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoDark.opacity(0.85))
                         .lineLimit(3)
                 }
@@ -1702,12 +1702,12 @@ struct EduFeedCard: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: 20 * UIScale.font, weight: .semibold))
                             .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.6))
                             .scaleEffect(item.isLiked ? 1.15 : 1.0)
                         if item.likeCount > 0 {
                             Text("\(item.likeCount)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
                                 .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.6))
                         }
                     }
@@ -1722,11 +1722,11 @@ struct EduFeedCard: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: 19, weight: .semibold))
+                            .font(.system(size: 19 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark.opacity(0.6))
                         if !item.feedComments.isEmpty {
                             Text("\(item.feedComments.count)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoDark.opacity(0.6))
                         }
                     }
@@ -1742,7 +1742,7 @@ struct EduFeedCard: View {
                     onShare?()
                 } label: {
                     Image(systemName: "paperplane")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark.opacity(0.6))
                         .padding(.vertical, 10)
                         .padding(.leading, 8)
@@ -1807,21 +1807,21 @@ struct EduFeedDetailSheet: View {
                         ZStack {
                             Circle().fill(accentGradient).frame(width: 42, height: 42)
                             Text(String((item.authorFirstName.first ?? "?").uppercased()))
-                                .font(.system(size: 18, weight: .black))
+                                .font(.system(size: 18 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.authorFirstName)
-                                .font(.system(size: 15, weight: .black))
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Text(dateLabel)
-                                .font(.system(size: 11))
+                                .font(.system(size: 11 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
                         Button { showDeleteConfirm = true } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 18))
+                                .font(.system(size: 18 * UIScale.font))
                                 .foregroundColor(Color.duoDark.opacity(0.5))
                         }
                         .buttonStyle(.plain)
@@ -1842,9 +1842,9 @@ struct EduFeedDetailSheet: View {
                                 .frame(height: 240)
                             VStack(spacing: 10) {
                                 Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                                    .font(.system(size: 80))
+                                    .font(.system(size: 80 * UIScale.font))
                                 Text(item.activityName)
-                                    .font(.system(size: 20, weight: .black))
+                                    .font(.system(size: 20 * UIScale.font, weight: .black))
                                     .foregroundColor(.white)
                                     .shadow(color: .black.opacity(0.4), radius: 4)
                                     .multilineTextAlignment(.center)
@@ -1856,14 +1856,14 @@ struct EduFeedDetailSheet: View {
                     // アクション行
                     HStack(spacing: 18) {
                         Image(systemName: "heart")
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(.system(size: 24 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark.opacity(0.7))
                         Image(systemName: "bubble.right")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 22 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark.opacity(0.7))
                         Spacer()
                         Image(systemName: "paperplane")
-                            .font(.system(size: 21, weight: .semibold))
+                            .font(.system(size: 21 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark.opacity(0.7))
                     }
                     .padding(.horizontal, 16)
@@ -1873,10 +1873,10 @@ struct EduFeedDetailSheet: View {
                     if !item.comment.isEmpty {
                         HStack(alignment: .top, spacing: 6) {
                             Text(item.authorFirstName)
-                                .font(.system(size: 14, weight: .black))
+                                .font(.system(size: 14 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Text(item.comment)
-                                .font(.system(size: 14))
+                                .font(.system(size: 14 * UIScale.font))
                                 .foregroundColor(Color.duoDark.opacity(0.9))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -1887,9 +1887,9 @@ struct EduFeedDetailSheet: View {
                     // アクティビティバッジ
                     HStack(spacing: 6) {
                         Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
-                            .font(.system(size: 13))
+                            .font(.system(size: 13 * UIScale.font))
                         Text(item.activityName)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoPurple)
                     }
                     .padding(.horizontal, 12)
@@ -1945,11 +1945,11 @@ struct FeedCommentsSheet: View {
             // ナビ行
             HStack {
                 Text("コメント")
-                    .font(.system(size: 16, weight: .black))
+                    .font(.system(size: 16 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 Button("閉じる") { dismiss() }
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * UIScale.font))
                     .foregroundColor(Color.duoBlue)
             }
             .padding(.horizontal, 16)
@@ -1975,7 +1975,7 @@ struct FeedCommentsSheet: View {
 
                     if currentItem.feedComments.isEmpty && item.comment.isEmpty {
                         Text("まだコメントがありません\n最初のコメントを残しましょう！")
-                            .font(.system(size: 13))
+                            .font(.system(size: 13 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .multilineTextAlignment(.center)
                             .padding(32)
@@ -2009,7 +2009,7 @@ struct FeedCommentsSheet: View {
                 )
 
                 TextField("コメントを追加...", text: $newCommentText, axis: .vertical)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14 * UIScale.font))
                     .lineLimit(1...4)
                     .focused($inputFocused)
                     .submitLabel(.send)
@@ -2019,7 +2019,7 @@ struct FeedCommentsSheet: View {
                     sendComment()
                 } label: {
                     Text("投稿")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * UIScale.font, weight: .bold))
                         .foregroundColor(newCommentText.trimmingCharacters(in: .whitespaces).isEmpty
                             ? Color.duoBlue.opacity(0.3) : Color.duoBlue)
                 }
@@ -2054,11 +2054,11 @@ struct FeedCommentsSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(name)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     if isCaption {
                         Text("投稿者")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.duoPurple)
@@ -2066,11 +2066,11 @@ struct FeedCommentsSheet: View {
                     }
                     Spacer()
                     Text(FeedCommentsSheet.timeFormatter.string(from: date))
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 Text(text)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13 * UIScale.font))
                     .foregroundColor(Color.duoDark.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2123,7 +2123,7 @@ struct SocialShareSheet: View {
                 .padding(.bottom, 20)
 
             Text("シェア")
-                .font(.system(size: 16, weight: .black))
+                .font(.system(size: 16 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoDark)
                 .padding(.bottom, 20)
 
@@ -2173,11 +2173,11 @@ struct SocialShareSheet: View {
                         .fill(color)
                         .frame(width: 54, height: 54)
                     Image(systemName: icon)
-                        .font(.system(size: 26))
+                        .font(.system(size: 26 * UIScale.font))
                         .foregroundColor(.white)
                 }
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                     .lineLimit(1)
             }
@@ -2317,22 +2317,22 @@ struct CategoryMiniCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
                         Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
-                            .font(.system(size: 13))
+                            .font(.system(size: 13 * UIScale.font))
                         Text(cardLabel)
-                            .font(.system(size: 11, weight: .black))
+                            .font(.system(size: 11 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1)
                     }
                     HStack(spacing: 8) {
                         if !group.isSingle {
                             Label("\(group.items.count)件", systemImage: "square.stack.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(.white.opacity(0.9))
                         }
                         let likes = group.items.reduce(0) { $0 + $1.likeCount }
                         if likes > 0 {
                             Label("\(likes)", systemImage: "heart.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color(hex: "#ED4956"))
                         }
                     }
@@ -2361,7 +2361,7 @@ struct CategoryMiniCard: View {
             ZStack {
                 accentGradient
                 Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
-                    .font(.system(size: 52))
+                    .font(.system(size: 52 * UIScale.font))
                     .shadow(color: .black.opacity(0.25), radius: 8)
             }
             .frame(width: cardW, height: cardH)
@@ -2420,16 +2420,16 @@ struct CategoryGroupListSheet: View {
             // ヘッダー
             HStack(spacing: 10) {
                 Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
-                    .font(.system(size: 24))
+                    .font(.system(size: 24 * UIScale.font))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.categoryKey)
-                        .font(.system(size: 16, weight: .black)).foregroundColor(Color.duoDark)
+                        .font(.system(size: 16 * UIScale.font, weight: .black)).foregroundColor(Color.duoDark)
                     Text("\(group.items.count)件の記録")
-                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                        .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
                 Button("閉じる") { dismiss() }
-                    .font(.system(size: 14)).foregroundColor(Color.duoBlue)
+                    .font(.system(size: 14 * UIScale.font)).foregroundColor(Color.duoBlue)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
 
@@ -2469,7 +2469,7 @@ struct CategoryGroupListSheet: View {
                         colors: [Color.duoBlue.opacity(0.6), Color.duoPurple.opacity(0.6)],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
-                    .overlay(Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji).font(.system(size: 20)))
+                    .overlay(Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji).font(.system(size: 20 * UIScale.font)))
                 }
             }
             .frame(width: 48, height: 48).cornerRadius(10).clipped()
@@ -2477,19 +2477,19 @@ struct CategoryGroupListSheet: View {
             // テキスト
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.authorFirstName)
-                    .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoSubtitle)
+                    .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
                 Text(item.comment.isEmpty ? item.activityName : item.comment)
-                    .font(.system(size: 13, weight: .semibold)).foregroundColor(Color.duoDark).lineLimit(2)
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoDark).lineLimit(2)
                 HStack(spacing: 10) {
                     Text(CategoryGroupListSheet.hhmm.string(from: item.timestamp))
-                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                        .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     if item.likeCount > 0 {
                         Label("\(item.likeCount)", systemImage: "heart.fill")
-                            .font(.system(size: 10)).foregroundColor(Color(hex: "#ED4956"))
+                            .font(.system(size: 10 * UIScale.font)).foregroundColor(Color(hex: "#ED4956"))
                     }
                     if !item.feedComments.isEmpty {
                         Label("\(item.feedComments.count)", systemImage: "bubble.right")
-                            .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                 }
             }
@@ -2499,12 +2499,12 @@ struct CategoryGroupListSheet: View {
             HStack(spacing: 14) {
                 Button { onLike?(item) } label: {
                     Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 18))
+                        .font(.system(size: 18 * UIScale.font))
                         .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.4))
                 }
                 Button { onTapItem(item) } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark.opacity(0.3))
                 }
             }
@@ -2552,7 +2552,7 @@ struct CompactCategoryCard: View {
                         .fill(accentGradient)
                         .frame(width: 32, height: 32)
                     Text(group.categoryEmoji.isEmpty ? "📝" : group.categoryEmoji)
-                        .font(.system(size: 17))
+                        .font(.system(size: 17 * UIScale.font))
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -2562,11 +2562,11 @@ struct CompactCategoryCard: View {
                         let first = item.comment.split(separator: "\n").first.map(String.init) ?? ""
                         return first.isEmpty ? item.activityName : first
                     }())
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                         .lineLimit(1)
                     Text("\(group.items.count)件の記録")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
@@ -2576,10 +2576,10 @@ struct CompactCategoryCard: View {
                 if totalLikes > 0 {
                     HStack(spacing: 3) {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * UIScale.font))
                             .foregroundColor(Color(hex: "#ED4956"))
                         Text("\(totalLikes)")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                             .foregroundColor(Color(hex: "#ED4956"))
                     }
                 }
@@ -2614,11 +2614,11 @@ struct CompactCategoryCard: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: first.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 17 * UIScale.font, weight: .semibold))
                                 .foregroundColor(first.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.5))
                             if first.likeCount > 0 {
                                 Text("\(first.likeCount)")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
                                     .foregroundColor(first.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.5))
                             }
                         }
@@ -2629,11 +2629,11 @@ struct CompactCategoryCard: View {
                     Button { onComment?(first) } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "bubble.right")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 16 * UIScale.font, weight: .semibold))
                                 .foregroundColor(Color.duoDark.opacity(0.5))
                             if !first.feedComments.isEmpty {
                                 Text("\(first.feedComments.count)")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color.duoDark.opacity(0.5))
                             }
                         }
@@ -2645,7 +2645,7 @@ struct CompactCategoryCard: View {
 
                     Button { onShare?(first) } label: {
                         Image(systemName: "paperplane")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 16 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark.opacity(0.5))
                             .padding(.vertical, 8).padding(.leading, 8)
                     }
@@ -2676,7 +2676,7 @@ struct CompactCategoryCard: View {
                 ZStack {
                     accentGradient
                     Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
-                        .font(.system(size: 28))
+                        .font(.system(size: 28 * UIScale.font))
                 }
                 .frame(width: size, height: size)
             }
@@ -2685,10 +2685,10 @@ struct CompactCategoryCard: View {
             if item.likeCount > 0 {
                 HStack(spacing: 2) {
                     Image(systemName: "heart.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(.white)
                     Text("\(item.likeCount)")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                 }
                 .padding(.horizontal, 4)

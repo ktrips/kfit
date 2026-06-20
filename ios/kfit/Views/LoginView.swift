@@ -39,7 +39,7 @@ struct LoginView: View {
                             .onAppear { mascotBounce = true }
 
                         Text("Fitingo")
-                            .font(.system(size: 44, weight: .black))
+                            .font(.system(size: 44 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoGreen)
 
                         Text("毎日の運動をゲームにしよう！")

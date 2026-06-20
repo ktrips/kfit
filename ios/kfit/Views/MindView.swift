@@ -121,9 +121,10 @@ struct MindView: View {
                 colors: [Color(hex: "#6D5DF6"), Color(hex: "#1CB0F6")],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
+            .ignoresSafeArea(edges: .top)
             HStack(spacing: 0) {
                 Text("MIND")
-                    .font(.system(size: 8, weight: .black))
+                    .font(.system(size: 8 * UIScale.font, weight: .black))
                     .foregroundColor(Color(hex: "#6D5DF6"))
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Color.white.opacity(0.9))
@@ -142,27 +143,27 @@ struct MindView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🧘").font(.system(size: 11))
+                    Text("🧘").font(.system(size: 11 * UIScale.font))
                     Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(mindGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🤸").font(.system(size: 11))
+                    Text("🤸").font(.system(size: 11 * UIScale.font))
                     Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(stretchGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("☀️").font(.system(size: 11))
+                    Text("☀️").font(.system(size: 11 * UIScale.font))
                     Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
@@ -175,7 +176,6 @@ struct MindView: View {
             .padding(.vertical, 7)
         }
         .frame(height: 46)
-        .ignoresSafeArea(edges: .top)
     }
 
     private var headerSection: some View {
@@ -197,7 +197,7 @@ struct MindView: View {
                     Text("Mind").foregroundColor(Color(hex: "#58CC02"))
                     Text("ingo").foregroundColor(.white)
                 }
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
 
                 Spacer()
 
@@ -208,15 +208,15 @@ struct MindView: View {
                     HStack(spacing: 4) {
                         if avgHRV > 0 {
                             Text("平均HRV")
-                                .font(.system(size: 7, weight: .bold, design: .rounded))
+                                .font(.system(size: 7 * UIScale.font, weight: .bold, design: .rounded))
                                 .foregroundColor(.white.opacity(0.72))
                             Text("\(Int(avgHRV))")
-                                .font(.system(size: 13, weight: .black, design: .rounded))
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(stress.color)
                         }
                         if stress.score >= 0 {
                             Text(stress.englishLabel == "Elevated" ? "Elev" : stress.englishLabel)
-                                .font(.system(size: 10, weight: .black, design: .rounded))
+                                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(stress.color)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
@@ -385,19 +385,19 @@ struct MindView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 15, weight: .black))
+                        .font(.system(size: 15 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoGreen)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(showMindfulHistory ? "マインドフルを閉じる" : "マインドフル履歴を表示")
-                            .font(.system(size: 13, weight: .black, design: .rounded))
+                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(Color.duoGreen)
                         Text("\(sessions.count)回 / \(formatMindfulMinutes(totalMinutes))")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
                     Image(systemName: showMindfulHistory ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 14, weight: .black))
+                        .font(.system(size: 14 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoGreen)
                 }
                 .padding(.horizontal, 12)
@@ -410,7 +410,7 @@ struct MindView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if sessions.isEmpty {
                         Text("今日のマインドフルネス記録はまだありません。")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
@@ -446,30 +446,30 @@ struct MindView: View {
 
         return HStack(spacing: 6) {
             Text(timeFormatter.string(from: session.startDate))
-                .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 .frame(width: 38, alignment: .leading)
             Text(japaneseLabel)
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(typeColor)
             Spacer()
             if session.averageHeartRate > 0 {
                 HStack(spacing: 2) {
-                    Text("❤️").font(.system(size: 10))
+                    Text("❤️").font(.system(size: 10 * UIScale.font))
                     Text("\(Int(session.averageHeartRate))")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color(hex: "#FF4B4B"))
                 }
             }
             if session.averageHRV > 0 {
                 Text("HRV \(Int(session.averageHRV))")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color(hex: "#1CB0F6"))
             }
             Text("+\(xp) XP")
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoGold)
             Text(formatMindfulMinutes(session.durationMinutes))
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(typeColor)
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
@@ -522,17 +522,17 @@ struct MindView: View {
     private func mindDailyMetricTile(icon: String, label: String, value: String, color: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .black))
+                .font(.system(size: 15 * UIScale.font, weight: .black))
                 .foregroundColor(color)
                 .frame(width: 30, height: 30)
                 .background(color.opacity(0.14))
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
                 Text(value)
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
             }
             Spacer(minLength: 0)
@@ -546,15 +546,15 @@ struct MindView: View {
     private func mindSummaryMetricCard(icon: String, label: String, value: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 13 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             Text(value)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -578,14 +578,14 @@ struct MindView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 7) {
                     Image(systemName: "bed.double.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * UIScale.font, weight: .bold))
                         .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
                     Text("昨晩の睡眠")
                         .font(.headline.weight(.black))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -626,10 +626,10 @@ struct MindView: View {
                     } else {
                         HStack(alignment: .bottom, spacing: 2) {
                             Text(healthKit.lastNightTotalHours > 0 ? String(format: "%.1f", healthKit.lastNightTotalHours) : "—")
-                                .font(.system(size: 19, weight: .black))
+                                .font(.system(size: 19 * UIScale.font, weight: .black))
                                 .foregroundColor(healthKit.lastNightTotalHours >= 7.0 ? Color.duoGreen : Color.duoOrange)
                             Text("h")
-                                .font(.system(size: 9))
+                                .font(.system(size: 9 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 1)
                             Spacer()
@@ -681,7 +681,7 @@ struct MindView: View {
 
             if vitals.hasData {
                 Text(vitals.minimumOxygenSaturation > 0 ? "最低酸素レベル: \(Int(vitals.minimumOxygenSaturation))%" : "酸素レベルの最低値は未取得です")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
             }
 
@@ -700,14 +700,14 @@ struct MindView: View {
     private func sleepVitalTile(label: String, value: String, unit: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(color)
                 Text(unit)
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
         }
@@ -720,10 +720,10 @@ struct MindView: View {
     private func sleepSectionTitle(_ title: String, icon: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
             Text(title)
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoDark)
             Spacer()
         }
@@ -732,10 +732,10 @@ struct MindView: View {
     private func sleepInsightMessage(_ message: String, color: Color, isAlert: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: isAlert ? "exclamationmark.triangle.fill" : "lightbulb.fill")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
             Text(message)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -813,7 +813,7 @@ struct MindView: View {
                                 .fill(Color(hex: stage.color))
                                 .frame(width: 6, height: 6)
                             Text(label)
-                                .font(.system(size: 9))
+                                .font(.system(size: 9 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -831,14 +831,14 @@ struct MindView: View {
             Group {
                 if note.isEmpty {
                     Text("\(label): \(value)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark)
                 } else {
                     Text("\(label): \(value) ")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark)
                     + Text("(\(note))")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -859,15 +859,15 @@ struct MindView: View {
     private func recommendationRow(_ item: MindRecommendation) -> some View {
         let content = HStack(alignment: .top, spacing: 8) {
             Text(item.prefix)
-                .font(.system(size: 17))
+                .font(.system(size: 17 * UIScale.font))
             Text(item.text)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoDark)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             if item.actionType != nil {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(item.color.opacity(0.6))
             }
         }
@@ -943,7 +943,7 @@ struct MindView: View {
     private func cardTitle(_ title: String, icon: String, color: Color) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
             Text(title)
                 .font(.headline.weight(.black))
@@ -955,7 +955,7 @@ struct MindView: View {
     private func cardTitleWithHelp(_ title: String, icon: String, color: Color, showsRefresh: Bool = false) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
             Text(title)
                 .font(.headline.weight(.black))
@@ -965,7 +965,7 @@ struct MindView: View {
                 showHRVHelp = true
             } label: {
                 Image(systemName: "questionmark.circle.fill")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 17 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle.opacity(0.75))
             }
             .buttonStyle(.plain)
@@ -990,17 +990,17 @@ struct MindView: View {
     private func metricTile(label: String, value: String, unit: String, detail: String? = nil, color: Color) -> some View {
         VStack(spacing: 3) {
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             Text(value)
-                .font(.system(size: 24, weight: .black, design: .rounded))
+                .font(.system(size: 24 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
             Text(unit)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             if let detail {
                 Text(detail)
-                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .font(.system(size: 8 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -1016,19 +1016,19 @@ struct MindView: View {
     private func stressTile(_ stress: MindStressInfo, detail: String? = nil) -> some View {
         VStack(spacing: 3) {
             Text("ストレス")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             Text(stress.label)
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(stress.color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(stress.englishLabel)
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(stress.color)
             if let detail {
                 Text(detail)
-                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .font(.system(size: 8 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(stress.color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -1131,9 +1131,9 @@ struct MindView: View {
 
     private func suggestionBanner(icon: String, text: String, color: Color) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(icon).font(.system(size: 18))
+            Text(icon).font(.system(size: 18 * UIScale.font))
             Text(text)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -1153,22 +1153,22 @@ struct MindView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Text(icon)
-                    .font(.system(size: 32))
+                    .font(.system(size: 32 * UIScale.font))
                     .frame(width: 48, height: 48)
                     .background(Color.white.opacity(0.75))
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(.white.opacity(0.84))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 18 * UIScale.font, weight: .bold))
                     .foregroundColor(.white.opacity(0.88))
             }
             .padding(14)
@@ -1241,7 +1241,7 @@ struct MindView: View {
         }
         return HStack(spacing: 6) {
             Text("MIND")
-                .font(.system(size: 8, weight: .black))
+                .font(.system(size: 8 * UIScale.font, weight: .black))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(mindColor)
@@ -1257,21 +1257,21 @@ struct MindView: View {
             }
             if gg.mindfulnessEnabled {
                 HStack(spacing: 2) {
-                    Text("🧘").font(.system(size: 13))
+                    Text("🧘").font(.system(size: 13 * UIScale.font))
                     Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal ? mindColor : Color.duoDark)
                 }
                 HStack(spacing: 2) {
-                    Text("🤸").font(.system(size: 13))
+                    Text("🤸").font(.system(size: 13 * UIScale.font))
                     Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(totalStretchGoal > 0 && totalStretch >= totalStretchGoal ? mindColor : Color.duoDark)
                 }
                 HStack(spacing: 2) {
-                    Text("☀️").font(.system(size: 13))
+                    Text("☀️").font(.system(size: 13 * UIScale.font))
                     Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? mindColor : Color.duoDark)
                 }
             }
@@ -1309,12 +1309,12 @@ private struct HRVTrendChart: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("今日のHRV推移")
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: 11 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 if let latest = data.last {
                     Text("\(Int(latest.value)) ms")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoGreen)
                 }
             }
@@ -1322,10 +1322,10 @@ private struct HRVTrendChart: View {
             if data.count < 2 {
                 VStack(spacing: 6) {
                     Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 24 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle.opacity(0.55))
                     Text("今日のHRVサンプルがまだ少ないです")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1355,7 +1355,7 @@ private struct HRVTrendChart: View {
                             .stroke(Color(hex: "#FF4B4B"), style: StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
 
                             Text("20ms")
-                                .font(.system(size: 8, weight: .black, design: .rounded))
+                                .font(.system(size: 8 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color(hex: "#FF4B4B"))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
@@ -1399,7 +1399,7 @@ private struct HRVTrendChart: View {
                 Spacer()
                 Text("24:00")
             }
-            .font(.system(size: 8, weight: .bold))
+            .font(.system(size: 8 * UIScale.font, weight: .bold))
             .foregroundColor(Color.duoSubtitle)
         }
     }
@@ -1434,16 +1434,16 @@ private struct WeeklyHRVAverageChart: View {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("過去7日のHRV平均")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Text("赤ラインはストレス高めの目安 20ms")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
                 if let latest = validDays.last {
                     Text("\(Int(latest.value)) ms")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(latest.value < lowerLimit ? Color(hex: "#FF4B4B") : Color.duoGreen)
                 }
             }
@@ -1451,10 +1451,10 @@ private struct WeeklyHRVAverageChart: View {
             if validDays.count < 2 {
                 VStack(spacing: 6) {
                     Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 22 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle.opacity(0.55))
                     Text("過去7日のHRV平均データがまだ少ないです")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1483,7 +1483,7 @@ private struct WeeklyHRVAverageChart: View {
                         .stroke(Color(hex: "#FF4B4B"), style: StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
 
                         Text("20ms")
-                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .font(.system(size: 8 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(Color(hex: "#FF4B4B"))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -1524,7 +1524,7 @@ private struct WeeklyHRVAverageChart: View {
             HStack {
                 ForEach(data) { day in
                     Text(dayLabel(day.date))
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                         .frame(maxWidth: .infinity)
                 }
@@ -1587,7 +1587,7 @@ private struct HRVStressHelpView: View {
                 .font(.headline.weight(.black))
                 .foregroundColor(Color.duoDark)
             Text(text)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1602,11 +1602,11 @@ private struct HRVStressHelpView: View {
                 .fill(color)
                 .frame(width: 10, height: 10)
             Text(label)
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 13 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             Spacer()
             Text(detail)
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 12 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
         }
     }

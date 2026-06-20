@@ -633,7 +633,7 @@ struct CircularProgressView: View {
                 .rotationEffect(.degrees(-90))
 
             Text("\(Int(progress * 100))%")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10 * UIScale.font, weight: .bold))
                 .foregroundColor(isCompleted ? Color.duoGreen : Color.duoDark)
         }
     }
@@ -949,7 +949,7 @@ struct MandalaChartView: View {
         HStack(spacing: 2) {
             Circle().fill(color).frame(width: 5, height: 5)
             Text(total > 0 ? "\(label)(\(done)/\(total))" : label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(total > 0 && done == total ? color : Color.duoSubtitle)
         }
@@ -1043,10 +1043,10 @@ struct MandalaChartView: View {
             if allTotal > 0 {
                 VStack(alignment: .trailing, spacing: 0) {
                     Text("\(allDone)/\(allTotal)")
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(allDone == allTotal ? Color.duoGreen : Color.duoDark)
                     Text("全体")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(8)
@@ -1196,10 +1196,10 @@ struct MandalaChartView: View {
 
             VStack(spacing: -1) {
                 Text("\(Int(progress * 100))")
-                    .font(.system(size: 14, weight: .black))
+                    .font(.system(size: 14 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Text("%")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
         }

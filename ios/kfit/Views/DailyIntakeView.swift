@@ -482,7 +482,7 @@ struct PhotoLogView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 14 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -570,7 +570,7 @@ struct PhotoLogView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     } else {
                         Text("🍽️")
-                            .font(.system(size: 28))
+                            .font(.system(size: 28 * UIScale.font))
                     }
 
                     if isSelected {
@@ -585,19 +585,19 @@ struct PhotoLogView: View {
                 }
 
                 Text(item.displayName)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(width: 72)
 
                 Text("\(item.calories)kcal")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoGreen)
 
                 // 日付
                 Text(item.timestamp, style: .date)
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
         }
@@ -945,10 +945,10 @@ struct PhotoLogView: View {
                         .foregroundColor(markAsFavorite ? Color.duoGreen : Color.duoSubtitle)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("フィードに追加")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark)
                         Text(markAsFavorite ? "FOODフィード・TOMOフィードに公開" : "フィードには追加しない")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -1078,7 +1078,7 @@ struct PhotoLogManageView: View {
                 if photoLogManager.history.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "photo.stack")
-                            .font(.system(size: 48))
+                            .font(.system(size: 48 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                         Text("記録がありません")
                             .font(.subheadline)
@@ -1147,21 +1147,21 @@ struct PhotoLogManageView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Color(.systemGray5))
                             .frame(width: 52, height: 52)
-                        Text("🍽️").font(.system(size: 22))
+                        Text("🍽️").font(.system(size: 22 * UIScale.font))
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.displayName)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 14 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark)
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text("\(item.calories) kcal")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoGreen)
                         Text(item.timestamp, style: .date)
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -1173,7 +1173,7 @@ struct PhotoLogManageView: View {
                         photoLogManager.toggleFavorite(id: item.id)
                     } label: {
                         Image(systemName: item.isFavorite ? "star.fill" : "star")
-                            .font(.system(size: 20))
+                            .font(.system(size: 20 * UIScale.font))
                             .foregroundColor(item.isFavorite ? Color(hex: "#FFD700") : Color.duoSubtitle)
                     }
                     .buttonStyle(.plain)
@@ -1183,13 +1183,13 @@ struct PhotoLogManageView: View {
                         showDeleteConfirm = true
                     } label: {
                         Image(systemName: "trash")
-                            .font(.system(size: 18))
+                            .font(.system(size: 18 * UIScale.font))
                             .foregroundColor(Color(hex: "#FF4B4B"))
                     }
                     .buttonStyle(.plain)
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle.opacity(0.5))
                 }
             }
@@ -1254,12 +1254,12 @@ struct PhotoLogEditView: View {
                                 RoundedRectangle(cornerRadius: 10)
                                     .fill(Color(.systemGray5))
                                     .frame(width: 60, height: 60)
-                                Text("🍽️").font(.system(size: 26))
+                                Text("🍽️").font(.system(size: 26 * UIScale.font))
                             }
                         }
                         VStack(alignment: .leading, spacing: 4) {
                             TextField("料理名", text: $foodName)
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 15 * UIScale.font, weight: .semibold))
                             Text(item.timestamp, style: .date)
                                 .font(.caption)
                                 .foregroundColor(Color.duoSubtitle)
@@ -1273,7 +1273,7 @@ struct PhotoLogEditView: View {
                             .font(.caption)
                             .foregroundColor(Color.duoSubtitle)
                         TextField("説明", text: $descriptionText, axis: .vertical)
-                            .font(.system(size: 14))
+                            .font(.system(size: 14 * UIScale.font))
                             .lineLimit(3, reservesSpace: true)
                     }
                 }

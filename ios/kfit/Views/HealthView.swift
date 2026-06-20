@@ -113,7 +113,7 @@ struct HealthView: View {
         VStack(spacing: 20) {
             Spacer()
             Image(systemName: "heart.slash")
-                .font(.system(size: 56))
+                .font(.system(size: 56 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
             Text("HealthKitは非対応です")
                 .font(.headline).fontWeight(.black)
@@ -131,7 +131,7 @@ struct HealthView: View {
     private var authCard: some View {
         VStack(spacing: 16) {
             Image(systemName: "heart.text.square.fill")
-                .font(.system(size: 48))
+                .font(.system(size: 48 * UIScale.font))
                 .foregroundColor(Color(hex: "#FF4B4B"))
 
             Text("Apple Healthと連動する")
@@ -452,11 +452,11 @@ struct HealthView: View {
                             .foregroundColor(stressColor)
                         if stressScore >= 0 {
                             Text("/ 100")
-                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                     }
                     Text(stressLabel)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(stressColor)
                 }
                 .frame(width: 100, alignment: .leading)
@@ -473,13 +473,13 @@ struct HealthView: View {
                         }
                         .frame(height: 8)
                         HStack {
-                            Text("低").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("低").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             Spacer()
-                            Text("高").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("高").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         if avgHRV > 0 {
                             Text("平均HRV \(Int(avgHRV)) ms")
-                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                     } else {
                         Text("HRVデータなし")
@@ -655,7 +655,7 @@ struct HealthView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 4) {
                             Image(systemName: "brain.head.profile")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11 * UIScale.font))
                                 .foregroundColor(stressColor)
                             Text("ストレス推定")
                                 .font(.caption).fontWeight(.bold)
@@ -666,10 +666,10 @@ struct HealthView: View {
                                 .font(.system(.title2, design: .rounded)).fontWeight(.black)
                                 .foregroundColor(stressColor)
                             Text("/ 100")
-                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         Text(stressLabel)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
                             .foregroundColor(stressColor)
                     }
                     VStack(alignment: .leading, spacing: 4) {
@@ -684,9 +684,9 @@ struct HealthView: View {
                         }
                         .frame(height: 8)
                         HStack {
-                            Text("低").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("低").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             Spacer()
-                            Text("高").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("高").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                     }
                 }
@@ -807,9 +807,9 @@ struct HealthView: View {
                             .rotationEffect(.degrees(-90))
                         VStack(spacing: 0) {
                             Text("\(sleepAnalysis.score)")
-                                .font(.system(size: 13, weight: .black, design: .rounded))
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoDark)
-                            Text("点").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+                            Text("点").font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                     }
                     .frame(width: 42, height: 42)
@@ -817,10 +817,10 @@ struct HealthView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 4) {
                             Text(sleepAnalysis.rating)
-                                .font(.system(size: 12, weight: .black))
+                                .font(.system(size: 12 * UIScale.font, weight: .black))
                                 .foregroundColor(ratingColor(sleepAnalysis.rating))
                             Text(sleepRatingDescription(sleepAnalysis.rating))
-                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 8) {
                             sleepStatChip(label: "合計", value: formatHours(hk.lastNightTotalHours), color: Color(hex: "#5F6368"))
@@ -854,10 +854,10 @@ struct HealthView: View {
     private func sleepStatChip(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 1) {
             Text(label)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 8 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
             Text(value)
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
         }
     }
@@ -910,7 +910,7 @@ struct HealthView: View {
             ForEach(stages, id: \.0.rawValue) { stage, label in
                 HStack(spacing: 4) {
                     Circle().fill(Color(hex: stage.color)).frame(width: 8, height: 8)
-                    Text(label).font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                    Text(label).font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
             }
             Spacer()
@@ -1268,7 +1268,7 @@ struct HealthView: View {
 
                     if isOver && isReverse {
                         Text("過剰")
-                            .font(.system(size: 9)).fontWeight(.bold)
+                            .font(.system(size: 9 * UIScale.font)).fontWeight(.bold)
                             .foregroundColor(Color.red)
                     }
                 }

@@ -124,7 +124,7 @@ struct ExerciseTrackerView: View {
                                 isPresented = false
                             } label: {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color(hex: "#555555"))
                                     .frame(width: 26, height: 26)
                                     .background(.ultraThinMaterial)
@@ -195,7 +195,7 @@ struct ExerciseTrackerView: View {
         VStack(spacing: showWorkoutGIF ? 10 : 12) {
             if !showWorkoutGIF {
                 Text(current.emoji)
-                    .font(.system(size: 70))
+                    .font(.system(size: 70 * UIScale.font))
             }
 
             VStack(spacing: 3) {
@@ -218,7 +218,7 @@ struct ExerciseTrackerView: View {
                     Image(systemName: showWorkoutGIF ? "checkmark.square.fill" : "square")
                     Text("動画GIFを再生")
                 }
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 12 * UIScale.font, weight: .bold))
                 .foregroundColor(showWorkoutGIF ? Color.duoGreen : Color.duoBlue)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
@@ -231,14 +231,14 @@ struct ExerciseTrackerView: View {
                 VStack(spacing: 8) {
                     HStack(alignment: .lastTextBaseline, spacing: 4) {
                         Text("\(currentReps)")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(currentReps > 0 ? Color.duoGreen : Color.duoDark)
                         Text(isPlankSelected ? "秒" : "reps")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                         Spacer()
                         Text(currentWorkoutGIFName)
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
 
@@ -294,7 +294,7 @@ struct ExerciseTrackerView: View {
             // 大きなカウント表示
             VStack(spacing: 2) {
                 Text("\(currentReps)")
-                    .font(.system(size: 72, weight: .black, design: .rounded))
+                    .font(.system(size: 72 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(currentReps > 0 ? Color.duoGreen : Color(.systemGray3))
                     .animation(.spring(), value: currentReps)
                 Text(isPlankSelected ? "秒" : "reps")
@@ -352,7 +352,7 @@ struct ExerciseTrackerView: View {
                     if plankTimer == nil {
                         Button(action: startPlankTimer) {
                             Label("開始", systemImage: "play.circle.fill")
-                                .font(Font.system(size: 14, weight: .bold))
+                                .font(Font.system(size: 14 * UIScale.font, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.vertical, 8).padding(.horizontal, 14)
                                 .background(Color.duoGreen).cornerRadius(10)
@@ -360,7 +360,7 @@ struct ExerciseTrackerView: View {
                     } else {
                         Button(action: stopPlankTimer) {
                             Label("停止", systemImage: "stop.circle.fill")
-                                .font(Font.system(size: 14, weight: .bold))
+                                .font(Font.system(size: 14 * UIScale.font, weight: .bold))
                                 .foregroundColor(.white)
                                 .padding(.vertical, 8).padding(.horizontal, 14)
                                 .background(Color.duoOrange).cornerRadius(10)
@@ -368,7 +368,7 @@ struct ExerciseTrackerView: View {
                     }
                     Button(action: { plankSeconds = 0; stopPlankTimer() }) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(Font.system(size: 14, weight: .bold))
+                            .font(Font.system(size: 14 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(8)
                             .background(Color(.systemGray5)).cornerRadius(8)
@@ -471,9 +471,9 @@ struct ExerciseTrackerView: View {
             Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 16) {
                 Text("🎯")
-                    .font(.system(size: 72))
+                    .font(.system(size: 72 * UIScale.font))
                 Text("Good job!")
-                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .font(.system(size: 38 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoGreen)
                 if isPlankSelected {
                     Text("目標 \(current.target) 秒 達成！")
@@ -513,7 +513,7 @@ struct ExerciseTrackerView: View {
 
                 VStack(spacing: 10) {
                     Text("やったー！🎉")
-                        .font(.system(size: 38, weight: .black, design: .rounded))
+                        .font(.system(size: 38 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoGreen)
 
                     HStack(spacing: 6) {
@@ -660,7 +660,7 @@ private struct CountButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "\(icon).circle.fill")
-                .font(.system(size: 48))
+                .font(.system(size: 48 * UIScale.font))
                 .foregroundColor(color)
                 .shadow(color: color.opacity(0.35), radius: 3, y: 2)
         }

@@ -286,23 +286,23 @@ struct RecordMenuView: View {
                         .fill(Color.white.opacity(0.24))
                         .frame(width: 54, height: 54)
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 24, weight: .black))
+                        .font(.system(size: 24 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("フォトログ")
-                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("写真からカロリーとPFCをAI分析")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12 * UIScale.font, weight: .bold))
                         .foregroundColor(.white.opacity(0.88))
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 24 * UIScale.font, weight: .bold))
                     .foregroundColor(.white.opacity(0.92))
             }
             .padding(18)
@@ -330,7 +330,7 @@ struct RecordMenuView: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Text(icon)
-                    .font(.system(size: 48))
+                    .font(.system(size: 48 * UIScale.font))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -360,7 +360,7 @@ struct RecordMenuView: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Text(emoji)
-                    .font(.system(size: 32))
+                    .font(.system(size: 32 * UIScale.font))
                 Text(label)
                     .font(.caption).fontWeight(.bold)
                     .foregroundColor(Color.duoDark)
@@ -377,13 +377,13 @@ struct RecordMenuView: View {
     private func quickRecordMenuButton(emoji: String, label: String, color: Color) -> some View {
         VStack(spacing: 8) {
             Text(emoji)
-                .font(.system(size: 32))
+                .font(.system(size: 32 * UIScale.font))
             HStack(spacing: 2) {
                 Text(label)
                     .font(.caption).fontWeight(.bold)
                     .foregroundColor(Color.duoDark)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
         }

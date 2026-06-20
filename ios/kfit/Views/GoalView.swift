@@ -37,10 +37,10 @@ struct GoalView: View {
                         progressCard
                         HStack(spacing: 6) {
                             Image(systemName: "chart.bar.doc.horizontal.fill")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoGreen)
                             Text("週間実績")
-                                .font(.system(size: 13, weight: .black))
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Spacer()
                         }
@@ -111,9 +111,10 @@ struct GoalView: View {
                 colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
+            .ignoresSafeArea(edges: .top)
             HStack(spacing: 0) {
                 Text("FIT")
-                    .font(.system(size: 8, weight: .black))
+                    .font(.system(size: 8 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoGreen)
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Color.white.opacity(0.9))
@@ -138,9 +139,9 @@ struct GoalView: View {
                 if dailyFixedGoals.weightEnabled {
                     Spacer(minLength: 6)
                     HStack(spacing: 2) {
-                        Text("⚖️").font(.system(size: 11))
+                        Text("⚖️").font(.system(size: 11 * UIScale.font))
                         Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(todayWeightKg != nil ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                             .lineLimit(1)
                     }
@@ -148,31 +149,31 @@ struct GoalView: View {
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("💪").font(.system(size: 11))
+                    Text("💪").font(.system(size: 11 * UIScale.font))
                     Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(trainingGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("👟").font(.system(size: 11))
+                    Text("👟").font(.system(size: 11 * UIScale.font))
                     Text(stepsStr)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🔥").font(.system(size: 11))
+                    Text("🔥").font(.system(size: 11 * UIScale.font))
                     Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     if healthKit.todayTotalCalories > 0 {
-                        Text("cal").font(.system(size: 7)).foregroundColor(.white.opacity(0.7))
+                        Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .fixedSize()
@@ -184,7 +185,6 @@ struct GoalView: View {
             .padding(.vertical, 7)
         }
         .frame(height: 46)
-        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - FITサマリー行
@@ -203,7 +203,7 @@ struct GoalView: View {
         }()
         return HStack(spacing: 6) {
             Text("FIT")
-                .font(.system(size: 8, weight: .black))
+                .font(.system(size: 8 * UIScale.font, weight: .black))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(fitColor)
@@ -223,30 +223,30 @@ struct GoalView: View {
             }
             if dailyFixedGoals.weightEnabled {
                 HStack(spacing: 2) {
-                    Text("⚖️").font(.system(size: 13))
+                    Text("⚖️").font(.system(size: 13 * UIScale.font))
                     Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(todayWeightKg != nil ? fitColor : Color.duoDark)
                 }
             }
             HStack(spacing: 2) {
-                Text("💪").font(.system(size: 13))
+                Text("💪").font(.system(size: 13 * UIScale.font))
                 Text(totalTrainingGoal > 0 ? "\(totalTraining)/\(totalTrainingGoal)" : "\(totalTraining)")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal ? fitColor : Color.duoDark)
             }
             HStack(spacing: 2) {
-                Text("👟").font(.system(size: 13))
+                Text("👟").font(.system(size: 13 * UIScale.font))
                 Text(stepsStr)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
             }
             HStack(spacing: 2) {
-                Text("🔥").font(.system(size: 13))
+                Text("🔥").font(.system(size: 13 * UIScale.font))
                 Text(healthKit.todayTotalCalories > 0 ? "\(Int(healthKit.todayTotalCalories))" : "—")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
-                Text("cal").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+                Text("cal").font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             }
             Spacer()
         }
@@ -289,7 +289,7 @@ struct GoalView: View {
                         Text("ingo")
                             .foregroundColor(.white)
                     }
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                 }
 
                 Spacer(minLength: 4)
@@ -299,16 +299,16 @@ struct GoalView: View {
                     HStack(spacing: 2) {
                         if let change = weightChange {
                             Text(String(format: "%+.1f", change))
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                         }
                         Text("/")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(.white.opacity(0.6))
                         if let rem = remaining {
                             Text(String(format: "%.1fkg残", rem))
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                         }
@@ -319,7 +319,7 @@ struct GoalView: View {
                 if let days = daysLeft {
                     let daysColor: Color = days <= 7 ? Color(hex: "#FF4B4B") : days <= 30 ? Color(hex: "#FFCC00") : .white
                     Text("\(days)日")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(daysColor)
                         .padding(.horizontal, 5).padding(.vertical, 3)
                         .background(Color.white.opacity(0.18))
@@ -461,7 +461,7 @@ struct GoalView: View {
                     showDietGoalSettings = true
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 13))
+                        .font(.system(size: 13 * UIScale.font))
                         .foregroundColor(Color.duoGreen)
                         .padding(8)
                         .background(Color.duoGreen.opacity(0.1))
@@ -479,14 +479,14 @@ struct GoalView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoGreen)
                     Text(showCharts ? "グラフを閉じる" : "体重グラフを表示")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoGreen)
                     Spacer()
                     Image(systemName: showCharts ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoGreen.opacity(0.7))
                 }
                 .padding(.horizontal, 16).padding(.vertical, 11)
@@ -502,10 +502,10 @@ struct GoalView: View {
     private func goalProgressChip(label: String, value: String, color: Color) -> some View {
         HStack(spacing: 4) {
             Text(label)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             Text(value)
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
         }
         .padding(.horizontal, 8)
@@ -593,7 +593,7 @@ struct GoalView: View {
                 .font(.caption.weight(.bold))
                 .foregroundColor(Color.duoSubtitle)
             Text(weightVal)
-                .font(.system(size: 36, weight: .black))
+                .font(.system(size: 36 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             Text("kg")
                 .font(.caption)
@@ -601,7 +601,7 @@ struct GoalView: View {
                 .offset(y: -6)
             if let fat = fatVal {
                 Text(fat + "%")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 14 * UIScale.font, weight: .bold))
                     .foregroundColor(color.opacity(0.8))
             }
         }
@@ -613,10 +613,10 @@ struct GoalView: View {
         let color: Color = days > 30 ? Color(hex: "#1CB0F6") : days > 7 ? Color(hex: "#FF9600") : Color(hex: "#FF4B4B")
         return VStack(spacing: 1) {
             Text("\(days)")
-                .font(.system(size: 17, weight: .black))
+                .font(.system(size: 17 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             Text("日後")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
                 .foregroundColor(color.opacity(0.8))
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
@@ -643,14 +643,14 @@ struct GoalView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 15, weight: .black))
+                        .font(.system(size: 15 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoGreen)
                     Text(showActivityHistory ? "アクティビティ履歴を閉じる" : "アクティビティ履歴を表示")
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoGreen)
                     Spacer()
                     Image(systemName: showActivityHistory ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 14, weight: .black))
+                        .font(.system(size: 14 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoGreen)
                 }
                 .padding(.horizontal, 14)
@@ -678,7 +678,7 @@ struct GoalView: View {
                 Image(systemName: "figure.strengthtraining.traditional")
                     .foregroundColor(Color.duoSubtitle)
                 Text("今日のワークアウト記録はまだありません")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                 Spacer()
             }
@@ -713,12 +713,12 @@ struct GoalView: View {
     private func historySubheader(_ title: String, summary: String? = nil) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 10, weight: .black))
+                .font(.system(size: 10 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoSubtitle)
             Spacer()
             if let summary {
                 Text(summary)
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoGreen)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -744,21 +744,21 @@ struct GoalView: View {
             } label: {
                 HStack(spacing: 7) {
                     Text(timeString(set.startTime))
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(Color.duoSubtitle)
                         .frame(width: 38, alignment: .leading)
                     Text("セット\(set.setNumber)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoGreen)
                     Spacer()
                     Text("\(set.totalReps) rep")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                     Text("+\(set.totalPoints) XP")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoGold)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -780,24 +780,24 @@ struct GoalView: View {
     private func activityHistoryWorkoutRow(_ workout: WorkoutSession) -> some View {
         HStack(spacing: 7) {
             Text(workout.emoji)
-                .font(.system(size: 15))
+                .font(.system(size: 15 * UIScale.font))
             VStack(alignment: .leading, spacing: 2) {
                 Text(workout.activityName)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Text("\(timeString(workout.startDate))-\(timeString(workout.endDate)) ・ \(workout.sourceName)")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                     .lineLimit(1)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(Int(workout.durationMinutes))分")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoGreen)
                 if workout.calories > 0 {
                     Text("\(Int(workout.calories)) kcal")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: 8 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(Color.duoOrange)
                 }
             }
@@ -810,22 +810,22 @@ struct GoalView: View {
     private func activityHistoryExerciseRow(_ exercise: CompletedExercise) -> some View {
         HStack(spacing: 8) {
             Text(goalExerciseEmoji(id: exercise.exerciseId, name: exercise.exerciseName))
-                .font(.system(size: 14))
+                .font(.system(size: 14 * UIScale.font))
             VStack(alignment: .leading, spacing: 1) {
                 Text(exercise.exerciseName)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Text(timeString(exercise.timestamp))
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
             }
             Spacer()
             Text("\(exercise.reps)回")
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoGreen)
             if exercise.formScore > 0 {
                 Text("\(Int(exercise.formScore))%")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
                     .foregroundColor(Color.duoBlue)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -928,7 +928,7 @@ struct GoalView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.system(size: 17 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
                     .frame(width: 34, height: 34)
                     .background(Color.white.opacity(0.20))
@@ -936,17 +936,17 @@ struct GoalView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Fitingoトレーニング")
-                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                     Text("今日のセットを始める")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(.white.opacity(0.86))
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 20, weight: .black))
+                    .font(.system(size: 20 * UIScale.font, weight: .black))
                     .foregroundColor(.white.opacity(0.9))
             }
             .padding(.horizontal, 14)
@@ -1016,28 +1016,28 @@ struct GoalView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "figure.walk.circle.fill")
                         .foregroundColor(Color(red: 0.98, green: 0.07, blue: 0.31))
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                     Text("今日のアクティビティ")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     if isGoal && allRingsDone {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * UIScale.font))
                             .foregroundColor(Color.duoGreen)
                     }
                     Spacer()
                     HStack(spacing: 4) {
                         HStack(spacing: 2) {
                             Text("\(activityScore)")
-                                .font(.system(size: 13, weight: .black, design: .rounded))
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(paceColor)
                             Text("%")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
                                 .foregroundColor(paceColor)
                         }
                         .fixedSize(horizontal: true, vertical: false)
                         Text(paceLabel)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                             .foregroundColor(paceColor)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -1048,7 +1048,7 @@ struct GoalView: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -1089,19 +1089,19 @@ struct GoalView: View {
                                 VStack(alignment: .trailing, spacing: 2) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "scalemass.fill")
-                                            .font(.system(size: 8))
+                                            .font(.system(size: 8 * UIScale.font))
                                             .foregroundColor(Color(hex: "#1CB0F6"))
                                         Text("体重")
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(Color.duoSubtitle)
                                     }
                                     Text(String(format: "%.1f kg", healthKit.latestBodyMass))
-                                        .font(.system(size: 10, weight: .black, design: .rounded))
+                                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let change = healthKit.weeklyBodyMassChange {
                                         let sign = change >= 0 ? "+" : ""
                                         Text(String(format: "%@%.1f kg/7日", sign, change))
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B") : change < -0.05 ? Color.duoGreen : Color.duoSubtitle)
                                     }
                                 }
@@ -1110,19 +1110,19 @@ struct GoalView: View {
                                 VStack(alignment: .trailing, spacing: 1) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "percent")
-                                            .font(.system(size: 8))
+                                            .font(.system(size: 8 * UIScale.font))
                                             .foregroundColor(Color(hex: "#CE82FF"))
                                         Text("体脂肪")
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(Color.duoSubtitle)
                                     }
                                     Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                                        .font(.system(size: 10, weight: .black, design: .rounded))
+                                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let change = healthKit.weeklyBodyFatChange {
                                         let sign = change >= 0 ? "+" : ""
                                         Text(String(format: "%@%.1f%%/7日", sign, change))
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B") : change < -0.05 ? Color.duoGreen : Color.duoSubtitle)
                                     }
                                 }
@@ -1151,14 +1151,14 @@ struct GoalView: View {
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: 7 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                 HStack(alignment: .lastTextBaseline, spacing: 3) {
                     Text(value)
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                     Text("/ \(goal)")
-                        .font(.system(size: 7))
+                        .font(.system(size: 7 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -1180,7 +1180,7 @@ struct GoalView: View {
                     .fontWeight(.black)
                     .foregroundColor(Color.duoDark)
                 Text(unit)
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
             }
@@ -1204,14 +1204,14 @@ struct GoalView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Image(systemName: "figure.walk")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color(hex: "#1CB0F6"))
                     Text("今日の歩数")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     Text("\(healthKit.todaySteps.formatted()) / \(Int(goal).formatted())歩")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(progress >= 1 ? Color(hex: "#1CB0F6") : Color.duoDark)
                 }
 
@@ -1249,14 +1249,14 @@ struct GoalView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoGreen)
                     Text("今日の消費カロリー")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     Text("\(Int(resting + active)) kcal")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                 }
 
@@ -1267,7 +1267,7 @@ struct GoalView: View {
                         ZStack {
                             Rectangle().fill(Color.duoGreen.opacity(0.72))
                             Text("\(Int(resting)) 安静")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
@@ -1277,7 +1277,7 @@ struct GoalView: View {
                         ZStack {
                             Rectangle().fill(Color(red: 0.18, green: 0.72, blue: 0.18))
                             Text("\(Int(active)) 活動")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
@@ -1363,12 +1363,12 @@ struct GoalView: View {
         VStack(spacing: 3) {
             Text(icon).font(.title3)
             Text(value)
-                .font(.system(size: 16, weight: .black))
+                .font(.system(size: 16 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             Text(unit)
-                .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             Text(label)
-                .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -1448,7 +1448,7 @@ struct GoalView: View {
                 Spacer()
                 if let latest = records.last {
                     Text(String(format: "%.1f kg", latest.kg))
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color(hex: "#1CB0F6"))
                 }
             }
@@ -1487,7 +1487,7 @@ struct GoalView: View {
                 Spacer()
                 if let latest = records.last {
                     Text(String(format: "%.1f%%", latest.percent))
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color(hex: "#CE82FF"))
                 }
             }
@@ -1521,7 +1521,7 @@ struct GoalView: View {
             Spacer()
             VStack(spacing: 8) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 28))
+                    .font(.system(size: 28 * UIScale.font))
                     .foregroundColor(Color(.systemGray4))
                 Text(message)
                     .font(.caption)
@@ -1558,7 +1558,7 @@ private struct GoalWeeklyDayBarView: View {
 
         VStack(spacing: 2) {
             Text(bal != 0 ? (bal >= 0 ? "+" : "") + "\(bal)" : "")
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 7 * UIScale.font, weight: .bold))
                 .foregroundColor(bal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
@@ -1590,17 +1590,17 @@ private struct GoalWeeklyDayBarView: View {
             }
 
             Text(day.dayLabel)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
 
             if let mass = day.bodyMass {
                 Text(String(format: "%.1f", mass))
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
             } else {
                 Text("—")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(Color(.systemGray4))
             }
         }
@@ -1653,13 +1653,13 @@ private struct GoalWeeklyCalorieCard: View {
                 // タイトル行
                 HStack(spacing: 6) {
                     Text("⚖️")
-                        .font(.system(size: 15))
+                        .font(.system(size: 15 * UIScale.font))
                     HStack(spacing: 5) {
                         Text("カロリー収支")
-                            .font(.system(size: 12, weight: .black))
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text(badge.label)
-                            .font(.system(size: 9, weight: .black))
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(badge.color)
@@ -1669,13 +1669,13 @@ private struct GoalWeeklyCalorieCard: View {
                     VStack(alignment: .trailing, spacing: 1) {
                         HStack(alignment: .lastTextBaseline, spacing: 3) {
                             Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
-                                .font(.system(size: 8, weight: .semibold))
+                                .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("/")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("計 " + (weekTotal >= 0 ? "+" : "") + "\(weekTotal)")
-                                .font(.system(size: 13, weight: .black))
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(balanceColor)
                         }
                         .lineLimit(1)
@@ -1683,7 +1683,7 @@ private struct GoalWeeklyCalorieCard: View {
                         .fixedSize(horizontal: true, vertical: false)
 
                         Text("kcal")
-                            .font(.system(size: 8, weight: .semibold))
+                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -1699,11 +1699,11 @@ private struct GoalWeeklyCalorieCard: View {
                     HStack(spacing: 8) {
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 1).fill(Color.duoGreen.opacity(0.85)).frame(width: 10, height: 4)
-                            Text("消費超過").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("消費超過").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 1).fill(Color(hex: "#FF4B4B").opacity(0.75)).frame(width: 10, height: 4)
-                            Text("摂取超過").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text("摂取超過").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
                     }
@@ -1718,42 +1718,42 @@ private struct GoalWeeklyCalorieCard: View {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("目標差異")
-                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             HStack(alignment: .lastTextBaseline, spacing: 2) {
                                 Text((dailyGoal >= 0 ? "+" : "") + "\(dailyGoal)")
-                                    .font(.system(size: 12, weight: .black, design: .rounded))
+                                    .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(dailyGoal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                 Text("kcal/日")
-                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                         Spacer()
                         VStack(alignment: .center, spacing: 2) {
                             Text("目標減少")
-                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             HStack(alignment: .lastTextBaseline, spacing: 2) {
                                 Text(String(format: "%.2f", targetWeeklyKg))
-                                    .font(.system(size: 12, weight: .black, design: .rounded))
+                                    .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(targetWeeklyKg <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                 Text("kg/週")
-                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("実")
-                                .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             if let ch = actualChange {
                                 HStack(alignment: .lastTextBaseline, spacing: 2) {
                                     Text(String(format: "%+.1f", ch))
-                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(ch <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                     Text("kg")
-                                        .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                        .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 }
                             } else {
                                 Text("—")
-                                    .font(.system(size: 12, weight: .black)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 12 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                     }
@@ -1820,7 +1820,7 @@ private struct LineChartView: View {
                         .stroke(goalColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
 
                         Text(unit == "%" ? String(format: "%.1f%%", Float(goal)) : String(format: "%.1f", Float(goal)))
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 8 * UIScale.font, weight: .bold))
                             .foregroundColor(goalColor)
                             .position(x: w - 22, y: max(10, min(h - 10, gy - 8)))
                     }
@@ -1872,10 +1872,10 @@ private struct LineChartView: View {
                     // Min/Max labels
                     VStack {
                         Text(String(format: "%.1f", Float(effectiveMax)))
-                            .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         Spacer()
                         Text(String(format: "%.1f", Float(effectiveMin)))
-                            .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                     .frame(width: w, height: h, alignment: .trailing)
                     .padding(.trailing, 2)
@@ -1887,7 +1887,7 @@ private struct LineChartView: View {
                 HStack(spacing: 0) {
                     ForEach(0..<labels.count, id: \.self) { i in
                         Text(labels[i])
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .frame(maxWidth: .infinity)
                     }
@@ -1922,26 +1922,26 @@ private struct GoalWeeklyBurnCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("🔥")
-                        .font(.system(size: 15))
+                        .font(.system(size: 15 * UIScale.font))
                     Text("燃やしたカロリー")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     if let avg = avgBurn, weekTotal > 0 {
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(alignment: .lastTextBaseline, spacing: 3) {
                                 Text("平均 \(avg)")
-                                    .font(.system(size: 9, weight: .semibold))
+                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("/")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 9 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("計 \(weekTotal)")
-                                    .font(.system(size: 14, weight: .black))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black))
                                     .foregroundColor(Color(hex: "#16A34A"))
                             }
                             Text("kcal")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -1951,11 +1951,11 @@ private struct GoalWeeklyBurnCard: View {
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 2).fill(restingColor).frame(width: 10, height: 8)
-                        Text("安静時").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        Text("安静時").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                     HStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 2).fill(activeColor).frame(width: 10, height: 8)
-                        Text("活動").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        Text("活動").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
                 }
@@ -2002,7 +2002,7 @@ private struct GoalBurnDayColumn: View {
         VStack(spacing: 3) {
             // カロリーラベル
             Text(day.totalCalories > 0 ? "\(Int(day.totalCalories))" : "")
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 7 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -2024,38 +2024,38 @@ private struct GoalBurnDayColumn: View {
 
             // 曜日
             Text(day.dayLabel)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
 
             // セット数
             HStack(spacing: 2) {
                 Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 7))
+                    .font(.system(size: 7 * UIScale.font))
                     .foregroundColor(day.setCount > 0 ? Color.duoGreen : Color(.systemGray4))
                 Text(day.setCount > 0 ? "\(day.setCount)" : "-")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(day.setCount > 0 ? Color.duoGreen : Color(.systemGray4))
             }
 
             // 有酸素時間
             HStack(spacing: 2) {
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 7))
+                    .font(.system(size: 7 * UIScale.font))
                     .foregroundColor(day.exerciseMinutes > 0 ? Color(hex: "#1CB0F6") : Color(.systemGray4))
                 Text(day.exerciseMinutes > 0 ? "\(Int(day.exerciseMinutes))m" : "-")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(day.exerciseMinutes > 0 ? Color(hex: "#1CB0F6") : Color(.systemGray4))
             }
 
             // 歩数
             HStack(spacing: 2) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 7))
+                    .font(.system(size: 7 * UIScale.font))
                     .foregroundColor(day.steps > 0 ? Color(hex: "#FF9600") : Color(.systemGray4))
                 Text(day.steps > 0
                     ? (day.steps >= 1000 ? String(format: "%.1fk", Double(day.steps) / 1000.0) : "\(day.steps)")
                     : "-")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(day.steps > 0 ? Color(hex: "#FF9600") : Color(.systemGray4))
             }
         }
@@ -2110,26 +2110,26 @@ private struct GoalIntakeTrendCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("🍽️")
-                        .font(.system(size: 15))
+                        .font(.system(size: 15 * UIScale.font))
                     Text("食事カロリー")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     if let avg = avgIntake, weekTotal > 0 {
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(alignment: .lastTextBaseline, spacing: 3) {
                                 Text("平均 \(avg)")
-                                    .font(.system(size: 9, weight: .semibold))
+                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("/")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 9 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("計 \(weekTotal)")
-                                    .font(.system(size: 14, weight: .black))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black))
                                     .foregroundColor(Color(hex: "#FF4B4B"))
                             }
                             Text("kcal")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -2145,7 +2145,7 @@ private struct GoalIntakeTrendCard: View {
                                 .fill(GoalIntakeTrendCard.timeColor(hour: hour))
                                 .frame(width: 10, height: 8)
                             Text(label)
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -2164,7 +2164,7 @@ private struct GoalIntakeTrendCard: View {
                     }
                     if !hasData {
                         Text("今週の食事記録がありません（Apple Health に記録すると表示されます）")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -2194,7 +2194,7 @@ private struct GoalIntakeDayColumn: View {
 
         VStack(spacing: 3) {
             Text(totalCal > 0 ? "\(totalCal)" : "")
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 7 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
@@ -2222,7 +2222,7 @@ private struct GoalIntakeDayColumn: View {
             .frame(height: maxBarH)
 
             Text(day.dayLabel)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
         }
         .frame(maxWidth: .infinity)
@@ -2263,15 +2263,15 @@ private struct GoalTimelineStrip: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 2) {
                         Image(systemName: "flag.fill")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                         Text("スタート")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     if let d = startDate {
                         Text("(\(GoalTimelineStrip.dateFormatter.string(from: d)))")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -2279,17 +2279,17 @@ private struct GoalTimelineStrip: View {
 
                 VStack(spacing: 2) {
                     Text("今日")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color(hex: "#1CB0F6"))
                     HStack(alignment: .lastTextBaseline, spacing: 0) {
                         Text("あと")
-                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(daysColor)
                         Text("\(daysRemaining)")
-                            .font(.system(size: 13, weight: .black, design: .rounded))
+                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(daysColor)
                         Text("日")
-                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(daysColor)
                     }
                 }
@@ -2298,15 +2298,15 @@ private struct GoalTimelineStrip: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(spacing: 2) {
                         Text("ゴール")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoGreen)
                         Image(systemName: "trophy.fill")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoGreen)
                     }
                     if let d = targetDate {
                         Text("(\(GoalTimelineStrip.dateFormatter.string(from: d)))")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoGreen)
                     }
                 }
@@ -2352,7 +2352,7 @@ private struct GoalTimelineStrip: View {
                         .frame(height: 54, alignment: .center)
                     if let startBodyFat {
                         Text(startBodyFat)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -2366,7 +2366,7 @@ private struct GoalTimelineStrip: View {
                         .frame(height: 54, alignment: .center)
                     if let currentBodyFat {
                         Text(currentBodyFat)
-                            .font(.system(size: 12, weight: .black, design: .rounded))
+                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(Color(hex: "#1CB0F6").opacity(0.8))
                     }
                 }
@@ -2380,7 +2380,7 @@ private struct GoalTimelineStrip: View {
                         .frame(height: 54, alignment: .center)
                     if let goalBodyFat {
                         Text(goalBodyFat)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoGreen.opacity(0.8))
                     }
                 }
@@ -2392,14 +2392,14 @@ private struct GoalTimelineStrip: View {
     private func deltaArrowColumn(delta: String?, color: Color) -> some View {
         VStack(spacing: 1) {
             Image(systemName: "arrow.right")
-                .font(.system(size: 12, weight: .black))
+                .font(.system(size: 12 * UIScale.font, weight: .black))
                 .foregroundColor(color)
             if let delta {
                 Text(delta)
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(color)
                 Text("kg")
-                    .font(.system(size: 7, weight: .bold, design: .rounded))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold, design: .rounded))
                     .foregroundColor(color.opacity(0.75))
             }
         }
@@ -2421,7 +2421,7 @@ private struct GoalTimelineStrip: View {
                 weightNumberText(value, size: 31, decimalSize: 17, color: .white)
             }
             Text("kg")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
                 .foregroundColor(Color.duoSubtitle)
         }
     }
@@ -2565,7 +2565,7 @@ private struct GoalMotivatingBanner: View {
     private func bannerRow(_ item: (message: String, color: Color, action: String?)) -> some View {
         let (message, color, action) = item
         let label = Text(message)
-            .font(.system(size: 12, weight: .bold))
+            .font(.system(size: 12 * UIScale.font, weight: .bold))
             .foregroundColor(color)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -2608,19 +2608,19 @@ private struct GoalCalorieBalanceBarCard: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color.duoDark)
                 Text("カロリー収支")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 if totalConsumed > 0 || intake > 0 {
                     let sign = balance >= 0 ? "+" : ""
                     Text("\(sign)\(Int(balance)) kcal")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(calColor)
                     Text(calLabel)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(calColor)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -2663,11 +2663,11 @@ private struct GoalCalorieBalanceBarCard: View {
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 0) {
                 Text("消費Cal")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoGreen)
                     .frame(width: consumedWidth, alignment: .center)
                 Text("摂取Cal")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoRed)
                     .frame(width: intakeWidth, alignment: .center)
                 Spacer()
@@ -2688,10 +2688,10 @@ private struct GoalCalorieBalanceBarCard: View {
             HStack(spacing: 2) {
                 Spacer()
                 Text("\(Int(consumed))")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
                 Text("cal")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 8 * UIScale.font, weight: .medium))
                     .foregroundColor(.white.opacity(0.9))
                     .padding(.bottom, 1)
             }
@@ -2705,10 +2705,10 @@ private struct GoalCalorieBalanceBarCard: View {
             Rectangle().fill(Color.duoRed)
             HStack(spacing: 2) {
                 Text("\(Int(intake))")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
                 Text("cal")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 8 * UIScale.font, weight: .medium))
                     .foregroundColor(.white.opacity(0.9))
                     .padding(.bottom, 1)
                 Spacer()
@@ -2746,19 +2746,19 @@ private struct GoalCalorieBalanceBarCard: View {
         if isPositive {
             HStack(spacing: 1) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 6))
+                    .font(.system(size: 6 * UIScale.font))
                     .foregroundColor(.red)
                 Text("+\(grams)g")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(.red)
             }
         } else if absBalance > 0 {
             HStack(spacing: 1) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 6))
+                    .font(.system(size: 6 * UIScale.font))
                     .foregroundColor(Color.duoGreen)
                 Text("-\(grams)g")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoGreen)
             }
         }

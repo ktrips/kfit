@@ -577,17 +577,17 @@ struct DashboardView: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(icon)
-                    .font(.system(size: 17))
+                    .font(.system(size: 17 * UIScale.font))
                     .frame(width: 30, height: 30)
                     .background(Color.white.opacity(0.22))
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(Color.white.opacity(0.85))
                         .lineLimit(1)
                 }
@@ -633,7 +633,7 @@ struct DashboardView: View {
                                 Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
                                 Text("go").foregroundColor(.white)
                             }
-                            .font(.system(size: 10, weight: .black, design: .rounded))
+                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         }
 
                         Spacer()
@@ -680,7 +680,7 @@ struct DashboardView: View {
                         Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
                         Text("go").foregroundColor(.white)
                     }
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                 }
 
                 Spacer()
@@ -690,14 +690,14 @@ struct DashboardView: View {
                     // 連続記録 + 日付
                     HStack(spacing: 3) {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 14))
+                            .font(.system(size: 14 * UIScale.font))
                             .foregroundColor(.orange)
                         Text("\(authManager.userProfile?.streak ?? 0)日")
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 10 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                         Text(mandalaDateLabel)
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 10 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(.white.opacity(0.85))
                     }
@@ -707,7 +707,7 @@ struct DashboardView: View {
                     if nc.total > 0 {
                         let pct = Int(Double(nc.done) / Double(nc.total) * 100)
                         Text("\(pct)%")
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: 10 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
                             .foregroundColor(pct >= 80 ? Color.duoYellow : .white)
                     }
@@ -960,7 +960,7 @@ struct DashboardView: View {
                                 Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
                                 Text("go").foregroundColor(.white)
                             }
-                            .font(.system(size: 12, weight: .black, design: .rounded))
+                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                         }
 
                         // 統計情報
@@ -988,9 +988,9 @@ struct DashboardView: View {
 
     private func compactStat(icon: String, value: String) -> some View {
         HStack(spacing: 1) {
-            Text(icon).font(.system(size: 10))
+            Text(icon).font(.system(size: 10 * UIScale.font))
             Text(value)
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(.white)
         }
     }
@@ -1108,33 +1108,33 @@ struct DashboardView: View {
 
             // 2. トータル進捗％
             HStack(spacing: 1) {
-                Text("📊").font(.system(size: 9))
+                Text("📊").font(.system(size: 9 * UIScale.font))
                 Text("\(progressPercent)%")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(progressPercent == 100 ? Color.white : Color.white.opacity(0.8))
                 if progressPercent == 100 {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 7))
+                        .font(.system(size: 7 * UIScale.font))
                         .foregroundColor(.white)
                 }
             }
 
             // 3. カロリー収支
             HStack(spacing: 1) {
-                Text(isPositive ? "📈" : "📉").font(.system(size: 9))
+                Text(isPositive ? "📈" : "📉").font(.system(size: 9 * UIScale.font))
                 Text(isPositive ? "+" : "")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(.white.opacity(0.9))
                 Text("\(Int(abs(balance)))")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
 
             // 4. 総ポイント数
             HStack(spacing: 1) {
-                Text("⭐").font(.system(size: 9))
+                Text("⭐").font(.system(size: 9 * UIScale.font))
                 Text("\(authManager.userProfile?.totalPoints ?? 0)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoYellow)
             }
         }
@@ -1142,12 +1142,12 @@ struct DashboardView: View {
 
     private func miniStat(_ icon: String, _ value: String, _ label: String) -> some View {
         HStack(spacing: 1) {
-            Text(icon).font(.system(size: 9))
+            Text(icon).font(.system(size: 9 * UIScale.font))
             Text(value)
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(.white)
             Text(label)
-                .font(.system(size: 7))
+                .font(.system(size: 7 * UIScale.font))
                 .foregroundColor(Color.white.opacity(0.7))
         }
     }
@@ -1157,13 +1157,13 @@ struct DashboardView: View {
     private func repCalStat(reps: Int, kcal: Int) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                Text("⚡").font(.system(size: 9))
+                Text("⚡").font(.system(size: 9 * UIScale.font))
                 Text("\(reps)回")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(.white)
             }
             Text("\(kcal)kcal")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.white.opacity(0.8))
         }
     }
@@ -1241,7 +1241,7 @@ struct DashboardView: View {
             Spacer()
             HStack(spacing: 3) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color(red: 1.0, green: 0.65, blue: 0.0))
                 Text("\(streak)日")
                     .font(.subheadline).fontWeight(.black)
@@ -1303,12 +1303,12 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
                 Text(msg)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                     .fontWeight(msgGreen ? .bold : .regular)
                     .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
                 Spacer()
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .padding(.top, 2)
@@ -1342,7 +1342,7 @@ struct DashboardView: View {
                 HStack(spacing: 3) {
                     Text("⚖️").font(.caption)
                     Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoGreen)
                 }
             }
@@ -1406,20 +1406,20 @@ struct DashboardView: View {
             ForEach(sessions) { session in
                 HStack(spacing: 8) {
                     Text(timeFmt.string(from: session.startDate))
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .frame(width: 42, alignment: .leading)
                     Text(String(format: "%.0f分", session.durationMinutes))
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoPurple)
                     Spacer()
                     let stretchCount = Int(session.durationMinutes)
                     if stretchCount > 0 {
                         HStack(spacing: 3) {
                             Text("🤸")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11 * UIScale.font))
                             Text("×\(stretchCount)")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11 * UIScale.font, weight: .semibold))
                                 .foregroundColor(Color(red: 0.22, green: 0.75, blue: 0.56))
                         }
                     }
@@ -1459,20 +1459,20 @@ struct DashboardView: View {
             ForEach(recent) { record in
                 HStack(spacing: 8) {
                     Text(dateFmt.string(from: record.measuredAt))
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .frame(width: 70, alignment: .leading)
                     Text(timeFmt.string(from: record.measuredAt))
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                     Spacer()
                     Text(String(format: "%.1f kg", record.kg))
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                     let isToday = Calendar.current.isDateInToday(record.measuredAt)
                     if isToday {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 11 * UIScale.font))
                             .foregroundColor(Color.duoGreen)
                     }
                 }
@@ -1535,7 +1535,7 @@ struct DashboardView: View {
             // 進捗表示
             HStack(alignment: .bottom, spacing: 6) {
                 Text("\(weeklySetProgress.completedSets)")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(isOnTrack ? Color.duoGreen : Color.duoOrange)
                 Text("/ \(weeklyTarget) セット")
                     .font(.caption).fontWeight(.bold)
@@ -1676,7 +1676,7 @@ struct DashboardView: View {
         return HStack(spacing: 8) {
             // ソース別アイコン
             Text(session.sessionEmoji)
-                .font(.system(size: 12))
+                .font(.system(size: 12 * UIScale.font))
                 .frame(width: 24, height: 24)
                 .background(Color.duoPurple.opacity(0.15))
                 .clipShape(Circle())
@@ -1687,7 +1687,7 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
                 Text(timeFmt.string(from: session.startDate))
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
             Spacer()
@@ -1696,17 +1696,17 @@ struct DashboardView: View {
                 HStack(spacing: 6) {
                     if session.averageHeartRate > 0 {
                         HStack(spacing: 2) {
-                            Text("❤️").font(.system(size: 9))
+                            Text("❤️").font(.system(size: 9 * UIScale.font))
                             Text("\(Int(session.averageHeartRate))")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
                         }
                     }
                     if session.averageHRV > 0 {
                         HStack(spacing: 2) {
-                            Text("💙").font(.system(size: 9))
+                            Text("💙").font(.system(size: 9 * UIScale.font))
                             Text("\(Int(session.averageHRV))")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color(hex: "#1CB0F6"))
                         }
                     }
@@ -1714,7 +1714,7 @@ struct DashboardView: View {
             }
             // XPバッジ
             Text("+\(xp) XP")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color(hex: "#FDCB6E"))
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(Color(hex: "#FDCB6E").opacity(0.15))
@@ -1724,7 +1724,7 @@ struct DashboardView: View {
                 .font(.caption2).fontWeight(.bold)
                 .foregroundColor(Color.duoPurple)
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 10))
+                .font(.system(size: 10 * UIScale.font))
                 .foregroundColor(Color.duoPurple)
         }
         .padding(.horizontal, 12)
@@ -1749,7 +1749,7 @@ struct DashboardView: View {
             ForEach(samples) { sample in
                 HStack(spacing: 8) {
                     Text(icon)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * UIScale.font))
                         .frame(width: 22, height: 22)
                         .background(color.opacity(0.15))
                         .clipShape(Circle())
@@ -1878,7 +1878,7 @@ struct DashboardView: View {
             HStack(spacing: 4) {
                 ForEach(0..<needed, id: \.self) { idx in
                     Image(systemName: idx < count ? "circle.fill" : "circle")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(idx < count ? Color.duoGreen : Color(.systemGray3))
                 }
             }
@@ -2003,7 +2003,7 @@ struct DashboardView: View {
                         .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
                 }
                 Text("~\(slot.endHour):00")
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 50, alignment: .leading)
@@ -2020,7 +2020,7 @@ struct DashboardView: View {
                                 .foregroundColor(achieved ? Color.duoGreen : Color.duoSubtitle)
                             if gp.sleepHours > 0 {
                                 Text(String(format: "%.1fh", gp.sleepHours))
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 9 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                             if achieved {
@@ -2560,7 +2560,7 @@ struct DashboardView: View {
                 // ヘッダー
                 HStack(spacing: 4) {
                     Text("FOOD")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.duoGreen)
@@ -2569,13 +2569,13 @@ struct DashboardView: View {
                     if totalCal > 0 {
                         HStack(spacing: 2) {
                             Image(systemName: "flame.fill")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoOrange)
                             Text("\(totalCal)")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoOrange)
                             Text("kcal")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                         .padding(.horizontal, 5).padding(.vertical, 2)
@@ -2584,14 +2584,14 @@ struct DashboardView: View {
                     }
                     if pfcScore > 0 {
                         Text("\(pfcScore)点")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
                             .foregroundColor(scoreColorForPFC(pfcScore))
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(scoreColorForPFC(pfcScore).opacity(0.15))
                             .cornerRadius(8)
                         if let rating = pfcAnalysis?.rating {
                             Text(rating)
-                                .font(.system(size: 10, weight: .black))
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(scoreColorForPFC(pfcScore))
                                 .padding(.horizontal, 7).padding(.vertical, 2)
                                 .background(scoreColorForPFC(pfcScore).opacity(0.12))
@@ -2599,7 +2599,7 @@ struct DashboardView: View {
                         }
                     }
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle.opacity(0.5))
                 }
 
@@ -2615,10 +2615,10 @@ struct DashboardView: View {
                             .frame(width: 54, height: 54)
                             VStack(spacing: 0) {
                                 Text("\(analysis.score)")
-                                    .font(.system(size: 15, weight: .black))
+                                    .font(.system(size: 15 * UIScale.font, weight: .black))
                                     .foregroundColor(scoreColorForPFC(analysis.score))
                                 Text("点")
-                                    .font(.system(size: 7))
+                                    .font(.system(size: 7 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                         }
@@ -2629,7 +2629,7 @@ struct DashboardView: View {
                                 .stroke(Color(.systemGray5), lineWidth: 5)
                                 .frame(width: 54, height: 54)
                             Image(systemName: "chart.pie")
-                                .font(.system(size: 20))
+                                .font(.system(size: 20 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle.opacity(0.4))
                         }
                         .frame(width: 54, height: 54)
@@ -2687,32 +2687,32 @@ struct DashboardView: View {
         }
         return AnyView(HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 8))
+                .font(.system(size: 8 * UIScale.font))
                 .foregroundColor(color)
                 .frame(width: 12)
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
             Spacer()
             if let g = goal, g > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text(value > 0 ? format(value) : "0")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor((isOver && isReverse) ? .red : dispColor)
                     Text("/\(format(g))")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                     Text(unit)
-                        .font(.system(size: 8))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             } else {
                 HStack(spacing: 1) {
                     Text(value > 0 ? format(value) : "—")
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor((isOver && isReverse) ? .red : dispColor)
                     Text(unit)
-                        .font(.system(size: 8))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -2754,31 +2754,31 @@ struct DashboardView: View {
                 // ─── ヘッダー ───
                 HStack(spacing: 6) {
                     Text("FIT")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color(hex: "#FF9600"))
                         .cornerRadius(4)
                     Spacer()
                     HStack(spacing: 2) {
-                        Text("🔥").font(.system(size: 11))
+                        Text("🔥").font(.system(size: 11 * UIScale.font))
                         Text("\(Int(healthKit.todayTotalCalories)) kcal")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoDark)
                     }
                     if activeCount > 0 {
                         Text("\(activityScore)%")
-                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(paceColor)
                         Text(paceLabel)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(paceColor)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(paceColor.opacity(0.12))
                             .cornerRadius(6)
                     }
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -2809,11 +2809,11 @@ struct DashboardView: View {
                             if healthKit.latestBodyMass > 0 {
                                 VStack(alignment: .leading, spacing: 0) {
                                     Text(String(format: "%.1fkg", healthKit.latestBodyMass))
-                                        .font(.system(size: 11, weight: .black, design: .rounded))
+                                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let ch = healthKit.weeklyBodyMassChange {
                                         Text(String(format: "%+.1f/週", ch))
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(ch > 0.05 ? Color(hex: "#FF4B4B") : ch < -0.05 ? Color.duoGreen : Color.duoSubtitle)
                                     }
                                 }
@@ -2821,11 +2821,11 @@ struct DashboardView: View {
                             if healthKit.latestBodyFatPercentage > 0 {
                                 VStack(alignment: .leading, spacing: 0) {
                                     Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                                        .font(.system(size: 11, weight: .black, design: .rounded))
+                                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let ch = healthKit.weeklyBodyFatChange {
                                         Text(String(format: "%+.1f%%/週", ch))
-                                            .font(.system(size: 8, weight: .semibold))
+                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                                             .foregroundColor(ch > 0.05 ? Color(hex: "#FF4B4B") : ch < -0.05 ? Color.duoGreen : Color.duoSubtitle)
                                     }
                                 }
@@ -2833,22 +2833,22 @@ struct DashboardView: View {
                         }
                         HStack(spacing: 10) {
                             HStack(spacing: 3) {
-                                Text("💪").font(.system(size: 10))
+                                Text("💪").font(.system(size: 10 * UIScale.font))
                                 Text("\(todaySetCount)/\(dailySetGoal)")
-                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(todaySetCount >= dailySetGoal ? Color.duoGreen : Color.duoDark)
                                 Text("set")
-                                    .font(.system(size: 8))
+                                    .font(.system(size: 8 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                             HStack(spacing: 3) {
-                                Text("👟").font(.system(size: 10))
+                                Text("👟").font(.system(size: 10 * UIScale.font))
                                 Text(formatSteps(healthKit.todaySteps))
-                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(Color.duoDark)
                                 if healthKit.todaySteps < 1000 {
                                     Text("歩")
-                                        .font(.system(size: 8))
+                                        .font(.system(size: 8 * UIScale.font))
                                         .foregroundColor(Color.duoSubtitle)
                                 }
                             }
@@ -2878,10 +2878,10 @@ struct DashboardView: View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(value)
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoDark)
             Text(unit)
-                .font(.system(size: 8))
+                .font(.system(size: 8 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
         }
     }
@@ -2913,12 +2913,12 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 2) {
                             Text("\(totalXP)")
-                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 3)
                         }
@@ -2934,12 +2934,12 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 2) {
                             Text("\(weeklyXP)")
-                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoBlue)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 3)
                         }
@@ -2956,12 +2956,12 @@ struct DashboardView: View {
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 2) {
                             Text("\(authManager.userProfile?.totalPoints ?? 0)")
-                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoOrange)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                             Text("XP")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 3)
                         }
@@ -2999,21 +2999,21 @@ struct DashboardView: View {
             // アイコン + ラベル + ％
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(iconColor)
                 Text(label)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 // 目標がある場合は％を表示
                 if let _ = goal {
                     VStack(spacing: 0) {
                         Text("\(percent)%")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(displayColor)
                         if isOver && isReverse {
                             Text("過剰")
-                                .font(.system(size: 7, weight: .bold))
+                                .font(.system(size: 7 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.red)
                         }
                     }
@@ -3026,10 +3026,10 @@ struct DashboardView: View {
             // 値表示
             HStack(alignment: .bottom, spacing: 2) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor((isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoDark))
                 Text(unit)
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .padding(.bottom, 1)
             }
@@ -3115,12 +3115,12 @@ struct DashboardView: View {
         let content = VStack(alignment: .center, spacing: 3) {
             // アイコン
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(.system(size: 16 * UIScale.font))
                 .foregroundColor(iconColor)
 
             // ラベル
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -3128,12 +3128,12 @@ struct DashboardView: View {
             // 値表示
             VStack(spacing: 1) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor((isOver && isReverse) ? Color.red : (isGood ? Color.duoGreen : Color.duoDark))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(unit)
-                    .font(.system(size: 7))
+                    .font(.system(size: 7 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
 
@@ -3150,7 +3150,7 @@ struct DashboardView: View {
 
                 // パーセント表示
                 Text("\(percent)%")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(displayColor)
             }
         }
@@ -3207,7 +3207,7 @@ struct DashboardView: View {
     private func goalIconDot(emoji: String, achieved: Bool, hasData: Bool) -> some View {
         ZStack(alignment: .bottomTrailing) {
             Text(emoji)
-                .font(.system(size: 22))
+                .font(.system(size: 22 * UIScale.font))
                 .opacity(hasData ? 1.0 : 0.35)
 
             Circle()
@@ -3223,10 +3223,10 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "scalemass.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color.duoBlue)
                 Text("体重・体脂肪")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
             }
 
@@ -3235,10 +3235,10 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .bottom, spacing: 2) {
                         Text(healthKit.latestBodyMass > 0 ? String(format: "%.1f", healthKit.latestBodyMass) : "—")
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(healthKit.latestBodyMass > 0 ? Color.duoGreen : Color.duoDark)
                         Text("kg")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
                     }
@@ -3254,10 +3254,10 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .bottom, spacing: 2) {
                         Text(healthKit.latestBodyFatPercentage > 0 ? String(format: "%.0f", healthKit.latestBodyFatPercentage) : "—")
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(healthKit.latestBodyFatPercentage > 0 ? Color.duoGreen : Color.duoDark)
                         Text("%")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
                     }
@@ -3288,19 +3288,19 @@ struct DashboardView: View {
             HStack(alignment: .bottom) {
                 HStack(spacing: 4) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(darkGreen)
                     Text("今日の消費カロリー")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                 }
                 Spacer()
                 HStack(alignment: .bottom, spacing: 3) {
                     Text(total > 0 ? "\(Int(total))" : "—")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(darkGreen)
                     Text("kcal")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .padding(.bottom, 3)
                 }
@@ -3343,10 +3343,10 @@ struct DashboardView: View {
         HStack(spacing: 2) {
             Circle().fill(color).frame(width: 5, height: 5)
             Text(label)
-                .font(.system(size: 7))
+                .font(.system(size: 7 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
             Text(value)
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 7 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
         }
     }
@@ -3362,10 +3362,10 @@ struct DashboardView: View {
             return ("→", Color.duoSubtitle)
         }()
         HStack(spacing: 1) {
-            Text(arrow).font(.system(size: 8, weight: .bold)).foregroundColor(color)
+            Text(arrow).font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(color)
             Text(delta == 0 ? "0\(unit)" : "\(fmt)\(unit)")
-                .font(.system(size: 8, weight: .bold)).foregroundColor(color)
-            Text("7日").font(.system(size: 7)).foregroundColor(Color.duoSubtitle)
+                .font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(color)
+            Text("7日").font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
         }
     }
 
@@ -3394,10 +3394,10 @@ struct DashboardView: View {
             // ヘッダー
             HStack(spacing: 4) {
                 Image(systemName: "equal.circle.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(isPositive ? Color.red : Color.duoBlue)
                 Text("カロリー収支")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
             }
@@ -3405,13 +3405,13 @@ struct DashboardView: View {
             // 収支表示
             HStack(alignment: .bottom, spacing: 4) {
                 Text(isPositive ? "+" : "-")
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.system(size: 18 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(isPositive ? Color.red : Color.duoBlue)
                 Text("\(Int(absBalance))")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(isPositive ? Color.red : Color.duoBlue)
                 Text("kcal")
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .padding(.bottom, 2)
             }
@@ -3420,24 +3420,24 @@ struct DashboardView: View {
             HStack(spacing: 4) {
                 if isPositive {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.red)
                     Text("太り傾向")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.red)
                 } else if balance < 0 {
                     Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoBlue)
                     Text("痩せ傾向")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoBlue)
                 } else {
                     Image(systemName: "equal.circle.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoGreen)
                     Text("バランス")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoGreen)
                 }
 
@@ -3447,7 +3447,7 @@ struct DashboardView: View {
                 if absBalance > 0 {
                     let kgPerDay = absBalance / 7200.0
                     Text("約\(String(format: "%.2f", kgPerDay))kg/日")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -3506,7 +3506,7 @@ struct DashboardView: View {
             // 値表示 & プログレスバー
             HStack(alignment: .bottom, spacing: 6) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(isAchieved ? Color.duoGreen : Color.duoDark)
                 Text("/ \(formatValue(goal)) \(unit)")
                     .font(.caption2).fontWeight(.semibold)
@@ -3563,7 +3563,7 @@ struct DashboardView: View {
                 // 体重
                 HStack(spacing: 4) {
                     Image(systemName: "scalemass")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoBlue)
                     if healthKit.latestBodyMass > 0 {
                         Text(String(format: "%.1f kg", healthKit.latestBodyMass))
@@ -3581,7 +3581,7 @@ struct DashboardView: View {
                 // 体脂肪
                 HStack(spacing: 4) {
                     Image(systemName: "percent")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoOrange)
                     if healthKit.latestBodyFatPercentage > 0 {
                         Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
@@ -3600,11 +3600,11 @@ struct DashboardView: View {
             // メッセージ
             if !isComplete {
                 Text("⚖️ 今日の測定をしましょう")
-                    .font(.system(size: 10)).fontWeight(.semibold)
+                    .font(.system(size: 10 * UIScale.font)).fontWeight(.semibold)
                     .foregroundColor(Color.duoSubtitle)
             } else {
                 Text("✅ 今日の測定完了！")
-                    .font(.system(size: 10)).fontWeight(.semibold)
+                    .font(.system(size: 10 * UIScale.font)).fontWeight(.semibold)
                     .foregroundColor(Color.duoGreen)
             }
         }
@@ -3727,7 +3727,7 @@ struct DashboardView: View {
             // 値表示 & プログレスバー
             HStack(alignment: .bottom, spacing: 6) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(isGood ? Color.duoGreen : Color.duoDark)
                 Text("/ \(formatValue(goal)) \(unit)")
                     .font(.caption2).fontWeight(.semibold)
@@ -3785,7 +3785,7 @@ struct DashboardView: View {
 
                         VStack(spacing: 2) {
                             Text(String(format: "%.1f", tempSleepGoal))
-                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .font(.system(size: 40 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("時間")
                                 .font(.caption)
@@ -3833,7 +3833,7 @@ struct DashboardView: View {
 
                         VStack(spacing: 2) {
                             Text("\(tempStepsGoal)")
-                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .font(.system(size: 40 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("歩")
                                 .font(.caption)
@@ -3881,7 +3881,7 @@ struct DashboardView: View {
 
                         VStack(spacing: 2) {
                             Text("\(tempCaloriesGoal)")
-                                .font(.system(size: 40, weight: .black, design: .rounded))
+                                .font(.system(size: 40 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("kcal")
                                 .font(.caption)
@@ -3988,7 +3988,7 @@ struct DashboardView: View {
                             Text("今日のXP")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalXP)")
-                                .font(.system(size: 36, weight: .black, design: .rounded))
+                                .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("XP")
                                 .font(.caption2).foregroundColor(Color.duoSubtitle)
@@ -4001,7 +4001,7 @@ struct DashboardView: View {
                             Text("累計XP")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalPoints)")
-                                .font(.system(size: 36, weight: .black, design: .rounded))
+                                .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoOrange)
                             Text("XP")
                                 .font(.caption2).foregroundColor(Color.duoSubtitle)
@@ -4015,7 +4015,7 @@ struct DashboardView: View {
 
                     if summaries.isEmpty && mindfulSamples.isEmpty {
                         VStack(spacing: 12) {
-                            Text("💪").font(.system(size: 48))
+                            Text("💪").font(.system(size: 48 * UIScale.font))
                             Text("今日はまだトレーニングを記録していません")
                                 .font(.subheadline).foregroundColor(Color.duoSubtitle)
                                 .multilineTextAlignment(.center)
@@ -4051,7 +4051,7 @@ struct DashboardView: View {
                                             Spacer()
 
                                             Text("+\(s.totalPoints) XP")
-                                                .font(.system(size: 15, weight: .black, design: .rounded))
+                                                .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
                                                 .foregroundColor(Color.duoGold)
                                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                                 .background(Color.duoYellow.opacity(0.2))
@@ -4112,7 +4112,7 @@ struct DashboardView: View {
                                             Spacer()
 
                                             Text("+\(xp) XP")
-                                                .font(.system(size: 15, weight: .black, design: .rounded))
+                                                .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
                                                 .foregroundColor(Color(hex: "#FDCB6E"))
                                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                                 .background(Color(hex: "#FDCB6E").opacity(0.15))
@@ -4174,7 +4174,7 @@ struct DashboardView: View {
 
                         VStack(spacing: 4) {
                             Text("\(tempCalorieTarget)")
-                                .font(.system(size: 56, weight: .black, design: .rounded))
+                                .font(.system(size: 56 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
                             Text("kcal")
                                 .font(.title3)
@@ -4400,7 +4400,7 @@ struct DashboardView: View {
                 // ヘッダー行: 左にMINDラベル、右に睡眠情報
                 HStack(spacing: 4) {
                     Text("MIND")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.duoPurple)
@@ -4411,18 +4411,18 @@ struct DashboardView: View {
                         HStack(spacing: 5) {
                             if !sleepHoursText.isEmpty {
                                 Text("睡眠時間")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text(sleepHoursText)
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color(hex: "#CE82FF"))
                             }
                             if let s = sleepScore, s.score > 0 {
                                 Text("\(s.score)")
-                                    .font(.system(size: 11, weight: .black))
+                                    .font(.system(size: 11 * UIScale.font, weight: .black))
                                     .foregroundColor(sleepScoreColor)
                                 Text(s.rating)
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                                     .foregroundColor(sleepScoreColor)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(sleepScoreColor.opacity(0.15))
@@ -4431,7 +4431,7 @@ struct DashboardView: View {
                         }
                     }
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle.opacity(0.5))
                 }
 
@@ -4446,33 +4446,33 @@ struct DashboardView: View {
                         HStack(alignment: .center, spacing: 7) {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("平均心拍")
-                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 HStack(alignment: .bottom, spacing: 2) {
                                     Text(avgHR > 0 ? "\(Int(avgHR))" : "—")
-                                        .font(.system(size: 15, weight: .black))
+                                        .font(.system(size: 15 * UIScale.font, weight: .black))
                                         .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
                                     Text("bpm")
-                                        .font(.system(size: 9)).foregroundColor(Color.duoSubtitle).padding(.bottom, 1)
+                                        .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle).padding(.bottom, 1)
                                 }
                             }
                             Divider().frame(height: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("平均HRV")
-                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 HStack(alignment: .bottom, spacing: 2) {
                                     Text(avgHRV > 0 ? "\(Int(avgHRV))" : "—")
-                                        .font(.system(size: 15, weight: .black))
+                                        .font(.system(size: 15 * UIScale.font, weight: .black))
                                         .foregroundColor(Color(hex: "#1CB0F6"))
                                     Text("ms")
-                                        .font(.system(size: 9)).foregroundColor(Color.duoSubtitle).padding(.bottom, 1)
+                                        .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle).padding(.bottom, 1)
                                 }
                             }
                             Divider().frame(height: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("ストレス")
-                                    .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 Text(stress.score >= 0 ? stress.label : "—")
-                                    .font(.system(size: 13, weight: .black))
+                                    .font(.system(size: 13 * UIScale.font, weight: .black))
                                     .foregroundColor(stress.score >= 0 ? stress.color : Color.duoSubtitle)
                             }
                             Spacer()
@@ -4483,21 +4483,21 @@ struct DashboardView: View {
                         // 下段: マインドフル回数・分数・日光下時間
                         HStack(spacing: 14) {
                             HStack(spacing: 3) {
-                                Text("🧘").font(.system(size: 12))
+                                Text("🧘").font(.system(size: 12 * UIScale.font))
                                 Text(healthKit.todayMindfulnessSessions > 0 ? "\(healthKit.todayMindfulnessSessions)回" : "—")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color(hex: "#CE82FF"))
                             }
                             HStack(spacing: 3) {
-                                Text("⏱").font(.system(size: 12))
+                                Text("⏱").font(.system(size: 12 * UIScale.font))
                                 Text(mindMinutesText)
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color(hex: "#1CB0F6"))
                             }
                             HStack(spacing: 3) {
-                                Text("☀️").font(.system(size: 12))
+                                Text("☀️").font(.system(size: 12 * UIScale.font))
                                 Text(daylightText)
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                                     .foregroundColor(Color(hex: "#FFCC00"))
                             }
                             Spacer()
@@ -4541,14 +4541,14 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Image(systemName: "brain.head.profile")
-                            .font(.system(size: 11, weight: .black))
+                            .font(.system(size: 11 * UIScale.font, weight: .black))
                             .foregroundColor(Color(hex: "#CE82FF"))
                         Text("MIND")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(Color(hex: "#CE82FF"))
                     }
                     Text("タップで詳細を見る")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .frame(minWidth: 72, alignment: .leading)
@@ -4582,7 +4582,7 @@ struct DashboardView: View {
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle.opacity(0.6))
                     .padding(.leading, 6)
             }
@@ -4598,14 +4598,14 @@ struct DashboardView: View {
 
     private func mindMiniTile(icon: String, label: String, value: String, color: Color) -> some View {
         VStack(spacing: 3) {
-            Text(icon).font(.system(size: 14))
+            Text(icon).font(.system(size: 14 * UIScale.font))
             Text(value)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoSubtitle)
         }
         .frame(maxWidth: .infinity)
@@ -5003,7 +5003,7 @@ struct DashboardView: View {
                     .fontWeight(.black)
                     .foregroundColor(Color.duoDark)
                 Text(unit)
-                    .font(.system(size: 9)).fontWeight(.bold)
+                    .font(.system(size: 9 * UIScale.font)).fontWeight(.bold)
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(maxWidth: .infinity)
@@ -5028,19 +5028,19 @@ struct DashboardView: View {
             // ヘッダー
             HStack {
                 Image(systemName: "chart.pie.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 12 * UIScale.font))
                     .foregroundColor(Color.duoGreen)
                 Text("PFCバランス")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 // 総摂取カロリー
                 HStack(spacing: 2) {
                     Text("\(totalCalories)")
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoOrange)
                     Text("kcal")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 6)
@@ -5049,7 +5049,7 @@ struct DashboardView: View {
                 .cornerRadius(10)
 
                 Text(analysis.rating)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(scoreColorForPFC(analysis.score))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -5071,10 +5071,10 @@ struct DashboardView: View {
                     // 中央にスコア表示
                     VStack(spacing: 0) {
                         Text("\(analysis.score)")
-                            .font(.system(size: 22, weight: .black))
+                            .font(.system(size: 22 * UIScale.font, weight: .black))
                             .foregroundColor(scoreColorForPFC(analysis.score))
                         Text("点")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -5106,7 +5106,7 @@ struct DashboardView: View {
             }
 
             Text("目安: P 15% / F 25% / C 60%")
-                .font(.system(size: 9))
+                .font(.system(size: 9 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(10)
@@ -5120,17 +5120,17 @@ struct DashboardView: View {
                 .fill(color)
                 .frame(width: 8, height: 8)
             Text(label)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
             Text(name)
-                .font(.system(size: 9))
+                .font(.system(size: 9 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
             Spacer()
             Text(String(format: "%.0f%%", percent))
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11 * UIScale.font, weight: .bold))
                 .foregroundColor(color)
             Text(String(format: "%.0fg", grams))
-                .font(.system(size: 9))
+                .font(.system(size: 9 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
         }
     }
@@ -5174,7 +5174,7 @@ struct DashboardView: View {
                     ], id: \.0.rawValue) { stage, label in
                         HStack(spacing: 3) {
                             Circle().fill(Color(hex: stage.color)).frame(width: 6, height: 6)
-                            Text(label).font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                            Text(label).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                     }
                 }
@@ -5194,19 +5194,19 @@ struct DashboardView: View {
                 // ヘッダー
                 HStack(spacing: 4) {
                     Image(systemName: "bed.double.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
                     Text("睡眠スコア")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     if let sleep = sleepScore, sleep.score > 0 {
                         HStack(spacing: 4) {
                             Text("\(sleep.score)")
-                                .font(.system(size: 14, weight: .black, design: .rounded))
+                                .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(sleepScoreColor(sleep.score))
                             Text(sleep.rating)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
                                 .foregroundColor(sleepScoreColor(sleep.score))
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(sleepScoreColor(sleep.score).opacity(0.15))
@@ -5214,7 +5214,7 @@ struct DashboardView: View {
                         }
                     }
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -5251,10 +5251,10 @@ struct DashboardView: View {
                 } else {
                     HStack(alignment: .bottom, spacing: 2) {
                         Text(healthKit.lastNightTotalHours > 0 ? String(format: "%.1f", healthKit.lastNightTotalHours) : "—")
-                            .font(.system(size: 19, weight: .black))
+                            .font(.system(size: 19 * UIScale.font, weight: .black))
                             .foregroundColor(healthKit.lastNightTotalHours >= 7.0 ? Color.duoGreen : Color.duoOrange)
                         Text("h")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
                         Spacer()
@@ -5278,14 +5278,14 @@ struct DashboardView: View {
             Group {
                 if note.isEmpty {
                     Text("\(label): \(value)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark)
                 } else {
                     Text("\(label): \(value) ")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoDark)
                     + Text("(\(note))")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -5313,10 +5313,10 @@ struct DashboardView: View {
                 // アイコン + ラベル
                 HStack(spacing: 4) {
                     Image(systemName: "bed.double.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color(red: 0.451, green: 0.369, blue: 0.937))
                     Text("睡眠スコア")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                 }
@@ -5324,17 +5324,17 @@ struct DashboardView: View {
                 // スコアと評価
                 HStack(alignment: .bottom, spacing: 4) {
                     Text("\(analysis.score)")
-                        .font(.system(size: 22, weight: .black))
+                        .font(.system(size: 22 * UIScale.font, weight: .black))
                         .foregroundColor(sleepScoreColor(analysis.score))
                     Text("点")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .padding(.bottom, 2)
                     Spacer()
                 }
 
                 Text(analysis.rating)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 9 * UIScale.font, weight: .bold))
                     .foregroundColor(sleepScoreColor(analysis.score))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -5345,20 +5345,20 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text("総時間:")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                         Text(String(format: "%.1fh", analysis.totalHours))
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 8 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoDark)
                     }
                     HStack(spacing: 4) {
                         Circle().fill(Color(red: 0.109, green: 0.753, blue: 0.965)).frame(width: 6, height: 6)
                         Text("深い: \(String(format: "%.1fh", analysis.deepHours))")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                         Circle().fill(Color(red: 0.808, green: 0.510, blue: 1.0)).frame(width: 6, height: 6)
                         Text("REM: \(String(format: "%.1fh", analysis.remHours))")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -5439,18 +5439,18 @@ struct DashboardView: View {
     private func sleepScoreBreakdownRow(icon: String, label: String, detail: String, pts: Int, maxPts: Int) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 8))
+                .font(.system(size: 8 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(width: 10)
             Text(label)
-                .font(.system(size: 9))
+                .font(.system(size: 9 * UIScale.font))
                 .foregroundColor(Color.duoSubtitle)
             Text(detail)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoDark)
             Spacer()
             Text("\(pts)/\(maxPts)点")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
                 .foregroundColor(pts >= maxPts ? Color.duoGreen : Color.duoSubtitle)
         }
         .padding(.horizontal, 4)
@@ -6106,17 +6106,17 @@ private struct DailySetsCardButtonsView: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Text(icon)
-                    .font(.system(size: 22))
+                    .font(.system(size: 22 * UIScale.font))
                     .frame(width: 42, height: 42)
                     .background(color.opacity(0.2))
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(color)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(color.opacity(0.7))
                         .lineLimit(1)
                 }
@@ -6145,15 +6145,15 @@ private struct DailySetsCardButtonsView: View {
                         ))
                         .frame(width: 42, height: 42)
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 18 * UIScale.font))
                         .foregroundColor(.white)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("フォトログ")
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                     Text("AI食事分析")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
@@ -6212,7 +6212,7 @@ private struct FitingoStartButton: View {
                 VStack {
                     Spacer()
                     Text(message)
-                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
@@ -6258,14 +6258,14 @@ private struct TrainingVideoButton: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 9, weight: .regular))
+                        .font(.system(size: 9 * UIScale.font, weight: .regular))
                         .foregroundColor(Color.duoGreen)
                     Text("トレーニング動画")
-                        .font(.system(size: 11, weight: .thin))
+                        .font(.system(size: 11 * UIScale.font, weight: .thin))
                         .foregroundColor(Color.duoSubtitle)
                     Spacer()
                     Image(systemName: showTrainingVideo ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .light))
+                        .font(.system(size: 9 * UIScale.font, weight: .light))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 20)
@@ -6292,12 +6292,12 @@ private struct TrainingVideoButton: View {
         return VStack(spacing: 6) {
             HStack {
                 Text(video.name)
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
                 Spacer()
                 Text("\((trainingVideoIndex % count) + 1)/\(count)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                     .foregroundColor(Color.duoSubtitle)
             }
             .padding(.horizontal, 4)
@@ -6404,7 +6404,7 @@ private struct MandalaSpiralCard: View {
 
     private var motivationBadge: some View {
         Text(motivationMessage)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .font(.system(size: 11 * UIScale.font, weight: .semibold, design: .rounded))
             .foregroundColor(Color.duoSubtitle)
             .lineLimit(1)
             .padding(.horizontal, 8)
@@ -6486,7 +6486,7 @@ private struct MandalaSpiralCard: View {
     private var settingsButton: some View {
         Button { showMandalaDetail = true } label: {
             Image(systemName: "gearshape.fill")
-                .font(.system(size: 12))
+                .font(.system(size: 12 * UIScale.font))
                 .foregroundColor(Color.duoOrange)
                 .padding(7)
                 .background(Color(.systemBackground).opacity(0.88))
@@ -6505,10 +6505,10 @@ private struct MandalaSpiralCard: View {
             : Color.duoSubtitle
         return VStack(spacing: 0) {
             Text("\(done)/\(total)")
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(numColor)
             Text(label)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 8 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
         }
         .padding(.horizontal, 6)
@@ -6552,7 +6552,7 @@ private struct MandalaSpiralCard: View {
         return HStack(spacing: 2) {
             Circle().fill(color).frame(width: 5, height: 5)
             Text(total > 0 ? "\(label) \(done)/\(total)" : label)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(achieved ? color : Color.duoSubtitle)
         }
@@ -6588,10 +6588,10 @@ private struct HeartRateHRVItem: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color(red: 1.0, green: 0.294, blue: 0.294))
                 Text("心拍/ストレス")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 // 平均HRV由来のストレス指数をヘッダー右端に色付き数値＋状態バッジで表示
@@ -6599,14 +6599,14 @@ private struct HeartRateHRVItem: View {
                     HStack(spacing: 4) {
                         HStack(spacing: 2) {
                             Image(systemName: "brain.head.profile")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(avgStress.color)
                             Text("\(avgStress.score)")
-                                .font(.system(size: 11, weight: .black))
+                                .font(.system(size: 11 * UIScale.font, weight: .black))
                                 .foregroundColor(avgStress.color)
                         }
                         Text(avgStress.label)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                             .foregroundColor(avgStress.color)
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(avgStress.color.opacity(0.15))
@@ -6617,13 +6617,13 @@ private struct HeartRateHRVItem: View {
             HStack(alignment: .center, spacing: 7) {
                 // 最新心拍
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("最新").font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                    Text("最新").font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     HStack(alignment: .bottom, spacing: 2) {
                         Text(latestHeartRate > 0 ? "\(Int(latestHeartRate))" : "—")
-                            .font(.system(size: 15, weight: .black))
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text("bpm")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 2)
                     }
@@ -6633,16 +6633,16 @@ private struct HeartRateHRVItem: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 3) {
                         Image(systemName: "waveform.path.ecg.rectangle")
-                            .font(.system(size: 8))
+                            .font(.system(size: 8 * UIScale.font))
                             .foregroundColor(Color.duoGreen)
-                        Text("HRV").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        Text("HRV").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                     HStack(alignment: .bottom, spacing: 2) {
                         Text(latestHRV > 0 ? "\(Int(latestHRV))" : "—")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoDark)
                         Text("ms")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .padding(.bottom, 1)
                     }
@@ -6650,34 +6650,34 @@ private struct HeartRateHRVItem: View {
                 Divider().frame(height: 28)
                 // ストレス（その時点のHRVによるラベル）
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("ストレス").font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                    Text("ストレス").font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     Text(instantStress.label)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
                         .foregroundColor(instantStress.color)
                 }
                 Divider().frame(height: 28)
                 // 平均心拍・平均HRV
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("平均").font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                    Text("平均").font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     HStack(spacing: 4) {
                         HStack(alignment: .bottom, spacing: 1) {
                             Text(avgHeartRate > 0 ? "\(Int(avgHeartRate))" : "—")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoDark)
                             Text("bpm")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 1)
                         }
                         Text("/")
-                            .font(.system(size: 9))
+                            .font(.system(size: 9 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                         HStack(alignment: .bottom, spacing: 1) {
                             Text(avgHRV > 0 ? "\(Int(avgHRV))" : "—")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoGreen)
                             Text("ms")
-                                .font(.system(size: 8))
+                                .font(.system(size: 8 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.bottom, 1)
                         }
@@ -6726,7 +6726,7 @@ private struct WeeklyDayBarView: View {
         VStack(spacing: 2) {
             // 収支ラベル
             Text(bal != 0 ? (bal >= 0 ? "+" : "") + "\(bal)" : "")
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 7 * UIScale.font, weight: .bold))
                 .foregroundColor(bal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
@@ -6759,18 +6759,18 @@ private struct WeeklyDayBarView: View {
 
             // 曜日ラベル
             Text(day.dayLabel)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
 
             // 体重
             if let mass = day.bodyMass {
                 Text(String(format: "%.1f", mass))
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
             } else {
                 Text("—")
-                    .font(.system(size: 7))
+                    .font(.system(size: 7 * UIScale.font))
                     .foregroundColor(Color(.systemGray4))
             }
         }
@@ -6813,19 +6813,19 @@ private struct WeeklyCalorieCard: View {
             // ヘッダー
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color(hex: "#FF9600"))
                 Text("週間カロリー")
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: 11 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {
                     HStack(spacing: 5) {
                         Text((weekTotal >= 0 ? "+" : "") + "\(weekTotal) kcal")
-                            .font(.system(size: 12, weight: .black))
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
                             .foregroundColor(weekTotal > 0 ? Color(hex: "#FF4B4B") : Color.duoGreen)
                         Text(badge.label)
-                            .font(.system(size: 9, weight: .black))
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(badge.color)
@@ -6833,11 +6833,11 @@ private struct WeeklyCalorieCard: View {
                     }
                     HStack(spacing: 5) {
                         Text((weightImpactKg >= 0 ? "+" : "") + String(format: "%.2f", weightImpactKg) + " kg")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
                             .foregroundColor(weightImpactKg > 0 ? Color(hex: "#FF4B4B").opacity(0.8) : Color.duoGreen.opacity(0.8))
                         if let diff = massDiff {
                             Text((diff >= 0 ? "+" : "") + String(format: "%.1f", diff) + "kg")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(diffColor)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(diffColor.opacity(0.1))
@@ -6858,15 +6858,15 @@ private struct WeeklyCalorieCard: View {
             HStack(spacing: 12) {
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 1).fill(Color.duoGreen.opacity(0.85)).frame(width: 10, height: 4)
-                    Text("消費オーバー").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                    Text("消費オーバー").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 1).fill(Color(hex: "#FF4B4B").opacity(0.75)).frame(width: 10, height: 4)
-                    Text("摂取オーバー").font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                    Text("摂取オーバー").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                 }
                 Spacer()
                 Text("目標: 1日-\(abs(dailyGoal))kcal")
-                    .font(.system(size: 9))
+                    .font(.system(size: 9 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
             }
         }
@@ -6907,19 +6907,19 @@ private struct CalorieBalanceBarCard: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10 * UIScale.font))
                     .foregroundColor(Color.duoDark)
                 Text("カロリー収支")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
                 if totalConsumed > 0 || intake > 0 {
                     let sign = balance >= 0 ? "+" : ""
                     Text("\(sign)\(Int(balance)) kcal")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(calColor)
                     Text(calLabel)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(calColor)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(calColor.opacity(0.15))
@@ -6948,9 +6948,9 @@ private struct CalorieBalanceBarCard: View {
         let iw = max(maxValue > 0 ? (intake  / maxValue) * barWidth * 0.5 : 0, 60)
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 0) {
-                Text("消費Cal").font(.system(size: 8, weight: .semibold)).foregroundColor(Color.duoGreen)
+                Text("消費Cal").font(.system(size: 8 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoGreen)
                     .frame(width: cw, alignment: .center)
-                Text("摂取Cal").font(.system(size: 8, weight: .semibold)).foregroundColor(Color.duoRed)
+                Text("摂取Cal").font(.system(size: 8 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoRed)
                     .frame(width: iw, alignment: .center)
                 Spacer()
             }
@@ -6969,8 +6969,8 @@ private struct CalorieBalanceBarCard: View {
             Rectangle().fill(Color.duoGreen)
             HStack(spacing: 2) {
                 Spacer()
-                Text("\(Int(consumed))").font(.system(size: 13, weight: .black)).foregroundColor(.white)
-                Text("cal").font(.system(size: 8, weight: .medium)).foregroundColor(.white.opacity(0.9))
+                Text("\(Int(consumed))").font(.system(size: 13 * UIScale.font, weight: .black)).foregroundColor(.white)
+                Text("cal").font(.system(size: 8 * UIScale.font, weight: .medium)).foregroundColor(.white.opacity(0.9))
                     .padding(.bottom, 1)
             }
         }
@@ -6982,8 +6982,8 @@ private struct CalorieBalanceBarCard: View {
         ZStack {
             Rectangle().fill(Color.duoRed)
             HStack(spacing: 2) {
-                Text("\(Int(intake))").font(.system(size: 13, weight: .black)).foregroundColor(.white)
-                Text("cal").font(.system(size: 8, weight: .medium)).foregroundColor(.white.opacity(0.9))
+                Text("\(Int(intake))").font(.system(size: 13 * UIScale.font, weight: .black)).foregroundColor(.white)
+                Text("cal").font(.system(size: 8 * UIScale.font, weight: .medium)).foregroundColor(.white.opacity(0.9))
                     .padding(.bottom, 1)
                 Spacer()
             }
@@ -7016,18 +7016,18 @@ private struct CalorieBalanceBarCard: View {
     private func weightPrediction(isPositive: Bool, absBalance: Double, grams: Int) -> some View {
         if isPositive {
             HStack(spacing: 1) {
-                Image(systemName: "arrow.up.circle.fill").font(.system(size: 6)).foregroundColor(.red)
-                Text("+\(grams)g").font(.system(size: 7, weight: .bold)).foregroundColor(.red)
+                Image(systemName: "arrow.up.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(.red)
+                Text("+\(grams)g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(.red)
             }
         } else if absBalance > 0 {
             HStack(spacing: 1) {
-                Image(systemName: "arrow.down.circle.fill").font(.system(size: 6)).foregroundColor(Color.duoGreen)
-                Text("-\(grams)g").font(.system(size: 7, weight: .bold)).foregroundColor(Color.duoGreen)
+                Image(systemName: "arrow.down.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(Color.duoGreen)
+                Text("-\(grams)g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(Color.duoGreen)
             }
         } else {
             HStack(spacing: 1) {
-                Image(systemName: "equal.circle.fill").font(.system(size: 6)).foregroundColor(Color.duoGreen)
-                Text("±0g").font(.system(size: 7, weight: .bold)).foregroundColor(Color.duoGreen)
+                Image(systemName: "equal.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(Color.duoGreen)
+                Text("±0g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(Color.duoGreen)
             }
         }
     }
@@ -7134,14 +7134,14 @@ struct MindfulnessSessionView: View {
             VStack(spacing: 20) {
                 ZStack(alignment: .leading) {
                     Text(title)
-                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity, alignment: .center)
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .black))
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                             .frame(width: 36, height: 36)
                             .background(Color.white.opacity(0.18))
@@ -7173,13 +7173,13 @@ struct MindfulnessSessionView: View {
 
                     VStack(spacing: 8) {
                         Text(isInhale ? "吸って" : "吐いて")
-                            .font(.system(size: 34, weight: .black, design: .rounded))
+                            .font(.system(size: 34 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)
                         Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
                             .foregroundColor(.white.opacity(0.82))
                         Text("\(remainingSeconds)")
-                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .font(.system(size: 42 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)
                             .monospacedDigit()
                     }
@@ -7187,7 +7187,7 @@ struct MindfulnessSessionView: View {
 
                 if sessionVideos.isEmpty {
                     Text("目を瞑って、深い呼吸で、今に集中して下さい")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 15 * UIScale.font, weight: .semibold))
                         .foregroundColor(.white.opacity(0.82))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
@@ -7195,17 +7195,17 @@ struct MindfulnessSessionView: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 8) {
                             Text("\(currentStretchIndex + 1)/3")
-                                .font(.system(size: 13, weight: .black, design: .rounded))
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.white.opacity(0.22))
                                 .cornerRadius(6)
                             Text(stretch.name)
-                                .font(.system(size: 20, weight: .black, design: .rounded))
+                                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                         }
                         Text(stretch.description)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14 * UIScale.font, weight: .semibold))
                             .foregroundColor(.white.opacity(0.82))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -7375,7 +7375,7 @@ private struct DailyGoalPickerButton: View {
             showSheet = true
         } label: {
             ZStack(alignment: .bottomTrailing) {
-                Text(emoji).font(.system(size: 22))
+                Text(emoji).font(.system(size: 22 * UIScale.font))
                 Circle()
                     .fill(isDone ? Color.duoGreen : Color.duoRed)
                     .frame(width: 8, height: 8)
@@ -7416,7 +7416,7 @@ private struct EduPhotoLogSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
-                Text(nodeEmoji).font(.system(size: 44))
+                Text(nodeEmoji).font(.system(size: 44 * UIScale.font))
                 Text(nodeName).font(.title3).fontWeight(.black).foregroundColor(Color.duoDark)
             }
             .padding(.top, 20).padding(.bottom, 14)
@@ -7525,7 +7525,7 @@ private struct GoalCompletionSheet: View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
                 Text(emoji)
-                    .font(.system(size: 44))
+                    .font(.system(size: 44 * UIScale.font))
                 Text(name)
                     .font(.title3).fontWeight(.black)
                     .foregroundColor(Color.duoDark)
@@ -7725,7 +7725,7 @@ struct StandPomodoroView: View {
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 15 * UIScale.font, weight: .bold))
                         .foregroundColor(tomatoDark.opacity(0.45))
                         .padding(10)
                         .background(tomatoRed.opacity(0.08))
@@ -7739,11 +7739,11 @@ struct StandPomodoroView: View {
 
             VStack(spacing: 4) {
                 Text("スタンドポモドーロ")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
                     .foregroundColor(tomatoRed.opacity(0.65))
                     .tracking(1.5)
                 Text("20分間、立って集中")
-                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(tomatoDark)
             }
             .padding(.bottom, 28)
@@ -7776,11 +7776,11 @@ struct StandPomodoroView: View {
                         .frame(width: 52, height: 52)
                     VStack(spacing: 2) {
                         Text(timeText)
-                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .font(.system(size: 26 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(tomatoDark)
                             .monospacedDigit()
                         Text("残り")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(tomatoDark.opacity(0.5))
                     }
                 }
@@ -7793,10 +7793,10 @@ struct StandPomodoroView: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(tomatoOrange)
                 Text("立つことで集中力・代謝がアップ！")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
                     .foregroundColor(tomatoDark.opacity(0.45))
             }
             .padding(.bottom, 20)
@@ -7805,9 +7805,9 @@ struct StandPomodoroView: View {
             Button { finishAndRecord() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "flag.checkered")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 16 * UIScale.font, weight: .bold))
                     Text("完了にする")
-                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
@@ -7844,13 +7844,13 @@ struct StandPomodoroView: View {
 
                 VStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 64))
+                        .font(.system(size: 64 * UIScale.font))
                         .foregroundColor(completionGreen)
                     Text("20分完了！")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color(red: 0.08, green: 0.28, blue: 0.15))
                     Text("お疲れ様でした")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14 * UIScale.font, weight: .semibold, design: .rounded))
                         .foregroundColor(Color(red: 0.08, green: 0.28, blue: 0.15).opacity(0.6))
                 }
             }
@@ -7861,9 +7861,9 @@ struct StandPomodoroView: View {
             Button { finishAndRecord() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 18 * UIScale.font, weight: .bold))
                     Text("記録して閉じる")
-                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
@@ -7944,7 +7944,7 @@ private struct DailySetsExpandableSection: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 16)
@@ -8114,7 +8114,7 @@ private struct DailySetsExpandableSection: View {
                         .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
                 }
                 Text("~\(slot.endHour):00")
-                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 50, alignment: .leading)
             if slot == .midnight {
@@ -8128,7 +8128,7 @@ private struct DailySetsExpandableSection: View {
                                 .foregroundColor(achieved ? Color.duoGreen : Color.duoSubtitle)
                             if gp.sleepHours > 0 {
                                 Text(String(format: "%.1fh", gp.sleepHours))
-                                    .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                             if achieved {
                                 Image(systemName: "checkmark.circle.fill")
@@ -8279,19 +8279,19 @@ private struct TodayHistorySection: View {
                         sectionGroup(icon: "⚖️", label: "体重") {
                             HStack(spacing: 8) {
                                 Text(timeFmt.string(from: rec.measuredAt))
-                                    .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                     .frame(width: 38, alignment: .leading)
                                 Spacer()
                                 if latestBodyFatPercentage > 0 {
                                     Text(String(format: "%.1f%%", latestBodyFatPercentage))
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
                                         .foregroundColor(Color.duoSubtitle)
                                 }
                                 Text(String(format: "%.1f kg", rec.kg))
-                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(Color.duoDark)
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 11)).foregroundColor(Color.duoGreen)
+                                    .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoGreen)
                             }
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Color(hex: "#1CB0F6").opacity(0.07))
@@ -8308,11 +8308,11 @@ private struct TodayHistorySection: View {
                                 ForEach(mealSamples) { s in
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: s.startDate))
-                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                             .frame(width: 38, alignment: .leading)
                                         Spacer()
                                         Text(String(format: "%.0f kcal", s.value))
-                                            .font(.system(size: 11, weight: .black))
+                                            .font(.system(size: 11 * UIScale.font, weight: .black))
                                             .foregroundColor(Color.duoOrange)
                                     }
                                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -8332,11 +8332,11 @@ private struct TodayHistorySection: View {
                                 ForEach(waterSamples) { s in
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: s.startDate))
-                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                             .frame(width: 38, alignment: .leading)
                                         Spacer()
                                         Text(String(format: "%.0f ml", s.value))
-                                            .font(.system(size: 11, weight: .black))
+                                            .font(.system(size: 11 * UIScale.font, weight: .black))
                                             .foregroundColor(Color.duoBlue)
                                     }
                                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -8353,14 +8353,14 @@ private struct TodayHistorySection: View {
                                 ForEach(Array(toothbrushingSamples.enumerated()), id: \.offset) { _, date in
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: date))
-                                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                                            .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                             .frame(width: 38, alignment: .leading)
                                         Text("1分歯磨き・フロス")
-                                            .font(.system(size: 10, weight: .black))
+                                            .font(.system(size: 10 * UIScale.font, weight: .black))
                                             .foregroundColor(toothColor)
                                         Spacer()
                                         Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 11)).foregroundColor(toothColor)
+                                            .font(.system(size: 11 * UIScale.font)).foregroundColor(toothColor)
                                     }
                                     .padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(toothColor.opacity(0.07))
@@ -8387,7 +8387,7 @@ private struct TodayHistorySection: View {
                 Spacer()
                 if let prog = progress {
                     Text(prog)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(progressDone ? Color.duoGreen : Color.duoSubtitle)
                 }
             }
@@ -8405,20 +8405,20 @@ private struct TodayHistorySection: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(timeFmt.string(from: set.startTime))
-                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             .frame(width: 38, alignment: .leading)
                         Text("\(set.slotLabel)セット\(set.setNum)")
-                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
+                            .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoGreen)
                         Spacer()
                         Text("\(totalReps) rep")
-                            .font(.system(size: 11, weight: .black)).foregroundColor(Color.duoGreen)
+                            .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoGreen)
                         Text("+\(totalXP) XP")
-                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
+                            .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoGold)
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 8)).foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                     }
                     Text(names)
-                        .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                        .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         .padding(.leading, 44)
                         .lineLimit(2)
                 }
@@ -8433,12 +8433,12 @@ private struct TodayHistorySection: View {
                     HStack(spacing: 6) {
                         Spacer().frame(width: 46)
                         Text(ex.exerciseName)
-                            .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoDark)
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoDark)
                         Spacer()
                         Text("\(ex.reps) rep")
-                            .font(.system(size: 10, weight: .black)).foregroundColor(Color.duoGreen)
+                            .font(.system(size: 10 * UIScale.font, weight: .black)).foregroundColor(Color.duoGreen)
                         Text("+\(ex.points) XP")
-                            .font(.system(size: 10)).foregroundColor(Color.duoGold)
+                            .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoGold)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Color.duoGreen.opacity(0.03))
@@ -8454,11 +8454,11 @@ private struct TodayHistorySection: View {
             ForEach(sessions) { s in
                 HStack(spacing: 6) {
                     Text(timeFmt.string(from: s.startDate))
-                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                        .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         .frame(width: 38, alignment: .leading)
                     Spacer()
                     Text("\(Int(s.durationMinutes))分")
-                        .font(.system(size: 11, weight: .black)).foregroundColor(color)
+                        .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(color)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(color.opacity(0.07))

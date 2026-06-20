@@ -166,7 +166,6 @@ struct TomoView: View {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        tomoHeader
                         rankingSection
                         eduFeedSection
                         Spacer(minLength: 40)
@@ -178,6 +177,7 @@ struct TomoView: View {
                 .refreshable { await manager.load() }
             }
             .navigationBarHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) { tomoHeader }
         }
         .task { await manager.load() }
         .sheet(isPresented: $showShareSheet) {
@@ -223,15 +223,15 @@ struct TomoView: View {
                             .fill(Color.duoBlue.opacity(0.12))
                             .frame(width: 44, height: 44)
                         Image(systemName: "person.badge.plus")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 20 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoBlue)
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text("TOMOを招待")
-                            .font(.system(size: 17, weight: .black))
+                            .font(.system(size: 17 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text("一緒にトレーニングしよう！")
-                            .font(.system(size: 12))
+                            .font(.system(size: 12 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
@@ -239,7 +239,7 @@ struct TomoView: View {
 
                 HStack(spacing: 8) {
                     TextField("Googleアカウントのメールアドレス", text: $emailInput)
-                        .font(.system(size: 14))
+                        .font(.system(size: 14 * UIScale.font))
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
@@ -254,7 +254,7 @@ struct TomoView: View {
                         Task { await manager.addTomo(email: emailInput) }
                     } label: {
                         Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 34))
+                            .font(.system(size: 34 * UIScale.font))
                             .foregroundColor(emailInput.trimmingCharacters(in: .whitespaces).isEmpty
                                 ? Color.duoBlue.opacity(0.3) : Color.duoBlue)
                     }
@@ -404,21 +404,21 @@ struct TomoView: View {
                 .frame(width: 24, height: 24)
                 .mask(
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                 )
 
                 Text("Daily")
-                    .font(.system(size: 16, weight: .black))
+                    .font(.system(size: 16 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 + Text(" フィード")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
 
                 Spacer()
 
                 if !eduLogManager.history.isEmpty {
                     Text("\(min(eduLogManager.history.count, 30))件")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle.opacity(0.7))
                 }
             }
@@ -435,13 +435,13 @@ struct TomoView: View {
                     .frame(width: 56, height: 56)
                     .mask(
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 30))
+                            .font(.system(size: 30 * UIScale.font))
                     )
                     Text("まだDailyフィードがありません")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     Text("スパイラルのアクティビティを記録すると\nここに写真と一緒に投稿されます")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                         .multilineTextAlignment(.center)
                 }
@@ -462,10 +462,10 @@ struct TomoView: View {
                             .frame(width: 3, height: 14)
                             .cornerRadius(2)
                         Text(section.dateLabel)
-                            .font(.system(size: 12, weight: .black))
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark.opacity(0.75))
                         Text("・\(section.totalItems)件")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                     .padding(.horizontal, 4)
@@ -486,10 +486,10 @@ struct TomoView: View {
                                 )
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(userGroup.authorFirstName)
-                                        .font(.system(size: 13, weight: .black))
+                                        .font(.system(size: 13 * UIScale.font, weight: .black))
                                         .foregroundColor(Color.duoDark)
                                     Text("\(userGroup.totalItems)件の記録")
-                                        .font(.system(size: 10))
+                                        .font(.system(size: 10 * UIScale.font))
                                         .foregroundColor(Color.duoSubtitle)
                                 }
                                 Spacer()
@@ -535,12 +535,12 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 14 * UIScale.font, weight: .semibold))
                         Text("過去のフィードを表示")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 13 * UIScale.font, weight: .bold))
                         Spacer()
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
                     }
                     .foregroundColor(Color.duoBlue)
                     .padding(.vertical, 12)
@@ -558,9 +558,9 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
                         Text("2週間以内のみ表示")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
                     }
                     .foregroundColor(Color.duoSubtitle)
                     .padding(.vertical, 8)
@@ -586,6 +586,7 @@ struct TomoView: View {
                 colors: [Color.duoBlue, Color(red: 0.06, green: 0.56, blue: 0.85)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
+            .ignoresSafeArea(edges: .top)
             HStack(spacing: 8) {
                 HStack(spacing: 4) {
                     Image("mascot")
@@ -599,20 +600,20 @@ struct TomoView: View {
                         Text("lingo")
                             .foregroundColor(.white)
                     }
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                 }
                 Spacer()
                 let tomoCount = manager.entries.filter { !$0.isMe }.count
                 Button { showInviteSheet = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "person.2.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
                         Text("\(tomoCount)")
-                            .font(.system(size: 12, weight: .black))
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                         Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .black))
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
                             .foregroundColor(.white.opacity(0.85))
                     }
                     .padding(.horizontal, 8)
@@ -627,9 +628,8 @@ struct TomoView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(height: 44)
-        .cornerRadius(14)
-        .shadow(color: Color.duoBlue.opacity(0.25), radius: 6, y: 3)
+        .frame(maxWidth: .infinity)
+        .frame(height: 46)
     }
 
     @ViewBuilder
@@ -653,9 +653,9 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
                         Text("招待を送る")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 14).padding(.vertical, 7)
@@ -696,7 +696,7 @@ struct TomoView: View {
         } else if manager.entries.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "person.2.slash")
-                    .font(.system(size: 30))
+                    .font(.system(size: 30 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                 Text("まだTOMOがいません")
                     .font(.subheadline).fontWeight(.bold)
@@ -709,7 +709,7 @@ struct TomoView: View {
                         Image(systemName: "person.badge.plus")
                         Text("TOMOを招待する")
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
@@ -742,24 +742,24 @@ struct TomoView: View {
     private var rankingHeader: some View {
         HStack(spacing: 0) {
             Text("順位")
-                .font(.system(size: 9, weight: .black))
+                .font(.system(size: 9 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(width: 38, alignment: .center)
             Text("名前")
-                .font(.system(size: 9, weight: .black))
+                .font(.system(size: 9 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 6)
             Text("今週pt")
-                .font(.system(size: 9, weight: .black))
+                .font(.system(size: 9 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoBlue)
                 .frame(width: 50, alignment: .trailing)
             Text("累計")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(width: 44, alignment: .trailing)
             Text("連続")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
                 .frame(width: 36, alignment: .trailing)
         }
@@ -775,20 +775,20 @@ struct TomoView: View {
                     .fill(rankBadgeColor(entry.rank))
                     .frame(width: 26, height: 26)
                 Text("\(entry.rank)")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.system(size: 10 * UIScale.font, weight: .black))
                     .foregroundColor(.white)
             }
             .frame(width: 38)
 
             HStack(spacing: 4) {
                 Text(firstName(of: entry.username))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if entry.isMe {
                     Text("YOU")
-                        .font(.system(size: 7, weight: .black))
+                        .font(.system(size: 7 * UIScale.font, weight: .black))
                         .foregroundColor(.white)
                         .padding(.horizontal, 4).padding(.vertical, 2)
                         .background(Color.duoBlue)
@@ -801,22 +801,22 @@ struct TomoView: View {
 
             VStack(spacing: 0) {
                 Text("\(entry.weeklyPoints)")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoBlue)
                     .minimumScaleFactor(0.7)
                 Text("pt")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 50, alignment: .trailing)
 
             VStack(spacing: 0) {
                 Text("\(entry.totalPoints)")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                     .minimumScaleFactor(0.7)
                 Text("pt")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 44, alignment: .trailing)
@@ -824,15 +824,15 @@ struct TomoView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 1) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 7))
+                        .font(.system(size: 7 * UIScale.font))
                         .foregroundColor(Color(hex: "#FF9600"))
                     Text("\(entry.streak)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                         .minimumScaleFactor(0.7)
                 }
                 Text("日")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoSubtitle)
             }
             .frame(width: 36, alignment: .trailing)

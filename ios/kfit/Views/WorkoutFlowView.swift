@@ -43,13 +43,13 @@ struct WorkoutFlowView: View {
         VStack(spacing: 16) {
             progressDots
 
-            Text(current.emoji).font(.system(size: 60))
+            Text(current.emoji).font(.system(size: 60 * UIScale.font))
             Text(current.name)
                 .font(.title2).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
 
             Text("\(displayReps)")
-                .font(.system(size: 72, weight: .black, design: .rounded))
+                .font(.system(size: 72 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(Color.duoGreen)
             Text("/ \(current.target)")
                 .font(.title3).foregroundColor(Color.duoSubtitle)
@@ -108,7 +108,7 @@ struct WorkoutFlowView: View {
                 .frame(width: 120, height: 120).clipShape(Circle())
             Text("完了！🎉").font(.largeTitle).fontWeight(.black)
                 .foregroundColor(Color.duoGreen)
-            Text("+\(totalXP) XP").font(.system(size: 48, weight: .black))
+            Text("+\(totalXP) XP").font(.system(size: 48 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoGold)
             Spacer()
             Button { dismiss() } label: {

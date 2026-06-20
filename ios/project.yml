@@ -39,6 +39,8 @@ targets:
         NSHealthUpdateUsageDescription: "kfit may write workout data to Apple Health."
         NSBonjourServices:
           - _firebase._tcp
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UIRequiredDeviceCapabilities:
           - accelerometer
           - gyroscope

@@ -235,6 +235,7 @@ struct DashboardView: View {
             Color.duoBg.ignoresSafeArea(.all)
 
             VStack(spacing: 0) {
+                headerInfoBar
                 if isLoading {
                     Spacer()
                     ProgressView().tint(Color.duoGreen).scaleEffect(1.4)
@@ -242,7 +243,6 @@ struct DashboardView: View {
                 } else {
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 10) {
-                            headerInfoCard
                             dailySetsCard
                             quickMenu
                             if goalTabVisible && healthKit.isAvailable && healthKit.isAuthorized {
@@ -650,14 +650,24 @@ struct DashboardView: View {
         .frame(height: 66)
     }
 
-    // MARK: - ヘッダー情報カード（メインコンテンツ最上部）
-    private var headerInfoCard: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
+    // MARK: - ヘッダー情報バー（上部固定・ステータスバーまで緑で延伸）
+    private var headerInfoBar: some View {
+        headerInfoContent
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                LinearGradient(
+                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea(edges: .top)
             )
+    }
 
+    // MARK: - ヘッダー情報カード（メインコンテンツ最上部）
+    private var headerInfoContent: some View {
+        ZStack {
             HStack {
                 // 左側: ロゴ
                 HStack(spacing: 2) {
@@ -706,10 +716,7 @@ struct DashboardView: View {
 
                 HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
-        .cornerRadius(12)
     }
 
     // MARK: - ヘッダー計算プロパティ

@@ -423,6 +423,9 @@ struct MainTabView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            // 背景のみ下部セーフエリア（ホームインジケータ領域）まで延伸。
+            // ボタンはセーフエリア内に留めて黒帯・余白を排除しつつ被りを防ぐ
+            .ignoresSafeArea(edges: .bottom)
         )
         .shadow(color: Color.black.opacity(0.15), radius: 6, y: -2)
         .gesture(
@@ -434,7 +437,6 @@ struct MainTabView: View {
                     // 下スワイプ以外は表示を維持
                 }
         )
-        .ignoresSafeArea(edges: .bottom)
     }
 
     private var recordBtn: some View {

@@ -673,9 +673,9 @@ struct DashboardView: View {
                 HStack(spacing: 2) {
                     Image("mascot")
                         .resizable().scaledToFill()
-                        .frame(width: 16, height: 16)
+                        .frame(width: 26, height: 26)
                         .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
+                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
                     HStack(spacing: 0) {
                         Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
                         Text("go").foregroundColor(.white)
@@ -6046,14 +6046,13 @@ private struct DailySetsCardButtonsView: View {
                 trainingVideoIndex: $trainingVideoIndex
             )
 
-            VStack(spacing: 8) {
-                actionButton(icon: "🧘", title: "マインドフルネス", subtitle: "1分瞑想",
-                             color: Color.duoPurple, action: onOpenMindfulness)
-                actionButton(icon: "🤸", title: "マインドフルネス", subtitle: "3分ストレッチ",
-                             color: Color.duoBlue, action: onOpenStretch)
-                actionButton(icon: "🍅", title: "20分スタンドタイマー",
-                             subtitle: "立って作業に集中（ポモドーロ）",
-                             color: Color(red: 0.94, green: 0.27, blue: 0.15), action: onOpenStand)
+            HStack(spacing: 8) {
+                compactActionButton(icon: "🧘", label: "1分瞑想",
+                                    color: Color.duoPurple, action: onOpenMindfulness)
+                compactActionButton(icon: "🤸", label: "3分ストレッチ",
+                                    color: Color.duoBlue, action: onOpenStretch)
+                compactActionButton(icon: "🍅", label: "ポモドーロ",
+                                    color: Color(red: 0.94, green: 0.27, blue: 0.15), action: onOpenStand)
             }
             .padding(.horizontal, 16)
             .padding(.top, 4)
@@ -6087,6 +6086,32 @@ private struct DailySetsCardButtonsView: View {
             mascotBounce: mascotBounce,
             onTap: onStartTracker
         )
+    }
+
+    private func compactActionButton(icon: String, label: String,
+                                     color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Text(icon)
+                    .font(.system(size: 22 * UIScale.font))
+                    .frame(width: 38, height: 38)
+                    .background(color.opacity(0.18))
+                    .clipShape(Circle())
+                Text(label)
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                LinearGradient(colors: [color.opacity(0.13), color.opacity(0.07)],
+                               startPoint: .top, endPoint: .bottom)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func actionButton(icon: String, title: String, subtitle: String,
@@ -7038,7 +7063,7 @@ struct MindfulnessSessionView: View {
         guard !sessionVideos.isEmpty else { return nil }
         return sessionVideos[min(selectedVideoIndex, sessionVideos.count - 1)]
     }
-    private var ringSize: CGFloat { 280 }
+    // ringSize は body 内で GeometryReader から算出するため削除
     private var innerCircleBase: CGFloat { 70.0 }
     private var innerCircleRange: CGFloat { 160.0 }
     private var currentStretchIndex: Int {
@@ -7051,99 +7076,107 @@ struct MindfulnessSessionView: View {
     }
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.duoPurple, Color(red: 0.35, green: 0.55, blue: 1.0), Color.duoGreen.opacity(0.85)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        GeometryReader { geo in
+            let ringSize = min(geo.size.width, geo.size.height) * 0.82
+            ZStack {
+                LinearGradient(
+                    colors: [Color.duoPurple, Color(red: 0.35, green: 0.55, blue: 1.0), Color.duoGreen.opacity(0.85)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                ZStack(alignment: .leading) {
-                    Text(title)
-                        .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                VStack(spacing: 16) {
+                    // タイトル行
+                    ZStack(alignment: .leading) {
+                        Text(title)
+                            .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.18))
-                            .clipShape(Circle())
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.20), lineWidth: 12)
-                        .frame(width: ringSize, height: ringSize)
-
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(Color.white, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: ringSize, height: ringSize)
-                        .animation(.easeInOut(duration: 0.35), value: progress)
-
-                    Circle()
-                        .fill(Color.white.opacity(0.24))
-                        .frame(
-                            width: isInhale ? innerCircleBase + innerCircleRange * phaseProgress : (innerCircleBase + innerCircleRange) - innerCircleRange * phaseProgress,
-                            height: isInhale ? innerCircleBase + innerCircleRange * phaseProgress : (innerCircleBase + innerCircleRange) - innerCircleRange * phaseProgress
-                        )
-                        .animation(.easeInOut(duration: 1.0), value: remainingSeconds)
-
-                    VStack(spacing: 8) {
-                        Text(isInhale ? "吸って" : "吐いて")
-                            .font(.system(size: 34 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                        Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
-                            .font(.system(size: 15 * UIScale.font, weight: .bold))
-                            .foregroundColor(.white.opacity(0.82))
-                        Text("\(remainingSeconds)")
-                            .font(.system(size: 42 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .monospacedDigit()
-                    }
-                }
-
-                if sessionVideos.isEmpty {
-                    Text("目を瞑って、深い呼吸で、今に集中して下さい")
-                        .font(.system(size: 15 * UIScale.font, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.82))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                } else if let stretch = currentStretch {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 8) {
-                            Text("\(currentStretchIndex + 1)/3")
-                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.white.opacity(0.22))
-                                .cornerRadius(6)
-                            Text(stretch.name)
-                                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
+                                .frame(width: 36, height: 36)
+                                .background(Color.white.opacity(0.18))
+                                .clipShape(Circle())
                         }
-                        Text(stretch.description)
-                            .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+
+                    // リング（画面ギリギリ）
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.20), lineWidth: 14)
+                            .frame(width: ringSize, height: ringSize)
+
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(Color.white, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: ringSize, height: ringSize)
+                            .animation(.easeInOut(duration: 0.35), value: progress)
+
+                        let innerBase = ringSize * 0.25
+                        let innerRange = ringSize * 0.57
+                        Circle()
+                            .fill(Color.white.opacity(0.24))
+                            .frame(
+                                width: isInhale ? innerBase + innerRange * phaseProgress : (innerBase + innerRange) - innerRange * phaseProgress,
+                                height: isInhale ? innerBase + innerRange * phaseProgress : (innerBase + innerRange) - innerRange * phaseProgress
+                            )
+                            .animation(.easeInOut(duration: 1.0), value: remainingSeconds)
+
+                        VStack(spacing: 10) {
+                            Text(isInhale ? "吸って" : "吐いて")
+                                .font(.system(size: 38 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                            Text(isInhale ? "ゆっくり鼻から" : "力を抜いて")
+                                .font(.system(size: 17 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white.opacity(0.82))
+                            Text("\(remainingSeconds)")
+                                .font(.system(size: 52 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                                .monospacedDigit()
+                        }
+                    }
+
+                    // リング下テキスト / ストレッチ情報
+                    if sessionVideos.isEmpty {
+                        Text("目を瞑って、深い呼吸で、今に集中して下さい")
+                            .font(.system(size: 15 * UIScale.font, weight: .semibold))
                             .foregroundColor(.white.opacity(0.82))
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
+                            .padding(.horizontal, 32)
+                    } else if let stretch = currentStretch {
+                        VStack(spacing: 6) {
+                            HStack(spacing: 8) {
+                                Text("\(currentStretchIndex + 1)/3")
+                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.white.opacity(0.22))
+                                    .cornerRadius(6)
+                                Text(stretch.name)
+                                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(.white)
+                            }
+                            Text(stretch.description)
+                                .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.82))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        .animation(.easeInOut(duration: 0.5), value: currentStretchIndex)
                     }
-                    .animation(.easeInOut(duration: 0.5), value: currentStretchIndex)
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
+        .ignoresSafeArea()
         .onAppear {
             sessionStart = Date()
             UIApplication.shared.isIdleTimerDisabled = true

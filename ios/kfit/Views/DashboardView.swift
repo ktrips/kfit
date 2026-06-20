@@ -2118,9 +2118,9 @@ struct DashboardView: View {
                     return h >= slot.startHour && h < slot.endHour
                 }
                 .reduce(0) { $0 + max(1, Int($1.durationMinutes.rounded())) }
-            // Firestore の mindfulnessCompleted（アプリ内記録）とHealthKitの大きい方を採用
+            // HKデータがあればそれを使用（実施時間ベース）。なければFirestoreのカウントにフォールバック
             let firestoreMin = (prog?.mindfulnessCompleted ?? 0) * 1
-            mindfulMinutes[slot.rawValue] = max(firestoreMin, hkMin) + stretchMin
+            mindfulMinutes[slot.rawValue] = (hkMin > 0 ? hkMin : firestoreMin) + stretchMin
         }
 
         // 時間帯別の実際の水分摂取量（HealthKit: ml）
@@ -6366,6 +6366,7 @@ private struct MandalaSpiralCard: View {
     @Binding var selectedMandalaNode: MandalaNodeData?
     var dailyCalorieDone: Bool = false
     var dailyWaterDone: Bool = false
+    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
 
     private var currentHour: Int { Calendar.current.component(.hour, from: Date()) }
 
@@ -6448,9 +6449,28 @@ private struct MandalaSpiralCard: View {
                 case .mindfulness:    showMindfulnessSession = true
                 case .stretch:        showStretchSession = true
                 case .stand:          showStandSession = true
-                case .sleep, .weight, .activity: break
+                case .sleep, .activity: break
+                case .weight:
+                    // Withingsアプリを開く（複数スキームを試してApp Storeへフォールバック）
+                    let withingsSchemes = ["wiscale2://", "healthmate://", "withings://"]
+                    let withingsAppStore = URL(string: "https://apps.apple.com/app/id542701020")!
+                    if let scheme = withingsSchemes
+                        .compactMap({ URL(string: $0) })
+                        .first(where: { UIApplication.shared.canOpenURL($0) }) {
+                        UIApplication.shared.open(scheme)
+                    } else {
+                        UIApplication.shared.open(withingsAppStore)
+                    }
                 case .pfc:            showMandalaDetail = true
-                case .meal, .drink, .custom: selectedMandalaNode = node
+                case .meal, .drink:   selectedMandalaNode = node
+                case .custom:
+                    // 勉強アイコンは登録URLを開く
+                    if node.id == "wd-study",
+                       let url = URL(string: studyBookUrl.hasPrefix("http") ? studyBookUrl : "https://\(studyBookUrl)") {
+                        UIApplication.shared.open(url)
+                    } else {
+                        selectedMandalaNode = node
+                    }
                 }
             }
         )

@@ -96,6 +96,8 @@ struct SettingsView: View {
     @State private var showAddWeekdayCustom = false
     @State private var newWeekdayGoalName = ""
     @State private var newWeekdayGoalEmoji = "⭐"
+    // 📚 勉強アイコンのリンクURL
+    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
     @Environment(\.dismiss) private var dismiss
     @AppStorage("app.colorScheme") private var colorSchemePref = "light"
 
@@ -511,6 +513,9 @@ struct SettingsView: View {
                 // 曜日毎の目標
                 weekdayGoalsSection
 
+                // 📚 勉強アイコンのリンクURL設定
+                studyBookUrlSection
+
                 // 時間帯別設定ボタン
                 Button { showTimeSlotGoals = true } label: {
                     HStack(spacing: 10) {
@@ -739,6 +744,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     dailyFixedGoalsSection
                     weekdayGoalsSection
+                    studyBookUrlSection
 
                     NavigationLink {
                         TimeSlotGoalsView()
@@ -824,6 +830,39 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private var studyBookUrlSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("📚").font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("読書・勉強リンク")
+                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
+                    Text("スパイラルの📚アイコンをタップすると開くURL")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color.duoGreen)
+                TextField("https://yonda.ktrips.net", text: $studyBookUrl)
+                    .font(.system(size: 13))
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .keyboardType(.URL)
+                    .submitLabel(.done)
+            }
+            .padding(10)
+            .background(Color(.systemGray6))
+            .cornerRadius(8)
         }
         .padding(16)
         .background(Color(.systemBackground))

@@ -45,6 +45,12 @@
 	<array>
 		<string>_firebase._tcp</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>wiscale2</string>
+		<string>healthmate</string>
+		<string>withings</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>kfit may use camera for form analysis in the future.</string>
 	<key>NSHealthShareUsageDescription</key>

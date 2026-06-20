@@ -6343,7 +6343,7 @@ private struct DailySetsMandalaSectionView: View {
         )
         .padding(.horizontal, 14)
         .padding(.top, 8)
-        .padding(.bottom, 2)
+        .padding(.bottom, 0)
     }
 }
 
@@ -6371,12 +6371,6 @@ private struct MandalaSpiralCard: View {
         else if h < 14 { return [.morning, .noon] }
         else if h < 18 { return [.morning, .noon, .afternoon] }
         else { return [.morning, .noon, .afternoon, .evening] }
-    }
-
-    private var visibleCount: (done: Int, total: Int) {
-        let set = Set(visibleSlots)
-        let visible = nodes.filter { $0.slot == nil || set.contains($0.slot!) }
-        return (visible.filter(\.isCompleted).count, visible.count)
     }
 
     private var activityRingsDone: Bool {
@@ -6466,22 +6460,11 @@ private struct MandalaSpiralCard: View {
 
     private var legendRow: some View {
         let todayNodes = nodes.filter { $0.slot == nil }
-        let nc = visibleCount
         return HStack(spacing: 2) {
             legendCell(label: "今日", color: Color(hex: "CE82FF"),
                        done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
             ForEach(visibleSlots, id: \.self) { slot in
                 slotLegend(slot: slot)
-            }
-            Spacer(minLength: 4)
-            if nc.total > 0 {
-                let pct = Double(nc.done) / Double(nc.total)
-                let numColor: Color = nc.done == nc.total ? Color.duoGreen
-                    : pct >= 0.5 ? Color.duoOrange
-                    : Color.duoSubtitle
-                Text("\(nc.done)/\(nc.total)")
-                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(numColor)
             }
         }
     }
@@ -7893,7 +7876,8 @@ private struct DailySetsExpandableSection: View {
                         .foregroundColor(Color.duoSubtitle)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+                .padding(.top, 2)
+                .padding(.bottom, 4)
             }
             .buttonStyle(.plain)
 

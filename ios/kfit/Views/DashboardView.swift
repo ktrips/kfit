@@ -1292,20 +1292,8 @@ struct DashboardView: View {
         completedSlots: Int, totalSlots: Int,
         isExpanded: Bool
     ) -> some View {
-        let remaining = totalSlots - completedSlots
-        let msg: String = completedSlots == totalSlots
-            ? (totalSlots == 4 ? "全時間帯の目標達成！完璧な一日🎉" : "ここまでの時間帯を全部達成💪")
-            : completedSlots == 0
-            ? "まず1つ目の時間帯を達成しよう！"
-            : "あと\(remaining)つの時間帯で本日完全達成！"
-        let msgGreen = completedSlots == totalSlots
-
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
-                Text(msg)
-                    .font(.system(size: 11 * UIScale.font))
-                    .fontWeight(msgGreen ? .bold : .regular)
-                    .foregroundColor(msgGreen ? Color.duoGreen : Color.duoSubtitle)
                 Spacer()
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11 * UIScale.font, weight: .bold))
@@ -6391,51 +6379,17 @@ private struct MandalaSpiralCard: View {
         return (visible.filter(\.isCompleted).count, visible.count)
     }
 
-    private var motivationMessage: String {
-        let set = Set(visibleSlots)
-        let pending = nodes
-            .filter { $0.slot == nil || set.contains($0.slot!) }
-            .filter { !$0.isCompleted }
-        if pending.isEmpty { return "🎉 全達成！" }
-        if pending.count == 1 { return "\(pending[0].emoji) \(pending[0].label)" }
-        let icons = pending.prefix(3).map(\.emoji).joined()
-        return "\(icons) あと\(pending.count)つ"
-    }
-
-    private var motivationBadge: some View {
-        Text(motivationMessage)
-            .font(.system(size: 11 * UIScale.font, weight: .semibold, design: .rounded))
-            .foregroundColor(Color.duoSubtitle)
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color(.systemBackground).opacity(0.85))
-            .cornerRadius(8)
-            .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-    }
-
     private var activityRingsDone: Bool {
         healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
             healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
     }
 
     var body: some View {
-        let nc = visibleCount
         return chart
             .frame(height: 340)
             .padding(.top, 1)
             .padding(.bottom, 1)
             .overlay(alignment: .top) { legendOverlay }
-            .overlay(alignment: .topLeading) {
-                HStack(alignment: .top, spacing: 6) {
-                    if nc.total > 0 {
-                        progressBadge(done: nc.done, total: nc.total, label: "現時点")
-                    }
-                    motivationBadge
-                }
-                .padding(.leading, 10)
-                .padding(.top, 34)
-            }
             .overlay(alignment: .topTrailing) {
                 settingsButton
                     .padding(.trailing, 4)
@@ -6498,26 +6452,6 @@ private struct MandalaSpiralCard: View {
     }
 
 
-    private func progressBadge(done: Int, total: Int, label: String) -> some View {
-        let pct = total > 0 ? Double(done) / Double(total) : 0.0
-        let numColor: Color = done == total ? Color.duoGreen
-            : pct >= 0.5 ? Color.duoOrange
-            : Color.duoSubtitle
-        return VStack(spacing: 0) {
-            Text("\(done)/\(total)")
-                .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
-                .foregroundColor(numColor)
-            Text(label)
-                .font(.system(size: 8 * UIScale.font, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(Color(.systemBackground).opacity(0.85))
-        .cornerRadius(8)
-        .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-    }
-
     private var legendOverlay: some View {
         legendRow
             .padding(.vertical, 3)
@@ -6532,11 +6466,22 @@ private struct MandalaSpiralCard: View {
 
     private var legendRow: some View {
         let todayNodes = nodes.filter { $0.slot == nil }
+        let nc = visibleCount
         return HStack(spacing: 2) {
             legendCell(label: "今日", color: Color(hex: "CE82FF"),
                        done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
             ForEach(visibleSlots, id: \.self) { slot in
                 slotLegend(slot: slot)
+            }
+            Spacer(minLength: 4)
+            if nc.total > 0 {
+                let pct = Double(nc.done) / Double(nc.total)
+                let numColor: Color = nc.done == nc.total ? Color.duoGreen
+                    : pct >= 0.5 ? Color.duoOrange
+                    : Color.duoSubtitle
+                Text("\(nc.done)/\(nc.total)")
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(numColor)
             }
         }
     }

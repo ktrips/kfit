@@ -357,14 +357,14 @@ struct TomoView: View {
         return (activity + food).sorted { $0.timestamp > $1.timestamp }
     }
 
-    /// 2週間以上前のデータが存在するか
-    private var hasOlderItems: Bool {
-        allFeedItems.contains { $0.timestamp < twoWeeksAgo }
-    }
-
     /// 表示するフィード（直近2週間 or 全件）
     private var displayFeedItems: [EduLogHistoryItem] {
         showOlderFeed ? allFeedItems : allFeedItems.filter { $0.timestamp >= twoWeeksAgo }
+    }
+
+    /// 2週間以上前のデータが存在するか（displayFeedItems との件数差で判断し allFeedItems の二重評価を防ぐ）
+    private var hasOlderItems: Bool {
+        !showOlderFeed && allFeedItems.count > displayFeedItems.count
     }
 
     // カテゴリグループ：ユーザー×カテゴリ単位で集約
@@ -392,50 +392,6 @@ struct TomoView: View {
         let dateLabel: String
         let userGroups: [FeedUserGroup]
         var totalItems: Int { userGroups.reduce(0) { $0 + $1.totalItems } }
-    }
-
-    private var groupedItems: [FeedDateSection] {
-        let cal = Calendar.current
-        let byDay = Dictionary(grouping: displayFeedItems) { item in
-            cal.startOfDay(for: item.timestamp)
-        }
-        return byDay.keys.sorted(by: >).map { date in
-            let label = cal.isDateInToday(date) ? "今日" :
-                        cal.isDateInYesterday(date) ? "昨日" :
-                        TomoView.dateGroupFormatter.string(from: date)
-            let dayItems = byDay[date]!.sorted { $0.timestamp > $1.timestamp }
-
-            // ① 日付内をユーザー別にグループ
-            var seenUsers: [String] = []
-            var byUser: [String: [EduLogHistoryItem]] = [:]
-            for item in dayItems {
-                let key = item.resolvedAuthorName
-                if byUser[key] == nil { seenUsers.append(key); byUser[key] = [] }
-                byUser[key]!.append(item)
-            }
-
-            let userGroups = seenUsers.map { userKey -> FeedUserGroup in
-                let userItems = byUser[userKey]!
-                let firstItem = userItems.first!
-
-                // ② 各投稿を時系列のまま1件ずつカードに（カテゴリ集約なし）
-                let catGroups = userItems.map { item in
-                    FeedCategoryGroup(
-                        categoryKey: item.id,
-                        categoryEmoji: item.activityEmoji,
-                        items: [item]
-                    )
-                }
-
-                return FeedUserGroup(
-                    authorName: userKey,
-                    authorFirstName: firstItem.authorFirstName,
-                    authorPhotoURL: firstItem.authorPhotoURL,
-                    categoryGroups: catGroups
-                )
-            }
-            return FeedDateSection(dateLabel: label, userGroups: userGroups)
-        }
     }
 
     // MARK: - Instagram 縦フィード

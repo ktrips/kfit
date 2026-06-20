@@ -1416,12 +1416,12 @@ private struct WeeklyHRVAverageChart: View {
     let days: [DailyHRVAverage]
     private let lowerLimit = 20.0
 
-    private var validDays: [DailyHRVAverage] {
-        days.filter { $0.value > 0 }.sorted { $0.date < $1.date }
-    }
-
     private var sortedDays: [DailyHRVAverage] {
         days.sorted { $0.date < $1.date }
+    }
+
+    private var validDays: [DailyHRVAverage] {
+        sortedDays.filter { $0.value > 0 }
     }
 
     var body: some View {

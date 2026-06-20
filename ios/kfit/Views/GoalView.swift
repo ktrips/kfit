@@ -19,6 +19,42 @@ struct GoalView: View {
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
 
+    // MARK: - Static formatters（毎呼び出しで DateFormatter を生成しないよう共有）
+    private static let yyyyMMddFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let yyyyMdFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy/M/d"
+        return f
+    }()
+    private static let HHmmFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+    private static let MdFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d"
+        return f
+    }()
+    private static let dayOfWeekFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        return f
+    }()
+
+    // MARK: - キャッシュ済みトレーニング合計（3箇所から参照するためプロパティ化）
+    private var totalTrainingSets: Int {
+        TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
+    }
+    private var totalTrainingGoalSets: Int {
+        TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
+        }
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -95,10 +131,8 @@ struct GoalView: View {
     // MARK: - Header
 
     private var fitHeader: some View {
-        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
-        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
-        }
+        let totalTraining = totalTrainingSets
+        let totalTrainingGoal = totalTrainingGoalSets
         let todayWeightKg = healthKit.todayBodyMassRecord?.kg
         let stepsStr: String = {
             let s = healthKit.todaySteps
@@ -191,10 +225,8 @@ struct GoalView: View {
 
     private var fitSummaryRow: some View {
         let fitColor = Color(hex: "#FF9600")
-        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
-        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
-        }
+        let totalTraining = totalTrainingSets
+        let totalTrainingGoal = totalTrainingGoalSets
         let todayWeightKg = healthKit.todayBodyMassRecord?.kg
         let stepsStr: String = {
             let s = healthKit.todaySteps
@@ -371,13 +403,12 @@ struct GoalView: View {
         let daysRemaining = max(0, cal.dateComponents([.day], from: Date(), to: goal.targetDate).day ?? 0)
 
         // バナー用データ
-        let dateFmtB = DateFormatter(); dateFmtB.dateFormat = "yyyy-MM-dd"
-        let todayKeyB = dateFmtB.string(from: Date())
+        let todayKeyB = GoalView.yyyyMMddFmt.string(from: Date())
         let weeklySetTotal = weeklySetCounts.values.reduce(0, +)
-        let todayHKDay = healthKit.weeklyCalorieData.first { dateFmtB.string(from: $0.date) == todayKeyB }
+        let todayHKDay = healthKit.weeklyCalorieData.first { GoalView.yyyyMMddFmt.string(from: $0.date) == todayKeyB }
         let todayBalance = todayHKDay.map { Int($0.consumed) - Int($0.burned) } ?? 0
         let hasIntakeThisWeek = weeklyIntakeData.values.contains { $0.values.contains { $0 > 0 } }
-        let todayBurnDay = healthKit.weeklyBurnData.first { dateFmtB.string(from: $0.date) == todayKeyB }
+        let todayBurnDay = healthKit.weeklyBurnData.first { GoalView.yyyyMMddFmt.string(from: $0.date) == todayKeyB }
         let todaySteps = todayBurnDay?.steps ?? 0
         let todayActiveCalories = todayBurnDay?.activeCalories ?? 0.0
         let todayRestingCalories = healthKit.todayRestingCalories > 0
@@ -487,10 +518,7 @@ struct GoalView: View {
     }
 
     private func formattedDate(_ date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "yyyy/M/d"
-        return fmt.string(from: date)
+        GoalView.yyyyMdFmt.string(from: date)
     }
 
     private func formatCompactKg(_ value: Double) -> String {
@@ -831,9 +859,7 @@ struct GoalView: View {
     }
 
     private func timeString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        GoalView.HHmmFmt.string(from: date)
     }
 
     private func standaloneWorkoutSessions(
@@ -878,10 +904,8 @@ struct GoalView: View {
     // MARK: - 今日のアクティビティカード
 
     private var fitingoTrainingButton: some View {
-        let totalTraining = TimeSlot.allCases.reduce(0) { $0 + countSetsInTimeSlot($1) }
-        let totalTrainingGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
-        }
+        let totalTraining = totalTrainingSets
+        let totalTrainingGoal = totalTrainingGoalSets
         let done = totalTrainingGoal > 0 && totalTraining >= totalTrainingGoal
         let bgColors: [Color] = done
             ? [Color(hex: "#E8FFB8"), Color(hex: "#6FE8D8")]
@@ -1351,11 +1375,9 @@ struct GoalView: View {
     // MARK: - 週間消費カロリーカード
 
     private var weeklyBurnCard: some View {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
         var data = healthKit.weeklyBurnData
         for i in data.indices {
-            let key = formatter.string(from: data[i].date)
+            let key = GoalView.yyyyMMddFmt.string(from: data[i].date)
             data[i].setCount = weeklySetCounts[key] ?? 0
         }
         return GoalWeeklyBurnCard(data: data)
@@ -1371,27 +1393,21 @@ struct GoalView: View {
             from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
         ) ?? today
 
-        let dateFmt = DateFormatter()
-        dateFmt.dateFormat = "yyyy-MM-dd"
-        let dayFmt = DateFormatter()
-        dayFmt.locale = Locale(identifier: "ja_JP")
-        dayFmt.dateFormat = "E"
-
         // HealthKit サンプルを日付キーでグルーピング
         var samplesByKey: [String: [DietarySample]] = [:]
         for sample in healthKit.weeklyDietarySamples {
-            let key = dateFmt.string(from: sample.startDate)
+            let key = GoalView.yyyyMMddFmt.string(from: sample.startDate)
             samplesByKey[key, default: []].append(sample)
         }
 
         // 水分は Firestore から
         let days: [GoalIntakeDayData] = (0..<7).compactMap { i in
             guard let dayStart = cal.date(byAdding: .day, value: i, to: weekStart) else { return nil }
-            let key = dateFmt.string(from: dayStart)
+            let key = GoalView.yyyyMMddFmt.string(from: dayStart)
             let intake = weeklyIntakeData[key] ?? [:]
             return GoalIntakeDayData(
                 date: dayStart,
-                dayLabel: dayFmt.string(from: dayStart),
+                dayLabel: GoalView.dayOfWeekFmt.string(from: dayStart),
                 samples: samplesByKey[key] ?? [],
                 waterMl: intake["waterMl"] ?? 0
             )
@@ -1509,12 +1525,9 @@ struct GoalView: View {
 
     private func chartDateLabels(_ dates: [Date]) -> [String] {
         guard !dates.isEmpty else { return [] }
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "M/d"
         let step = max(1, dates.count / 4)
         return dates.enumerated().map { i, d in
-            (i % step == 0 || i == dates.count - 1) ? fmt.string(from: d) : ""
+            (i % step == 0 || i == dates.count - 1) ? GoalView.MdFmt.string(from: d) : ""
         }
     }
 }

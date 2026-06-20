@@ -77,6 +77,8 @@ struct FoodView: View {
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
     @StateObject private var photoLogManager = PhotoLogManager.shared
+    // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
+    @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
     @State private var showFoodHistory = false
     @State private var showIntakeSettings = false
@@ -107,9 +109,11 @@ struct FoodView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             foodHeader
         }
-        .task { await loadData() }
+        .task { await loadData(); recomputePhotoLogTotals() }
+        .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await loadData() }
+            recomputePhotoLogTotals()
         }
         .fullScreenCover(isPresented: $showPhotoLog) {
             PhotoLogView()
@@ -136,20 +140,11 @@ struct FoodView: View {
     // MARK: - Header
 
     private var foodHeader: some View {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let photoTotals = photoLogManager.history
-            .filter { cal.startOfDay(for: $0.timestamp) == today }
-            .reduce(into: (protein: 0.0, fat: 0.0, carbs: 0.0, calories: 0)) { acc, item in
-                acc.protein += item.analyzedNutrition.protein
-                acc.fat += item.analyzedNutrition.fat
-                acc.carbs += item.analyzedNutrition.carbs
-                acc.calories += item.analyzedNutrition.calories
-            }
-        let prot = healthKit.todayIntakeProtein + photoTotals.protein
-        let fat_ = healthKit.todayIntakeFat + photoTotals.fat
-        let carb = healthKit.todayIntakeCarbs + photoTotals.carbs
-        let totalIntakeCal = Int(healthKit.todayIntakeCalories) + photoTotals.calories
+        // キャッシュ済み集計を参照（onChange で photoLogManager.history 変化時のみ再計算）
+        let prot = healthKit.todayIntakeProtein + cachedPhotoLogTotals.protein
+        let fat_ = healthKit.todayIntakeFat + cachedPhotoLogTotals.fat
+        let carb = healthKit.todayIntakeCarbs + cachedPhotoLogTotals.carbs
+        let totalIntakeCal = Int(healthKit.todayIntakeCalories) + cachedPhotoLogTotals.calories
         let calDiff = totalIntakeCal - Int(healthKit.todayActiveCalories + healthKit.todayRestingCalories)
         let waterMl = Int(healthKit.todayIntakeWater)
         let foodGoalDone = dailyFixedGoals.foodEnabled && totalIntakeCal >= 2000
@@ -233,22 +228,10 @@ struct FoodView: View {
             Divider().padding(.horizontal, 12)
 
             // ── 水分・カフェイン・アルコール ────────────────────────────
-            HStack(spacing: 6) {
-                Image(systemName: "drop.fill")
-                    .font(.system(size: 10 * UIScale.font))
-                    .foregroundColor(Color.duoBlue)
-                Text("飲料")
-                    .font(.system(size: 11 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-
             hydrationRow
                 .padding(.horizontal, 12)
-                .padding(.bottom, 10)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
 
             Divider().padding(.horizontal, 12)
 
@@ -269,20 +252,7 @@ struct FoodView: View {
 
     private var mealRecordCard: some View {
         VStack(spacing: 0) {
-            // カードヘッダー
-            HStack(spacing: 6) {
-                Text("🍽️")
-                    .font(.system(size: 14 * UIScale.font))
-                Text("食事を記録")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-
-            // ── フォトログ ──────────────────────────────────────────────
+            // ── 食事フォトログ ────────────────────────────────────────────
             Button { showPhotoLog = true } label: {
                 HStack(spacing: 12) {
                     ZStack {
@@ -302,7 +272,7 @@ struct FoodView: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("📸 フォトログ")
+                        Text("📸 食事フォトログ")
                             .font(.system(size: 15 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text("写真を撮ってAIカロリー計算")
@@ -315,7 +285,8 @@ struct FoodView: View {
                         .foregroundColor(Color.duoOrange.opacity(0.7))
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
                 .background(
                     LinearGradient(
                         colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
@@ -700,10 +671,7 @@ struct FoodView: View {
             else if pct >= 70, hydrationColor != .red { hydrationColor = Color.duoPurple; hint = hint.isEmpty ? "飲み過ぎ注意・お水も忘れずに" : hint }
         }
 
-        if !parts.isEmpty {
-            let msg = hint.isEmpty ? parts.joined(separator: " · ") : parts.joined(separator: " · ") + "\n" + hint
-            tips.append(FoodTip(emoji: "💧", title: "飲料サマリー", message: msg, color: hydrationColor))
-        } else if waterGoal > 0 {
+        if parts.isEmpty && waterGoal > 0 {
             tips.append(FoodTip(emoji: "💧", title: "水分未摂取",
                 message: "今日の水分摂取がまだありません。目標\(waterGoal)ml。",
                 color: Color(red: 0.2, green: 0.6, blue: 1.0)))
@@ -908,7 +876,7 @@ struct FoodView: View {
     // MARK: - Water / Caffeine / Alcohol
 
     private var hydrationRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             intakeItemCard(icon: "drop.fill",         iconColor: Color.duoBlue,
                 label: "水分",      value: Double(todayIntake.totalWaterMl),
                 goal: Double(intakeGoals.dailyWaterGoal), unit: "ml",
@@ -963,38 +931,38 @@ struct FoodView: View {
             displayColor = (isOver || percent >= 100) ? .red : percent >= 70 ? .duoOrange : .duoGreen
         }
         let advice = adviceText(label: label, value: value, goal: goal, isReverse: isReverse)
-        let content = VStack(alignment: .center, spacing: 3) {
-            Image(systemName: icon).font(.system(size: 17 * UIScale.font)).foregroundColor(iconColor)
-            Text(label).font(.system(size: 9 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
+        let content = VStack(alignment: .center, spacing: 2) {
+            Image(systemName: icon).font(.system(size: 14 * UIScale.font)).foregroundColor(iconColor)
+            Text(label).font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
             VStack(spacing: 1) {
                 Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor((isOver && isReverse) ? .red : displayColor)
                     .lineLimit(1).minimumScaleFactor(0.7)
-                Text(unit).font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                Text(unit).font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             }
             if let _ = goal {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color(.systemGray5)).frame(height: 3)
+                        Capsule().fill(Color(.systemGray5)).frame(height: 2)
                         Capsule().fill(displayColor)
-                            .frame(width: max(3, geo.size.width * CGFloat(min(percent, 100)) / 100), height: 3)
+                            .frame(width: max(2, geo.size.width * CGFloat(min(percent, 100)) / 100), height: 2)
                     }
-                }.frame(height: 3)
-                Text("\(percent)%").font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(displayColor)
+                }.frame(height: 2)
+                Text("\(percent)%").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(displayColor)
             }
             if !advice.isEmpty {
                 Text(advice)
-                    .font(.system(size: 8 * UIScale.font, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(displayColor.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
         }
-        .padding(.vertical, 8).padding(.horizontal, 6)
+        .padding(.vertical, 6).padding(.horizontal, 5)
         .frame(maxWidth: .infinity)
         .background(iconColor.opacity(0.08))
-        .cornerRadius(10)
+        .cornerRadius(8)
         if let url = healthKitURL {
             return AnyView(Button { if let u = URL(string: url) { UIApplication.shared.open(u) } } label: { content }.buttonStyle(.plain))
         } else {
@@ -1122,6 +1090,19 @@ struct FoodView: View {
         todayIntake = intake
         intakeGoals = settings
         pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
+    }
+
+    private func recomputePhotoLogTotals() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        cachedPhotoLogTotals = photoLogManager.history
+            .filter { cal.startOfDay(for: $0.timestamp) == today }
+            .reduce(into: (protein: 0.0, fat: 0.0, carbs: 0.0, calories: 0)) { acc, item in
+                acc.protein  += item.analyzedNutrition.protein
+                acc.fat      += item.analyzedNutrition.fat
+                acc.carbs    += item.analyzedNutrition.carbs
+                acc.calories += item.analyzedNutrition.calories
+            }
     }
 
     private func loadDailyFixedGoals() {

@@ -129,6 +129,8 @@ struct DashboardView: View {
     @StateObject private var completionLogger = MandalaCompletionLogger.shared
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
+    // タイムスロット別セット数キャッシュ（todayExercises 変化時のみ再計算）
+    @State private var cachedSlotSetCounts: [String: Int] = [:]
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -184,7 +186,10 @@ struct DashboardView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        coreView
+        // コンパイラの型推論タイムアウトを防ぐため、let で式を2段階に分割
+        // （computed property への分離はSwiftUI描画ツリー深度を増やし
+        //   スタックオーバーフローを引き起こすためこの方法を採用）
+        let withHealthKitObservers = coreView
             .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
                 handleMindfulnessChange(old: oldValue, new: newValue)
                 scheduleWidgetDataUpdate()
@@ -196,37 +201,42 @@ struct DashboardView: View {
             .onChange(of: healthKit.todayIntakeWater) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayBodyMassMeasurements) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.lastNightTotalHours) { _, _ in scheduleWidgetDataUpdate() }
+        return withHealthKitObservers
             .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals() }
+            .onChange(of: todayExercises.count) { _, _ in rebuildSlotSetCounts() }
             .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
                 updateWidgetData()
             }
             .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
                 Task { await periodicWidgetSync() }
             }
-            .onAppear {
-                withAnimation { mascotBounce = true }
-                recomputePhotoLogTotals()
-                if !hasLoadedOnce {
-                    hasLoadedOnce = true
-                    isLoading = true
-                    Task {
-                        print("🟢 DashboardView.onAppear - loadDataを開始")
-                        if healthKit.isAvailable && !healthKit.isAuthorized {
-                            await healthKit.requestAuthorization()
-                        }
-                        await timeSlotManager.loadTodaySettings()
-                        await timeSlotManager.loadTodayProgress()
-                        await loadData()
-                    }
-                } else {
-                    print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
-                }
-            }
+            .onAppear(perform: handleOnAppear)
             .onChange(of: scenePhase) { _, newPhase in
                 handleScenePhaseChange(newPhase)
             }
+    }
+
+    private func handleOnAppear() {
+        withAnimation { mascotBounce = true }
+        recomputePhotoLogTotals()
+        rebuildSlotSetCounts()
+        guard !hasLoadedOnce else {
+            print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
+            return
+        }
+        hasLoadedOnce = true
+        isLoading = true
+        Task {
+            print("🟢 DashboardView.onAppear - loadDataを開始")
+            if healthKit.isAvailable && !healthKit.isAuthorized {
+                await healthKit.requestAuthorization()
+            }
+            await timeSlotManager.loadTodaySettings()
+            await timeSlotManager.loadTodayProgress()
+            await loadData()
+        }
     }
 
     // MARK: - コアビュー（シート・アラート群）
@@ -1193,6 +1203,7 @@ struct DashboardView: View {
                 timeSlotManager: timeSlotManager,
                 healthKit: healthKit,
                 todayExercises: todayExercises,
+                slotSetCounts: cachedSlotSetCounts,
                 mandalaContextLabel: mandalaContextString(mandalaNodes),
                 dailyCalorieGoal: intakeGoals.dailyCalorieGoal,
                 dailyWaterGoal: intakeGoals.dailyWaterGoal
@@ -6004,29 +6015,32 @@ struct DashboardView: View {
         showStandSession = true
     }
 
-    /// 指定された時間帯に実行されたセット数をカウント（30分以内のまとまりを1セットとする）
-    private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
+    /// タイムスロット別セット数キャッシュを再構築（todayExercises 変化時のみ呼び出す）
+    private func rebuildSlotSetCounts() {
         let calendar = Calendar.current
-        let slotExercises = todayExercises
-            .filter { ex in
+        let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
+        var counts: [String: Int] = [:]
+        for slot in TimeSlot.allCases {
+            let inSlot = sorted.filter { ex in
                 let hour = calendar.component(.hour, from: ex.timestamp)
                 return hour >= slot.startHour && hour < slot.endHour
             }
-            .sorted { $0.timestamp < $1.timestamp }
-
-        guard !slotExercises.isEmpty else { return 0 }
-
-        var sessionCount = 0
-        var lastTime: Date? = nil
-        for ex in slotExercises {
-            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
-                // 同一セッション内
-            } else {
-                sessionCount += 1
+            guard !inSlot.isEmpty else { counts[slot.rawValue] = 0; continue }
+            var count = 0
+            var lastTime: Date? = nil
+            for ex in inSlot {
+                if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 { }
+                else { count += 1 }
+                lastTime = ex.timestamp
             }
-            lastTime = ex.timestamp
+            counts[slot.rawValue] = count
         }
-        return sessionCount
+        cachedSlotSetCounts = counts
+    }
+
+    /// キャッシュからタイムスロット別セット数を返す（レンダー毎の再計算なし）
+    private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
+        cachedSlotSetCounts[slot.rawValue] ?? 0
     }
 
     private func computeAngerLevel() -> Double {
@@ -8181,6 +8195,7 @@ private struct DailySetsExpandableSection: View {
     @ObservedObject var timeSlotManager: TimeSlotManager
     @ObservedObject var healthKit: HealthKitManager
     let todayExercises: [CompletedExercise]
+    let slotSetCounts: [String: Int]
     let mandalaContextLabel: String
     let dailyCalorieGoal: Int
     let dailyWaterGoal: Int
@@ -8255,18 +8270,7 @@ private struct DailySetsExpandableSection: View {
     // MARK: Helpers
 
     private func countSetsInTimeSlot(_ slot: TimeSlot) -> Int {
-        let cal = Calendar.current
-        let inSlot = todayExercises
-            .filter { let h = cal.component(.hour, from: $0.timestamp); return h >= slot.startHour && h < slot.endHour }
-            .sorted { $0.timestamp < $1.timestamp }
-        guard !inSlot.isEmpty else { return 0 }
-        var count = 0; var lastTime: Date? = nil
-        for ex in inSlot {
-            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 { }
-            else { count += 1 }
-            lastTime = ex.timestamp
-        }
-        return count
+        slotSetCounts[slot.rawValue] ?? 0
     }
 
     /// その時間帯に記録された食事カロリーの合計（kcal）

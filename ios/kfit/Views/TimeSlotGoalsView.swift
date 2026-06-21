@@ -822,7 +822,7 @@ struct MandalaChartView: View {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分 \(goal.logGoal.drinkGoal)ml",
+                    label: "水分 200ml",
                     isCompleted: dailyWaterDone || slotActualWaterMl >= waterQuarterGoal,
                     slot: slot,
                     type: .drink
@@ -1202,7 +1202,7 @@ struct MandalaNodeButton: View {
     var nodeSize: CGFloat = 36
     let action: () -> Void
 
-    private var emojiSize: CGFloat { nodeSize * (15.0 / 36.0) }
+    private var emojiSize: CGFloat { nodeSize * (21.5 / 36.0) }
     private var glowSize: CGFloat { nodeSize + 14 }
 
     @State private var tapped = false

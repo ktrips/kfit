@@ -265,8 +265,7 @@ struct DashboardView: View {
                             }
                             pointsCard
                             challengeCard
-                            habitStackCard
-                            bookPromoSection
+                            relatedBooksSection
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -343,6 +342,11 @@ struct DashboardView: View {
                 IntakeSettingsView().environmentObject(authManager)
             }
             .sheet(item: $selectedMandalaNode) { node in
+                let isStudyOrReading = node.type == .custom &&
+                    (node.id == "wd-study" || node.label == "読書" || node.label == "勉強")
+                let nodeLinkURL: URL? = isStudyOrReading
+                    ? URL(string: studyBookUrl.hasPrefix("http") ? studyBookUrl : "https://\(studyBookUrl)")
+                    : nil
                 GoalCompletionSheet(
                     emoji: node.emoji,
                     name: node.label,
@@ -370,14 +374,16 @@ struct DashboardView: View {
                     onPhotoTap: node.type == .meal ? {
                         selectedMandalaNode = nil
                         showPhotoLog = true
-                    } : node.type == .custom ? {
+                    } : (node.type == .custom && !isStudyOrReading) ? {
                         eduPhotoLogNode = node
                         selectedMandalaNode = nil
                         showEduPhotoLog = true
                     } : nil,
-                    isRecordType: node.type == .meal || node.type == .drink
+                    isRecordType: node.type == .meal || node.type == .drink,
+                    showPhotoButton: node.type != .drink,
+                    linkURL: nodeLinkURL
                 )
-                .presentationDetents([.height(290)])
+                .presentationDetents([.height(nodeLinkURL != nil ? 340 : 290)])
                 .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
@@ -2234,6 +2240,17 @@ struct DashboardView: View {
 
     private func mandalaContextString(_ nodes: [MandalaNodeData]) -> String {
         let hour = currentMandalaHour
+        let totalCount = nodes.count
+        let completedCount = nodes.filter { $0.isCompleted }.count
+        let progress = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0
+
+        // 全完了
+        if completedCount == totalCount && totalCount > 0 {
+            if hour < 12 { return "🎉 午前中に全完了！最高のスタート！" }
+            if hour < 17 { return "🎉 全タスク完了！今日も最高だよ！" }
+            return "🎉 全タスク達成！今日もお疲れ様！"
+        }
+
         let currentSlot: TimeSlot? = {
             if hour >= 5 && hour < 10 { return .morning }
             else if hour >= 10 && hour < 14 { return .noon }
@@ -2241,213 +2258,71 @@ struct DashboardView: View {
             else if hour >= 18 { return .evening }
             return nil
         }()
+
         if let slot = currentSlot {
             let slotNodes = nodes.filter { $0.slot == slot }
             let incomplete = slotNodes.filter { !$0.isCompleted }
-            if let first = incomplete.first {
-                return "\(first.emoji) \(first.label)を記録しましょう"
-            } else if !slotNodes.isEmpty {
-                return "\(slot.displayName)のタスク完了！このまま継続"
-            }
-        }
-        let todayIncomplete = nodes.filter { $0.slot == nil && !$0.isCompleted }
-        if let first = todayIncomplete.first {
-            return "\(first.emoji) \(first.label)を記録しましょう"
-        }
-        return "今日のタスクはすべて完了！"
-    }
+            let slotCompleted = slotNodes.filter { $0.isCompleted }.count
 
-    private var habitStackCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // ヘッダー
-            HStack {
-                HStack(spacing: 5) {
-                    Image(systemName: "link")
-                    Text("ハビットスタック").fontWeight(.black)
-                }
-                .font(.subheadline)
-                .foregroundColor(Color.duoGreen)
-                Spacer()
-                Button {
-                    showHabits = true
-                } label: {
-                    Text(habitManager.habits.isEmpty ? "設定する" : "管理")
-                        .font(.caption).fontWeight(.bold)
-                        .foregroundColor(Color.duoGreen)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.duoGreen.opacity(0.12))
-                        .cornerRadius(8)
-                }
-            }
-
-            if habitManager.habits.isEmpty {
-                // 未設定状態
-                Button { showHabits = true } label: {
-                    HStack(spacing: 10) {
-                        Text("🔗").font(.title2)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("日課とトレーニングをリンク")
-                                .font(.subheadline).fontWeight(.bold)
-                                .foregroundColor(Color.duoDark)
-                            Text("歯磨き後・コーヒー後などに通知")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(12)
-                    .background(Color.duoGreen.opacity(0.06))
-                    .cornerRadius(10)
-                }
-                .buttonStyle(.plain)
+            if slotNodes.isEmpty {
+                // 現在の時間帯にノードなし → 全体の進捗メッセージ
+            } else if incomplete.isEmpty {
+                // 現在のスロット完了
+                let nextSlotMessages: [String] = [
+                    "\(slot.displayName)のROUTIN完了！次も頑張ろう💪",
+                    "\(slot.displayName)はパーフェクト！この調子！",
+                ]
+                return nextSlotMessages[hour % nextSlotMessages.count]
             } else {
-                // 習慣一覧（有効なものだけ表示、最大3件）
-                let active = habitManager.habits.filter { $0.isEnabled }.prefix(3)
-                ForEach(Array(active)) { habit in
-                    HStack(spacing: 10) {
-                        Text(habit.emoji).font(.title3)
-                        Text(habit.name)
-                            .font(.subheadline).fontWeight(.medium)
-                            .foregroundColor(Color.duoDark)
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                            Text(habit.timeString)
-                                .font(.caption).fontWeight(.bold)
-                        }
-                        .foregroundColor(Color.duoGreen)
-                        Image(systemName: "arrow.right")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                        Image(systemName: "figure.run")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoGreen)
-                    }
-                    .padding(.vertical, 4)
-                    if habit.id != active.last?.id {
-                        Divider()
-                    }
-                }
-                if habitManager.habits.filter({ $0.isEnabled }).count > 3 {
-                    Text("他 \(habitManager.habits.filter { $0.isEnabled }.count - 3) 件")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                // 現在スロットに未完了あり
+                let remaining = incomplete.count
+                let slotName = slot.displayName
+                switch slot {
+                case .morning:
+                    let msgs = [
+                        "☀️ 朝のトレーニングが足りないよ！やってみよう！",
+                        "🌅 朝から動けば一日が変わる！あと\(remaining)個！",
+                        "🐓 早起きは三文の得！朝ROUTINをこなそう！",
+                    ]
+                    return msgs[slotCompleted % msgs.count]
+                case .noon:
+                    let msgs = [
+                        "🍱 お昼の時間！ランチ前に\(remaining)個こなそう！",
+                        "⚡ 午前の勢いで昼ROUTINもやり切ろう！",
+                        "🕛 昼休みにサクッとROUTINを終わらせよう！",
+                    ]
+                    return msgs[slotCompleted % msgs.count]
+                case .afternoon:
+                    let msgs = [
+                        "🌤️ 午後のROUTINがまだ残ってるよ！今すぐやろう！",
+                        "💡 夕方前にあと\(remaining)個！集中してこなそう！",
+                        "🏃 午後の眠気を吹き飛ばせ！ROUTINでシャキッと！",
+                    ]
+                    return msgs[slotCompleted % msgs.count]
+                case .evening:
+                    let msgs = [
+                        "🌙 夜のROUTINが\(remaining)個残ってる！諦めないで！",
+                        "🔥 今日を終える前にあと\(remaining)個！ラストスパート！",
+                        "⭐ 寝る前にROUTINで完璧な一日にしよう！",
+                    ]
+                    return msgs[slotCompleted % msgs.count]
+                default:
+                    return "💪 あと\(remaining)個！今すぐROUTINを始めよう！"
                 }
             }
         }
-        .padding(12)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
-    }
 
-
-    // MARK: - 本の紹介カード
-    private var bookPromoSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("関連情報")
-                .font(.caption).fontWeight(.black)
-                .foregroundColor(Color.duoSubtitle)
-                .textCase(.uppercase)
-                .tracking(1.5)
-                .padding(.horizontal, 4)
-
-            // iOSアプリ（App Store）
-            Link(destination: URL(string: "https://apps.apple.com/app/fitingo/id000000000")!) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12).fill(Color.black)
-                            .frame(width: 48, height: 48)
-                        Image(systemName: "applelogo")
-                            .font(.title3)
-                            .foregroundColor(.white)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Fitingo iOS アプリ")
-                            .font(.subheadline).fontWeight(.black)
-                            .foregroundColor(Color.duoDark)
-                        Text("Apple Watch連携・モーションセンサーで本格トレーニング")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                            .lineLimit(1)
-                        Text("App Store でダウンロード")
-                            .font(.caption2).fontWeight(.bold)
-                            .foregroundColor(Color.duoGreen)
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(14)
-                .background(Color(.systemBackground))
-                .cornerRadius(14)
-                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-            }
-
-            // AppleWatch Diet 本
-            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.9, green: 0.97, blue: 0.93))
-                            .frame(width: 48, height: 48)
-                        Text("⌚").font(.title2)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("AppleWatch Diet Ultra2")
-                            .font(.subheadline).fontWeight(.black)
-                            .foregroundColor(Color.duoDark)
-                        Text("Apple Watchで痩せる100のメソッド")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                            .lineLimit(1)
-                        Text("📖 Kindle で読む")
-                            .font(.caption2).fontWeight(.bold)
-                            .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(14)
-                .background(Color(.systemBackground))
-                .cornerRadius(14)
-                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-            }
-
-            // Cursor + Claude 本
-            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12).fill(Color(red: 0.93, green: 0.95, blue: 1.0))
-                            .frame(width: 48, height: 48)
-                        Text("📱").font(.title2)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Cursor + Claude で iOS アプリを作る")
-                            .font(.subheadline).fontWeight(.black)
-                            .foregroundColor(Color.duoDark)
-                        Text("週末だけで iPhone・Apple Watch アプリを個人開発")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                            .lineLimit(1)
-                        Text("📖 Kindle で読む")
-                            .font(.caption2).fontWeight(.bold)
-                            .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(14)
-                .background(Color(.systemBackground))
-                .cornerRadius(14)
-                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-            }
+        // スロット外（深夜・早朝）または全体メッセージ
+        if completedCount == 0 {
+            if hour < 5  { return "🌙 もうすぐ夜明け！今日のROUTINを準備しよう" }
+            return "👊 今日のROUTINを始めよう！最初の一歩が大事！"
         }
-        .padding(4)
+        if progress < 0.5 {
+            return "💪 \(completedCount)/\(totalCount) 達成中！まだまだいけるよ！"
+        }
+        return "🔥 もう少し！\(totalCount - completedCount)個で今日完璧！"
     }
+
 
     // MARK: - Apple Healthデータカード（2列レイアウト）
     private var calorieAndWeightCard: some View {
@@ -4647,56 +4522,77 @@ struct DashboardView: View {
     }
 
     private var photoLogButton: some View {
-        Button(action: { showPhotoLog = true }) {
-            HStack(spacing: 16) {
+        let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
+        return Button(action: { showPhotoLog = true }) {
+            HStack(spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 14)
                         .fill(LinearGradient(
                             colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                         .frame(width: 62, height: 62)
-                        .shadow(color: Color.duoOrange.opacity(0.35), radius: 8, y: 4)
-                    VStack(spacing: 2) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 24 * UIScale.font))
-                            .foregroundColor(.white)
-                        Text("AI")
-                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white.opacity(0.90))
+                    if recentPhotos.isEmpty {
+                        VStack(spacing: 3) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 24 * UIScale.font, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("AI")
+                                .font(.system(size: 9 * UIScale.font, weight: .black))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                    } else {
+                        Image(uiImage: recentPhotos[0])
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 62, height: 62)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("食事フォトログ")
-                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("📸 食事フォトログ")
+                        .font(.system(size: 16 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
-                    Text("写真を撮ってAIカロリー計算")
-                        .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
-                        .foregroundColor(Color.duoSubtitle)
-                        .lineLimit(2)
+                    if recentPhotos.isEmpty {
+                        Text("写真を撮ってAIカロリー計算")
+                            .font(.system(size: 12 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                    } else {
+                        HStack(spacing: 4) {
+                            ForEach(Array(recentPhotos.dropFirst().enumerated()), id: \.offset) { _, img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 26, height: 26)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                            }
+                            Text("最近の記録 \(photoLogManager.history.count)件")
+                                .font(.system(size: 11 * UIScale.font))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                    }
                 }
                 Spacer()
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 20 * UIScale.font))
-                    .foregroundColor(Color.duoOrange.opacity(0.70))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoOrange.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 16)
             .background(
                 LinearGradient(
-                    colors: [Color.duoOrange.opacity(0.12), Color(red: 1.0, green: 0.55, blue: 0.1).opacity(0.06)],
+                    colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
                     startPoint: .leading, endPoint: .trailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.duoOrange.opacity(0.22), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
             )
+            .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 2)
     }
 
     // MARK: - 食事カロリー記録ボタン群
@@ -6059,6 +5955,75 @@ struct DashboardView: View {
         return min(1.0, Double(missedSets) / Double(totalExpectedSets))
     }
 
+    private var relatedBooksSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("📚")
+                    .font(.system(size: 13 * UIScale.font))
+                Text("関連情報")
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+            }
+            Link(destination: URL(string: "https://amzn.asia/d/iWJCkld")!) {
+                HStack(spacing: 12) {
+                    Text("⌚")
+                        .font(.system(size: 22 * UIScale.font))
+                        .frame(width: 44, height: 44)
+                        .background(Color.duoBlue.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("AppleWatch Diet Ultra2")
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("Apple Watchでダイエットを最大化する方法")
+                            .font(.system(size: 11 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoBlue.opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.duoBlue.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoBlue.opacity(0.18), lineWidth: 1))
+            }
+            Link(destination: URL(string: "https://amzn.asia/d/9VRrEaE")!) {
+                HStack(spacing: 12) {
+                    Text("📱")
+                        .font(.system(size: 22 * UIScale.font))
+                        .frame(width: 44, height: 44)
+                        .background(Color.duoPurple.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Cursor + Claude で iOS アプリを作る")
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("AIを活用したiOSアプリ開発の実践ガイド")
+                            .font(.system(size: 11 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoPurple.opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.duoPurple.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoPurple.opacity(0.18), lineWidth: 1))
+            }
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+    }
+
     private func fitingoDailyGoal() -> Int {
         let timeSlotGoal = TimeSlot.allCases.reduce(0) { total, slot in
             total + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
@@ -6067,13 +6032,36 @@ struct DashboardView: View {
     }
 
     private func fitingoMessage(sessions: Int, dailyGoal: Int, isBehind: Bool) -> String {
-        if sessions == 0 && !isBehind {
-            return "今日のROUTINを始めよう！"
+        let hour = Calendar.current.component(.hour, from: Date())
+        let progress = Double(sessions) / Double(max(dailyGoal, 1))
+        if sessions >= dailyGoal {
+            return "今日のROUTIN達成！よくやったね！🎉"
         }
-        if sessions < dailyGoal {
-            return "まだ全然終わってないよ！今すぐやろう！"
+        if sessions == 0 {
+            if hour < 10 { return "おはよう！朝のROUTINで一日をスタート！☀️" }
+            if hour < 12 { return "午前中に始めよう！今日のROUTIN待ってるよ！" }
+            if hour < 17 { return "まだ間に合う！今すぐROUTINを始めよう！💪" }
+            if hour < 21 { return "夜もROUTINできるよ！今日サボらないで！🔥" }
+            return "今日のROUTINまだだよ！残り時間でやろう！"
         }
-        return "今日のROUTIN達成！よくやったね！🎉"
+        if progress < 0.5 {
+            if hour < 17 { return "いいスタート！続けて目標達成しよう！💪" }
+            return "あと半分以上！今すぐ続けよう🔥"
+        }
+        return "あと少し！最後まで頑張れ！ラストスパート！🏃"
+    }
+
+    private func fitingoImageName(sessions: Int, dailyGoal: Int, angerLevel: Double) -> String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let progress = Double(sessions) / Double(max(dailyGoal, 1))
+        let isBehind = sessions > 0 && sessions < dailyGoal
+        let isAngry = isBehind || angerLevel > 0.5
+        let isWarning = !isAngry && angerLevel > 0.3
+        if sessions >= dailyGoal { return "fitingo_jdi" }
+        if isAngry || isWarning { return "fitingo_fire" }
+        if sessions == 0 && hour < 12 { return "fitingo_jdi" }
+        if progress >= 0.6 { return "fitingo_button_mascot" }
+        return "fitingo_simple"
     }
 
     private var trainingVideoPlaylist: [(name: String, gifName: String)] {
@@ -6170,8 +6158,15 @@ private struct DailySetsCardButtonsView: View {
             ? [Color(hex: "#FFD66E"), Color(hex: "#FF9F2E")]
             : [Color(hex: "#FF7A45"), Color(hex: "#D62828")]
         let usesDarkText = (!isBehind && todaySessions == 0) || severity < 0.35
-        let imageName: String = (isAngry || isWarning) ? "fitingo_fire"
-            : ((!isAngry && !isWarning && (todaySessions == 0 || Calendar.current.component(.hour, from: Date()) < 12 || Double(todaySessions) / Double(max(dailyGoal, 1)) >= 0.6)) ? "fitingo_jdi" : "fitingo_button_mascot")
+        let _hour = Calendar.current.component(.hour, from: Date())
+        let _progress = Double(todaySessions) / Double(max(dailyGoal, 1))
+        let imageName: String = {
+            if todaySessions >= dailyGoal { return "fitingo_jdi" }
+            if isAngry || isWarning { return "fitingo_fire" }
+            if todaySessions == 0 && _hour < 12 { return "fitingo_jdi" }
+            if _progress >= 0.6 { return "fitingo_button_mascot" }
+            return "fitingo_simple"
+        }()
         let message = fitingoMessage(todaySessions, dailyGoal, isBehind)
         return FitingoStartButton(
             message: message,
@@ -6295,7 +6290,7 @@ private struct FitingoStartButton: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
             }
-            .frame(height: 140)
+            .frame(height: 170)
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }
@@ -6498,13 +6493,8 @@ private struct MandalaSpiralCard: View {
                 case .pfc:            showMandalaDetail = true
                 case .meal, .drink:   selectedMandalaNode = node
                 case .custom:
-                    // 勉強アイコンは登録URLを開く
-                    if node.id == "wd-study",
-                       let url = URL(string: studyBookUrl.hasPrefix("http") ? studyBookUrl : "https://\(studyBookUrl)") {
-                        UIApplication.shared.open(url)
-                    } else {
-                        selectedMandalaNode = node
-                    }
+                    // 読書・勉強はシートを表示（リンクボタンはシート内に配置）
+                    selectedMandalaNode = node
                 }
             }
         )
@@ -7675,6 +7665,8 @@ private struct GoalCompletionSheet: View {
     let onComplete: () -> Void
     var onPhotoTap: (() -> Void)? = nil
     var isRecordType: Bool = false
+    var showPhotoButton: Bool = true
+    var linkURL: URL? = nil
 
     @State private var pickerItem: PhotosPickerItem? = nil
 
@@ -7718,18 +7710,40 @@ private struct GoalCompletionSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                // 写真で記録（フォトログ or ライブラリ選択）
-                if let onPhotoTap {
+                // 写真で記録（フォトログ or ライブラリ選択）- 水分ノードでは非表示
+                if showPhotoButton {
+                    if let onPhotoTap {
+                        Button {
+                            onPhotoTap()
+                        } label: {
+                            photoButtonLabel
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        PhotosPicker(selection: $pickerItem, matching: .images) {
+                            photoButtonLabel
+                        }
+                    }
+                }
+
+                // 設定したリンクに飛ぶ（読書・勉強ノードのみ）
+                if let url = linkURL {
                     Button {
-                        onPhotoTap()
+                        UIApplication.shared.open(url)
                     } label: {
-                        photoButtonLabel
+                        HStack(spacing: 12) {
+                            Image(systemName: "link.circle.fill")
+                                .font(.title3)
+                            Text("設定したリンクに飛ぶ")
+                                .font(.headline).fontWeight(.black)
+                            Spacer()
+                        }
+                        .foregroundColor(Color.duoOrange)
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .background(Color.duoOrange.opacity(0.1))
+                        .cornerRadius(14)
                     }
                     .buttonStyle(.plain)
-                } else {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        photoButtonLabel
-                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -8003,14 +8017,14 @@ struct StandPomodoroView: View {
             .padding(.top, 14)
 
             // タイトル
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text("20分ポモドーロ")
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(tomatoRed)
+                    .tracking(1.5)
+                Text("20分間スマホを触らず、作業に集中！")
                     .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
                     .foregroundColor(tomatoRed.opacity(0.62))
-                    .tracking(1.5)
-                Text("立って集中する時間")
-                    .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(tomatoRed)
             }
             .padding(.top, 4)
             .padding(.bottom, 10)
@@ -8081,36 +8095,34 @@ struct StandPomodoroView: View {
             }
 
             // ヒント
-            HStack(spacing: 5) {
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(tomatoSkin)
-                Text("立つことで集中力・代謝がアップ！")
-                    .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
-                    .foregroundColor(tomatoRed.opacity(0.42))
+            VStack(spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(tomatoSkin)
+                    Text("立って作業すれば集中力・代謝がもっとアップ！")
+                        .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
+                        .foregroundColor(tomatoRed.opacity(0.5))
+                }
+                HStack(spacing: 5) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(tomatoSkin)
+                    Text("20分集中したら、5分休憩でリラックス")
+                        .font(.system(size: 12 * UIScale.font, weight: .medium, design: .rounded))
+                        .foregroundColor(tomatoRed.opacity(0.5))
+                }
             }
             .padding(.bottom, 14)
 
-            // 完了ボタン
+            // 中断ボタン
             Button { finishAndRecord() } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "flag.checkered")
-                        .font(.system(size: 16 * UIScale.font, weight: .bold))
-                    Text("完了にする")
-                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    LinearGradient(colors: [tomatoSkin, tomatoRed],
-                                   startPoint: .leading, endPoint: .trailing)
-                )
-                .cornerRadius(18)
-                .shadow(color: tomatoRed.opacity(0.25), radius: 8, y: 3)
+                Text("中断する")
+                    .font(.system(size: 13 * UIScale.font, weight: .medium, design: .rounded))
+                    .foregroundColor(tomatoRed.opacity(0.45))
+                    .underline()
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 24)
             .padding(.bottom, 38)
         }
     }

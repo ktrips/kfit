@@ -11,7 +11,7 @@ struct LoginView: View {
         ("🔥", "連続記録でストリーク継続"),
         ("⚡", "XPを獲得してレベルアップ"),
         ("🏆", "週間リーダーボードで競争"),
-        ("📱", "モーションセンサーでrep自動計測"),
+        ("📱", "モーションセンサーで筋トレを自動カウント"),
     ]
 
     var body: some View {
@@ -42,34 +42,33 @@ struct LoginView: View {
                             .font(.system(size: 44 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoGreen)
 
-                        Text("毎日の運動をゲームにしよう！")
+                        Text("毎日の運動をゲームのように！Fitingoで習慣に！")
                             .font(.subheadline)
                             .foregroundColor(Color.duoDark)
                             .multilineTextAlignment(.center)
                     }
 
-                    // フィーチャーピル
-                    VStack(spacing: 12) {
+                    // フィーチャーピル（コンパクト版：2列グリッド）
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                         ForEach(features, id: \.text) { feature in
-                            HStack(spacing: 12) {
+                            HStack(spacing: 8) {
                                 Text(feature.icon)
-                                    .font(.title3)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.duoGreen.opacity(0.15))
+                                    .font(.body)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.duoGreen.opacity(0.13))
                                     .clipShape(Circle())
-
                                 Text(feature.text)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(Color.duoDark)
-
-                                Spacer()
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.85)
+                                Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
                             .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                            .cornerRadius(10)
+                            .shadow(color: Color.black.opacity(0.05), radius: 3, y: 1)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -107,6 +106,82 @@ struct LoginView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         }
+                    }
+
+                    // 関連書籍バナー
+                    VStack(spacing: 10) {
+                        Text("📚 関連書籍")
+                            .font(.caption)
+                            .fontWeight(.black)
+                            .foregroundColor(Color.duoSubtitle)
+                            .textCase(.uppercase)
+                            .tracking(1.2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+
+                        // AppleWatch Diet Ultra2
+                        Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color(red: 0.9, green: 0.97, blue: 0.93))
+                                        .frame(width: 44, height: 44)
+                                    Text("⌚").font(.title3)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("AppleWatch Diet Ultra2")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("Apple Watchで痩せる100のメソッド")
+                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                                        .lineLimit(1)
+                                    Text("📖 Kindle で読む")
+                                        .font(.caption2).fontWeight(.bold)
+                                        .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            .padding(12)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                        .padding(.horizontal, 24)
+
+                        // iOSアプリの作り方
+                        Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color(red: 0.93, green: 0.95, blue: 1.0))
+                                        .frame(width: 44, height: 44)
+                                    Text("📱").font(.title3)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Cursor + Claude で iOS アプリを作る")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("週末だけで iPhone・Apple Watch アプリを個人開発")
+                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                                        .lineLimit(1)
+                                    Text("📖 Kindle で読む")
+                                        .font(.caption2).fontWeight(.bold)
+                                        .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            .padding(12)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                        .padding(.horizontal, 24)
                     }
 
                     Spacer(minLength: 40)

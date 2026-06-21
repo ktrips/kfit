@@ -88,8 +88,11 @@ struct FoodView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
-                    // 栄養サマリーカード（PFC・水分・アドバイス・食事履歴）
+                    // 栄養サマリーカード（PFC・水分・食事履歴）
                     nutritionSummaryCard
+
+                    // 食事アドバイスカード（全幅）
+                    adviceCard
 
                     // 食事記録カード（フォトログ＋クイックログ＋詳細ログ）
                     mealRecordCard
@@ -235,11 +238,6 @@ struct FoodView: View {
 
             Divider().padding(.horizontal, 12)
 
-            // ── 食事アドバイス ──────────────────────────────────────────
-            improvementCard(pfcAnalysis)
-
-            Divider().padding(.horizontal, 12)
-
             // ── 食事履歴 ────────────────────────────────────────────────
             foodHistorySection
         }
@@ -254,39 +252,62 @@ struct FoodView: View {
         VStack(spacing: 0) {
             // ── 食事フォトログ ────────────────────────────────────────────
             Button { showPhotoLog = true } label: {
-                HStack(spacing: 12) {
+                let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
+                HStack(spacing: 14) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 14)
                             .fill(LinearGradient(
                                 colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ))
-                            .frame(width: 52, height: 52)
-                        VStack(spacing: 2) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 20 * UIScale.font, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("AI")
-                                .font(.system(size: 8 * UIScale.font, weight: .black))
-                                .foregroundColor(.white.opacity(0.9))
+                            .frame(width: 62, height: 62)
+                        if recentPhotos.isEmpty {
+                            VStack(spacing: 3) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 24 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text("AI")
+                                    .font(.system(size: 9 * UIScale.font, weight: .black))
+                                    .foregroundColor(.white.opacity(0.9))
+                            }
+                        } else {
+                            Image(uiImage: recentPhotos[0])
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 62, height: 62)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                     }
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("📸 食事フォトログ")
-                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                            .font(.system(size: 16 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
-                        Text("写真を撮ってAIカロリー計算")
-                            .font(.system(size: 11 * UIScale.font))
-                            .foregroundColor(Color.duoSubtitle)
+                        if recentPhotos.isEmpty {
+                            Text("写真を撮ってAIカロリー計算")
+                                .font(.system(size: 12 * UIScale.font))
+                                .foregroundColor(Color.duoSubtitle)
+                        } else {
+                            HStack(spacing: 4) {
+                                ForEach(Array(recentPhotos.dropFirst().enumerated()), id: \.offset) { _, img in
+                                    Image(uiImage: img)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 26, height: 26)
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                }
+                                Text("最近の記録 \(photoLogManager.history.count)件")
+                                    .font(.system(size: 11 * UIScale.font))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                        }
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                        .font(.system(size: 13 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoOrange.opacity(0.7))
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.vertical, 16)
                 .background(
                     LinearGradient(
                         colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
@@ -555,35 +576,45 @@ struct FoodView: View {
 
     // MARK: - Improvement Card
 
-    private func improvementCard(_ analysis: PFCBalanceAnalysis?) -> some View {
-        let tips = buildTips(analysis)
+    private var adviceCard: some View {
+        let tips = buildTips(pfcAnalysis)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 12 * UIScale.font))
+                    .font(.system(size: 13 * UIScale.font))
                     .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0.0))
                 Text("今日の食事アドバイス")
-                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    .font(.system(size: 14 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
+                Spacer()
             }
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(tips, id: \.message) { tip in
-                    HStack(alignment: .top, spacing: 8) {
-                        ZStack {
-                            Circle().fill(tip.color.opacity(0.15)).frame(width: 28, height: 28)
-                            Text(tip.emoji).font(.system(size: 14 * UIScale.font))
-                        }
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(tip.emoji)
+                            .font(.system(size: 15 * UIScale.font))
+                            .frame(width: 28, height: 28)
+                            .background(tip.color.opacity(0.13))
+                            .clipShape(Circle())
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(tip.title).font(.system(size: 12 * UIScale.font, weight: .bold)).foregroundColor(tip.color)
-                            Text(tip.message).font(.system(size: 12 * UIScale.font))
-                                .foregroundColor(Color.duoDark.opacity(0.85))
+                            Text(tip.title)
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .foregroundColor(tip.color)
+                            Text(tip.message)
+                                .font(.system(size: 11 * UIScale.font))
+                                .foregroundColor(Color.duoDark.opacity(0.78))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        Spacer(minLength: 0)
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 
     private struct FoodTip {
@@ -591,97 +622,103 @@ struct FoodView: View {
     }
 
     private func buildTips(_ a: PFCBalanceAnalysis?) -> [FoodTip] {
+        let waterGoal     = intakeGoals.dailyWaterGoal
+        let waterMl       = todayIntake.totalWaterMl
+        let caffeineMg    = todayIntake.totalCaffeineMg
+        let caffeineLimit = intakeGoals.dailyCaffeineLimit
+        let alcoholG      = todayIntake.totalAlcoholG
+        let alcoholLimit  = intakeGoals.dailyAlcoholLimit
+
+        let hasFoodData  = (a?.score ?? 0) > 0
+        let hasDrinkData = waterMl > 0 || caffeineMg > 0 || alcoholG > 0
+
+        // 何も記録されていない → 促進メッセージのみ
+        if !hasFoodData && !hasDrinkData {
+            return [FoodTip(emoji: "📝", title: "食事・ドリンクを記録しよう",
+                message: "フォトログやクイックログから記録すると、栄養バランスのアドバイスが届きます。",
+                color: Color.duoGreen)]
+        }
+
         var tips: [FoodTip] = []
 
-        // PFCバランスアドバイス（食事データがある場合のみ）
+        // ── PFC不均衡のある場合のみ表示 ───────────────────────────
         if let a = a {
             if a.proteinPercent < 12 {
-                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質不足",
-                    message: "目標より少なめです。卵・鶏むね・豆腐・納豆などを積極的に取り入れましょう。",
+                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質が少なめ",
+                    message: "卵・鶏むね・納豆などを追加しよう",
                     color: Color.duoOrange))
             } else if a.proteinPercent > 25 {
-                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質過多",
-                    message: "摂り過ぎると腎臓への負荷が増えます。バランスを意識してみましょう。",
+                tips.append(FoodTip(emoji: "🥩", title: "たんぱく質が多め",
+                    message: "他の栄養素とのバランスを意識して",
                     color: Color.duoOrange))
             }
             if a.fatPercent > 35 {
                 tips.append(FoodTip(emoji: "🛢️", title: "脂質が多め",
-                    message: "揚げ物や脂身の多い肉を控え、青魚・アボカド・ナッツなど質の良い脂質を選びましょう。",
+                    message: "揚げ物を控え、青魚・ナッツを選ぼう",
                     color: Color.duoPurple))
             } else if a.fatPercent < 15 {
                 tips.append(FoodTip(emoji: "🥑", title: "脂質が少なめ",
-                    message: "脂溶性ビタミン（A・D・E・K）の吸収に脂質が必要です。良質な油を少量加えましょう。",
+                    message: "オリーブオイルやアボカドを少量加えて",
                     color: Color.duoPurple))
             }
             if a.carbsPercent > 70 {
                 tips.append(FoodTip(emoji: "🍚", title: "炭水化物が多め",
-                    message: "白米や麺類の量を少し減らし、野菜・タンパク質の比率を増やすとバランスが改善します。",
+                    message: "主食を少し減らし、野菜・タンパク質を増やして",
                     color: Color.duoBlue))
             } else if a.carbsPercent < 40 {
                 tips.append(FoodTip(emoji: "🍚", title: "炭水化物が少なめ",
-                    message: "脳や筋肉のエネルギー源として重要です。玄米や全粒パンなど質の良い炭水化物を補いましょう。",
+                    message: "玄米や全粒パンなどで補給しよう",
                     color: Color.duoBlue))
             }
-            if tips.isEmpty {
-                tips.append(a.score >= 80
-                    ? FoodTip(emoji: "✨", title: "バランス良好！",
-                        message: "今日の食事はバランスが取れています。このペースを維持しましょう！",
-                        color: Color.duoGreen)
-                    : FoodTip(emoji: "🍽️", title: "もう少しで理想的",
-                        message: "P:15% / F:25% / C:60% の比率を意識すると、さらにバランスアップできます。",
-                        color: Color(red: 1.0, green: 0.6, blue: 0.0))
-                )
-            }
+            // バランス良好なら何も表示しない
         }
 
-        // 飲料サマリー（水分・カフェイン・アルコールを1項目にまとめる）
-        let waterGoal = intakeGoals.dailyWaterGoal
-        let waterMl = todayIntake.totalWaterMl
-        let caffeineMg = todayIntake.totalCaffeineMg
-        let caffeineLimit = intakeGoals.dailyCaffeineLimit
-        let alcoholG = todayIntake.totalAlcoholG
-        let alcoholLimit = intakeGoals.dailyAlcoholLimit
-
-        var parts: [String] = []
-        var hydrationColor: Color = Color(red: 0.2, green: 0.6, blue: 1.0)
-        var hint = ""
-
+        // ── 水分が50%未満のときのみ警告 ──────────────────────────
         if waterGoal > 0 {
             let pct = Int(min(Double(waterMl) / Double(waterGoal) * 100, 100))
-            let mark = pct >= 100 ? "✅" : pct < 50 ? "❗" : ""
-            parts.append("💧\(waterMl)ml(\(pct)%)\(mark)")
-            if pct >= 100 {
-                hydrationColor = Color.duoGreen
-            } else if pct < 50 {
-                hint = "水分あと\(waterGoal - waterMl)ml"
+            if pct < 50 {
+                let remaining = waterGoal - waterMl
+                tips.append(FoodTip(emoji: "💧", title: "水分が足りていません",
+                    message: "あと \(remaining)ml 補給しよう（現在 \(pct)%）",
+                    color: Color(red: 0.2, green: 0.6, blue: 1.0)))
             }
         }
+
+        // ── カフェイン過多（70%以上）のみ警告 ────────────────────
         if caffeineMg > 0 && caffeineLimit > 0 {
             let pct = Int(Double(caffeineMg) / Double(caffeineLimit) * 100)
-            let mark = pct >= 100 ? "⚠️" : pct >= 70 ? "❗" : ""
-            parts.append("☕\(caffeineMg)mg\(mark)")
-            if pct >= 100 { hydrationColor = .red; hint = "カフェイン上限超過" }
-            else if pct >= 70, hydrationColor != .red { hydrationColor = Color.duoOrange; hint = hint.isEmpty ? "午後のコーヒーは控えめに" : hint }
+            if pct >= 100 {
+                tips.append(FoodTip(emoji: "☕", title: "カフェイン上限超過",
+                    message: "\(caffeineMg)mg 摂取。これ以上は控えて",
+                    color: .red))
+            } else if pct >= 70 {
+                tips.append(FoodTip(emoji: "☕", title: "カフェインが多め",
+                    message: "上限の \(pct)%。午後のコーヒーは控えめに",
+                    color: Color.duoOrange))
+            }
         }
+
+        // ── アルコール過多（70%以上）のみ警告 ────────────────────
         if alcoholG > 0 && alcoholLimit > 0 {
             let pct = Int(alcoholG / alcoholLimit * 100)
-            let mark = pct >= 100 ? "⚠️" : pct >= 70 ? "❗" : ""
-            parts.append(String(format: "🍷%.0fg%@", alcoholG, mark))
-            if pct >= 100 { hydrationColor = .red; hint = "アルコール上限超過・水を飲んで" }
-            else if pct >= 70, hydrationColor != .red { hydrationColor = Color.duoPurple; hint = hint.isEmpty ? "飲み過ぎ注意・お水も忘れずに" : hint }
+            if pct >= 100 {
+                tips.append(FoodTip(emoji: "🍷", title: "アルコール上限超過",
+                    message: String(format: "%.0fg 摂取。水分補給を忘れずに", alcoholG),
+                    color: .red))
+            } else if pct >= 70 {
+                tips.append(FoodTip(emoji: "🍷", title: "飲みすぎ注意",
+                    message: String(format: "%.0fg（上限の %d%%）。お水も飲もう", alcoholG, pct),
+                    color: Color.duoPurple))
+            }
         }
 
-        if parts.isEmpty && waterGoal > 0 {
-            tips.append(FoodTip(emoji: "💧", title: "水分未摂取",
-                message: "今日の水分摂取がまだありません。目標\(waterGoal)ml。",
-                color: Color(red: 0.2, green: 0.6, blue: 1.0)))
+        // ドリンクのみ記録・食事未記録 → 食事記録を促す
+        if !hasFoodData && hasDrinkData {
+            tips.append(FoodTip(emoji: "🍽️", title: "食事も記録しよう",
+                message: "PFCバランスのアドバイスが表示されます",
+                color: Color.duoSubtitle))
         }
 
-        if tips.isEmpty {
-            tips.append(FoodTip(emoji: "📝", title: "食事を記録しよう",
-                message: "フォトログやクイックログから食事を記録すると、栄養バランスのアドバイスが表示されます。",
-                color: Color.duoGreen))
-        }
         return tips
     }
 

@@ -2410,8 +2410,8 @@ class PhotoLogManager: ObservableObject {
         return thumb.jpegData(compressionQuality: 0.6)
     }
 
-    /// 高画質サムネイル（アスペクト比を保持して最大600px）
-    private func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 600) -> Data? {
+    /// 高画質サムネイル（アスペクト比を保持して最大1200px・Retina対応）
+    private func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
         let size = image.size
         let maxSide = max(size.width, size.height)
         let target: UIImage
@@ -2425,7 +2425,7 @@ class PhotoLogManager: ObservableObject {
         } else {
             target = image
         }
-        return target.jpegData(compressionQuality: 0.82)
+        return target.jpegData(compressionQuality: 0.88)
     }
 
     /// API送信用に最大800px・低品質で圧縮
@@ -2768,10 +2768,27 @@ class EduLogManager: ObservableObject {
             isPublic: isPublic
         )
         if let image {
-            item.thumbnailData = makeThumbnail(from: image, maxDimension: 800)
+            item.thumbnailData = EduLogManager.makeThumbnailHQ(from: image)
         }
         history.insert(item, at: 0)
         persistHistory()
+    }
+
+    static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
+        let size = image.size
+        let maxSide = max(size.width, size.height)
+        let target: UIImage
+        if maxSide > maxDimension {
+            let scale = maxDimension / maxSide
+            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            target = image
+        }
+        return target.jpegData(compressionQuality: 0.88)
     }
 
     func deleteItem(id: String) {

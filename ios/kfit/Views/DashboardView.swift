@@ -183,6 +183,7 @@ struct DashboardView: View {
     @AppStorage("mainTab.food.visible") private var foodTabVisible = true
     @AppStorage("mainTab.mind.visible") private var mindTabVisible = false
     @AppStorage("mainTab.goal.visible") private var goalTabVisible = false
+    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {

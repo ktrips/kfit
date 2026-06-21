@@ -15,8 +15,19 @@ class TimeSlotManager: ObservableObject {
     @Published var isLoading = false
 
     private let db = Firestore.firestore()
+    // LOW(M-6): 保存デバウンス — 500ms 以内の連続 record* 呼び出しを1回の Firestore 書き込みに集約
+    private var pendingSaveTask: Task<Void, Never>?
 
     private init() {}
+
+    private func debouncedSave() {
+        pendingSaveTask?.cancel()
+        pendingSaveTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await saveTodayProgress()
+        }
+    }
 
     // MARK: - 設定の読み込み
 
@@ -605,13 +616,10 @@ class TimeSlotManager: ObservableObject {
         if var prog = progress.progressFor(timeSlot) {
             prog.trainingCompleted += 1
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Training recorded for \(timeSlot.displayName) - \(prog.trainingCompleted)")
         }
     }
@@ -621,13 +629,10 @@ class TimeSlotManager: ObservableObject {
         if var prog = progress.progressFor(timeSlot) {
             prog.mindfulnessCompleted += 1
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Mindfulness recorded for \(timeSlot.displayName) - \(prog.mindfulnessCompleted)")
         }
     }
@@ -635,17 +640,13 @@ class TimeSlotManager: ObservableObject {
     /// 20分スタンド完了を記録（タイマー完了 or Watchの連続スタンド検知時）
     func recordStandCompleted(at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
-            // 1セッションで完了とする（重複記録を防ぐ）
             guard prog.standCompleted < 1 else { return }
             prog.standCompleted = 1
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Stand recorded for \(timeSlot.displayName)")
         }
     }
@@ -655,13 +656,10 @@ class TimeSlotManager: ObservableObject {
         if var prog = progress.progressFor(timeSlot) {
             prog.logProgress.mealLogged += calories
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Meal logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mealLogged)")
         }
     }
@@ -671,13 +669,10 @@ class TimeSlotManager: ObservableObject {
         if var prog = progress.progressFor(timeSlot) {
             prog.logProgress.drinkLogged += ml
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Drink logged for \(timeSlot.displayName) - Total: \(prog.logProgress.drinkLogged)")
         }
     }
@@ -687,13 +682,10 @@ class TimeSlotManager: ObservableObject {
         if var prog = progress.progressFor(timeSlot) {
             prog.logProgress.mindInputLogged += 1
             prog.lastUpdated = Date()
-
-            // struct全体を再作成してSwiftUIに変更を通知
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-
-            await saveTodayProgress()
+            debouncedSave()  // LOW(M-6): デバウンス保存
             print("✅ TimeSlot: Mind input logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mindInputLogged)")
         }
     }

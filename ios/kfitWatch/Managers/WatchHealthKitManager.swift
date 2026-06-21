@@ -88,6 +88,7 @@ class WatchHealthKitManager: ObservableObject {
     @Published var todayMindfulnessSessions: Int = 0
     @Published var todayMindfulnessSamples: [WatchMindfulnessSession] = []
     @Published var todayWorkoutMinutes: Int = 0  // 今日のワークアウト時間（分）
+    @Published var todayHKWorkoutCount: Int = 0  // 今日のHKワークアウト件数（Apple Health優先）
     @Published var todayStandHours: Int = 0      // 今日のスタンド時間（時間）
     @Published var latestHRV: Double = 0.0             // 最新の心拍変動（ms）
     @Published var latestMindfulnessImpact: WatchMindfulnessImpact?
@@ -188,11 +189,11 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchLatestBodyFatPercentage() }
             group.addTask { await self.fetchTodayMindfulness() }
             group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayHKWorkouts() }
             group.addTask { await self.fetchTodayStandHours() }
-            group.addTask { await self.fetchTodayDietaryCalories() }
-            group.addTask { await self.fetchTodayDietaryWater() }
-            group.addTask { await self.fetchTodayDietaryCaffeine() }
-            group.addTask { await self.fetchTodayDietaryAlcohol() }
+            // W3: 食事/水分/カフェイン/アルコールは iOS Firestore が正源のため HK 直取得を除外
+            // スパイラル完了判定は WatchConnectivityManager の値を使用。
+            // 摂取入力タブ表示用は fetchIntakeData スコープで個別に取得。
             group.addTask { await self.fetchLatestHRV() }
             group.addTask { await self.fetchActivitySummary() }
         }
@@ -206,6 +207,7 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchTodayCalories() }
             group.addTask { await self.fetchAverageHeartRate() }
             group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayHKWorkouts() }
             group.addTask { await self.fetchTodayMindfulness() }
             group.addTask { await self.fetchActivitySummary() }
         }
@@ -231,6 +233,7 @@ class WatchHealthKitManager: ObservableObject {
             group.addTask { await self.fetchSleepHours() }
             group.addTask { await self.fetchTodayMindfulness() }
             group.addTask { await self.fetchTodayWorkoutMinutes() }
+            group.addTask { await self.fetchTodayHKWorkouts() }
         }
     }
 
@@ -253,11 +256,11 @@ class WatchHealthKitManager: ObservableObject {
     func fetchWatchFaceData(force: Bool = false) async {
         guard beginScopedFetch("watchFace", force: force, ttl: 15) else { return }
         defer { finishScopedFetch("watchFace") }
+        // W3: スパイラル完了判定は connectivity 値を使うため、HK 直取得は MF/Workout のみ
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.fetchTodayMindfulness() }
             group.addTask { await self.fetchTodayWorkoutMinutes() }
-            group.addTask { await self.fetchTodayDietaryCalories() }
-            group.addTask { await self.fetchTodayDietaryWater() }
+            group.addTask { await self.fetchTodayHKWorkouts() }
         }
     }
 
@@ -427,20 +430,28 @@ class WatchHealthKitManager: ObservableObject {
             healthStore.execute(query)
         }
 
-        var enriched: [WatchMindfulnessSession] = []
-        for sample in rawSamples {
-            let sessionPred = HKQuery.predicateForSamples(withStart: sample.startDate, end: sample.endDate, options: .strictStartDate)
-            let hr = await averageInWindow(identifier: .heartRate, predicate: sessionPred, unit: HKUnit.count().unitDivided(by: .minute()))
-            let hrv = await averageInWindow(identifier: .heartRateVariabilitySDNN, predicate: sessionPred, unit: .secondUnit(with: .milli))
-            enriched.append(WatchMindfulnessSession(
-                startDate: sample.startDate,
-                durationMinutes: sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
-                sourceName: sample.sourceRevision.source.name,
-                sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
-                sessionTypeHint: sample.metadata?["kfitSessionType"] as? String,
-                averageHeartRate: hr,
-                averageHRV: hrv
-            ))
+        // W4: N+1 直列クエリを withTaskGroup で並列化
+        let enriched: [WatchMindfulnessSession] = await withTaskGroup(of: WatchMindfulnessSession.self) { group in
+            for sample in rawSamples {
+                group.addTask {
+                    let sessionPred = HKQuery.predicateForSamples(withStart: sample.startDate, end: sample.endDate, options: .strictStartDate)
+                    async let hr = self.averageInWindow(identifier: .heartRate, predicate: sessionPred, unit: HKUnit.count().unitDivided(by: .minute()))
+                    async let hrv = self.averageInWindow(identifier: .heartRateVariabilitySDNN, predicate: sessionPred, unit: .secondUnit(with: .milli))
+                    let (heartRate, heartRateV) = await (hr, hrv)
+                    return WatchMindfulnessSession(
+                        startDate: sample.startDate,
+                        durationMinutes: sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
+                        sourceName: sample.sourceRevision.source.name,
+                        sourceBundleId: sample.sourceRevision.source.bundleIdentifier,
+                        sessionTypeHint: sample.metadata?["kfitSessionType"] as? String,
+                        averageHeartRate: heartRate,
+                        averageHRV: heartRateV
+                    )
+                }
+            }
+            var results: [WatchMindfulnessSession] = []
+            for await session in group { results.append(session) }
+            return results.sorted { $0.startDate > $1.startDate }
         }
 
         let count = enriched.count
@@ -475,6 +486,27 @@ class WatchHealthKitManager: ObservableObject {
         }
         await MainActor.run { self.todayWorkoutMinutes = Int(value) }
         print("[WatchHealthKit] 🏃 WorkoutMinutes: \(Int(value))")
+    }
+
+    /// Apple Healthに記録された今日のHKWorkout件数を取得（トレーニング完了判定の正源として利用）
+    func fetchTodayHKWorkouts() async {
+        let workoutType = HKObjectType.workoutType()
+        let (start, end) = todayBounds()
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+        let count: Int = await withCheckedContinuation { cont in
+            let query = HKSampleQuery(
+                sampleType: workoutType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sortDescriptor]
+            ) { _, samples, _ in
+                cont.resume(returning: (samples ?? []).count)
+            }
+            healthStore.execute(query)
+        }
+        await MainActor.run { self.todayHKWorkoutCount = count }
+        print("[WatchHealthKit] 💪 HKWorkoutCount: \(count)")
     }
 
     // MARK: - Stand Hours

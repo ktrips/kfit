@@ -9,8 +9,9 @@ struct MindView: View {
     }()
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
-    @StateObject private var healthKit = HealthKitManager.shared
-    @StateObject private var timeSlotManager = TimeSlotManager.shared
+    // V1: 共有シングルトンは kfitApp から EnvironmentObject で受け取る
+    @EnvironmentObject private var healthKit: HealthKitManager
+    @EnvironmentObject private var timeSlotManager: TimeSlotManager
     @Environment(\.openURL) private var openURL
     @State private var showMindfulnessSession = false
     @State private var showStretchSession = false
@@ -18,6 +19,25 @@ struct MindView: View {
     @State private var showHRVHelp = false
     @State private var isRefreshingHealthData = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
+    // V25: reduce 集計結果を @State にキャッシュ（mindHeader と mindSummaryRow の二重計算を排除）
+    @State private var cachedTotalMindfulness: Int = 0
+    @State private var cachedTotalMindfulnessGoal: Int = 0
+    @State private var cachedTotalStretch: Int = 0
+    @State private var cachedTotalStretchGoal: Int = 0
+
+    private func rebuildMindTotals() {
+        cachedTotalMindfulness = healthKit.todayMindfulnessSessions
+        cachedTotalMindfulnessGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
+        }
+        cachedTotalStretch = TimeSlot.allCases.reduce(0) { sum, slot in
+            sum + (timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0)
+        }
+        cachedTotalStretchGoal = TimeSlot.allCases.reduce(0) { sum, slot in
+            guard let g = timeSlotManager.settings.goalFor(slot), g.stretchGoal.enabled else { return sum }
+            return sum + g.stretchGoal.stretchMinutes
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -48,13 +68,18 @@ struct MindView: View {
             .task {
                 loadDailyFixedGoals()
                 await timeSlotManager.loadTodaySettings()
+                rebuildMindTotals()
                 if healthKit.isAvailable && !healthKit.isAuthorized {
                     await healthKit.requestAuthorization()
                 } else {
                     await healthKit.fetchMindHealth()
                 }
+                rebuildMindTotals()
                 await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
             }
+            .onChange(of: healthKit.todayMindfulnessSessions) { _, _ in rebuildMindTotals() }
+            // DailyTimeSlotSettings/Progress は Equatable 非準拠のため objectWillChange で監視
+            .onReceive(timeSlotManager.objectWillChange) { _ in rebuildMindTotals() }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
                 MindfulnessSessionView(
                     durationSeconds: 60,
@@ -103,17 +128,11 @@ struct MindView: View {
     // MARK: - Header
 
     private var mindHeader: some View {
-        let totalMindfulness = healthKit.todayMindfulnessSessions
-        let totalMindfulnessGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
-        }
-        let totalStretch = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0)
-        }
-        let totalStretchGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            guard let g = timeSlotManager.settings.goalFor(slot), g.stretchGoal.enabled else { return sum }
-            return sum + g.stretchGoal.stretchMinutes
-        }
+        // V25: キャッシュ済み値を参照（body 評価ごとの reduce を排除）
+        let totalMindfulness = cachedTotalMindfulness
+        let totalMindfulnessGoal = cachedTotalMindfulnessGoal
+        let totalStretch = cachedTotalStretch
+        let totalStretchGoal = cachedTotalStretchGoal
         let mindGoalDone = totalMindfulnessGoal > 0 && totalMindfulness >= totalMindfulnessGoal
         let stretchGoalDone = totalStretchGoal > 0 && totalStretch >= totalStretchGoal
         return ZStack {
@@ -135,35 +154,35 @@ struct MindView: View {
                     SleepMiniRingView(
                         hours: healthKit.lastNightTotalHours,
                         goal: Double(dailyFixedGoals.sleepHoursGoal),
-                        diameter: 22,
-                        lineWidth: 4,
+                        diameter: 26,
+                        lineWidth: 4.5,
                         ringColor: .white
                     )
                     .fixedSize()
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🧘").font(.system(size: 13 * UIScale.font))
+                    Text("🧘").font(.system(size: 15 * UIScale.font))
                     Text(totalMindfulnessGoal > 0 ? "\(totalMindfulness)/\(totalMindfulnessGoal)" : "\(totalMindfulness)")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(mindGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🤸").font(.system(size: 13 * UIScale.font))
+                    Text("🤸").font(.system(size: 15 * UIScale.font))
                     Text(totalStretchGoal > 0 ? "\(totalStretch)/\(totalStretchGoal)分" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(stretchGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("☀️").font(.system(size: 13 * UIScale.font))
+                    Text("☀️").font(.system(size: 15 * UIScale.font))
                     Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(healthKit.todayDaylightMinutes >= 30 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
@@ -173,9 +192,9 @@ struct MindView: View {
                     .fixedSize()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
         }
-        .frame(height: 46)
+        .frame(height: 50)
     }
 
     private var headerSection: some View {
@@ -1228,17 +1247,11 @@ struct MindView: View {
     private var mindSummaryRow: some View {
         let mindColor = Color.duoPurple
         let gg = timeSlotManager.settings.globalGoals
-        let totalMindfulness = healthKit.todayMindfulnessSessions
-        let totalMindfulnessGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
-        }
-        let totalStretch = TimeSlot.allCases.reduce(0) { sum, slot in
-            sum + (timeSlotManager.progress.progressFor(slot)?.stretchSetsCompleted ?? 0)
-        }
-        let totalStretchGoal = TimeSlot.allCases.reduce(0) { sum, slot in
-            guard let g = timeSlotManager.settings.goalFor(slot), g.stretchGoal.enabled else { return sum }
-            return sum + g.stretchGoal.stretchMinutes
-        }
+        // V25: キャッシュ済み値を参照（二重 reduce を排除）
+        let totalMindfulness = cachedTotalMindfulness
+        let totalMindfulnessGoal = cachedTotalMindfulnessGoal
+        let totalStretch = cachedTotalStretch
+        let totalStretchGoal = cachedTotalStretchGoal
         return HStack(spacing: 6) {
             Text("MIND")
                 .font(.system(size: 8 * UIScale.font, weight: .black))

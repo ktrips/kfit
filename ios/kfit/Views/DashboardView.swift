@@ -121,11 +121,13 @@ struct DashboardView: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
     @EnvironmentObject var authManager: AuthenticationManager
+    // V1: 共有シングルトンは kfitApp から EnvironmentObject で受け取る
+    @EnvironmentObject private var healthKit: HealthKitManager
+    @EnvironmentObject private var timeSlotManager: TimeSlotManager
+    @EnvironmentObject private var dietGoalManager: DietGoalManager
+    @EnvironmentObject private var photoLogManager: PhotoLogManager
+    // DashboardView 固有 — 他タブで使わないため StateObject のまま維持
     @StateObject private var habitManager = HabitStackManager.shared
-    @StateObject private var healthKit    = HealthKitManager.shared
-    @StateObject private var timeSlotManager = TimeSlotManager.shared
-    @StateObject private var dietGoalManager = DietGoalManager.shared
-    @StateObject private var photoLogManager = PhotoLogManager.shared
     @StateObject private var completionLogger = MandalaCompletionLogger.shared
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
@@ -265,7 +267,6 @@ struct DashboardView: View {
                                 if mindTabVisible { mindHealthCard }
                             }
                             pointsCard
-                            challengeCard
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)
@@ -2486,27 +2487,27 @@ struct DashboardView: View {
                                 fatPercent: analysis.fatPercent,
                                 carbsPercent: analysis.carbsPercent
                             )
-                            .frame(width: 62, height: 62)
+                            .frame(width: 76, height: 76)
                             VStack(spacing: 0) {
                                 Text("\(analysis.score)")
-                                    .font(.system(size: 17 * UIScale.font, weight: .black))
+                                    .font(.system(size: 20 * UIScale.font, weight: .black))
                                     .foregroundColor(scoreColorForPFC(analysis.score))
                                 Text("点")
-                                    .font(.system(size: 8 * UIScale.font))
+                                    .font(.system(size: 9 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                         }
-                        .frame(width: 62, height: 62)
+                        .frame(width: 76, height: 76)
                     } else {
                         ZStack {
                             Circle()
                                 .stroke(Color(.systemGray5), lineWidth: 5)
-                                .frame(width: 62, height: 62)
+                                .frame(width: 76, height: 76)
                             Image(systemName: "chart.pie")
-                                .font(.system(size: 24 * UIScale.font))
+                                .font(.system(size: 28 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle.opacity(0.4))
                         }
-                        .frame(width: 62, height: 62)
+                        .frame(width: 76, height: 76)
                     }
 
                     // 水分 / カフェイン / アルコール
@@ -4113,47 +4114,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - 90日チャレンジ
-    private var challengeCard: some View {
-        let streak   = authManager.userProfile?.streak ?? 0
-        let progress = min(Double(streak) / 90.0, 1.0)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                HStack(spacing: 5) {
-                    Image(systemName: "flag.fill")
-                    Text("90日チャレンジ").fontWeight(.black)
-                }
-                .font(.subheadline)
-                .foregroundColor(Color.duoGreen)
-                Spacer()
-                Text("\(streak) / 90日")
-                    .font(.caption).fontWeight(.black)
-                    .foregroundColor(Color.duoGreen)
-                    .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(Color.duoGreen.opacity(0.12))
-                    .cornerRadius(8)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5)).frame(height: 12)
-                    Capsule().fill(
-                        LinearGradient(colors: [Color.duoGreen, Color.duoBlue],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                    .frame(width: max(12, geo.size.width * CGFloat(progress)), height: 12)
-                }
-            }
-            .frame(height: 12)
-            Text("毎日続けてフィットネス習慣を身につけよう！")
-                .font(.caption).foregroundColor(Color.duoSubtitle)
-        }
-        .padding(12)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
-    }
-
-
     // MARK: - フローティングメニューパネル
     private var floatingMenuPanel: some View {
         VStack(spacing: 0) {
@@ -4551,7 +4511,7 @@ struct DashboardView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("📸 食事フォトログ")
+                    Text("📸 AI食事フォトログ")
                         .font(.system(size: 16 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     if recentPhotos.isEmpty {
@@ -5805,7 +5765,13 @@ struct DashboardView: View {
             }
         }
 
-        totalMealLogged = effectiveMealLogged
+        // ウィジェット用はアプリ内記録（Firestore）を優先し、なければ HealthKit 値を使用。
+        // effectiveMealLogged はスロット記録モード時に「回数」を返すため kcal 表示と不一致になる。
+        totalMealLogged = todayIntake.totalCalories > 0
+            ? todayIntake.totalCalories
+            : Int(healthKit.todayIntakeCalories)
+        // AuthenticationManager.syncWidgetData() からも同じ値を参照できるようキャッシュ
+        AuthenticationManager.cachedAppIntakeCalories = totalMealLogged
         totalDrinkLogged = Int(healthKit.todayIntakeWater)
 
         sharedDefaults.set(totalTrainingCompleted, forKey: "trainingCompleted")
@@ -6416,7 +6382,6 @@ private struct DailySetsMandalaSectionView: View {
             dailyCalorieDone: dailyCalorieDone,
             dailyWaterDone: dailyWaterDone
         )
-        .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 0)
     }
@@ -6455,13 +6420,13 @@ private struct MandalaSpiralCard: View {
 
     var body: some View {
         return chart
-            .frame(height: 340)
+            .frame(height: 410)
             .padding(.top, 1)
             .padding(.bottom, 0)
             .overlay(alignment: .top) { legendOverlay }
             .overlay(alignment: .topTrailing) {
                 settingsButton
-                    .padding(.trailing, 4)
+                    .padding(.trailing, 8)
             }
     }
 
@@ -7173,32 +7138,51 @@ struct MindfulnessSessionView: View {
             : Color(red: 0.35, green: 0.90, blue: 1.0)
     }
 
+    // セッションのメリット説明文
+    private var benefitText: String {
+        isMeditation
+            ? "深呼吸でコルチゾールを下げ、\n集中力と自律神経を整える1分間"
+            : "肩・首・背中をほぐして血流を改善\n疲れをリセットする3分間のケア"
+    }
+
     var body: some View {
         GeometryReader { geo in
-            let ringSize = min(geo.size.width, geo.size.height) * 0.82
+            let ringSize = min(geo.size.width, geo.size.height) * 0.68
             ZStack {
                 bgGradient.ignoresSafeArea()
 
                 VStack(spacing: 0) {
 
-                    // ── タイトル行 ──
-                    ZStack(alignment: .leading) {
-                        Text(title)
-                            .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                    // ── 右上 × ボタン ──
+                    HStack {
+                        Spacer()
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 15 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .frame(width: 36, height: 36)
-                                .background(Color.white.opacity(0.18))
+                                .font(.system(size: 14 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white.opacity(0.75))
+                                .frame(width: 34, height: 34)
+                                .background(Color.white.opacity(0.15))
                                 .clipShape(Circle())
                         }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
+                    .padding(.top, 12)
+
+                    // ── タイトル＋説明 ──
+                    VStack(spacing: 8) {
+                        Text(isMeditation ? "🧘" : "🤸")
+                            .font(.system(size: 44 * UIScale.font))
+                        Text(title)
+                            .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Text(benefitText)
+                            .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.72))
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 28)
+                    }
+                    .padding(.vertical, 14)
 
                     // ── ストレッチ：フェーズステッパー ──
                     if !isMeditation && !sessionVideos.isEmpty {
@@ -7231,14 +7215,14 @@ struct MindfulnessSessionView: View {
                     ZStack {
                         // 背景トラック
                         Circle()
-                            .stroke(Color.white.opacity(0.18), lineWidth: 14)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 16)
                             .frame(width: ringSize, height: ringSize)
 
                         // 進捗アーク
                         Circle()
                             .trim(from: 0, to: progress)
                             .stroke(accentColor,
-                                    style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                                    style: StrokeStyle(lineWidth: 16, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                             .frame(width: ringSize, height: ringSize)
                             .animation(.easeInOut(duration: 0.35), value: progress)
@@ -7270,7 +7254,7 @@ struct MindfulnessSessionView: View {
                         }
                     }
 
-                    Spacer(minLength: 6)
+                    Spacer(minLength: 8)
 
                     // ── リング下の補足 ──
                     if isMeditation {
@@ -7279,7 +7263,31 @@ struct MindfulnessSessionView: View {
                         stretchDescriptionRow(stretch: stretch)
                     }
 
-                    Spacer(minLength: 10)
+                    Spacer(minLength: 12)
+
+                    // ── 中断ボタン ──
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "stop.circle")
+                                .font(.system(size: 16 * UIScale.font, weight: .semibold))
+                            Text("中断する")
+                                .font(.system(size: 16 * UIScale.font, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 14)
+                        .background(Color.white.opacity(0.14))
+                        .cornerRadius(28)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 36)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }

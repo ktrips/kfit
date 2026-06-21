@@ -87,6 +87,13 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     /// データロード済みフラグ（初回データ取得成功）
     @Published var hasLoadedData: Bool = false
 
+    // W2: WidgetCenter.reloadAllTimelines デバウンス用
+    private var widgetReloadTask: Task<Void, Never>?
+    // W2: 差分比較用（前回送信値）
+    private var lastWidgetTraining = -1
+    private var lastWidgetMindfulness = -1
+    private var lastWidgetMeal = -1
+
     private var session: WCSession?
     private var lastStatsRequestAtByScope: [String: Date] = [:]
 
@@ -364,9 +371,24 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         ud.set(totalMindfulnessGoal, forKey: "watch_totalMindfulnessGoal")
         ud.set(totalMealLogged, forKey: "watch_totalMeal")
         ud.set(totalMealGoal, forKey: "watch_totalMealGoal")
-        // @MainActor コンテキストから呼ばれるが、DispatchQueue.main で保護
-        DispatchQueue.main.async {
-            WidgetCenter.shared.reloadAllTimelines()
+
+        // W2: 差分比較 — 主要指標が変化した場合のみ Widget を再読み込み
+        let changed = (totalTraining != lastWidgetTraining
+                    || totalMindfulness != lastWidgetMindfulness
+                    || totalMealLogged != lastWidgetMeal)
+        guard changed else { return }
+        lastWidgetTraining = totalTraining
+        lastWidgetMindfulness = totalMindfulness
+        lastWidgetMeal = totalMealLogged
+
+        // W2: デバウンス — 5秒以内の連続呼び出しを1回に集約
+        widgetReloadTask?.cancel()
+        widgetReloadTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         }
     }
 

@@ -52,6 +52,34 @@ struct UserAvatarView: View {
     }
 }
 
+// MARK: - Body modifier（コンパイラのタイプチェックタイムアウト回避）
+// body に sheet/alert を直接チェーンすると推論が重いため ViewModifier に分離
+private struct FoodViewSheets: ViewModifier {
+    @Binding var showPhotoLog: Bool
+    @Binding var showDetailLog: Bool
+    var authManager: AuthenticationManager
+    @Binding var showIntakeSettings: Bool
+    @Binding var selectedFeedItem: PhotoLogHistoryItem?
+    var confirmMessage: String
+    @Binding var showIntakeConfirm: Bool
+    var onConfirm: () -> Void
+    var onCancel: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
+            .sheet(isPresented: $showDetailLog) {
+                DailyIntakeView().environmentObject(authManager)
+            }
+            .sheet(isPresented: $showIntakeSettings) { IntakeSettingsView() }
+            .sheet(item: $selectedFeedItem) { item in PhotoFeedDetailSheet(item: item) }
+            .alert(confirmMessage, isPresented: $showIntakeConfirm) {
+                Button("記録する", role: .none, action: onConfirm)
+                Button("キャンセル", role: .cancel, action: onCancel)
+            }
+    }
+}
+
 struct FoodView: View {
     private static let hhmm: DateFormatter = {
         let f = DateFormatter()
@@ -63,9 +91,11 @@ struct FoodView: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
 
-    @StateObject private var healthKit   = HealthKitManager.shared
-    @StateObject private var authManager = AuthenticationManager.shared
-    @StateObject private var timeSlotManager = TimeSlotManager.shared
+    // V1: 共有シングルトンは kfitApp から EnvironmentObject で受け取る
+    @EnvironmentObject private var healthKit: HealthKitManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject private var timeSlotManager: TimeSlotManager
+    @EnvironmentObject private var photoLogManager: PhotoLogManager
 
     @State private var pfcAnalysis:  PFCBalanceAnalysis?
     @State private var todayIntake = TodayIntakeSummary()
@@ -76,7 +106,6 @@ struct FoodView: View {
     @State private var showIntakeConfirm = false
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
-    @StateObject private var photoLogManager = PhotoLogManager.shared
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
     @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
@@ -84,15 +113,23 @@ struct FoodView: View {
     @State private var showIntakeSettings = false
     @State private var showOlderFoodFeed = false
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
+    // 水分・カフェイン・アルコールカードのクイックログパネル開閉
+    @State private var hydrationQuickType: String? = nil
+    // V4: foodHistorySection キャッシュ — 入力変化時のみ再構築
+    private struct FoodHistoryCache {
+        var meals: [HistoryEntry] = []
+        var water: [HistoryEntry] = []
+        var coffee: [HistoryEntry] = []
+        var alcohol: [HistoryEntry] = []
+        var totalCount: Int { meals.count + water.count + coffee.count + alcohol.count }
+    }
+    @State private var foodHistoryCache = FoodHistoryCache()
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
-                    // 栄養サマリーカード（PFC・水分・食事履歴）
+                    // 栄養サマリーカード（PFC・水分・クイックログ・アドバイス・食事履歴）
                     nutritionSummaryCard
-
-                    // 食事アドバイスカード（全幅）
-                    adviceCard
 
                     // 食事記録カード（フォトログ＋クイックログ＋詳細ログ）
                     mealRecordCard
@@ -112,32 +149,30 @@ struct FoodView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             foodHeader
         }
-        .task { await loadData(); recomputePhotoLogTotals() }
-        .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals() }
+        .task { await loadData(); recomputePhotoLogTotals(); rebuildFoodHistory() }
+        .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals(); rebuildFoodHistory() }
+        .onChange(of: todayIntake.meals.count) { _, _ in rebuildFoodHistory() }
+        .onChange(of: todayIntake.waterLogs.count) { _, _ in rebuildFoodHistory() }
+        .onChange(of: todayIntake.coffeeLogs.count) { _, _ in rebuildFoodHistory() }
+        .onChange(of: todayIntake.alcoholLogs.count) { _, _ in rebuildFoodHistory() }
+        .onChange(of: healthKit.todayMealSamples.count) { _, _ in rebuildFoodHistory() }
+        .onChange(of: healthKit.todayWaterSamples.count) { _, _ in rebuildFoodHistory() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await loadData() }
             recomputePhotoLogTotals()
+            rebuildFoodHistory()
         }
-        .fullScreenCover(isPresented: $showPhotoLog) {
-            PhotoLogView()
-        }
-        .sheet(isPresented: $showDetailLog) {
-            DailyIntakeView()
-                .environmentObject(authManager)
-        }
-        .sheet(isPresented: $showIntakeSettings) {
-            IntakeSettingsView()
-        }
-        .sheet(item: $selectedFeedItem) { item in
-            PhotoFeedDetailSheet(item: item)
-        }
-        .alert(confirmMessage, isPresented: $showIntakeConfirm) {
-            Button("記録する", role: .none) {
-                pendingIntakeAction?()
-                pendingIntakeAction = nil
-            }
-            Button("キャンセル", role: .cancel) { pendingIntakeAction = nil }
-        }
+        .modifier(FoodViewSheets(
+            showPhotoLog: $showPhotoLog,
+            showDetailLog: $showDetailLog,
+            authManager: authManager,
+            showIntakeSettings: $showIntakeSettings,
+            selectedFeedItem: $selectedFeedItem,
+            confirmMessage: confirmMessage,
+            showIntakeConfirm: $showIntakeConfirm,
+            onConfirm: { pendingIntakeAction?(); pendingIntakeAction = nil },
+            onCancel: { pendingIntakeAction = nil }
+        ))
     }
 
     // MARK: - Header
@@ -171,39 +206,39 @@ struct FoodView: View {
                     proteinKcal: prot * 4,
                     fatKcal: fat_ * 9,
                     carbsKcal: carb * 4,
-                    diameter: 22,
-                    lineWidth: 4,
+                    diameter: 26,
+                    lineWidth: 4.5,
                     centerText: pfcAnalysis.map { "\($0.score)" },
                     centerTextColor: .white
                 )
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("💧").font(.system(size: 13 * UIScale.font))
+                    Text("💧").font(.system(size: 15 * UIScale.font))
                     Text(waterMl > 0 ? "\(waterMl)" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("🍽️").font(.system(size: 13 * UIScale.font))
+                    Text("🍽️").font(.system(size: 15 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(totalIntakeCal)" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(foodGoalDone ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
-                    Text("⚡").font(.system(size: 13 * UIScale.font))
+                    Text("⚡").font(.system(size: 15 * UIScale.font))
                     Text(totalIntakeCal > 0 ? "\(sign)\(calDiff)" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(calDiff > 200 ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
                         .lineLimit(1)
                     if totalIntakeCal > 0 {
-                        Text("cal").font(.system(size: 9 * UIScale.font)).foregroundColor(.white.opacity(0.7))
+                        Text("cal").font(.system(size: 10 * UIScale.font)).foregroundColor(.white.opacity(0.7))
                     }
                 }
                 .fixedSize()
@@ -212,9 +247,9 @@ struct FoodView: View {
                     .fixedSize()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
         }
-        .frame(height: 46)
+        .frame(height: 50)
     }
 
     // MARK: - 栄養サマリーカード（PFC・水分・アドバイス・食事履歴）
@@ -234,7 +269,13 @@ struct FoodView: View {
             hydrationRow
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.bottom, 6)
+
+            // ── クイックログパネル（タップで展開） ─────────────────────
+            hydrationQuickLogPanel
+
+            // ── 改善ポイント ─────────────────────────────────────────
+            adviceInlineSection
 
             Divider().padding(.horizontal, 12)
 
@@ -279,7 +320,7 @@ struct FoodView: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("📸 食事フォトログ")
+                        Text("📸 AI食事フォトログ")
                             .font(.system(size: 16 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         if recentPhotos.isEmpty {
@@ -513,6 +554,17 @@ struct FoodView: View {
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(pfcScoreColor(analysis.score).opacity(0.15))
                     .cornerRadius(10)
+                Button {
+                    showIntakeSettings = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoOrange)
+                        .padding(6)
+                        .background(Color.duoOrange.opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
             HStack(spacing: 12) {
                 ZStack {
@@ -528,36 +580,21 @@ struct FoodView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    pfcRow(color: Color.duoOrange,  label: "P", name: "たんぱく質", percent: analysis.proteinPercent, grams: analysis.proteinGrams)
-                    pfcRow(color: Color.duoPurple,  label: "F", name: "脂質",       percent: analysis.fatPercent,     grams: analysis.fatGrams)
-                    pfcRow(color: Color.duoBlue,    label: "C", name: "炭水化物",   percent: analysis.carbsPercent,   grams: analysis.carbsGrams)
+                    pfcRow(color: Color.duoOrange, label: "P", name: "たんぱく質", percent: analysis.proteinPercent, grams: analysis.proteinGrams, target: 15)
+                    pfcRow(color: Color.duoPurple, label: "F", name: "脂質",       percent: analysis.fatPercent,     grams: analysis.fatGrams,     target: 25)
+                    pfcRow(color: Color.duoBlue,   label: "C", name: "炭水化物",   percent: analysis.carbsPercent,   grams: analysis.carbsGrams,   target: 60)
                 }
-            }
-            HStack {
-                Text("目安: P 15% / F 25% / C 60%")
-                    .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                Spacer()
-                Button {
-                    showIntakeSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11 * UIScale.font))
-                        .foregroundColor(Color.duoOrange)
-                        .padding(6)
-                        .background(Color.duoOrange.opacity(0.12))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(12)
     }
 
-    private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double) -> some View {
+    private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double, target: Int) -> some View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label).font(.system(size: 11 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
-            Text(name).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+            Text("\(name)(目標\(target)%)")
+                .font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
             Spacer()
             Text(String(format: "%.0f%%", percent)).font(.system(size: 11 * UIScale.font, weight: .bold)).foregroundColor(color)
             Text(String(format: "%.0fg", grams)).font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
@@ -577,44 +614,34 @@ struct FoodView: View {
     // MARK: - Improvement Card
 
     private var adviceCard: some View {
-        let tips = buildTips(pfcAnalysis)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 13 * UIScale.font))
-                    .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0.0))
-                Text("今日の食事アドバイス")
-                    .font(.system(size: 14 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(tips, id: \.message) { tip in
-                    HStack(alignment: .top, spacing: 10) {
-                        Text(tip.emoji)
-                            .font(.system(size: 15 * UIScale.font))
-                            .frame(width: 28, height: 28)
-                            .background(tip.color.opacity(0.13))
-                            .clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(tip.title)
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                .foregroundColor(tip.color)
-                            Text(tip.message)
-                                .font(.system(size: 11 * UIScale.font))
-                                .foregroundColor(Color.duoDark.opacity(0.78))
-                                .fixedSize(horizontal: false, vertical: true)
+        // 記録促進メッセージを除外し、実際に改善が必要な項目のみ表示
+        let tips = buildTips(pfcAnalysis).filter { $0.emoji != "📝" && $0.emoji != "🍽️" }
+        return Group {
+            if !tips.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(tips, id: \.message) { tip in
+                            HStack(spacing: 6) {
+                                Text(tip.emoji).font(.system(size: 13 * UIScale.font))
+                                Text(tip.title)
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                    .foregroundColor(tip.color)
+                                Text("— \(tip.message)")
+                                    .font(.system(size: 10 * UIScale.font))
+                                    .foregroundColor(Color.duoDark.opacity(0.6))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
                         }
-                        Spacer(minLength: 0)
                     }
                 }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 
     private struct FoodTip {
@@ -733,20 +760,17 @@ struct FoodView: View {
         let time: Date
     }
 
-    private var foodHistorySection: some View {
+    // V4: body 外で食事履歴を再構築する（filter/map/sorted を毎描画で実行しない）
+    private func rebuildFoodHistory() {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
 
-        // ── 食事履歴の構築（優先度: Firestore > フォト > HK残余） ──────────────
-
-        // 1. Firestore クイックログ（型名あり・最優先）
         let quickMeals: [HistoryEntry] = todayIntake.meals.map {
             HistoryEntry(emoji: $0.mealType.emoji, primary: $0.mealType.displayName,
                 detail: "\($0.calories)kcal", sub: "クイック", time: $0.timestamp)
         }
         let firestoreTimestamps = todayIntake.meals.map { $0.timestamp }
 
-        // 2. フォトログ（Firestoreと5分以内に重なる場合はFirestore優先で除外）
         let rawPhotoItems = photoLogManager.history
             .filter { calendar.startOfDay(for: $0.timestamp) == today }
         let photoMeals: [HistoryEntry] = rawPhotoItems
@@ -757,7 +781,6 @@ struct FoodView: View {
                 detail: "\($0.calories)kcal", sub: "フォト", time: $0.timestamp) }
         let photoTimestamps = rawPhotoItems.map { $0.timestamp }
 
-        // 3. HK残余（FirestoreともフォトログとB重なる場合は除外）
         let usedTimestamps = firestoreTimestamps + photoTimestamps
         let hkExtraMeals: [HistoryEntry] = healthKit.todayMealSamples
             .filter { sample in
@@ -768,9 +791,6 @@ struct FoodView: View {
 
         let allMeals = (quickMeals + photoMeals + hkExtraMeals).sorted { $0.time < $1.time }
 
-        // ── 飲料履歴 ──────────────────────────────────────────────────────────
-
-        // 水分（Firestore + HK fallback）
         let waterFsTimestamps = todayIntake.waterLogs.map { $0.timestamp }
         let waterFirestore: [HistoryEntry] = todayIntake.waterLogs.map {
             HistoryEntry(emoji: "💧", primary: "水", detail: "\($0.amountMl)ml", sub: "クイック", time: $0.timestamp)
@@ -781,22 +801,33 @@ struct FoodView: View {
             }
             .map { HistoryEntry(emoji: "💧", primary: "水",
                 detail: "\(Int($0.value))ml", sub: "HK", time: $0.startDate) }
-        let waterEntries = (waterFirestore + waterHKExtra).sorted { $0.time < $1.time }
 
-        // コーヒー（Firestoreのみ）
         let coffeeEntries: [HistoryEntry] = todayIntake.coffeeLogs
             .sorted { $0.timestamp < $1.timestamp }
             .map { HistoryEntry(emoji: "☕", primary: "コーヒー",
                 detail: "\($0.amountMl)ml · カフェイン\($0.caffeineMg)mg", sub: "クイック", time: $0.timestamp) }
 
-        // アルコール（Firestoreのみ）
         let alcoholEntries: [HistoryEntry] = todayIntake.alcoholLogs
             .sorted { $0.timestamp < $1.timestamp }
             .map { HistoryEntry(emoji: $0.alcoholType.emoji, primary: $0.alcoholType.displayName,
                 detail: "\($0.amountMl)ml · 純アルコール\(String(format: "%.1f", $0.alcoholG))g",
                 sub: "クイック", time: $0.timestamp) }
 
-        let totalCount = allMeals.count + waterEntries.count + coffeeEntries.count + alcoholEntries.count
+        foodHistoryCache = FoodHistoryCache(
+            meals: allMeals,
+            water: (waterFirestore + waterHKExtra).sorted { $0.time < $1.time },
+            coffee: coffeeEntries,
+            alcohol: alcoholEntries
+        )
+    }
+
+    private var foodHistorySection: some View {
+        // V4: キャッシュ済みデータを参照（body 評価ごとに filter/map/sorted を実行しない）
+        let allMeals     = foodHistoryCache.meals
+        let waterEntries = foodHistoryCache.water
+        let coffeeEntries = foodHistoryCache.coffee
+        let alcoholEntries = foodHistoryCache.alcohol
+        let totalCount   = foodHistoryCache.totalCount
 
         return VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -914,21 +945,154 @@ struct FoodView: View {
 
     private var hydrationRow: some View {
         HStack(spacing: 6) {
-            intakeItemCard(icon: "drop.fill",         iconColor: Color.duoBlue,
-                label: "水分",      value: Double(todayIntake.totalWaterMl),
+            intakeItemCard(icon: "drop.fill", iconColor: Color.duoBlue,
+                label: "水分", value: Double(todayIntake.totalWaterMl),
                 goal: Double(intakeGoals.dailyWaterGoal), unit: "ml",
                 formatValue: { "\(Int($0))" }, isReverse: false,
-                healthKitURL: "x-apple-health://dietarywater")
+                isSelected: hydrationQuickType == "水分") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hydrationQuickType = hydrationQuickType == "水分" ? nil : "水分"
+                    }
+                }
             intakeItemCard(icon: "cup.and.saucer.fill", iconColor: Color(hex: "#8B5E3C"),
                 label: "カフェイン", value: Double(todayIntake.totalCaffeineMg),
                 goal: Double(intakeGoals.dailyCaffeineLimit), unit: "mg",
                 formatValue: { "\(Int($0))" }, isReverse: true,
-                healthKitURL: "x-apple-health://dietarycaffeine")
-            intakeItemCard(icon: "wineglass.fill",     iconColor: Color.duoPurple,
+                isSelected: hydrationQuickType == "カフェイン") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hydrationQuickType = hydrationQuickType == "カフェイン" ? nil : "カフェイン"
+                    }
+                }
+            intakeItemCard(icon: "wineglass.fill", iconColor: Color.duoPurple,
                 label: "アルコール", value: todayIntake.totalAlcoholG,
                 goal: intakeGoals.dailyAlcoholLimit, unit: "g",
                 formatValue: { String(format: "%.1f", $0) }, isReverse: true,
-                healthKitURL: "x-apple-health://nutrition")
+                isSelected: hydrationQuickType == "アルコール") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hydrationQuickType = hydrationQuickType == "アルコール" ? nil : "アルコール"
+                    }
+                }
+        }
+    }
+
+    // ── クイックログパネル ──────────────────────────────────────────────
+    @ViewBuilder
+    private var hydrationQuickLogPanel: some View {
+        if let type = hydrationQuickType {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    if type == "水分" {
+                        hydrationQuickBtn(emoji: "💧", label: "水", sub: "\(intakeGoals.waterPerCup)ml") {
+                            confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
+                                Task {
+                                    await authManager.recordWater()
+                                    await updateSlotForDrink(ml: intakeGoals.waterPerCup)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                    } else if type == "カフェイン" {
+                        hydrationQuickBtn(emoji: "☕", label: "コーヒー", sub: "\(intakeGoals.caffeinePerCup)mg") {
+                            confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
+                                Task {
+                                    await authManager.recordCoffee()
+                                    await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
+                                    await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                    } else if type == "アルコール" {
+                        hydrationQuickBtn(emoji: "🍺", label: "ビール",
+                            sub: String(format: "%.1fg", AlcoholType.beer.alcoholG)) {
+                            confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
+                                Task {
+                                    await authManager.recordAlcohol(alcoholType: .beer)
+                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
+                                    await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                        hydrationQuickBtn(emoji: "🍷", label: "ワイン",
+                            sub: String(format: "%.1fg", AlcoholType.wine.alcoholG)) {
+                            confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
+                                Task {
+                                    await authManager.recordAlcohol(alcoholType: .wine)
+                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
+                                    await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                        hydrationQuickBtn(emoji: "🍶", label: "焼酎",
+                            sub: String(format: "%.1fg", AlcoholType.chuhai.alcoholG)) {
+                            confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
+                                Task {
+                                    await authManager.recordAlcohol(alcoholType: .chuhai)
+                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
+                                    await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(Color(.systemGray6))
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    private func hydrationQuickBtn(emoji: String, label: String, sub: String,
+                                   action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(emoji).font(.system(size: 20 * UIScale.font))
+                Text(label)
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text(sub)
+                    .font(.system(size: 9 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color(.systemBackground))
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // ── 改善ポイント（インライン版） ────────────────────────────────────
+    @ViewBuilder
+    private var adviceInlineSection: some View {
+        let tips = buildTips(pfcAnalysis).filter { $0.emoji != "📝" && $0.emoji != "🍽️" }
+        if !tips.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(tips, id: \.message) { tip in
+                    HStack(spacing: 6) {
+                        Text(tip.emoji).font(.system(size: 12 * UIScale.font))
+                        Text(tip.title)
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
+                            .foregroundColor(tip.color)
+                        Text("— \(tip.message)")
+                            .font(.system(size: 9 * UIScale.font))
+                            .foregroundColor(Color.duoDark.opacity(0.6))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
         }
     }
 
@@ -958,7 +1122,7 @@ struct FoodView: View {
     private func intakeItemCard(icon: String, iconColor: Color, label: String,
         value: Double, goal: Double?, unit: String,
         formatValue: (Double) -> String, isReverse: Bool,
-        healthKitURL: String?) -> some View {
+        isSelected: Bool = false, onTap: @escaping () -> Void) -> some View {
         let percent = goal != nil && goal! > 0 ? Int((value / goal!) * 100) : 0
         let isOver  = goal != nil && value > goal!
         let displayColor: Color
@@ -967,17 +1131,13 @@ struct FoodView: View {
         } else {
             displayColor = (isOver || percent >= 100) ? .red : percent >= 70 ? .duoOrange : .duoGreen
         }
-        let advice = adviceText(label: label, value: value, goal: goal, isReverse: isReverse)
         let content = VStack(alignment: .center, spacing: 2) {
-            Image(systemName: icon).font(.system(size: 14 * UIScale.font)).foregroundColor(iconColor)
-            Text(label).font(.system(size: 8 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
-            VStack(spacing: 1) {
-                Text(value > 0 ? formatValue(value) : "—")
-                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor((isOver && isReverse) ? .red : displayColor)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Text(unit).font(.system(size: 7 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-            }
+            Image(systemName: icon).font(.system(size: 12 * UIScale.font)).foregroundColor(iconColor)
+            Text(label).font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(Color.duoDark)
+            Text(value > 0 ? "\(formatValue(value))\(unit)" : "—")
+                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor((isOver && isReverse) ? .red : displayColor)
+                .lineLimit(1).minimumScaleFactor(0.7)
             if let _ = goal {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -986,25 +1146,17 @@ struct FoodView: View {
                             .frame(width: max(2, geo.size.width * CGFloat(min(percent, 100)) / 100), height: 2)
                     }
                 }.frame(height: 2)
-                Text("\(percent)%").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(displayColor)
-            }
-            if !advice.isEmpty {
-                Text(advice)
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
-                    .foregroundColor(displayColor.opacity(0.85))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
             }
         }
-        .padding(.vertical, 6).padding(.horizontal, 5)
+        .padding(.vertical, 5).padding(.horizontal, 4)
         .frame(maxWidth: .infinity)
-        .background(iconColor.opacity(0.08))
+        .background(isSelected ? iconColor.opacity(0.18) : iconColor.opacity(0.08))
         .cornerRadius(8)
-        if let url = healthKitURL {
-            return AnyView(Button { if let u = URL(string: url) { UIApplication.shared.open(u) } } label: { content }.buttonStyle(.plain))
-        } else {
-            return AnyView(content)
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? iconColor.opacity(0.5) : Color.clear, lineWidth: 1)
+        )
+        return AnyView(Button(action: onTap) { content }.buttonStyle(.plain))
     }
 
     // MARK: - FOODフィード

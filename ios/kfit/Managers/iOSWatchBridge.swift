@@ -239,11 +239,11 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         break
                     }
 
-                    // 摂取記録後、少し待ってからTimeSlotManagerの最新データを再読み込み
-                    // （Firestoreへの保存が完了するまで待つ）
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
-                    await TimeSlotManager.shared.loadTodayProgress()
-                    print("[iOSWatchBridge] 📊 TimeSlotProgress再読み込み完了")
+                    // M5: 固定スリープ後の再フェッチを廃止。
+                    // Firestoreへの書き込みはローカルキャッシュに即時反映されるため
+                    // 500ms の固定待機 + 全ドキュメント再読み込みは不要。
+                    // インメモリの progress は上記の record* 呼び出し内で更新済み。
+                    print("[iOSWatchBridge] 📊 摂取記録完了（インメモリ状態を使用）")
 
                     // 最新データをWatchに送信
                     let profile = AuthenticationManager.shared.userProfile
@@ -626,9 +626,10 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     }
 
     private func buildWatchFaceTasks() async -> [WatchFaceTaskConfigForWatch] {
+        // M4: 毎呼び出しで全 HK+Firestore 同期を走らせないよう変更。
+        // 設定はキャッシュ済みのインメモリ状態を参照するだけにし、
+        // 呼び出し元が必要に応じて loadTodayProgress を事前に呼ぶ。
         let timeSlotManager = TimeSlotManager.shared
-        await timeSlotManager.loadTodaySettings()
-        await timeSlotManager.loadTodayProgress(syncHealthKit: true)
 
         let settings = timeSlotManager.settings
         let prog = timeSlotManager.progress

@@ -119,6 +119,13 @@ enum FitingoDeepLink: String {
 struct kfitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authManager: AuthenticationManager
+    // V1: 全タブで共有するシングルトンをアプリルートで一元管理し
+    //     EnvironmentObject で配布することで独立サブスクリプションによる
+    //     不要な多重再レンダリングを防ぐ
+    @StateObject private var healthKit      = HealthKitManager.shared
+    @StateObject private var timeSlotMgr   = TimeSlotManager.shared
+    @StateObject private var photoLogMgr   = PhotoLogManager.shared
+    @StateObject private var dietGoalMgr   = DietGoalManager.shared
     @AppStorage("app.colorScheme") private var colorSchemePref = "light"
     @Environment(\.scenePhase) private var scenePhase
 
@@ -137,6 +144,10 @@ struct kfitApp: App {
                 if authManager.isSignedIn {
                     MainTabView()
                         .environmentObject(authManager)
+                        .environmentObject(healthKit)
+                        .environmentObject(timeSlotMgr)
+                        .environmentObject(photoLogMgr)
+                        .environmentObject(dietGoalMgr)
                 } else {
                     LoginView()
                         .environmentObject(authManager)
@@ -166,6 +177,11 @@ struct kfitApp: App {
 
 struct MainTabView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    // V1: EnvironmentObject として受け取り fullScreenCover へ橋渡し
+    @EnvironmentObject var healthKit: HealthKitManager
+    @EnvironmentObject var timeSlotMgr: TimeSlotManager
+    @EnvironmentObject var photoLogMgr: PhotoLogManager
+    @EnvironmentObject var dietGoalMgr: DietGoalManager
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
     @State private var showTrainingTracker = false
@@ -213,10 +229,14 @@ struct MainTabView: View {
             .fullScreenCover(isPresented: $showRecordMenu) {
                 RecordMenuView(isPresented: $showRecordMenu)
                     .environmentObject(authManager)
+                    .environmentObject(healthKit)
+                    .environmentObject(timeSlotMgr)
             }
             .fullScreenCover(isPresented: $showTrainingTracker) {
                 ExerciseTrackerView(isPresented: $showTrainingTracker)
                     .environmentObject(authManager)
+                    .environmentObject(healthKit)
+                    .environmentObject(timeSlotMgr)
             }
             .fullScreenCover(isPresented: $showMindfulnessWidget) {
                 MindfulnessSessionView(

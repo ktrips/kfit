@@ -3,7 +3,8 @@ import SwiftUI
 struct RecordMenuView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var authManager: AuthenticationManager
-    @StateObject private var healthKit = HealthKitManager.shared
+    // V1: EnvironmentObject で受け取る
+    @EnvironmentObject private var healthKit: HealthKitManager
     @State private var showWorkoutTracker = false
     @State private var showPhotoLog = false
     @State private var showMindfulnessSession = false

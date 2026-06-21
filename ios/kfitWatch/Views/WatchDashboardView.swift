@@ -16,10 +16,14 @@ private func exerciseEmoji(_ id: String) -> String {
     return "🏃"
 }
 
+private let _timeStringFmt: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "HH:mm"
+    return f
+}()
+
 private func timeString(from date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm"
-    return formatter.string(from: date)
+    _timeStringFmt.string(from: date)
 }
 
 private struct WatchFaceTaskNode {
@@ -33,6 +37,14 @@ private struct WatchFaceTaskNode {
 }
 
 struct WatchDashboardView: View {
+    // watchFacePage 用静的 DateFormatter（body 評価のたびに生成しない）
+    private static let watchFaceDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d (EEE)"
+        f.locale = Locale(identifier: "ja_JP")
+        return f
+    }()
+
     @StateObject private var connectivity = WatchConnectivityManager.shared
     @StateObject private var healthKit = WatchHealthKitManager.shared
     @State private var showFlow = false
@@ -47,6 +59,11 @@ struct WatchDashboardView: View {
     @State private var doubleTapCount = 0  // ダブルタップカウント（デバッグ用）
     @State private var isManualRefreshing = false
     @State private var lastHealthRefreshByScope: [String: Date] = [:]
+    // ノード位置キャッシュ（毎 body 評価で再構築しない）
+    @State private var cachedNodePositions: [(WatchFaceTaskNode, Double, Double)] = []
+    @State private var cachedSpiralMetrics: (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) = (-140, 402, 28, 70)
+    // タブスワイプのデバウンス用タスク
+    @State private var tabRefreshTask: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -111,11 +128,22 @@ struct WatchDashboardView: View {
                 connectivity.shouldAutoStartWorkout = false
             }
         }
+        // W5: タブスワイプ時にキャンセル可能デバウンス(300ms)でリフレッシュ
         .onChange(of: selectedTab) { tab in
-            refreshForSelectedTab(tab)
+            tabRefreshTask?.cancel()
+            tabRefreshTask = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                refreshForSelectedTab(tab)
+            }
+        }
+        // W1: 依存値変化時にノード位置を再計算（毎 body 評価を防ぐ）
+        .onChange(of: nodePositionKey) { _ in
+            rebuildNodePositions()
         }
         // 起動時に最新 stats を iOS に問い合わせる & HealthKit データ取得
         .onAppear {
+            rebuildNodePositions()
             // 最新のApplicationContextを確認（iOSアプリが起動していない場合用）
             connectivity.checkLatestApplicationContext()
             // iOSアプリが起動している場合はリアルタイムでリクエスト
@@ -868,10 +896,14 @@ struct WatchDashboardView: View {
         .cornerRadius(10)
     }
 
+    private static let impactDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm"
+        return f
+    }()
+
     private func wellnessImpactRow(_ impact: WatchMindfulnessImpact) -> some View {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "M/d HH:mm"
-        let dateStr = fmt.string(from: impact.startDate)
+        let dateStr = Self.impactDateFmt.string(from: impact.startDate)
         let emoji = impact.sessionType == "Reflect" ? "🤸" : "🧘"
         let label = impact.sessionType == "Reflect" ? "ストレッチ" : "瞑想"
         let hrDelta = Int(impact.heartRateDelta)
@@ -1161,11 +1193,9 @@ struct WatchDashboardView: View {
 
     // MARK: - ウォッチフェイスページ（5ページ目）
     private var watchFacePage: some View {
-        let dateFmt = DateFormatter()
-        dateFmt.dateFormat = "M/d (EEE)"
-        dateFmt.locale = Locale(identifier: "ja_JP")
-        let dateStr = dateFmt.string(from: Date())
-        let positions = watchFaceNodePositions
+        // W1: キャッシュ済みノード位置・スパイラルメトリクスを参照（body 評価ごとに再構築しない）
+        let dateStr = Self.watchFaceDateFmt.string(from: Date())
+        let positions = cachedNodePositions
         let doneCount = positions.filter { $0.0.isDone }.count
         let totalCount = positions.count
         let trainingGoal = max(connectivity.totalTrainingGoal, 0)
@@ -1173,7 +1203,7 @@ struct WatchDashboardView: View {
         let standGoal = connectivity.totalStandGoal
         let standDone = connectivity.totalStand
         let standColor = Color(red: 0.0, green: 0.60, blue: 0.85)
-        let spiralScale = watchFaceSpiralMetrics(for: totalCount)
+        let spiralScale = cachedSpiralMetrics
 
         return ZStack {
             // 渦巻きタスクレイアウト（中心=朝→外側=夜）
@@ -1199,7 +1229,7 @@ struct WatchDashboardView: View {
                     ctx.stroke(rail, with: .color(.white.opacity(0.10)),
                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2, 4]))
 
-                    // ノード間カラーアーク（iOS Mandalaスタイル）
+                    // ノード間カラーアーク（iOS Mandalaスタイルに統一）
                     for i in 0..<(positions.count - 1) {
                         let (node, deg0, r0) = positions[i]
                         let (_, deg1, r1) = positions[i + 1]
@@ -1214,9 +1244,10 @@ struct WatchDashboardView: View {
                             let pt = CGPoint(x: cx + r * cos(a), y: cy + r * sin(a))
                             if step == 0 { arcPath.move(to: pt) } else { arcPath.addLine(to: pt) }
                         }
-                        let opacity = node.isDone ? 0.65 : 0.20
+                        // iOSと同じ不透明度設定: 完了 0.52、未完了 0.16
+                        let opacity = node.isDone ? 0.52 : 0.16
                         ctx.stroke(arcPath, with: .color(node.accentColor.opacity(opacity)),
-                                   style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                                   style: StrokeStyle(lineWidth: 10, lineCap: .round))
                     }
                 }
 
@@ -1406,7 +1437,24 @@ struct WatchDashboardView: View {
 
     // 渦巻き配置ノード（内側=朝r≈30 → 外側=夜r≈66）
     // 朝: 💪🍳💧  昼: 💪🍱💧  午後: 💪🍃🤸💧  夜: 💪🍽️💧🧘
-    private var watchFaceNodePositions: [(WatchFaceTaskNode, Double, Double)] {
+    // W1: ノード位置の依存値を整数ハッシュにまとめ、変化時のみ再計算をトリガー
+    // W3: 水分/食事は connectivity (iOS Firestore が正源) を参照
+    private var nodePositionKey: Int {
+        var h = connectivity.totalTraining
+        h = h &* 31 &+ connectivity.totalMindfulness
+        h = h &* 31 &+ connectivity.totalStand
+        h = h &* 31 &+ connectivity.intakeWater
+        h = h &* 31 &+ connectivity.intakeCalories
+        h = h &* 31 &+ connectivity.totalDrinkGoal
+        h = h &* 31 &+ connectivity.totalMealGoal
+        h = h &* 31 &+ healthKit.todayMindfulnessSessions
+        h = h &* 31 &+ healthKit.todayHKWorkoutCount
+        h = h &* 31 &+ connectivity.watchFaceTasks.count
+        return h
+    }
+
+    // W1: ノード位置をキャッシュ変数に再構築するメソッド（body 外で実行）
+    private func rebuildNodePositions() {
         let trainColor   = Color(red: 1.0,  green: 0.588, blue: 0.0)
         let mindColor    = Color(red: 0.808, green: 0.51,  blue: 1.0)
         let waterColor   = Color(red: 0.27,  green: 0.67,  blue: 1.0)
@@ -1417,19 +1465,19 @@ struct WatchDashboardView: View {
         func color(for key: String) -> Color {
             switch key {
             case "training": return trainColor
-            case "mind": return mindColor
-            case "water": return waterColor
-            case "meal": return mealColor
-            case "stretch": return stretchColor
-            case "stand": return standColor
-            default: return .white.opacity(0.72)
+            case "mind":     return mindColor
+            case "water":    return waterColor
+            case "meal":     return mealColor
+            case "stretch":  return stretchColor
+            case "stand":    return standColor
+            default:         return .white.opacity(0.72)
             }
         }
 
         if !connectivity.watchFaceTasks.isEmpty {
             let count = max(connectivity.watchFaceTasks.count, 1)
             let metrics = watchFaceSpiralMetrics(for: count)
-            return connectivity.watchFaceTasks.enumerated().map { index, config in
+            let nodes = connectivity.watchFaceTasks.enumerated().map { index, config -> (WatchFaceTaskNode, Double, Double) in
                 let t = count == 1 ? 0.0 : Double(index) / Double(count - 1)
                 let angle = metrics.startAngle + (metrics.totalAngle * t)
                 let radius = metrics.startRadius + ((metrics.endRadius - metrics.startRadius) * t)
@@ -1447,30 +1495,32 @@ struct WatchDashboardView: View {
                     radius
                 )
             }
+            cachedNodePositions = nodes
+            cachedSpiralMetrics = metrics
+            return
         }
 
-        let tDone = connectivity.totalTraining
-        let mDone = connectivity.totalMindfulness
-        let water = Int(healthKit.todayDietaryWater)
-        let cals  = Int(healthKit.todayDietaryCalories)
+        // Apple Health を正源とし、Firestoreの同期ラグを補完する
+        let tDone = max(connectivity.totalTraining, healthKit.todayHKWorkoutCount)
+        let hkMindfulSessions = healthKit.todayMindfulnessSessions
+        let mDone = max(connectivity.totalMindfulness, hkMindfulSessions > 0 ? 1 : 0)
+        // W3: 水分/食事は iOS Firestore 経由 (connectivity) を正源に
+        let water = connectivity.intakeWater
+        let cals  = connectivity.intakeCalories
         let dGoal = max(connectivity.totalDrinkGoal, 1)
         let mealG = max(connectivity.totalMealGoal, 1)
 
-        // (node, angleDeg, radius)
-        // 朝（内側 r≈30）→ 昼（r≈44）→ 午後（r≈57）→ 夜（外側 r≈66）
-        // 時計回りに流れるよう角度を連続させ、渦巻き感を演出
-        return [
-            // 朝（内側 r=30、上から時計回りへ）
+        let nodes: [(WatchFaceTaskNode, Double, Double)] = [
+            // 朝（内側 r=28、上から時計回りへ）
             (WatchFaceTaskNode(id:"t0", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 1, actionType:"training"), -140, 30),
+                isDone: tDone >= 1, actionType:"training"), -140, 28),
             (WatchFaceTaskNode(id:"bf", emoji:"🍳", accentColor:mealColor,
                 isDone: cals >= mealG / 3, actionType:"meal", mealSubtype:"breakfast",
-                intakeMessage:"朝食\(connectivity.breakfastCalories)kcalを追加しますか？"), -90, 30),
+                intakeMessage:"朝食\(connectivity.breakfastCalories)kcalを追加しますか？"), -90, 28),
             (WatchFaceTaskNode(id:"w0", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal / 4, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), -40, 30),
-
-            // 昼（中 r=44、右上から右へ）
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), -40, 28),
+            // 昼（中 r=44）
             (WatchFaceTaskNode(id:"t1", emoji:"💪", accentColor:trainColor,
                 isDone: tDone >= 2, actionType:"training"), -15, 44),
             (WatchFaceTaskNode(id:"ln", emoji:"🍱", accentColor:mealColor,
@@ -1479,8 +1529,7 @@ struct WatchDashboardView: View {
             (WatchFaceTaskNode(id:"w1", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal / 2, actionType:"water",
                 intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 55, 44),
-
-            // 午後（中外 r=57、右下から下へ）
+            // 午後（中外 r=57）
             (WatchFaceTaskNode(id:"t2", emoji:"💪", accentColor:trainColor,
                 isDone: tDone >= 3, actionType:"training"), 82, 57),
             (WatchFaceTaskNode(id:"sn", emoji:"🍃", accentColor:mealColor,
@@ -1491,34 +1540,36 @@ struct WatchDashboardView: View {
             (WatchFaceTaskNode(id:"w2", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal * 3 / 4, actionType:"water",
                 intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 165, 57),
-
-            // 夜（外側 r=66、下から左下へ）
+            // 夜（外側 r=70）
             (WatchFaceTaskNode(id:"t3", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 4, actionType:"training"), 192, 66),
+                isDone: tDone >= 4, actionType:"training"), 192, 70),
             (WatchFaceTaskNode(id:"dn", emoji:"🍽️", accentColor:mealColor,
                 isDone: cals >= mealG, actionType:"meal", mealSubtype:"dinner",
-                intakeMessage:"夕食\(connectivity.dinnerCalories)kcalを追加しますか？"), 215, 66),
+                intakeMessage:"夕食\(connectivity.dinnerCalories)kcalを追加しますか？"), 215, 70),
             (WatchFaceTaskNode(id:"w3", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 66),
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 70),
             (WatchFaceTaskNode(id:"md", emoji:"🧘", accentColor:mindColor,
-                isDone: mDone >= 1, actionType:"mindfulness"), 262, 66),
+                isDone: mDone >= 1, actionType:"mindfulness"), 262, 70),
             (WatchFaceTaskNode(id:"sd", emoji:"🧍", accentColor:standColor,
                 isDone: connectivity.totalStand >= 1 && connectivity.totalStandGoal > 0,
-                actionType:"stand"), 286, 66),
+                actionType:"stand"), 286, 70),
         ]
+        cachedNodePositions = nodes
+        cachedSpiralMetrics = watchFaceSpiralMetrics(for: nodes.count)
     }
 
     private func watchFaceSpiralMetrics(for count: Int) -> (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) {
+        // ノードサイズ32ptに合わせ、内外半径を広げて余裕ある渦巻きに
         switch count {
         case 0...12:
-            return (-140, 402, 30, 66)
+            return (-140, 402, 28, 70)
         case 13...18:
-            return (-150, 500, 26, 72)
+            return (-150, 500, 24, 76)
         case 19...24:
-            return (-160, 610, 22, 76)
+            return (-160, 610, 20, 80)
         default:
-            return (-170, 730, 20, 80)
+            return (-170, 730, 18, 84)
         }
     }
 
@@ -1543,17 +1594,17 @@ struct WatchDashboardView: View {
                 if node.isDone {
                     ZStack {
                         Circle().fill(node.accentColor)
-                            .frame(width: 28, height: 28)
-                        Text(node.emoji).font(.system(size: 17))
+                            .frame(width: 32, height: 32)
+                        Text(node.emoji).font(.system(size: 19))
                     }
                 } else {
                     ZStack {
                         Circle().fill(Color.black.opacity(0.40))
-                            .frame(width: 28, height: 28)
+                            .frame(width: 32, height: 32)
                         Circle().stroke(node.accentColor.opacity(0.72), lineWidth: 1.5)
-                            .frame(width: 28, height: 28)
-                        Text(node.emoji).font(.system(size: 17))
-                            .opacity(0.65)
+                            .frame(width: 32, height: 32)
+                        Text(node.emoji).font(.system(size: 19))
+                            .opacity(0.55)
                     }
                 }
             }

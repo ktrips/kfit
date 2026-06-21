@@ -690,15 +690,15 @@ struct MandalaChartView: View {
     // body で1度だけ計算して全体に渡す設計に変更。
     static func adaptiveNodeSize(count: Int) -> CGFloat {
         switch count {
-        case 0...6:   return 52
-        case 7...10:  return 46
-        case 11...16: return 40
-        default:      return 36
+        case 0...6:   return 58
+        case 7...10:  return 52
+        case 11...16: return 46
+        default:      return 42
         }
     }
 
-    static func minRadius(nodeSize: CGFloat) -> Double { Double(nodeSize) * (42.0 / 36.0) }
-    static func nodeSpacing(nodeSize: CGFloat) -> Double { Double(nodeSize) + 10 }
+    static func minRadius(nodeSize: CGFloat) -> Double { Double(nodeSize) * (44.0 / 36.0) }
+    static func nodeSpacing(nodeSize: CGFloat) -> Double { Double(nodeSize) + 14 }
 
     /// - slotTrainingCounts: 各スロットの実際のセット数（countSetsInTimeSlot結果）。
     ///   nilの場合は prog.trainingCompleted にフォールバック。
@@ -972,7 +972,7 @@ struct MandalaChartView: View {
         return GeometryReader { geo in
                 let size = min(geo.size.width, geo.size.height)
                 let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-                let canvasR = size / 2 - 14
+                let canvasR = size / 2 - 6
                 let (positions, nodeAngles) = Self.computePositionsStatic(
                     nodes: nodes, minRadius: minR, nodeSpacing: spacing,
                     center: center, canvasR: canvasR

@@ -10,6 +10,20 @@ class AuthenticationManager: ObservableObject {
     static let shared = AuthenticationManager()
     private static var lastWidgetPayloadHash = ""
     private static var pendingWidgetReload: DispatchWorkItem?
+    /// DashboardView.updateWidgetData() がアプリ内記録（Firestore）の摂取カロリーをここに保存。
+    /// syncWidgetData() はこの値を優先して HealthKit 値より正確なkcalをウィジェットに書き込む。
+    static var cachedAppIntakeCalories: Int = 0
+
+    // LOW(M-8): DateFormatter を static let でキャッシュ（毎呼び出しで生成しない）
+    static let yyyyMMddFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let iso8601Fmt: ISO8601DateFormatter = ISO8601DateFormatter()
 
     @Published var isSignedIn = false
     @Published var userProfile: UserProfile?
@@ -253,28 +267,29 @@ class AuthenticationManager: ObservableObject {
     }
 
     private func updateStreakAndPoints(userId: String, points: Int, now: Date) async {
+        // M3: addSnapshotListener で維持されている userProfile キャッシュを使用し
+        //     不要な Firestore getDocument() 読み取りを排除
         let userRef = db.collection("users").document(userId)
-        guard let doc = try? await userRef.getDocument(), doc.exists else { return }
-        let profile = doc.data() ?? [:]
-
         let calendar = Calendar.current
         let today    = calendar.startOfDay(for: now)
 
-        var newStreak = profile["streak"] as? Int ?? 0
-
-        if let lastTs = profile["lastActiveDate"] as? Timestamp {
-            let lastDay  = calendar.startOfDay(for: lastTs.dateValue())
+        var newStreak: Int
+        if let cached = userProfile {
+            newStreak = cached.streak
+            let lastDay  = calendar.startOfDay(for: cached.lastActiveDate)
             let diffDays = calendar.dateComponents([.day], from: lastDay, to: today).day ?? 0
-
             if diffDays == 0 {
                 // 同日 — streak はそのまま、ポイントだけ加算
             } else if diffDays <= 3 {
-                newStreak += 1  // 週2チートデイ許容
+                newStreak += 1
             } else {
-                newStreak = 1   // streak リセット
+                newStreak = 1
             }
         } else {
-            newStreak = 1       // 初回記録
+            // キャッシュ未取得の場合のみフォールバック読み取り
+            guard let doc = try? await userRef.getDocument(), doc.exists else { return }
+            let profile = doc.data() ?? [:]
+            newStreak = profile["streak"] as? Int ?? 1
         }
 
         try? await userRef.updateData([
@@ -297,13 +312,11 @@ class AuthenticationManager: ObservableObject {
     /// マインドフルネスセッションにXPを付与（セッション開始日時で重複防止）
     /// Breathe（1分瞑想）= +10 XP、Reflect（3分ストレッチ）= +30 XP
     func awardXPForMindfulSessions(_ sessions: [MindfulSession]) async {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-        let today = df.string(from: Date())
+        let today = Self.yyyyMMddFmt.string(from: Date())
         let key = "fitingo.mindful.xp.\(today)"
 
         var awarded = Set<String>(UserDefaults.standard.stringArray(forKey: key) ?? [])
-        let iso = ISO8601DateFormatter()
+        let iso = Self.iso8601Fmt
         var totalNew = 0
 
         for session in sessions {
@@ -323,9 +336,7 @@ class AuthenticationManager: ObservableObject {
 
     /// 1日1回限りのボーナス（UserDefaultsで重複防止）
     func checkAndAwardDailyBonus(type: String, points: Int) async {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let today = formatter.string(from: Date())
+        let today = Self.yyyyMMddFmt.string(from: Date())
         let key = "fitingo.bonus.\(type).\(today)"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
@@ -433,12 +444,7 @@ class AuthenticationManager: ObservableObject {
     // MARK: - Summary Snapshots
 
     private func dayKey(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        Self.yyyyMMddFmt.string(from: date)
     }
 
     private func weekKey(for date: Date) -> String {
@@ -581,11 +587,29 @@ class AuthenticationManager: ObservableObject {
         var summary = DailyActivitySummary()
         var mealCalories: [String: Int] = [:]
 
-        if let exerciseSnap = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        // M7: 6件の Firestore クエリを async let で並列発行して待機時間を削減
+        let baseQ = db.collection("users").document(userId)
+        let pred: (Query) -> Query = {
+            $0.whereField("timestamp", isGreaterThanOrEqualTo: start)
+              .whereField("timestamp", isLessThan: end)
+        }
+        async let exerciseSnapTask = try? pred(baseQ.collection("completed-exercises"))
+            .getDocuments(source: .default)
+        async let setSnapTask = try? pred(baseQ.collection("completed-sets"))
+            .getDocuments(source: .default)
+        async let mealSnapTask = try? pred(baseQ.collection("daily-intake").document("meals").collection("logs"))
+            .getDocuments(source: .default)
+        async let waterSnapTask = try? pred(baseQ.collection("daily-intake").document("water").collection("logs"))
+            .getDocuments(source: .default)
+        async let coffeeSnapTask = try? pred(baseQ.collection("daily-intake").document("coffee").collection("logs"))
+            .getDocuments(source: .default)
+        async let alcoholSnapTask = try? pred(baseQ.collection("daily-intake").document("alcohol").collection("logs"))
+            .getDocuments(source: .default)
+
+        let (exerciseSnap, setSnap, mealSnap, waterSnap, coffeeSnap, alcoholSnap) =
+            await (exerciseSnapTask, setSnapTask, mealSnapTask, waterSnapTask, coffeeSnapTask, alcoholSnapTask)
+
+        if let exerciseSnap {
             for doc in exerciseSnap.documents {
                 let data = doc.data()
                 let reps = DailyActivitySummary.readInt(data["reps"])
@@ -598,11 +622,7 @@ class AuthenticationManager: ObservableObject {
             }
         }
 
-        if let setSnap = try? await db.collection("users").document(userId)
-            .collection("completed-sets")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        if let setSnap {
             for doc in setSnap.documents {
                 let data = doc.data()
                 let ts = (data["timestamp"] as? Timestamp)?.dateValue() ?? start
@@ -617,11 +637,7 @@ class AuthenticationManager: ObservableObject {
             }
         }
 
-        if let mealSnap = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("meals").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        if let mealSnap {
             for doc in mealSnap.documents {
                 let data = doc.data()
                 let calories = DailyActivitySummary.readInt(data["calories"])
@@ -632,21 +648,13 @@ class AuthenticationManager: ObservableObject {
             }
         }
 
-        if let waterSnap = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("water").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        if let waterSnap {
             for doc in waterSnap.documents {
                 summary.intakeWaterMl += DailyActivitySummary.readInt(doc.data()["amountMl"])
             }
         }
 
-        if let coffeeSnap = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("coffee").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        if let coffeeSnap {
             for doc in coffeeSnap.documents {
                 let data = doc.data()
                 summary.intakeWaterMl += DailyActivitySummary.readInt(data["amountMl"])
@@ -654,11 +662,7 @@ class AuthenticationManager: ObservableObject {
             }
         }
 
-        if let alcoholSnap = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("alcohol").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: start)
-            .whereField("timestamp", isLessThan: end)
-            .getDocuments(source: .default) {
+        if let alcoholSnap {
             for doc in alcoholSnap.documents {
                 let data = doc.data()
                 summary.intakeWaterMl += DailyActivitySummary.readInt(data["amountMl"])
@@ -980,14 +984,12 @@ class AuthenticationManager: ObservableObject {
         let today = Date()
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
         var counts: [String: Int] = [:]
         for offset in 0..<7 {
             let date = cal.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
             let summary = await getDailyActivitySummary(for: date, userId: userId)
             if summary.completedSets > 0 {
-                counts[formatter.string(from: date)] = summary.completedSets
+                counts[Self.yyyyMMddFmt.string(from: date)] = summary.completedSets
             }
         }
         return counts
@@ -1002,8 +1004,6 @@ class AuthenticationManager: ObservableObject {
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
         let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
 
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
         var result: [String: [String: Int]] = [:]
 
         for offset in 0..<7 {
@@ -1011,7 +1011,7 @@ class AuthenticationManager: ObservableObject {
             guard date < weekEnd else { continue }
             let summary = await getDailyActivitySummary(for: date, userId: userId)
             guard summary.intakeCalories > 0 || summary.intakeWaterMl > 0 else { continue }
-            let key = fmt.string(from: date)
+            let key = Self.yyyyMMddFmt.string(from: date)
             for (mealType, calories) in summary.mealCalories {
                 result[key, default: [:]][mealType, default: 0] += calories
             }
@@ -1034,14 +1034,13 @@ class AuthenticationManager: ObservableObject {
             .whereField("timestamp", isLessThan: end)
             .getDocuments() else { return [] }
 
-        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
         // Group set entries by day (each entry is a timestamp + parsed exercises)
         var byDay: [String: [(ts: Date, exercises: [CompletedExercise])]] = [:]
 
         for doc in snapshot.documents {
             let data = doc.data()
             guard let ts = (data["timestamp"] as? Timestamp)?.dateValue() else { continue }
-            let key = formatter.string(from: ts)
+            let key = Self.yyyyMMddFmt.string(from: ts)
 
             let exerciseDicts = data["exercises"] as? [[String: Any]] ?? []
             let exercises: [CompletedExercise] = exerciseDicts.compactMap { exDict in
@@ -1059,7 +1058,7 @@ class AuthenticationManager: ObservableObject {
         var result: [DayExercises] = []
         for i in 0..<days {
             let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: Date())) ?? Date()
-            let key = formatter.string(from: date)
+            let key = Self.yyyyMMddFmt.string(from: date)
             guard let entries = byDay[key], !entries.isEmpty else { continue }
 
             let month = calendar.component(.month, from: date)
@@ -1492,11 +1491,9 @@ class AuthenticationManager: ObservableObject {
         let weekday = calendar.component(.weekday, from: today)
         let daysToMonday = weekday == 1 ? -6 : 2 - weekday
         guard let monday = calendar.date(byAdding: .day, value: daysToMonday, to: today) else {
-            return ISO8601DateFormatter().string(from: today).prefix(10).description
+            return Self.yyyyMMddFmt.string(from: today)
         }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
-        return formatter.string(from: monday)
+        return Self.yyyyMMddFmt.string(from: monday)
     }
 
     // MARK: - Weekly Set Progress (Web互換)
@@ -1903,8 +1900,7 @@ class AuthenticationManager: ObservableObject {
         let weekday = calendar.component(.weekday, from: today)
         let daysToMonday = weekday == 1 ? -6 : 2 - weekday
         let monday = calendar.date(byAdding: .day, value: daysToMonday, to: today) ?? today
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        return fmt.string(from: monday)
+        return Self.yyyyMMddFmt.string(from: monday)
     }
 
     deinit {
@@ -2197,7 +2193,10 @@ extension AuthenticationManager {
         defaults.set(trainingGoal,         forKey: "trainingGoal")
         defaults.set(mindfulnessCompleted, forKey: "mindfulnessCompleted")
         defaults.set(mindfulnessGoal,      forKey: "mindfulnessGoal")
-        defaults.set(Int(hk.todayIntakeCalories), forKey: "mealLogged")
+        let mealLoggedKcal = cachedAppIntakeCalories > 0
+            ? cachedAppIntakeCalories
+            : Int(hk.todayIntakeCalories)
+        defaults.set(mealLoggedKcal, forKey: "mealLogged")
         defaults.set(mealGoal,             forKey: "mealGoal")
         defaults.set(Int(hk.todayIntakeWater), forKey: "drinkLogged")
         defaults.set(drinkGoal,            forKey: "drinkGoal")

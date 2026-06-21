@@ -177,12 +177,14 @@ struct DailyCalorieBalance: Identifiable {
     var bodyFatPercentage: Double?  // %（その日の最新計測値、なければnil）
     var steps: Int = 0              // 歩数
     var balance: Int { Int(consumed) - Int(burned) }
-    var dayLabel: String {
+    // LOW(M-8): DateFormatter を static let にキャッシュ
+    private static let dayFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "E"
-        return f.string(from: date)
-    }
+        return f
+    }()
+    var dayLabel: String { Self.dayFmt.string(from: date) }
 }
 
 // MARK: - 週間消費カロリー記録（安静時・活動別）
@@ -195,12 +197,13 @@ struct DailyBurnSummary: Identifiable {
     var setCount: Int = 0
     var steps: Int = 0
     var totalCalories: Double { activeCalories + restingCalories }
-    var dayLabel: String {
+    private static let dayFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "E"
-        return f.string(from: date)
-    }
+        return f
+    }()
+    var dayLabel: String { Self.dayFmt.string(from: date) }
 }
 
 // MARK: - 体重記録（日別）
@@ -232,6 +235,15 @@ struct BodyMassRecord: Identifiable {
 @MainActor
 final class HealthKitManager: ObservableObject {
     static let shared = HealthKitManager()
+    // LOW(M-8): DateFormatter を static let にキャッシュ（毎呼び出しで生成しない）
+    static let yyyyMMddFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     private let store = HKHealthStore()
 
@@ -1416,7 +1428,7 @@ final class HealthKitManager: ObservableObject {
                 guard let self, let samples = samples as? [HKQuantitySample] else {
                     cont.resume(); return
                 }
-                let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                let fmt = HealthKitManager.yyyyMMddFmt
                 var map: [String: BodyMassRecord] = [:]
                 for s in samples {
                     let key = fmt.string(from: s.endDate)
@@ -1437,7 +1449,7 @@ final class HealthKitManager: ObservableObject {
 
     /// "yyyy-MM-dd" キーで体重記録を検索する
     func bodyMassRecord(for dateKey: String) -> BodyMassRecord? {
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        let fmt = HealthKitManager.yyyyMMddFmt
         return bodyMassHistory.first { fmt.string(from: $0.measuredAt) == dateKey }
     }
 
@@ -1464,7 +1476,7 @@ final class HealthKitManager: ObservableObject {
                 guard let self, let samples = samples as? [HKQuantitySample] else {
                     cont.resume(); return
                 }
-                let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+                let fmt = HealthKitManager.yyyyMMddFmt
                 var map: [String: BodyFatRecord] = [:]
                 for s in samples {
                     let key = fmt.string(from: s.endDate)

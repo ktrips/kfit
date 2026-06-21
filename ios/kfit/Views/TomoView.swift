@@ -535,9 +535,18 @@ struct TomoView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.authorFirstName)
-                        .font(.system(size: 13 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
+                    if item.comment.isEmpty {
+                        Text(item.authorFirstName)
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                    } else {
+                        (Text(item.authorFirstName + "  ")
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                         + Text(item.comment)
+                            .font(.system(size: 13 * UIScale.font)))
+                            .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
+                    }
                     Text(relativeTimeString(item.timestamp))
                         .font(.system(size: 11 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
@@ -654,17 +663,7 @@ struct TomoView: View {
             }
             .padding(.horizontal, 4)
 
-            // ── キャプション ──────────────────────────────────────────────
-            if !item.comment.isEmpty {
-                (Text(item.authorFirstName + "  ").font(.system(size: 13 * UIScale.font, weight: .black))
-                 + Text(item.comment).font(.system(size: 13 * UIScale.font)))
-                    .foregroundColor(Color.duoDark)
-                    .lineLimit(4)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-            } else {
-                Spacer().frame(height: 4)
-            }
+            Spacer().frame(height: 4)
         }
         .background(Color(.systemBackground))
     }

@@ -1181,13 +1181,18 @@ struct MandalaChartView: View {
                 .frame(width: 62, height: 62)
                 .rotationEffect(.degrees(-90))
 
+            let pctColor: Color = progress >= 1.0   ? Color(hex: "#4CAF50")
+                                : progress >= 0.7   ? Color(hex: "#A5D63B")
+                                : progress >= 0.4   ? Color(hex: "#FFD700")
+                                : progress >= 0.01  ? Color(hex: "#FF9500")
+                                : Color(.systemGray3)
             VStack(spacing: -2) {
                 Text("\(Int(progress * 100))")
                     .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(Color.duoDark)
+                    .foregroundColor(pctColor)
                 Text("%")
                     .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.duoSubtitle)
+                    .foregroundColor(pctColor.opacity(0.7))
             }
         }
     }

@@ -76,11 +76,11 @@ struct WidgetStats {
 
     var progressColor: Color {
         switch progressPercent {
-        case 100:   return Color(hex: "#58CC02")
-        case 70...: return Color(hex: "#7ED321")
-        case 40...: return Color(hex: "#F5A623")
-        case 1...:  return Color(hex: "#FF6B6B")
-        default:    return Color(hex: "#D0021B")
+        case 100:   return Color(hex: "#4CAF50")
+        case 70...: return Color(hex: "#A5D63B")
+        case 40...: return Color(hex: "#FFD700")
+        case 1...:  return Color(hex: "#FF9500")
+        default:    return Color(hex: "#9E9E9E")
         }
     }
 }

@@ -166,25 +166,6 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
-    private func seedDefaultExercises() async {
-        do {
-            for item in Self.defaultExerciseData {
-                try await db.collection("exercises").document(item.id).setData([
-                    "name": item.name,
-                    "basePoints": item.pts,
-                    "difficulty": "medium",
-                    "muscleGroups": []
-                ])
-            }
-            let snapshot = try await db.collection("exercises").getDocuments()
-            self.exercises = snapshot.documents.compactMap { try? $0.data(as: Exercise.self) }
-        } catch {
-            self.exercises = Self.defaultExerciseData.map {
-                Exercise(name: $0.name, basePoints: $0.pts)
-            }
-        }
-    }
-
     static let defaultExerciseData: [(id: String, name: String, pts: Int)] = [
         ("pushup",  "Push-up",     2),
         ("squat",   "Squat",       2),
@@ -234,13 +215,8 @@ class AuthenticationManager: ObservableObject {
             iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 
             // 時間帯の進捗を更新
-            let calendar = Calendar.current
-            let hour = calendar.component(.hour, from: now)
-            let timeSlot: TimeSlot
-            if hour >= 6 && hour < 10 { timeSlot = .morning }
-            else if hour >= 10 && hour < 14 { timeSlot = .noon }
-            else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-            else { timeSlot = .evening }
+            let hour = Calendar.current.component(.hour, from: now)
+            let timeSlot = TimeSlot.forHour(hour)
             await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
             // Widget更新（データを書いてからリロード）
@@ -787,13 +763,8 @@ class AuthenticationManager: ObservableObject {
         await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
 
         // 時間帯の進捗を更新
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: now)
-        let timeSlot: TimeSlot
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: now)
+        let timeSlot = TimeSlot.forHour(hour)
         await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
         // Apple Health にセット全体を記録（権限確認）
@@ -802,7 +773,7 @@ class AuthenticationManager: ObservableObject {
                 await HealthKitManager.shared.requestAuthorization()
             }
             if HealthKitManager.shared.isAuthorized {
-                let setStart = calendar.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
+                let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
                 await HealthKitManager.shared.saveCompletedSet(
                     exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
                     startDate: setStart
@@ -862,13 +833,8 @@ class AuthenticationManager: ObservableObject {
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 
         // 時間帯の進捗を更新
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: now)
-        let timeSlot: TimeSlot
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: now)
+        let timeSlot = TimeSlot.forHour(hour)
         await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
         // Apple Health書き込み（権限確認）
@@ -910,13 +876,8 @@ class AuthenticationManager: ObservableObject {
         await updateSummaryForExercise(userId: userId, exerciseId: exerciseId, reps: reps, points: points, timestamp: now)
 
         // 時間帯の進捗を更新
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: now)
-        let timeSlot: TimeSlot
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: now)
+        let timeSlot = TimeSlot.forHour(hour)
         await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
         // Apple Health書き込み
@@ -1093,60 +1054,6 @@ class AuthenticationManager: ObservableObject {
             ))
         }
         return result
-    }
-
-    private func buildSetsFromExercises(_ exercises: [CompletedExercise]) -> [ExerciseSet] {
-        let sorted = exercises.sorted { $0.timestamp < $1.timestamp }
-        var sessions: [[CompletedExercise]] = []
-        var currentSession: [CompletedExercise] = []
-        var lastTime: Date? = nil
-
-        for ex in sorted {
-            if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 {
-                // 30分以内 → 同じセッション
-                currentSession.append(ex)
-            } else {
-                // 新しいセッション開始
-                if !currentSession.isEmpty {
-                    sessions.append(currentSession)
-                }
-                currentSession = [ex]
-            }
-            lastTime = ex.timestamp
-        }
-        if !currentSession.isEmpty {
-            sessions.append(currentSession)
-        }
-
-        let calendar = Calendar.current
-        var amCount = 0
-        var pmCount = 0
-
-        return sessions.map { session in
-            guard let firstTime = session.first?.timestamp else {
-                return ExerciseSet(startTime: Date(), period: "午後", setNumber: 1, exercises: [], totalReps: 0, totalPoints: 0)
-            }
-
-            let hour = calendar.component(.hour, from: firstTime)
-            let isAM = hour < 12
-            let period = isAM ? "午前" : "午後"
-
-            if isAM {
-                amCount += 1
-            } else {
-                pmCount += 1
-            }
-            let setNumber = isAM ? amCount : pmCount
-
-            return ExerciseSet(
-                startTime: firstTime,
-                period: period,
-                setNumber: setNumber,
-                exercises: session,
-                totalReps: session.reduce(0) { $0 + $1.reps },
-                totalPoints: session.reduce(0) { $0 + $1.points }
-            )
-        }
     }
 
     // MARK: - Daily Sets
@@ -1668,13 +1575,18 @@ class AuthenticationManager: ObservableObject {
     }
 
     /// 水を記録
-    func recordWater(cups: Int = 1) async {
+    func recordWater(cups: Int = 1, customMl: Int? = nil) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         let now = Date()
 
-        // 設定から1杯の量を取得
-        let settings = await getIntakeSettings()
-        let amountMl = cups * settings.waterPerCup
+        // customMl 指定があればそれを使い、なければ設定値 × カップ数
+        let amountMl: Int
+        if let ml = customMl {
+            amountMl = ml
+        } else {
+            let settings = await getIntakeSettings()
+            amountMl = cups * settings.waterPerCup
+        }
 
         let data: [String: Any] = [
             "amountMl": amountMl,
@@ -1714,6 +1626,36 @@ class AuthenticationManager: ObservableObject {
 
         // Apple Healthにカフェイン記録＋コーヒーの液量を水分として記録
         await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
+    /// フルーツジュースを記録（200ml / 76kcal / 糖質18g 相当）
+    func recordFruitJuice() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+        let amountMl  = 200
+        let calorieKcal = 76
+
+        let data: [String: Any] = [
+            "amountMl":  amountMl,
+            "calories":  calorieKcal,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("juice")
+            .collection("logs").addDocument(data: data)
+
+        // カロリー + 水分 の両方をサマリに加算
+        await updateSummaryForIntake(
+            userId: userId,
+            calories: calorieKcal,
+            waterMl: amountMl,
+            timestamp: now
+        )
+
+        // Apple Health に水分として記録
         await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
@@ -2203,14 +2145,8 @@ extension AuthenticationManager {
 
         // 現在の時間帯
         let hour = Calendar.current.component(.hour, from: Date())
-        let currentSlot: TimeSlot
-        let slotName: String
-        if hour < 6        { currentSlot = .evening;   slotName = "夜" }
-        else if hour < 10  { currentSlot = .morning;   slotName = "朝" }
-        else if hour < 14  { currentSlot = .noon;      slotName = "昼" }
-        else if hour < 18  { currentSlot = .afternoon; slotName = "午後" }
-        else               { currentSlot = .evening;   slotName = "夜" }
-        defaults.set(slotName, forKey: "currentTimeSlot")
+        let currentSlot = TimeSlot.forHour(hour)
+        defaults.set(currentSlot.displayName, forKey: "currentTimeSlot")
         if let goal = tsm.settings.goalFor(currentSlot),
            let prog = tsm.progress.progressFor(currentSlot) {
             defaults.set(prog.trainingCompleted, forKey: "timeSlotCompleted")
@@ -2755,7 +2691,11 @@ class EduLogManager: ObservableObject {
     private init() { loadHistory() }
 
     func addItem(activityName: String, activityEmoji: String, comment: String,
-                 image: UIImage?, isPublic: Bool = true) {
+                 image: UIImage?, isPublic: Bool = true,
+                 extractedPhrase: String? = nil,
+                 extractedLanguageCode: String? = nil,
+                 translationJA: String? = nil,
+                 pronunciation: String? = nil) {
         let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
         let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
         var item = EduLogHistoryItem(
@@ -2769,8 +2709,36 @@ class EduLogManager: ObservableObject {
         if let image {
             item.thumbnailData = EduLogManager.makeThumbnailHQ(from: image)
         }
+
+        // 呼び出し元から OCR 結果を直接渡された場合はセット
+        item.extractedPhrase       = extractedPhrase
+        item.extractedLanguageCode = extractedLanguageCode
+        item.translationJA         = translationJA
+        item.pronunciation         = pronunciation
+
         history.insert(item, at: 0)
         persistHistory()
+
+        // OCR 結果未提供かつ Duolingo 画像の場合は自動抽出
+        let isDuolingo = activityName.localizedCaseInsensitiveContains("Duolingo")
+                      || activityEmoji == "🦉"
+        let needsOCR = isDuolingo && extractedPhrase == nil
+        if needsOCR, let image {
+            let itemID = item.id
+            Task { @MainActor in
+                guard let result = await DuolingoTextExtractor.shared.extract(from: image) else { return }
+                let pinyin = DuolingoTextExtractor.shared.generatePronunciation(
+                    phrase: result.phrase, languageCode: result.languageCode
+                )
+                if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
+                    self.history[idx].extractedPhrase       = result.phrase
+                    self.history[idx].extractedLanguageCode = result.languageCode
+                    self.history[idx].translationJA         = result.translationJA
+                    self.history[idx].pronunciation         = pinyin
+                    self.persistHistory()
+                }
+            }
+        }
     }
 
     static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {

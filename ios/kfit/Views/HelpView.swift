@@ -354,7 +354,7 @@ struct HelpView: View {
 
                         // Fitingoの本を読んでみる
                         VStack(spacing: 10) {
-                            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                            Link(destination: URL(string: "https://amzn.to/4epQJxQ")!) {
                                 HStack(spacing: 12) {
                                     Text("📱").font(.title3)
                                     VStack(alignment: .leading, spacing: 2) {
@@ -375,7 +375,7 @@ struct HelpView: View {
                                 .cornerRadius(14)
                                 .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                             }
-                            Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                            Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
                                 HStack(spacing: 12) {
                                     Text("⌚").font(.title3)
                                     VStack(alignment: .leading, spacing: 2) {

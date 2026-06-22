@@ -393,12 +393,7 @@ class TimeSlotManager: ObservableObject {
         var sessionsBySlot: [TimeSlot: [MindfulSession]] = [:]
         for session in allSessions {
             let hour = cal.component(.hour, from: session.startDate)
-            let slot: TimeSlot
-            if hour < 6 { slot = .midnight }
-            else if hour < 10 { slot = .morning }
-            else if hour < 14 { slot = .noon }
-            else if hour < 18 { slot = .afternoon }
-            else { slot = .evening }
+            let slot = TimeSlot.forHour(hour)
             sessionsBySlot[slot, default: []].append(session)
         }
 

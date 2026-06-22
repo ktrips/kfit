@@ -118,7 +118,7 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({ onSelectBook, onBack
               🌐 Webアプリを使う
             </a>
             <a
-              href="https://amzn.to/43GSmB6"
+              href="https://amzn.to/4ek5fHi"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-amber-400 hover:bg-amber-500 text-white font-bold px-6 py-3 rounded-xl transition-colors flex items-center gap-2"

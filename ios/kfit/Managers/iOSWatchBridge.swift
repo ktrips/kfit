@@ -16,6 +16,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     private let statsDebounceInterval: TimeInterval = 2.0 // 2秒以内の重複送信を防ぐ
     private var lastStatsRequestTime: Date?
     private let statsRequestCacheInterval: TimeInterval = 5.0 // 5秒以内のfetchをスキップ
+    private var lastStatsFetchTime: Date?            // 重いフェッチを最後に開始した時刻
+    private var pendingStatsTask: Task<Void, Never>? // 末尾集約用の遅延送信タスク
 
     private override init() {
         super.init()
@@ -193,16 +195,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 let subtype = message["subtype"] as? String
 
                 Task {
-                    let timestamp = Date()
-                    let calendar = Calendar.current
-                    let hour = calendar.component(.hour, from: timestamp)
-                    let timeSlot: TimeSlot
-
-                    if hour < 6 { timeSlot = .midnight }
-                    else if hour < 10 { timeSlot = .morning }
-                    else if hour < 14 { timeSlot = .noon }
-                    else if hour < 18 { timeSlot = .afternoon }
-                    else { timeSlot = .evening }
+                    let hour = Calendar.current.component(.hour, from: Date())
+                    let timeSlot = TimeSlot.forHour(hour)
 
                     switch type {
                     case "meal":
@@ -428,6 +422,30 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
+
+        // フェッチ前デバウンス: payload 構築には Firestore/HealthKit の重い読み取りが多数伴う。
+        // force でない連続呼び出しは末尾の1回に集約し、無駄なフェッチ自体を回避する。
+        if !force {
+            let now = Date()
+            if let lastFetch = lastStatsFetchTime,
+               now.timeIntervalSince(lastFetch) < statsDebounceInterval {
+                pendingStatsTask?.cancel()
+                let delay = statsDebounceInterval - now.timeIntervalSince(lastFetch)
+                pendingStatsTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    guard !Task.isCancelled, let self else { return }
+                    self.pendingStatsTask = nil
+                    self.sendStatsToWatch(streak: streak, todayReps: todayReps, todayXP: todayXP,
+                                          todaySets: todaySets, todayExercises: todayExercises, force: false)
+                }
+                return
+            }
+            lastStatsFetchTime = now
+            pendingStatsTask?.cancel()
+            pendingStatsTask = nil
+        } else {
+            lastStatsFetchTime = Date()
+        }
 
         var payload: [String: Any] = [
             "streak":    streak,

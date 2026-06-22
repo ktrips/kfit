@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseFirestore
+import FirebaseAuth
 import GoogleSignIn
 import UserNotifications
 import WatchConnectivity
@@ -270,6 +271,15 @@ struct MainTabView: View {
                 selectedTab = defaultVisibleTab.rawValue
                 normalizeSelection()
                 checkEndOfDayCalorieTopUp()
+                // Share Extension から共有された Duolingo 画像を処理
+                if let uid = Auth.auth().currentUser?.uid,
+                   let name = authManager.userProfile?.username ?? Auth.auth().currentUser?.displayName {
+                    Task {
+                        await PendingShareProcessor.shared.processPendingShares(
+                            userID: uid, userName: name
+                        )
+                    }
+                }
             }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
                 checkEndOfDayCalorieTopUp()

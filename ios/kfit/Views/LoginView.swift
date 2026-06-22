@@ -120,7 +120,7 @@ struct LoginView: View {
                             .padding(.horizontal, 24)
 
                         // AppleWatch Diet Ultra2
-                        Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                        Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
                             HStack(spacing: 12) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 10)
@@ -152,7 +152,7 @@ struct LoginView: View {
                         .padding(.horizontal, 24)
 
                         // iOSアプリの作り方
-                        Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                        Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
                             HStack(spacing: 12) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 10)

@@ -315,23 +315,33 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var likeCount: Int = 0
     var isLiked: Bool = false
     var feedComments: [FeedComment] = []
-    var isPublic: Bool = true   // TOMOのDailyフィードに公開するか（旧データ=全て公開）
+    var isPublic: Bool = true
+
+    // Duolingo 外国語フレーズ情報（OCR・翻訳・TTS 用）
+    var extractedPhrase: String?       // OCR で抽出した外国語テキスト
+    var extractedLanguageCode: String? // 検出言語コード (zh-Hans, en, fr, es …)
+    var translationJA: String?         // 日本語訳
+    var pronunciation: String?         // 発音記号 / ピンイン等
 
     // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id             = try c.decodeIfPresent(String.self,         forKey: .id)             ?? UUID().uuidString
-        timestamp      = try c.decodeIfPresent(Date.self,           forKey: .timestamp)      ?? Date()
-        activityName   = try c.decodeIfPresent(String.self,         forKey: .activityName)   ?? ""
-        activityEmoji  = try c.decodeIfPresent(String.self,         forKey: .activityEmoji)  ?? ""
-        comment        = try c.decodeIfPresent(String.self,         forKey: .comment)        ?? ""
-        authorName     = try c.decodeIfPresent(String.self,         forKey: .authorName)     ?? ""
-        authorPhotoURL = try c.decodeIfPresent(String.self,         forKey: .authorPhotoURL) ?? ""
-        thumbnailData  = try c.decodeIfPresent(Data.self,           forKey: .thumbnailData)
-        likeCount      = try c.decodeIfPresent(Int.self,            forKey: .likeCount)      ?? 0
-        isLiked        = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)        ?? false
-        feedComments   = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)   ?? []
-        isPublic       = try c.decodeIfPresent(Bool.self,           forKey: .isPublic)       ?? true
+        id                    = try c.decodeIfPresent(String.self,         forKey: .id)                    ?? UUID().uuidString
+        timestamp             = try c.decodeIfPresent(Date.self,           forKey: .timestamp)             ?? Date()
+        activityName          = try c.decodeIfPresent(String.self,         forKey: .activityName)          ?? ""
+        activityEmoji         = try c.decodeIfPresent(String.self,         forKey: .activityEmoji)         ?? ""
+        comment               = try c.decodeIfPresent(String.self,         forKey: .comment)               ?? ""
+        authorName            = try c.decodeIfPresent(String.self,         forKey: .authorName)            ?? ""
+        authorPhotoURL        = try c.decodeIfPresent(String.self,         forKey: .authorPhotoURL)        ?? ""
+        thumbnailData         = try c.decodeIfPresent(Data.self,           forKey: .thumbnailData)
+        likeCount             = try c.decodeIfPresent(Int.self,            forKey: .likeCount)             ?? 0
+        isLiked               = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)               ?? false
+        feedComments          = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)          ?? []
+        isPublic              = try c.decodeIfPresent(Bool.self,           forKey: .isPublic)              ?? true
+        extractedPhrase       = try c.decodeIfPresent(String.self,         forKey: .extractedPhrase)
+        extractedLanguageCode = try c.decodeIfPresent(String.self,         forKey: .extractedLanguageCode)
+        translationJA         = try c.decodeIfPresent(String.self,         forKey: .translationJA)
+        pronunciation         = try c.decodeIfPresent(String.self,         forKey: .pronunciation)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

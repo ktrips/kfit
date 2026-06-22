@@ -822,7 +822,7 @@ struct MandalaChartView: View {
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-drink",
                     emoji: "💧",
-                    label: "水分 200ml",
+                    label: "水分",
                     isCompleted: dailyWaterDone || slotActualWaterMl >= waterQuarterGoal,
                     slot: slot,
                     type: .drink
@@ -1152,41 +1152,41 @@ struct MandalaChartView: View {
         ZStack {
             Circle()
                 .fill(Color(.systemBackground))
-                .frame(width: 72, height: 72)
+                .frame(width: 84, height: 84)
                 .shadow(color: .black.opacity(0.12), radius: 6)
 
             // 外側リング：時間帯別タスク割合（背景トラック）
             Circle()
                 .stroke(Color(.systemGray6), lineWidth: 5.5)
-                .frame(width: 64, height: 64)
+                .frame(width: 76, height: 76)
 
             // 外側リング：時間帯カラーセグメント
             ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                 Circle()
                     .trim(from: seg.start, to: seg.end)
                     .stroke(seg.color, style: StrokeStyle(lineWidth: 5.5, lineCap: .butt))
-                    .frame(width: 64, height: 64)
+                    .frame(width: 76, height: 76)
                     .rotationEffect(.degrees(-90))
             }
 
             // 内側リング：実際の進捗（背景トラック）
             Circle()
                 .stroke(Color(.systemGray5), lineWidth: 4)
-                .frame(width: 52, height: 52)
+                .frame(width: 62, height: 62)
 
             // 内側リング：グリーン進捗
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(Color.duoGreen, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .frame(width: 52, height: 52)
+                .frame(width: 62, height: 62)
                 .rotationEffect(.degrees(-90))
 
-            VStack(spacing: -1) {
+            VStack(spacing: -2) {
                 Text("\(Int(progress * 100))")
-                    .font(.system(size: 14 * UIScale.font, weight: .black))
+                    .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)
                 Text("%")
-                    .font(.system(size: 8 * UIScale.font, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                     .foregroundColor(Color.duoSubtitle)
             }
         }

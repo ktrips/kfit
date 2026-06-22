@@ -439,6 +439,22 @@ struct FoodView: View {
                     }
                 }
 
+                // 行2b: フルーツジュース（水分 200ml + 76kcal）
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "🍊", label: "フルーツジュース", color: Color(hex: "#FF9600")) {
+                        confirm("フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？") {
+                            Task {
+                                await authManager.recordFruitJuice()
+                                await updateSlotForDrink(ml: 200)
+                                await loadData()
+                            }
+                        }
+                    }
+                    // 3列グリッドを維持するための透明プレースホルダー
+                    Color.clear.frame(maxWidth: .infinity)
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+
                 // 行3: ビール・ワイン・焼酎
                 HStack(spacing: 8) {
                     quickBtn(emoji: "🍺", label: "ビール", color: Color.duoPurple) {
@@ -987,6 +1003,16 @@ struct FoodView: View {
                                 Task {
                                     await authManager.recordWater()
                                     await updateSlotForDrink(ml: intakeGoals.waterPerCup)
+                                    await loadData()
+                                    hydrationQuickType = nil
+                                }
+                            }
+                        }
+                        hydrationQuickBtn(emoji: "🍊", label: "フルーツジュース", sub: "200ml・76kcal") {
+                            confirm("フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？") {
+                                Task {
+                                    await authManager.recordFruitJuice()
+                                    await updateSlotForDrink(ml: 200)
                                     await loadData()
                                     hydrationQuickType = nil
                                 }

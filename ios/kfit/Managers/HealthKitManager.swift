@@ -637,14 +637,8 @@ final class HealthKitManager: ObservableObject {
 
         // セッション数が増えていたら時間帯の進捗を更新
         if newSessions > previousMindfulnessSessions && previousMindfulnessSessions > 0 {
-            let now = Date()
-            let calendar = Calendar.current
-            let hour = calendar.component(.hour, from: now)
-            let timeSlot: TimeSlot
-            if hour >= 6 && hour < 10 { timeSlot = .morning }
-            else if hour >= 10 && hour < 14 { timeSlot = .noon }
-            else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-            else { timeSlot = .evening }
+            let hour = Calendar.current.component(.hour, from: Date())
+            let timeSlot = TimeSlot.forHour(hour)
 
             let diff = newSessions - previousMindfulnessSessions
             for _ in 0..<diff {
@@ -921,11 +915,6 @@ final class HealthKitManager: ObservableObject {
         let start = Calendar.current.startOfDay(for: Date())
         let pred  = HKQuery.predicateForSamples(withStart: start, end: Date())
         return await fetchCumulativeSum(type: type, predicate: pred, unit: .kilocalorie())
-    }
-
-    /// 後方互換性のため
-    private func fetchTodayCalories() async -> Double {
-        return await fetchTodayActiveCalories()
     }
 
     // MARK: - 心拍数（最新）

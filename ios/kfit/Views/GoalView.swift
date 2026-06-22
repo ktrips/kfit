@@ -2404,16 +2404,21 @@ private struct GoalTimelineStrip: View {
                     Text("今日")
                         .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color(hex: "#1CB0F6"))
-                    HStack(alignment: .lastTextBaseline, spacing: 0) {
-                        Text("あと")
-                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(daysColor)
-                        Text("\(daysRemaining)")
-                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(daysColor)
-                        Text("日")
-                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(daysColor)
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        HStack(alignment: .lastTextBaseline, spacing: 0) {
+                            Text("あと")
+                                .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(daysColor)
+                            Text("\(daysRemaining)")
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(daysColor)
+                            Text("日")
+                                .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(daysColor)
+                        }
+                        Text("(\(Int(timeProgress * 100))%)")
+                            .font(.system(size: 8 * UIScale.font, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(hex: "#1CB0F6").opacity(0.8))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)

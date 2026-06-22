@@ -147,6 +147,7 @@ struct DashboardView: View {
     @State private var isLoading    = false  // 初期値をfalseに変更
     @State private var mascotBounce = false
     @State private var showDrinkToast = false  // 水分記録後のトースト表示
+    @State private var lastDrinkMl: Int = 200  // 直前に記録した水分量
     @State private var showTracker  = false
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
@@ -301,7 +302,7 @@ struct DashboardView: View {
                 HStack(spacing: 8) {
                     Text("💧")
                         .font(.title3)
-                    Text("水分200ml")
+                    Text("水分 \(lastDrinkMl) ml")
                         .font(.subheadline).fontWeight(.black)
                         .foregroundColor(.white)
                 }
@@ -355,37 +356,44 @@ struct DashboardView: View {
                     isDone: node.isCompleted,
                     onComplete: {
                         selectedMandalaNode = nil
-                        let isDrink = node.type == .drink
-                        Task {
-                            await handleMandalaComplete(node)
-                            if isDrink {
-                                await MainActor.run {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        showDrinkToast = true
-                                    }
-                                }
-                                try? await Task.sleep(nanoseconds: 2_200_000_000)
-                                await MainActor.run {
-                                    withAnimation(.easeOut(duration: 0.4)) {
-                                        showDrinkToast = false
-                                    }
-                                }
-                            }
-                        }
+                        Task { await handleMandalaComplete(node) }
                     },
                     onPhotoTap: node.type == .meal ? {
                         selectedMandalaNode = nil
                         showPhotoLog = true
-                    } : (node.type == .custom && !isStudyOrReading) ? {
+                    } : node.type == .custom ? {
+                        // 読書・勉強も含む全カスタムノードでEduPhotoLogSheet（フィード投稿トグル付き）を使用
                         eduPhotoLogNode = node
                         selectedMandalaNode = nil
                         showEduPhotoLog = true
+                    } : nil,
+                    onDrinkComplete: node.type == .drink ? { ml in
+                        selectedMandalaNode = nil
+                        Task {
+                            await authManager.recordWater(customMl: ml)
+                            await updateTimeSlotForDrink(timestamp: Date(), ml: ml)
+                            await refreshIntakeData()
+                            await MainActor.run {
+                                lastDrinkMl = ml
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    showDrinkToast = true
+                                }
+                            }
+                            try? await Task.sleep(nanoseconds: 2_200_000_000)
+                            await MainActor.run {
+                                withAnimation(.easeOut(duration: 0.4)) {
+                                    showDrinkToast = false
+                                }
+                            }
+                        }
                     } : nil,
                     isRecordType: node.type == .meal || node.type == .drink,
                     showPhotoButton: node.type != .drink,
                     linkURL: nodeLinkURL
                 )
-                .presentationDetents([.height(nodeLinkURL != nil ? 340 : 290)])
+                .presentationDetents([.height(node.type == .drink && !node.isCompleted
+                    ? (nodeLinkURL != nil ? 400 : 360)
+                    : (nodeLinkURL != nil ? 340 : 290))])
                 .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
@@ -408,7 +416,15 @@ struct DashboardView: View {
                                     )
                                 }
                             }
-                        }
+                        },
+                        linkURL: {
+                            let isStudyOrReading = node.id == "wd-study"
+                                || node.label == "読書" || node.label == "勉強"
+                            guard isStudyOrReading else { return nil }
+                            let url = studyBookUrl.hasPrefix("http")
+                                ? studyBookUrl : "https://\(studyBookUrl)"
+                            return URL(string: url)
+                        }()
                     )
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
@@ -860,157 +876,6 @@ struct DashboardView: View {
 
     private var effectiveIntakeCalories: Int {
         dietGoalManager.settings.useHealthKitForIntake ? Int(healthKit.todayIntakeCalories) : effectiveMealLogged
-    }
-
-    // MARK: - ヘッダー（コンパクト・最上段固定）
-    private var headerCard: some View {
-        let currentHour = Calendar.current.component(.hour, from: Date())
-        var completedSlots: [TimeSlot] = []
-        if currentHour >= 6 { completedSlots.append(.morning) }
-        if currentHour >= 10 { completedSlots.append(.noon) }
-        if currentHour >= 14 { completedSlots.append(.afternoon) }
-        if currentHour >= 18 { completedSlots.append(.evening) }
-
-        let totalTrainingCompleted = completedSlots.reduce(0) { sum, slot in
-            sum + countSetsInTimeSlot(slot)
-        }
-        let totalTrainingGoal = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
-        }
-        let totalMindfulnessCompleted = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.progress.progressFor(slot)?.mindfulnessCompleted ?? 0)
-        }
-        let totalMindfulnessGoal = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.mindfulnessGoal ?? 0)
-        }
-        let totalMealLogged = effectiveMealLogged
-        let totalMealGoal = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.logGoal.mealGoal ?? 0)
-        }
-        let totalDrinkLogged = Int(healthKit.todayIntakeWater)
-        let totalDrinkGoal = completedSlots.reduce(0) { sum, slot in
-            sum + (timeSlotManager.settings.goalFor(slot)?.logGoal.drinkGoal ?? 0)
-        }
-
-        var totalGoals = 0
-        var completedGoals = 0
-        if totalTrainingGoal > 0 {
-            totalGoals += 1
-            if totalTrainingCompleted >= totalTrainingGoal { completedGoals += 1 }
-        }
-        if totalMindfulnessGoal > 0 {
-            totalGoals += 1
-            if totalMindfulnessCompleted >= totalMindfulnessGoal { completedGoals += 1 }
-        }
-        if totalMealGoal > 0 {
-            totalGoals += 1
-            if totalMealLogged >= totalMealGoal { completedGoals += 1 }
-        }
-        if totalDrinkGoal > 0 {
-            totalGoals += 1
-            if totalDrinkLogged >= totalDrinkGoal { completedGoals += 1 }
-        }
-        // 毎日の設定（全曜日共通・headerCard用）
-        if dailyFixedGoals.foodEnabled {
-            totalGoals += 1; if healthKit.todayIntakeCalories >= 2000 { completedGoals += 1 }
-        }
-        if dailyFixedGoals.weightEnabled {
-            totalGoals += 1; if healthKit.todayBodyMassMeasurements > 0 { completedGoals += 1 }
-        }
-        if dailyFixedGoals.sleepEnabled {
-            totalGoals += 1
-            let sleepDone2 = healthKit.lastNightTotalHours >= Double(dailyFixedGoals.sleepHoursGoal) || timeSlotManager.progress.globalProgress.sleepScore >= timeSlotManager.settings.globalGoals.sleepScoreThreshold
-            if sleepDone2 { completedGoals += 1 }
-        }
-        // 曜日毎の目標（headerCard用）
-        if let wg = todayWeekdayGoal {
-            let gp2 = timeSlotManager.progress.globalProgress
-            if wg.exerciseEnabled {
-                totalGoals += 1
-                if healthKit.activityMoveCalories >= healthKit.activityMoveGoal
-                    && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
-                    && healthKit.activityStandHours >= healthKit.activityStandGoal
-                    && healthKit.activityMoveGoal > 0 { completedGoals += 1 }
-            }
-            if wg.studyEnabled {
-                totalGoals += 1
-                if gp2.completedCustomGoalIds.contains("wd_study_\(wg.weekday)") { completedGoals += 1 }
-            }
-            if wg.noAlcoholEnabled {
-                totalGoals += 1
-                if gp2.completedCustomGoalIds.contains("wd_noalcohol_\(wg.weekday)") { completedGoals += 1 }
-            }
-            for cg in wg.customGoals {
-                totalGoals += 1
-                if gp2.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)") { completedGoals += 1 }
-            }
-        }
-        for cg in dailyFixedGoals.customGoals {
-            totalGoals += 1
-            if timeSlotManager.progress.globalProgress.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)") { completedGoals += 1 }
-        }
-
-        let progressPercent = todayCurrentProgressPercent
-        let totalConsumed = healthKit.todayTotalCalories
-        let intake = healthKit.todayIntakeCalories
-        let balance = intake - totalConsumed
-
-        return GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                LinearGradient(
-                    colors: [Color.duoGreen, Color(red: 0.18, green: 0.58, blue: 0.0)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea(.all, edges: .top)
-
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: geometry.safeAreaInsets.top)
-
-                    VStack(spacing: 4) {
-                        // ロゴ
-                        HStack(spacing: 3) {
-                            Image("mascot")
-                                .resizable().scaledToFill()
-                                .frame(width: 14, height: 14)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
-                            HStack(spacing: 0) {
-                                Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
-                                Text("go").foregroundColor(.white)
-                            }
-                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
-                        }
-
-                        // 統計情報
-                        HStack(spacing: 8) {
-                            compactStat(icon: "🔥", value: "\(authManager.userProfile?.streak ?? 0)")
-                            compactStat(icon: "📊", value: "\(progressPercent)%")
-                            compactStat(icon: balance >= 0 ? "📈" : "📉", value: balance >= 0 ? "+\(Int(balance))" : "\(Int(balance))")
-                            compactStat(icon: "⭐", value: "\(authManager.userProfile?.totalPoints ?? 0)")
-                        }
-                        .padding(.trailing, 48)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                }
-
-                HeaderNavigationMenu(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-                    .padding(.top, geometry.safeAreaInsets.top + 8)
-                    .padding(.trailing, 10)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .frame(height: geometry.safeAreaInsets.top + 50)
-        }
-        .frame(height: 94)
-    }
-
-    private func compactStat(icon: String, value: String) -> some View {
-        HStack(spacing: 1) {
-            Text(icon).font(.system(size: 10 * UIScale.font))
-            Text(value)
-                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                .foregroundColor(.white)
-        }
     }
 
     // ── 現在の時間帯セット状況 ───
@@ -5533,28 +5398,16 @@ struct DashboardView: View {
 
     /// トレーニング完了時に時間帯の進捗を更新
     private func updateTimeSlotForTraining(timestamp: Date) async {
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: timestamp)
-        let timeSlot: TimeSlot
-
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: timestamp)
+        let timeSlot = TimeSlot.forHour(hour)
 
         await timeSlotManager.recordTrainingCompleted(at: timeSlot)
     }
 
     /// 食事記録時に時間帯の進捗を更新（カロリーを加算）
     private func updateTimeSlotForMeal(timestamp: Date, calories: Int) async {
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: timestamp)
-        let timeSlot: TimeSlot
-
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: timestamp)
+        let timeSlot = TimeSlot.forHour(hour)
 
         await timeSlotManager.recordMealLog(at: timeSlot, calories: calories)
     }
@@ -5622,28 +5475,16 @@ struct DashboardView: View {
 
     /// 飲み物記録時に時間帯の進捗を更新（mlを加算）
     private func updateTimeSlotForDrink(timestamp: Date, ml: Int) async {
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: timestamp)
-        let timeSlot: TimeSlot
-
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: timestamp)
+        let timeSlot = TimeSlot.forHour(hour)
 
         await timeSlotManager.recordDrinkLog(at: timeSlot, ml: ml)
     }
 
     /// マインドフルネス実施時に時間帯の進捗を更新
     private func updateTimeSlotForMindfulness(timestamp: Date) async {
-        let calendar = Calendar.current
-        let hour = calendar.component(.hour, from: timestamp)
-        let timeSlot: TimeSlot
-
-        if hour >= 6 && hour < 10 { timeSlot = .morning }
-        else if hour >= 10 && hour < 14 { timeSlot = .noon }
-        else if hour >= 14 && hour < 18 { timeSlot = .afternoon }
-        else { timeSlot = .evening }
+        let hour = Calendar.current.component(.hour, from: timestamp)
+        let timeSlot = TimeSlot.forHour(hour)
 
         await timeSlotManager.recordMindfulnessCompleted(at: timeSlot)
     }
@@ -5932,7 +5773,7 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoDark)
                 Spacer()
             }
-            Link(destination: URL(string: "https://amzn.asia/d/iWJCkld")!) {
+            Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
                 HStack(spacing: 12) {
                     Text("⌚")
                         .font(.system(size: 22 * UIScale.font))
@@ -7562,6 +7403,7 @@ private struct EduPhotoLogSheet: View {
     let nodeEmoji: String
     let nodeName: String
     let onComplete: (Bool, Bool, UIImage?, String) -> Void
+    var linkURL: URL? = nil   // 読書・勉強ノード用：本のリンク
 
     @State private var selectedImage: UIImage? = nil
     @State private var pickerItem: PhotosPickerItem? = nil
@@ -7651,6 +7493,24 @@ private struct EduPhotoLogSheet: View {
                         .cornerRadius(14)
                     }
                     .buttonStyle(.plain)
+
+                    // 本のリンク（読書・勉強ノードのみ）
+                    if let url = linkURL {
+                        Button {
+                            UIApplication.shared.open(url)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "book.fill").font(.title3)
+                                Text("設定したリンクに飛ぶ").font(.headline).fontWeight(.black)
+                                Spacer()
+                            }
+                            .foregroundColor(Color.duoOrange)
+                            .padding(.horizontal, 20).padding(.vertical, 14)
+                            .background(Color.duoOrange.opacity(0.1))
+                            .cornerRadius(14)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
@@ -7673,11 +7533,15 @@ private struct GoalCompletionSheet: View {
     let isDone: Bool
     let onComplete: () -> Void
     var onPhotoTap: (() -> Void)? = nil
+    var onDrinkComplete: ((Int) -> Void)? = nil   // 水分ノード専用：選択mlを渡す
     var isRecordType: Bool = false
     var showPhotoButton: Bool = true
     var linkURL: URL? = nil
 
     @State private var pickerItem: PhotosPickerItem? = nil
+    @State private var selectedDrinkMl: Int = 200
+
+    private let drinkOptions = [200, 400, 600]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -7694,14 +7558,45 @@ private struct GoalCompletionSheet: View {
                 }
             }
             .padding(.top, 24)
-            .padding(.bottom, 18)
+            .padding(.bottom, 14)
+
+            // ── 水分量トグル（水分ノードのみ） ──
+            if onDrinkComplete != nil && !isDone {
+                VStack(spacing: 6) {
+                    Text("水分量を選択")
+                        .font(.system(size: 12 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                    HStack(spacing: 8) {
+                        ForEach(drinkOptions, id: \.self) { ml in
+                            Button {
+                                selectedDrinkMl = ml
+                            } label: {
+                                Text("\(ml)ml")
+                                    .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(selectedDrinkMl == ml ? .white : Color.duoBlue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(selectedDrinkMl == ml ? Color.duoBlue : Color.duoBlue.opacity(0.1))
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, 12)
+            }
 
             Divider()
 
             VStack(spacing: 10) {
                 // 完了ボタン
                 Button {
-                    onComplete()
+                    if let drinkCb = onDrinkComplete, !isDone {
+                        drinkCb(selectedDrinkMl)
+                    } else {
+                        onComplete()
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: isDone

@@ -59,14 +59,19 @@ enum TimeSlot: String, Codable, CaseIterable {
         }
     }
 
-    /// 現在の時刻が属する時間帯を取得
-    static func current() -> TimeSlot {
-        let hour = Calendar.current.component(.hour, from: Date())
+    /// 指定した時刻（0〜23時）が属する時間帯を取得
+    static func forHour(_ hour: Int) -> TimeSlot {
         if hour < 6 { return .midnight }
         if hour < 10 { return .morning }
         if hour < 14 { return .noon }
         if hour < 18 { return .afternoon }
         return .evening
+    }
+
+    /// 現在の時刻が属する時間帯を取得
+    static func current() -> TimeSlot {
+        let hour = Calendar.current.component(.hour, from: Date())
+        return forHour(hour)
     }
 }
 

@@ -60,7 +60,7 @@ struct MoreView: View {
                     .listRowBackground(Color.white)
 
                     // Fitingoの本を読んでみる
-                    Link(destination: URL(string: "https://amzn.to/43GSmB6")!) {
+                    Link(destination: URL(string: "https://amzn.to/4epQJxQ")!) {
                         MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの本を読んでみる")
                     }
                     .listRowBackground(Color.white)

@@ -11,8 +11,8 @@ const FREE_CHAR_LIMIT = 8000;
 
 // Kindle 販売リンク（本ごとに設定）
 export const KINDLE_URLS: Record<BookId, string> = {
-  'apple-watch-diet': 'https://amzn.to/43GSmB6',
-  'cursor-claude-code': 'https://amzn.to/43GSmB6',
+  'apple-watch-diet': 'https://amzn.to/4ek5fHi',
+  'cursor-claude-code': 'https://amzn.to/4ek5fHi',
 };
 
 export type BookId = 'apple-watch-diet' | 'cursor-claude-code';

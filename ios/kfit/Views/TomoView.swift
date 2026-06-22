@@ -159,6 +159,7 @@ struct TomoView: View {
     @State private var showOlderFeed = false
     @State private var showInviteSheet = false
     @State private var deleteConfirmItem: EduLogHistoryItem? = nil
+    @State private var speakingItemID: String? = nil   // TTS 再生中のアイテム ID
     @FocusState private var emailFocused: Bool
 
     var body: some View {
@@ -610,6 +611,11 @@ struct TomoView: View {
             }
             .buttonStyle(.plain)
 
+            // ── Duolingo フレーズパネル ───────────────────────────────────
+            if let phrase = item.extractedPhrase, !phrase.isEmpty {
+                duolingoPhrasePanel(item: item, phrase: phrase)
+            }
+
             // ── アクションボタン行 ────────────────────────────────────────
             HStack(spacing: 0) {
                 // いいね
@@ -666,6 +672,112 @@ struct TomoView: View {
             Spacer().frame(height: 4)
         }
         .background(Color(.systemBackground))
+    }
+
+    // MARK: - Duolingo フレーズパネル
+
+    @ViewBuilder
+    private func duolingoPhrasePanel(item: EduLogHistoryItem, phrase: String) -> some View {
+        let isSpeaking = speakingItemID == item.id
+        let langCode   = item.extractedLanguageCode ?? "en"
+        let langLabel  = languageLabel(langCode)
+
+        VStack(alignment: .leading, spacing: 6) {
+            // 言語バッジ
+            HStack(spacing: 6) {
+                Text(languageFlag(langCode))
+                    .font(.system(size: 16))
+                Text(langLabel)
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                // 再生ボタン
+                Button {
+                    if isSpeaking {
+                        DuolingoTextExtractor.shared.stopSpeaking()
+                        speakingItemID = nil
+                    } else {
+                        speakingItemID = item.id
+                        DuolingoTextExtractor.shared.speak(phrase: phrase, languageCode: langCode)
+                        // 読み上げ終了を 10 秒後にリセット（完了コールバック非対応のため）
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                            if speakingItemID == item.id {
+                                speakingItemID = nil
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 14))
+                        Text(isSpeaking ? "停止" : "再生")
+                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    }
+                    .foregroundColor(isSpeaking ? Color.red : Color(hex: "#1CB0F6"))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background((isSpeaking ? Color.red : Color(hex: "#1CB0F6")).opacity(0.12))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // 外国語フレーズ（大）
+            Text(phrase)
+                .font(.system(size: 18 * UIScale.font, weight: .bold))
+                .foregroundColor(Color.duoDark)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // 発音記号
+            if let pron = item.pronunciation, !pron.isEmpty {
+                Text(pron)
+                    .font(.system(size: 13 * UIScale.font))
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // 日本語訳
+            if let tja = item.translationJA, !tja.isEmpty {
+                Text(tja)
+                    .font(.system(size: 13 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(.systemGray6).opacity(0.6))
+    }
+
+    private func languageFlag(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "🇨🇳"
+        case "zh-Hant":                   return "🇹🇼"
+        case "ko":                        return "🇰🇷"
+        case "fr":                        return "🇫🇷"
+        case "es":                        return "🇪🇸"
+        case "de":                        return "🇩🇪"
+        case "pt":                        return "🇧🇷"
+        case "it":                        return "🇮🇹"
+        case "ru":                        return "🇷🇺"
+        case "ar":                        return "🇸🇦"
+        default:                          return "🇺🇸"
+        }
+    }
+
+    private func languageLabel(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "中国語"
+        case "zh-Hant":                   return "中国語（繁体）"
+        case "ko":                        return "韓国語"
+        case "fr":                        return "フランス語"
+        case "es":                        return "スペイン語"
+        case "de":                        return "ドイツ語"
+        case "pt":                        return "ポルトガル語"
+        case "it":                        return "イタリア語"
+        case "ru":                        return "ロシア語"
+        case "ar":                        return "アラビア語"
+        default:                          return "英語"
+        }
     }
 
     // MARK: - ヘルパー

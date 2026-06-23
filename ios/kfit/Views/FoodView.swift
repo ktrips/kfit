@@ -125,6 +125,14 @@ struct FoodView: View {
     }
     @State private var foodHistoryCache = FoodHistoryCache()
 
+    // クイックログ固定メニューの栄養素（カロリーに見合った値）
+    static let katsuCurryNutrition = MealNutrition(
+        calories: 1000, protein: 30, fat: 40, carbs: 125, sugar: 118, fiber: 7, sodium: 4.0
+    )
+    static let nutritionBarNutrition = MealNutrition(
+        calories: 100, protein: 2, fat: 5, carbs: 12, sugar: 10, fiber: 1, sodium: 0.1
+    )
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
@@ -294,70 +302,71 @@ struct FoodView: View {
             // ── 食事フォトログ ────────────────────────────────────────────
             Button { showPhotoLog = true } label: {
                 let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
-                HStack(spacing: 14) {
+                HStack(spacing: 16) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 14)
+                        RoundedRectangle(cornerRadius: 16)
                             .fill(LinearGradient(
                                 colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ))
-                            .frame(width: 62, height: 62)
+                            .frame(width: 76, height: 76)
                         if recentPhotos.isEmpty {
                             VStack(spacing: 3) {
                                 Image(systemName: "camera.fill")
-                                    .font(.system(size: 24 * UIScale.font, weight: .semibold))
+                                    .font(.system(size: 30 * UIScale.font, weight: .semibold))
                                     .foregroundColor(.white)
                                 Text("AI")
-                                    .font(.system(size: 9 * UIScale.font, weight: .black))
+                                    .font(.system(size: 10 * UIScale.font, weight: .black))
                                     .foregroundColor(.white.opacity(0.9))
                             }
                         } else {
                             Image(uiImage: recentPhotos[0])
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 62, height: 62)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .frame(width: 76, height: 76)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                     }
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         Text("📸 AI食事フォトログ")
-                            .font(.system(size: 16 * UIScale.font, weight: .black))
+                            .font(.system(size: 18 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         if recentPhotos.isEmpty {
                             Text("写真を撮ってAIカロリー計算")
-                                .font(.system(size: 12 * UIScale.font))
+                                .font(.system(size: 13 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         } else {
                             HStack(spacing: 4) {
                                 ForEach(Array(recentPhotos.dropFirst().enumerated()), id: \.offset) { _, img in
                                     Image(uiImage: img)
                                         .resizable()
                                         .scaledToFill()
-                                        .frame(width: 26, height: 26)
+                                        .frame(width: 28, height: 28)
                                         .clipShape(RoundedRectangle(cornerRadius: 5))
                                 }
                                 Text("最近の記録 \(photoLogManager.history.count)件")
-                                    .font(.system(size: 11 * UIScale.font))
+                                    .font(.system(size: 12 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                             }
                         }
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoOrange.opacity(0.7))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 24)
                 .background(
                     LinearGradient(
                         colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 14)
                         .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
                 )
                 .padding(.horizontal, 12)
@@ -366,15 +375,7 @@ struct FoodView: View {
 
             // ── クイックログ ────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 4) {
-                    Image(systemName: "bolt.fill")
-                        .foregroundColor(Color.duoOrange)
-                        .font(.system(size: 10 * UIScale.font))
-                    Text("クイックログ")
-                        .font(.system(size: 11 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
-                }
-                .padding(.top, 12)
+                Spacer().frame(height: 4)
 
                 // 行1: 朝食・昼食・夕食
                 HStack(spacing: 8) {
@@ -407,8 +408,21 @@ struct FoodView: View {
                     }
                 }
 
-                // 行2: スナック・水・コーヒー
+                // 行2: カツカレー・スナック・栄養バー
                 HStack(spacing: 8) {
+                    quickBtn(emoji: "🍛", label: "カツカレー", color: Color.duoOrange) {
+                        confirm("カツカレー 1000kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordCustomMeal(
+                                    name: "カツカレー",
+                                    mealType: .lunch,
+                                    nutrition: FoodView.katsuCurryNutrition
+                                )
+                                await updateSlotForMeal(calories: FoodView.katsuCurryNutrition.calories)
+                                await loadData()
+                            }
+                        }
+                    }
                     quickBtn(emoji: "🍫", label: "スナック", color: Color.duoOrange) {
                         confirm("スナック \(intakeGoals.caloriesFor(mealType: .snack))kcal を記録しますか？") {
                             Task {
@@ -418,6 +432,23 @@ struct FoodView: View {
                             }
                         }
                     }
+                    quickBtn(emoji: "🍪", label: "栄養バー", color: Color.duoOrange) {
+                        confirm("栄養バー 100kcal を記録しますか？") {
+                            Task {
+                                await authManager.recordCustomMeal(
+                                    name: "栄養バー",
+                                    mealType: .snack,
+                                    nutrition: FoodView.nutritionBarNutrition
+                                )
+                                await updateSlotForMeal(calories: FoodView.nutritionBarNutrition.calories)
+                                await loadData()
+                            }
+                        }
+                    }
+                }
+
+                // 行2b: 水・コーヒー・フルーツジュース
+                HStack(spacing: 8) {
                     quickBtn(emoji: "💧", label: "水", color: Color.duoBlue) {
                         confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
                             Task {
@@ -437,10 +468,6 @@ struct FoodView: View {
                             }
                         }
                     }
-                }
-
-                // 行2b: フルーツジュース（水分 200ml + 76kcal）
-                HStack(spacing: 8) {
                     quickBtn(emoji: "🍊", label: "フルーツジュース", color: Color(hex: "#FF9600")) {
                         confirm("フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？") {
                             Task {
@@ -450,9 +477,6 @@ struct FoodView: View {
                             }
                         }
                     }
-                    // 3列グリッドを維持するための透明プレースホルダー
-                    Color.clear.frame(maxWidth: .infinity)
-                    Color.clear.frame(maxWidth: .infinity)
                 }
 
                 // 行3: ビール・ワイン・焼酎

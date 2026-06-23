@@ -569,53 +569,36 @@ struct MainTabView: View {
 struct HeaderNavigationMenu: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
-    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
-    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
-    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
-    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
-    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = true
-    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
-    private var visiblePrimaryTabs: [MainMenuTab] {
-        let ordered = MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
-        let visible = ordered.filter { tab in
-            switch tab {
-            case .fit: return fitVisible
-            case .goal: return goalVisible
-            case .mind: return mindVisible
-            case .food: return foodVisible
-            case .tomo: return tomoVisible
-            }
-        }
-        return visible.isEmpty ? [.fit] : visible
+    // ハンバーガーメニューでは全タブを表示（表示設定でフィルタしない）
+    private var allPrimaryTabs: [MainMenuTab] {
+        MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
     }
+
+    private let bookURL = URL(string: "https://fit.ktrips.net/books")!
 
     var body: some View {
         Menu {
-            ForEach(visiblePrimaryTabs) { tab in
+            ForEach(allPrimaryTabs) { tab in
                 Button {
                     selectedTab = tab.rawValue
                 } label: {
                     Label(tab.label, systemImage: tab.icon)
                 }
             }
-            if logVisible {
-                Button {
-                    showRecordMenu = true
-                } label: {
-                    Label("LOG", systemImage: "plus.circle.fill")
-                }
+            Button {
+                showRecordMenu = true
+            } label: {
+                Label("LOG", systemImage: "plus.circle.fill")
             }
             Button {
                 selectedTab = 4
             } label: {
                 Label("SETUP", systemImage: "gearshape.fill")
             }
-            Button {
-                selectedTab = 5
-            } label: {
-                Label("MORE...", systemImage: "ellipsis.circle.fill")
+            Link(destination: bookURL) {
+                Label("BOOKS", systemImage: "book.fill")
             }
         } label: {
             Image(systemName: "line.3.horizontal")

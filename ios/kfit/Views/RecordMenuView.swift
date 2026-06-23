@@ -126,6 +126,11 @@ struct RecordMenuView: View {
                                         pendingRecordAction = { await recordCoffeeAndTimeSlot() }
                                         showConfirmAlert = true
                                     }
+                                    Button("🍊 フルーツジュース（200ml）") {
+                                        confirmMessage = "フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？"
+                                        pendingRecordAction = { await recordFruitJuiceAndTimeSlot() }
+                                        showConfirmAlert = true
+                                    }
                                 } label: {
                                     quickRecordMenuButton(emoji: "🥤", label: "ドリンク", color: Color.duoBlue)
                                 }
@@ -268,6 +273,11 @@ struct RecordMenuView: View {
         let settings = await authManager.getIntakeSettings()
         await TimeSlotManager.shared.recordDrinkLog(at: currentTimeSlot(), ml: settings.coffeePerCup)
         await authManager.recordCoffee()
+    }
+
+    private func recordFruitJuiceAndTimeSlot() async {
+        await TimeSlotManager.shared.recordDrinkLog(at: currentTimeSlot(), ml: 200)
+        await authManager.recordFruitJuice()
     }
 
     private func recordAlcoholAndTimeSlot(_ alcoholType: AlcoholType) async {

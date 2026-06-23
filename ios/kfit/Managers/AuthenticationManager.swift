@@ -1574,6 +1574,34 @@ class AuthenticationManager: ObservableObject {
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
+    /// 任意の栄養素を指定して食事を記録（カツカレー・栄養バーなどの固定メニュー用）
+    func recordCustomMeal(name: String, mealType: MealType, nutrition: MealNutrition) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+
+        let data: [String: Any] = [
+            "mealType": mealType.rawValue,
+            "foodName": name,
+            "calories": nutrition.calories,
+            "protein": nutrition.protein,
+            "fat": nutrition.fat,
+            "carbs": nutrition.carbs,
+            "sugar": nutrition.sugar,
+            "fiber": nutrition.fiber,
+            "sodium": nutrition.sodium,
+            "timestamp": now
+        ]
+
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("meals")
+            .collection("logs").addDocument(data: data)
+        await updateSummaryForIntake(userId: userId, calories: nutrition.calories, mealType: mealType, timestamp: now)
+
+        // Apple Healthに栄養素を記録
+        await HealthKitManager.shared.saveMealNutrition(nutrition, date: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
     /// 水を記録
     func recordWater(cups: Int = 1, customMl: Int? = nil) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }

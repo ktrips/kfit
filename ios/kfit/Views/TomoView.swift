@@ -143,6 +143,16 @@ private struct ShareSheet: UIViewControllerRepresentable {
 
 // MARK: - TomoView
 
+// MARK: - クイック記録カテゴリ
+
+struct TomoQuickRecord: Identifiable {
+    let id: String
+    let label: String
+    let emoji: String
+    let color: Color
+    let isFood: Bool   // true → フォトログ(PhotoLogView)、false → EduPhotoLogSheet
+}
+
 struct TomoView: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
@@ -160,7 +170,27 @@ struct TomoView: View {
     @State private var showInviteSheet = false
     @State private var deleteConfirmItem: EduLogHistoryItem? = nil
     @State private var speakingItemID: String? = nil   // TTS 再生中のアイテム ID
+    @State private var showFoodLog = false             // FOOD → フォトログ
+    @State private var eduRecordTarget: TomoQuickRecord? = nil  // 写真記録シート対象
     @FocusState private var emailFocused: Bool
+
+    // クイック記録カテゴリ（ランキング上部・ヘッダー＋から起動）
+    private let quickRecords: [TomoQuickRecord] = [
+        TomoQuickRecord(id: "food",     label: "FOOD",     emoji: "🍽️", color: Color(hex: "#FF9600"), isFood: true),
+        TomoQuickRecord(id: "duolingo", label: "Duolingo", emoji: "🦉", color: Color(hex: "#58CC02"), isFood: false),
+        TomoQuickRecord(id: "diary",    label: "日記",     emoji: "📔", color: Color(hex: "#CE82FF"), isFood: false),
+        TomoQuickRecord(id: "reading",  label: "読書",     emoji: "📖", color: Color(hex: "#1CB0F6"), isFood: false),
+        TomoQuickRecord(id: "study",    label: "勉強",     emoji: "✏️", color: Color(hex: "#FF4B4B"), isFood: false),
+        TomoQuickRecord(id: "other",    label: "その他",   emoji: "✨", color: Color(hex: "#FFC800"), isFood: false),
+    ]
+
+    private func handleQuickRecord(_ rec: TomoQuickRecord) {
+        if rec.isFood {
+            showFoodLog = true
+        } else {
+            eduRecordTarget = rec
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -168,9 +198,12 @@ struct TomoView: View {
                 Color(UIColor.systemGroupedBackground).ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        rankingSection
+                        quickRecordBar
                             .padding(.horizontal, 14)
                             .padding(.top, 10)
+                        rankingSection
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
                             .padding(.bottom, 14)
                         eduFeedSection
                         Spacer(minLength: 40)
@@ -207,6 +240,29 @@ struct TomoView: View {
         }
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
+        }
+        .fullScreenCover(isPresented: $showFoodLog) {
+            PhotoLogView()
+        }
+        .sheet(item: $eduRecordTarget) { rec in
+            EduPhotoLogSheet(
+                nodeEmoji: rec.emoji,
+                nodeName: rec.label,
+                onComplete: { saveToFeed, isPublic, image, comment in
+                    eduRecordTarget = nil
+                    if saveToFeed {
+                        EduLogManager.shared.addItem(
+                            activityName: rec.label,
+                            activityEmoji: rec.emoji,
+                            comment: comment,
+                            image: image,
+                            isPublic: isPublic
+                        )
+                    }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .confirmationDialog("この投稿を削除しますか？", isPresented: Binding(
             get: { deleteConfirmItem != nil },
@@ -592,13 +648,19 @@ struct TomoView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
-            // ── フルサイズ写真 or グラデーション＋絵文字 ──────────────────
+            // ── Instagram風 正方形写真 or グラデーション＋絵文字 ──────────────
             Button { selectedEduItem = item } label: {
                 if let thumb = item.thumbnail {
-                    Image(uiImage: thumb)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
+                    // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay(
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                        )
+                        .clipped()
+                        .contentShape(Rectangle())
                 } else {
                     ZStack {
                         instaGradient(for: item)
@@ -606,7 +668,8 @@ struct TomoView: View {
                             .font(.system(size: 96 * UIScale.font))
                             .shadow(color: .black.opacity(0.25), radius: 12)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 260, maxHeight: 320)
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .buttonStyle(.plain)
@@ -829,6 +892,27 @@ struct TomoView: View {
                     .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                 }
 
+                // 記録メニュー（プラスアイコン・左側）
+                Menu {
+                    ForEach(quickRecords) { rec in
+                        Button {
+                            handleQuickRecord(rec)
+                        } label: {
+                            Text("\(rec.emoji)  \(rec.label)")
+                        }
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.25))
+                            .frame(width: 32, height: 32)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                        Image(systemName: "plus")
+                            .font(.system(size: 14 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                    }
+                }
+
                 Spacer()
 
                 // 参加者アバター（自分＋TOMO）をインライン表示
@@ -927,6 +1011,51 @@ struct TomoView: View {
         }
     }
 
+
+    // MARK: - クイック記録バー（ランキング上部）
+
+    private var quickRecordBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 12 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoBlue)
+                Text("写真で記録")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+            }
+
+            HStack(spacing: 0) {
+                ForEach(quickRecords) { rec in
+                    Button {
+                        handleQuickRecord(rec)
+                    } label: {
+                        VStack(spacing: 5) {
+                            ZStack {
+                                Circle()
+                                    .fill(rec.color.opacity(0.14))
+                                    .frame(width: 46, height: 46)
+                                Text(rec.emoji)
+                                    .font(.system(size: 24 * UIScale.font))
+                            }
+                            Text(rec.label)
+                                .font(.system(size: 9.5 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+    }
 
     // MARK: - Ranking（コンパクトカード）
 

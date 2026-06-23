@@ -133,6 +133,8 @@ struct DashboardView: View {
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
     // タイムスロット別セット数キャッシュ（todayExercises 変化時のみ再計算）
     @State private var cachedSlotSetCounts: [String: Int] = [:]
+    // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
+    @State private var cachedMandalaNodes: [MandalaNodeData] = []
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -146,8 +148,6 @@ struct DashboardView: View {
     @State private var calorieGoal = DailyCalorieGoal()
     @State private var isLoading    = false  // 初期値をfalseに変更
     @State private var mascotBounce = false
-    @State private var showDrinkToast = false  // 水分記録後のトースト表示
-    @State private var lastDrinkMl: Int = 200  // 直前に記録した水分量
     @State private var showTracker  = false
     @State private var showHabits   = false
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
@@ -196,13 +196,15 @@ struct DashboardView: View {
         let withHealthKitObservers = coreView
             .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
                 handleMindfulnessChange(old: oldValue, new: newValue)
+                recomputeMandalaNodes()
                 scheduleWidgetDataUpdate()
             }
-            .onChange(of: healthKit.todayActiveCalories) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayActiveCalories) { _, _ in recomputeMandalaNodes(); scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayRestingCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayStandHours) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayIntakeWater) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayIntakeWater) { _, _ in recomputeMandalaNodes(); scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayIntakeCalories) { _, _ in recomputeMandalaNodes() }
             .onChange(of: healthKit.todayBodyMassMeasurements) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.lastNightTotalHours) { _, _ in scheduleWidgetDataUpdate() }
         return withHealthKitObservers
@@ -211,6 +213,7 @@ struct DashboardView: View {
             .onChange(of: photoLogManager.history.count) { _, _ in recomputePhotoLogTotals() }
             .onChange(of: todayExercises.count) { _, _ in rebuildSlotSetCounts() }
             .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
+                recomputeMandalaNodes()
                 updateWidgetData()
             }
             .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
@@ -296,26 +299,6 @@ struct DashboardView: View {
             }
         }
         .navigationBarHidden(true)
-        // 水分記録トースト
-        .overlay(alignment: .top) {
-            if showDrinkToast {
-                HStack(spacing: 8) {
-                    Text("💧")
-                        .font(.title3)
-                    Text("水分 \(lastDrinkMl) ml")
-                        .font(.subheadline).fontWeight(.black)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(Color.duoBlue.opacity(0.92))
-                .clipShape(Capsule())
-                .shadow(color: Color.duoBlue.opacity(0.35), radius: 8, y: 4)
-                .padding(.top, 56)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .allowsHitTesting(false)
-            }
-        }
         .onChange(of: showTracker) { _, newValue in
             if !newValue {
                 Task {
@@ -365,7 +348,10 @@ struct DashboardView: View {
                         // 読書・勉強も含む全カスタムノードでEduPhotoLogSheet（フィード投稿トグル付き）を使用
                         eduPhotoLogNode = node
                         selectedMandalaNode = nil
-                        showEduPhotoLog = true
+                        // 前のシートが閉じてから提示し、ブランク画面（提示競合）を回避
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            showEduPhotoLog = true
+                        }
                     } : nil,
                     onDrinkComplete: node.type == .drink ? { ml in
                         selectedMandalaNode = nil
@@ -373,18 +359,6 @@ struct DashboardView: View {
                             await authManager.recordWater(customMl: ml)
                             await updateTimeSlotForDrink(timestamp: Date(), ml: ml)
                             await refreshIntakeData()
-                            await MainActor.run {
-                                lastDrinkMl = ml
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    showDrinkToast = true
-                                }
-                            }
-                            try? await Task.sleep(nanoseconds: 2_200_000_000)
-                            await MainActor.run {
-                                withAnimation(.easeOut(duration: 0.4)) {
-                                    showDrinkToast = false
-                                }
-                            }
                         }
                     } : nil,
                     isRecordType: node.type == .meal || node.type == .drink,
@@ -1053,7 +1027,7 @@ struct DashboardView: View {
 
     // MARK: - 今日のセット状況カード
     private var dailySetsCard: some View {
-        let mandalaNodes = currentMandalaNodes
+        let mandalaNodes = cachedMandalaNodes
         return VStack(alignment: .leading, spacing: 0) {
             Divider().padding(.horizontal, 16)
 
@@ -1972,51 +1946,57 @@ struct DashboardView: View {
 
     // buildNodes() を1回だけ呼び出し、他のプロパティで再利用する
     // 時間帯カードと同じ実績ソース（countSetsInTimeSlot / HealthKit）を使い、スパイラルの完了を正確に反映する
-    private var currentMandalaNodes: [MandalaNodeData] {
-        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+    /// マンダラノードを再計算してキャッシュに格納する（入力変化時のみ呼ぶ）
+    private func recomputeMandalaNodes() {
+        cachedMandalaNodes = computeMandalaNodes()
+    }
 
-        // トレーニング: countSetsInTimeSlot() の結果（実際の運動履歴ベース）
+    private func computeMandalaNodes() -> [MandalaNodeData] {
+        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        let calendar = Calendar.current
+
+        // トレーニング: countSetsInTimeSlot() の結果（実際の運動履歴ベース・キャッシュ参照）
         var trainCounts: [String: Int] = [:]
         for slot in activeSlots {
             trainCounts[slot.rawValue] = countSetsInTimeSlot(slot)
         }
 
-        // マインドフルネス: Firestore prog + HealthKitのセッション数をスロット時間帯で振り分け
+        // ── HealthKit サンプルを1パスでスロット別に集計（slots×samples の多重走査を回避）──
+        var hkMindMinBySlot: [String: Int] = [:]
+        var hkStandMaxBySlot: [String: Int] = [:]   // スロット内の最長 mindfulness セッション（分）
+        for s in healthKit.todayMindfulnessSamples {
+            let h = calendar.component(.hour, from: s.startDate)
+            let slot = TimeSlot.forHour(h)
+            guard slot != .midnight else { continue }
+            let min = max(1, Int(s.durationMinutes.rounded()))
+            hkMindMinBySlot[slot.rawValue, default: 0] += min
+            if min > (hkStandMaxBySlot[slot.rawValue] ?? 0) { hkStandMaxBySlot[slot.rawValue] = min }
+        }
+        var slotWaterMl: [String: Int] = [:]
+        for s in healthKit.todayWaterSamples {
+            let h = calendar.component(.hour, from: s.startDate)
+            let slot = TimeSlot.forHour(h)
+            guard slot != .midnight else { continue }
+            slotWaterMl[slot.rawValue, default: 0] += Int(s.value)
+        }
+        var slotMealKcal: [String: Int] = [:]
+        for s in healthKit.todayMealSamples {
+            let h = calendar.component(.hour, from: s.startDate)
+            let slot = TimeSlot.forHour(h)
+            guard slot != .midnight else { continue }
+            slotMealKcal[slot.rawValue, default: 0] += Int(s.value)
+        }
+
+        // マインドフルネス: Firestore prog + HealthKit セッション（事前集計済み）を合算
         var mindfulMinutes: [String: Int] = [:]
         for slot in activeSlots {
             let prog = timeSlotManager.progress.progressFor(slot)
             let goal = timeSlotManager.settings.goalFor(slot)
-            // ストレッチ目標分数（設定値を使用。未設定時は3分）
             let stretchGoalMin = (goal?.stretchGoal.stretchMinutes ?? 3)
             let stretchMin = (prog?.stretchSetsCompleted ?? 0) * stretchGoalMin
-            // HealthKit のマインドフルネスセッションをスロット時間帯でフィルタ
-            let hkMin: Int = healthKit.todayMindfulnessSamples
-                .filter { session in
-                    let h = Calendar.current.component(.hour, from: session.startDate)
-                    return h >= slot.startHour && h < slot.endHour
-                }
-                .reduce(0) { $0 + max(1, Int($1.durationMinutes.rounded())) }
-            // HKデータがあればそれを使用（実施時間ベース）。なければFirestoreのカウントにフォールバック
+            let hkMin = hkMindMinBySlot[slot.rawValue] ?? 0
             let firestoreMin = (prog?.mindfulnessCompleted ?? 0) * 1
             mindfulMinutes[slot.rawValue] = (hkMin > 0 ? hkMin : firestoreMin) + stretchMin
-        }
-
-        // 時間帯別の実際の水分摂取量（HealthKit: ml）
-        var slotWaterMl: [String: Int] = [:]
-        for slot in activeSlots {
-            slotWaterMl[slot.rawValue] = Int(healthKit.todayWaterSamples
-                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
-                    return h >= slot.startHour && h < slot.endHour }
-                .reduce(0.0) { $0 + $1.value })
-        }
-
-        // 時間帯別の実際のカロリー摂取量（HealthKit: kcal）
-        var slotMealKcal: [String: Int] = [:]
-        for slot in activeSlots {
-            slotMealKcal[slot.rawValue] = Int(healthKit.todayMealSamples
-                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
-                    return h >= slot.startHour && h < slot.endHour }
-                .reduce(0.0) { $0 + $1.value })
         }
 
         // 1日合計のトレーニング完了・目標を計算
@@ -2051,11 +2031,8 @@ struct DashboardView: View {
             let standGoalMin = goalInfo.standGoal.standMinutes
 
             // HK の同スロット内に standGoalMin 分以上の mindfulness セッションがあれば
-            // スタンドタイマー達成とみなす（スタンドタイマーは HK に mindfulness として記録される）
-            let hasHKStand = healthKit.todayMindfulnessSamples
-                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
-                          return h >= slot.startHour && h < slot.endHour }
-                .contains { max(1, Int($0.durationMinutes.rounded())) >= standGoalMin }
+            // スタンドタイマー達成とみなす（事前集計した最長セッションで判定）
+            let hasHKStand = (hkStandMaxBySlot[slot.rawValue] ?? 0) >= standGoalMin
             let firestoreStandDone = (prog?.standCompleted ?? 0) >= 1
             let standActual = (hasHKStand || firestoreStandDone) ? standGoalMin : 0
 
@@ -2100,7 +2077,7 @@ struct DashboardView: View {
 
     private var mandalaOverallCount: (done: Int, total: Int) {
         let visibleSlotSet = Set(mandalaVisibleSlots)
-        let nodes = currentMandalaNodes
+        let nodes = cachedMandalaNodes
         let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
         return (visible.filter(\.isCompleted).count, visible.count)
     }
@@ -4350,70 +4327,71 @@ struct DashboardView: View {
     private var photoLogButton: some View {
         let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
         return Button(action: { showPhotoLog = true }) {
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(LinearGradient(
                             colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
-                        .frame(width: 62, height: 62)
+                        .frame(width: 76, height: 76)
                     if recentPhotos.isEmpty {
                         VStack(spacing: 3) {
                             Image(systemName: "camera.fill")
-                                .font(.system(size: 24 * UIScale.font, weight: .semibold))
+                                .font(.system(size: 30 * UIScale.font, weight: .semibold))
                                 .foregroundColor(.white)
                             Text("AI")
-                                .font(.system(size: 9 * UIScale.font, weight: .black))
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(.white.opacity(0.9))
                         }
                     } else {
                         Image(uiImage: recentPhotos[0])
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 62, height: 62)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .frame(width: 76, height: 76)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                 }
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text("📸 AI食事フォトログ")
-                        .font(.system(size: 16 * UIScale.font, weight: .black))
+                        .font(.system(size: 18 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     if recentPhotos.isEmpty {
                         Text("写真を撮ってAIカロリー計算")
-                            .font(.system(size: 12 * UIScale.font))
+                            .font(.system(size: 13 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     } else {
                         HStack(spacing: 4) {
                             ForEach(Array(recentPhotos.dropFirst().enumerated()), id: \.offset) { _, img in
                                 Image(uiImage: img)
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: 26, height: 26)
+                                    .frame(width: 28, height: 28)
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                             }
                             Text("最近の記録 \(photoLogManager.history.count)件")
-                                .font(.system(size: 11 * UIScale.font))
+                                .font(.system(size: 12 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoOrange.opacity(0.7))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 24)
             .background(
                 LinearGradient(
                     colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
                     startPoint: .leading, endPoint: .trailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
             )
             .padding(.horizontal, 12)
@@ -4591,6 +4569,7 @@ struct DashboardView: View {
     private func refreshIntakeData() async {
         todayIntake = await authManager.getTodayIntakeSummary()
         intakeGoals = await authManager.getIntakeSettings()
+        recomputeMandalaNodes()
     }
 
     // MARK: - 今日のセット構築
@@ -5390,6 +5369,7 @@ struct DashboardView: View {
             }
 
             recalcTotals()
+            recomputeMandalaNodes()
             updateWidgetData()
         }
     }
@@ -5740,6 +5720,7 @@ struct DashboardView: View {
             counts[slot.rawValue] = count
         }
         cachedSlotSetCounts = counts
+        recomputeMandalaNodes()
     }
 
     /// キャッシュからタイムスロット別セット数を返す（レンダー毎の再計算なし）
@@ -5773,7 +5754,7 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoDark)
                 Spacer()
             }
-            Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
+            Link(destination: URL(string: "https://amzn.to/4eEsrPg")!) {
                 HStack(spacing: 12) {
                     Text("⌚")
                         .font(.system(size: 22 * UIScale.font))
@@ -5799,7 +5780,7 @@ struct DashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoBlue.opacity(0.18), lineWidth: 1))
             }
-            Link(destination: URL(string: "https://amzn.asia/d/9VRrEaE")!) {
+            Link(destination: URL(string: "https://amzn.to/4aYIyGj")!) {
                 HStack(spacing: 12) {
                     Text("📱")
                         .font(.system(size: 22 * UIScale.font))
@@ -7399,7 +7380,7 @@ private struct DailyGoalPickerButton: View {
 
 // MARK: - EDUフォトログシート
 
-private struct EduPhotoLogSheet: View {
+struct EduPhotoLogSheet: View {
     let nodeEmoji: String
     let nodeName: String
     let onComplete: (Bool, Bool, UIImage?, String) -> Void
@@ -7410,6 +7391,7 @@ private struct EduPhotoLogSheet: View {
     @State private var comment: String = ""
     @State private var saveToFeed: Bool = true
     @State private var isPublic: Bool = true
+    @State private var showPhotoPicker = false   // 表示直後に自動でピッカーを開く
 
     var body: some View {
         VStack(spacing: 0) {
@@ -7515,6 +7497,15 @@ private struct EduPhotoLogSheet: View {
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItem, matching: .images)
+        .onAppear {
+            // シート表示直後にブランク画面を挟まず、すぐ写真選択を開く
+            if selectedImage == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    if selectedImage == nil { showPhotoPicker = true }
+                }
+            }
+        }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task {
@@ -7539,7 +7530,6 @@ private struct GoalCompletionSheet: View {
     var linkURL: URL? = nil
 
     @State private var pickerItem: PhotosPickerItem? = nil
-    @State private var selectedDrinkMl: Int = 200
 
     private let drinkOptions = [200, 400, 600]
 
@@ -7560,23 +7550,23 @@ private struct GoalCompletionSheet: View {
             .padding(.top, 24)
             .padding(.bottom, 14)
 
-            // ── 水分量トグル（水分ノードのみ） ──
+            // ── 水分量ボタン（水分ノードのみ・押すと即記録） ──
             if onDrinkComplete != nil && !isDone {
                 VStack(spacing: 6) {
-                    Text("水分量を選択")
+                    Text("水分量を選んで記録")
                         .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                     HStack(spacing: 8) {
                         ForEach(drinkOptions, id: \.self) { ml in
                             Button {
-                                selectedDrinkMl = ml
+                                onDrinkComplete?(ml)
                             } label: {
                                 Text("\(ml)ml")
                                     .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(selectedDrinkMl == ml ? .white : Color.duoBlue)
+                                    .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(selectedDrinkMl == ml ? Color.duoBlue : Color.duoBlue.opacity(0.1))
+                                    .padding(.vertical, 12)
+                                    .background(Color.duoBlue)
                                     .cornerRadius(10)
                             }
                             .buttonStyle(.plain)
@@ -7590,29 +7580,27 @@ private struct GoalCompletionSheet: View {
             Divider()
 
             VStack(spacing: 10) {
-                // 完了ボタン
-                Button {
-                    if let drinkCb = onDrinkComplete, !isDone {
-                        drinkCb(selectedDrinkMl)
-                    } else {
+                // 完了ボタン（水分ノードで未完了の場合は上の量ボタンで記録するため非表示）
+                if onDrinkComplete == nil || isDone {
+                    Button {
                         onComplete()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: isDone
+                                  ? "arrow.uturn.backward.circle.fill"
+                                  : "checkmark.circle.fill")
+                                .font(.title3)
+                            Text(isDone ? "完了を取り消す" : (isRecordType ? "記録する" : "完了する"))
+                                .font(.headline).fontWeight(.black)
+                            Spacer()
+                        }
+                        .foregroundColor(isDone ? Color.duoRed : Color.duoGreen)
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .background((isDone ? Color.duoRed : Color.duoGreen).opacity(0.1))
+                        .cornerRadius(14)
                     }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: isDone
-                              ? "arrow.uturn.backward.circle.fill"
-                              : "checkmark.circle.fill")
-                            .font(.title3)
-                        Text(isDone ? "完了を取り消す" : (isRecordType ? "記録する" : "完了する"))
-                            .font(.headline).fontWeight(.black)
-                        Spacer()
-                    }
-                    .foregroundColor(isDone ? Color.duoRed : Color.duoGreen)
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-                    .background((isDone ? Color.duoRed : Color.duoGreen).opacity(0.1))
-                    .cornerRadius(14)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 // 写真で記録（フォトログ or ライブラリ選択）- 水分ノードでは非表示
                 if showPhotoButton {

@@ -681,9 +681,12 @@ struct MandalaChartView: View {
     /// 外部で事前計算済みのノードを渡す場合はこちらを使う（HealthKit実績反映済み）
     var precomputedNodes: [MandalaNodeData]? = nil
     let onTapNode: (MandalaNodeData) -> Void
+    /// スパイラル中心の丸をタップしたときの処理（トレーニング画面起動など）
+    var onTapCenter: (() -> Void)? = nil
 
     @State private var appeared = false
     @State private var pulseCenter = false
+    @State private var centerTapped = false
 
     // buildNodes() は UserDefaults 読み込みを含む高コスト処理のため、
     // 毎回 computed property で呼ぶと1レンダリングで80回以上実行されてしまう。
@@ -1029,14 +1032,23 @@ struct MandalaChartView: View {
                     .position(pos)
                 }
 
-                // 中心プログレス
+                // 中心プログレス（タップでトレーニング画面を起動）
                 centerCircle(nodes: nodes)
-                    .position(center)
-                    .scaleEffect(pulseCenter ? 1.07 : 1.0)
+                    .scaleEffect(centerTapped ? 0.88 : (pulseCenter ? 1.07 : 1.0))
                     .animation(
                         .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
                         value: pulseCenter
                     )
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        guard let onTapCenter else { return }
+                        withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { centerTapped = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            centerTapped = false
+                            onTapCenter()
+                        }
+                    }
+                    .position(center)
             }
         }
         .onAppear {

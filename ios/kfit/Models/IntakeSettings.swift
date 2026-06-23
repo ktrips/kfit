@@ -323,6 +323,10 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var translationJA: String?         // 日本語訳
     var pronunciation: String?         // 発音記号 / ピンイン等
 
+    // 体重ログ用：記録時点の Apple Health 計測値
+    var weightKg: Double?              // 体重（kg）
+    var bodyFatPercent: Double?        // 体脂肪率（%）
+
     // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -342,6 +346,8 @@ struct EduLogHistoryItem: Codable, Identifiable {
         extractedLanguageCode = try c.decodeIfPresent(String.self,         forKey: .extractedLanguageCode)
         translationJA         = try c.decodeIfPresent(String.self,         forKey: .translationJA)
         pronunciation         = try c.decodeIfPresent(String.self,         forKey: .pronunciation)
+        weightKg              = try c.decodeIfPresent(Double.self,         forKey: .weightKg)
+        bodyFatPercent        = try c.decodeIfPresent(Double.self,         forKey: .bodyFatPercent)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

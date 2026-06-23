@@ -514,16 +514,33 @@ struct WatchWorkoutFlowView: View {
 
         if isLast {
             // 全種目完了 → まとめてセット記録を送信
-            let setData = WatchSetData(
-                setId: UUID().uuidString,
-                exercises: allResults,
-                totalXP: totalXP,
-                totalReps: allResults.reduce(0) { $0 + $1.reps },
-                timestamp: Date()
-            )
-            WatchConnectivityManager.shared.sendCompletedSet(setData)
+            let setId = UUID().uuidString
+            let exerciseList = allResults
+            let xp = totalXP
+            let totalRepsCount = allResults.reduce(0) { $0 + $1.reps }
+            let timestamp = Date()
+
             WatchConnectivityManager.shared.todaySets += 1
             done = true
+
+            // トレーニング結果を Watch から直接 Health に書き込み、
+            // 成否を付与して iPhone へ送信（iPhone 側は未書き込み時のみフォールバック書き込み）
+            Task {
+                let saved = await WatchHealthKitManager.shared.saveWorkoutSet(
+                    setId: setId,
+                    exercises: exerciseList.map { (id: $0.exerciseId, reps: $0.reps) },
+                    endDate: timestamp
+                )
+                var setData = WatchSetData(
+                    setId: setId,
+                    exercises: exerciseList,
+                    totalXP: xp,
+                    totalReps: totalRepsCount,
+                    timestamp: timestamp
+                )
+                setData.savedToHealth = saved
+                WatchConnectivityManager.shared.sendCompletedSet(setData)
+            }
         } else {
             stepIdx += 1
             reps = 0

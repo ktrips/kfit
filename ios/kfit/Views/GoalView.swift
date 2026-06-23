@@ -19,6 +19,11 @@ struct GoalView: View {
     @State private var isRefreshingWatchData = false
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
+    // 体重ログ（写真）フィード・記録用
+    @ObservedObject private var eduLog = EduLogManager.shared
+    @State private var showWeightPhotoLog = false
+    @State private var selectedWeightFeedItem: EduLogHistoryItem? = nil
+    @State private var showOlderWeightFeed = false
 
     // MARK: - Static formatters（毎呼び出しで DateFormatter を生成しないよう共有）
     private static let yyyyMMddFmt: DateFormatter = {
@@ -78,10 +83,10 @@ struct GoalView: View {
                         progressCard
                         HStack(spacing: 6) {
                             Image(systemName: "chart.bar.doc.horizontal.fill")
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .font(.system(size: 14 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoGreen)
                             Text("週間実績")
-                                .font(.system(size: 13 * UIScale.font, weight: .black))
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Spacer()
                         }
@@ -90,6 +95,7 @@ struct GoalView: View {
                         weeklyBurnCard
                         intakeTrendCard
                         weeklyCalorieCard
+                        weightFeedSection
                         Spacer(minLength: 40)
                     }
                     .padding(.horizontal, 16)
@@ -114,6 +120,32 @@ struct GoalView: View {
             .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
             .sheet(isPresented: $showDietGoalSettings) {
                 NavigationView { DietGoalSettingsView() }
+            }
+            .sheet(isPresented: $showWeightPhotoLog) {
+                EduPhotoLogSheet(
+                    nodeEmoji: "⚖️",
+                    nodeName: "体重ログ",
+                    onComplete: { saveToFeed, isPublic, image, comment in
+                        showWeightPhotoLog = false
+                        // 完了判定は Health の体重計測のみ。ここでは FIT フィードへの投稿のみ。
+                        if saveToFeed {
+                            EduLogManager.shared.addItem(
+                                activityName: "体重ログ",
+                                activityEmoji: "⚖️",
+                                comment: comment,
+                                image: image,
+                                isPublic: isPublic,
+                                weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
+                                bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil
+                            )
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $selectedWeightFeedItem) { item in
+                WeightFeedDetailSheet(item: item)
             }
             .task {
                 // V25: 相互依存のない非同期タスクを async let で並列実行
@@ -194,14 +226,22 @@ struct GoalView: View {
                 }
                 if dailyFixedGoals.weightEnabled {
                     Spacer(minLength: 6)
-                    HStack(spacing: 2) {
-                        Text("⚖️").font(.system(size: 15 * UIScale.font))
-                        Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
-                            .font(.system(size: 13 * UIScale.font, weight: .bold))
-                            .foregroundColor(todayWeightKg != nil ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
-                            .lineLimit(1)
+                    Button {
+                        showWeightPhotoLog = true
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text("⚖️").font(.system(size: 15 * UIScale.font))
+                            Text(todayWeightKg != nil ? "\(Int(todayWeightKg!.rounded()))" : "—")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(todayWeightKg != nil ? Color(red: 1.0, green: 0.95, blue: 0.5) : .white)
+                                .lineLimit(1)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 9 * UIScale.font))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .fixedSize()
                     }
-                    .fixedSize()
+                    .buttonStyle(.plain)
                 }
                 Spacer(minLength: 6)
                 HStack(spacing: 2) {
@@ -1050,9 +1090,9 @@ struct GoalView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "figure.walk.circle.fill")
                         .foregroundColor(Color(red: 0.98, green: 0.07, blue: 0.31))
-                        .font(.system(size: 11 * UIScale.font))
+                        .font(.system(size: 14 * UIScale.font))
                     Text("今日のアクティビティ")
-                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoDark)
                     if isGoal && allRingsDone {
                         Image(systemName: "checkmark.circle.fill")
@@ -1450,6 +1490,100 @@ struct GoalView: View {
         )
     }
 
+    // MARK: - FITフィード（体重計測の写真）
+
+    private var weightFeedSection: some View {
+        let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+        let allLogs = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnail != nil }
+        let recent  = allLogs.filter { $0.timestamp >= twoWeeksAgo }
+        let older   = allLogs.filter { $0.timestamp < twoWeeksAgo }
+        let displayed = showOlderWeightFeed ? allLogs : recent
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "scalemass.fill")
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                Text("FITフィード")
+                    .font(.system(size: 15 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+                Text("\(displayed.count)件")
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.horizontal, 4)
+
+            if allLogs.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "camera.on.rectangle")
+                        .font(.system(size: 26 * UIScale.font))
+                        .foregroundColor(Color(.systemGray4))
+                    Text("体重計測の写真がまだありません\n上部の体重（⚖️）をタップして記録できます")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(displayed) { item in
+                        WeightFeedCard(item: item)
+                            .onTapGesture { selectedWeightFeedItem = item }
+                    }
+                }
+
+                if !showOlderWeightFeed && !older.isEmpty {
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showOlderWeightFeed = true
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                            Text("過去のフィードを表示（\(older.count)件）")
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                        }
+                        .foregroundColor(Color(hex: "#1CB0F6"))
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .background(Color(hex: "#1CB0F6").opacity(0.08))
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                } else if showOlderWeightFeed && !older.isEmpty {
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showOlderWeightFeed = false
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            Text("2週間以内のみ表示")
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        }
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     // MARK: - 体重グラフ
 
     private var weightChartCard: some View {
@@ -1605,13 +1739,13 @@ private struct GoalWeeklyCalorieCard: View {
                 // タイトル行
                 HStack(spacing: 6) {
                     Text("⚖️")
-                        .font(.system(size: 15 * UIScale.font))
+                        .font(.system(size: 17 * UIScale.font))
                     HStack(spacing: 5) {
                         Text("カロリー収支")
-                            .font(.system(size: 12 * UIScale.font, weight: .black))
+                            .font(.system(size: 14 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text(badge.label)
-                            .font(.system(size: 9 * UIScale.font, weight: .black))
+                            .font(.system(size: 10 * UIScale.font, weight: .black))
                             .foregroundColor(.white)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(badge.color)
@@ -1621,13 +1755,13 @@ private struct GoalWeeklyCalorieCard: View {
                     VStack(alignment: .trailing, spacing: 1) {
                         HStack(alignment: .lastTextBaseline, spacing: 3) {
                             Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
-                                .font(.system(size: 8 * UIScale.font, weight: .semibold))
+                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("/")
-                                .font(.system(size: 8 * UIScale.font))
+                                .font(.system(size: 10 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                             Text("計 " + (weekTotal >= 0 ? "+" : "") + "\(weekTotal)")
-                                .font(.system(size: 13 * UIScale.font, weight: .black))
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
                                 .foregroundColor(balanceColor)
                         }
                         .lineLimit(1)
@@ -1635,7 +1769,7 @@ private struct GoalWeeklyCalorieCard: View {
                         .fixedSize(horizontal: true, vertical: false)
 
                         Text("kcal")
-                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
@@ -1651,11 +1785,11 @@ private struct GoalWeeklyCalorieCard: View {
                     HStack(spacing: 8) {
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 1).fill(Color.duoGreen.opacity(0.85)).frame(width: 10, height: 4)
-                            Text("消費超過").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("消費超過").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 1).fill(Color(hex: "#FF4B4B").opacity(0.75)).frame(width: 10, height: 4)
-                            Text("摂取超過").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("摂取超過").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 4) {
                             ZStack {
@@ -1663,7 +1797,7 @@ private struct GoalWeeklyCalorieCard: View {
                                 Circle().fill(Color.duoOrange).frame(width: 5, height: 5)
                             }
                             .frame(width: 12, height: 8)
-                            Text("体重変化").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("体重変化").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
                     }
@@ -1672,10 +1806,10 @@ private struct GoalWeeklyCalorieCard: View {
                     HStack(spacing: 4) {
                         ForEach(data) { day in
                             Text(day.balance != 0 ? (day.balance >= 0 ? "+" : "") + "\(day.balance)" : "")
-                                .font(.system(size: 7 * UIScale.font, weight: .bold))
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
                                 .foregroundColor(day.balance <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                 .lineLimit(1).minimumScaleFactor(0.5)
-                                .frame(maxWidth: .infinity).frame(height: 10)
+                                .frame(maxWidth: .infinity).frame(height: 11)
                         }
                     }
 
@@ -1699,16 +1833,16 @@ private struct GoalWeeklyCalorieCard: View {
                         ForEach(data) { day in
                             VStack(spacing: 1) {
                                 Text(day.dayLabel)
-                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
                                     .foregroundColor(Color.duoSubtitle)
                                 if let mass = day.bodyMass {
                                     Text(String(format: "%.1f", mass))
-                                        .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                         .lineLimit(1)
                                 } else {
                                     Text("—")
-                                        .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                                         .foregroundColor(Color(.systemGray4))
                                 }
                             }
@@ -1720,42 +1854,42 @@ private struct GoalWeeklyCalorieCard: View {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("目標差異")
-                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             HStack(alignment: .lastTextBaseline, spacing: 2) {
                                 Text((dailyGoal >= 0 ? "+" : "") + "\(dailyGoal)")
-                                    .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(dailyGoal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                 Text("kcal/日")
-                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                         Spacer()
                         VStack(alignment: .center, spacing: 2) {
                             Text("目標減少")
-                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             HStack(alignment: .lastTextBaseline, spacing: 2) {
                                 Text(String(format: "%.2f", targetWeeklyKg))
-                                    .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(targetWeeklyKg <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                 Text("kg/週")
-                                    .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("実")
-                                .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             if let ch = actualChange {
                                 HStack(alignment: .lastTextBaseline, spacing: 2) {
                                     Text(String(format: "%+.1f", ch))
-                                        .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                                        .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(ch <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
                                     Text("kg")
-                                        .font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                        .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                 }
                             } else {
                                 Text("—")
-                                    .font(.system(size: 12 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 14 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                     }
@@ -1838,7 +1972,7 @@ private struct GoalWeeklyCalorieCard: View {
                     ? max(vp.pt.y - 9, 5)
                     : min(vp.pt.y + 9, size.height - 5)
                 Text(String(format: "%.1f", massPoints.first(where: { $0.idx == vp.idx })?.mass ?? 0))
-                    .font(.system(size: 6 * UIScale.font, weight: .bold))
+                    .font(.system(size: 7 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoOrange)
                     .position(x: vp.pt.x, y: labelY)
             }
@@ -2009,27 +2143,27 @@ private struct GoalWeeklyBurnCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     // ── ヘッダー ──────────────────────────────────────────────
                     HStack(spacing: 6) {
-                        Text("🔥").font(.system(size: 15 * UIScale.font))
-                        Text("燃やしたカロリー")
-                            .font(.system(size: 12 * UIScale.font, weight: .black))
+                        Text("🔥").font(.system(size: 17 * UIScale.font))
+                        Text("総燃焼カロリー")
+                            .font(.system(size: 14 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Spacer()
                         if let avg = avgBurn, weekTotal > 0 {
                             VStack(alignment: .trailing, spacing: 2) {
                                 HStack(alignment: .lastTextBaseline, spacing: 3) {
                                     Text("平均 \(avg)")
-                                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
                                         .foregroundColor(Color.duoSubtitle)
-                                    Text("/").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                    Text("/").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                                     Text("計 \(weekTotal)")
-                                        .font(.system(size: 14 * UIScale.font, weight: .black))
+                                        .font(.system(size: 16 * UIScale.font, weight: .black))
                                         .foregroundColor(Color(hex: "#16A34A"))
                                 }
-                                Text("kcal").font(.system(size: 8 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                                Text("kcal").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             }
                         }
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
 
@@ -2037,11 +2171,11 @@ private struct GoalWeeklyBurnCard: View {
                     HStack(spacing: 12) {
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 2).fill(restingColor).frame(width: 10, height: 8)
-                            Text("安静時").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("安静時").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 2).fill(activeColor).frame(width: 10, height: 8)
-                            Text("活動").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("活動").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         HStack(spacing: 4) {
                             // 折れ線の凡例シンボル
@@ -2050,7 +2184,7 @@ private struct GoalWeeklyBurnCard: View {
                                 Circle().fill(lineColor).frame(width: 5, height: 5)
                             }
                             .frame(width: 12, height: 8)
-                            Text("運動時間").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                            Text("運動時間").font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                         }
                         Spacer()
                     }
@@ -2065,10 +2199,10 @@ private struct GoalWeeklyBurnCard: View {
                             HStack(spacing: 0) {
                                 ForEach(data) { day in
                                     Text(day.totalCalories > 0 ? "\(Int(day.totalCalories))" : "")
-                                        .font(.system(size: 7 * UIScale.font, weight: .bold))
+                                        .font(.system(size: 8 * UIScale.font, weight: .bold))
                                         .foregroundColor(Color.duoDark)
                                         .lineLimit(1).minimumScaleFactor(0.6)
-                                        .frame(maxWidth: .infinity).frame(height: 10)
+                                        .frame(maxWidth: .infinity).frame(height: 11)
                                 }
                             }
 
@@ -2149,7 +2283,7 @@ private struct GoalWeeklyBurnCard: View {
                 Circle().fill(lineColor).frame(width: 5, height: 5).position(vp.pt)
                 // 分数ラベル（ドットの上）
                 Text("\(Int(data[vp.idx].exerciseMinutes))m")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(lineColor)
                     .position(x: vp.pt.x, y: max(vp.pt.y - 9, 5))
             }
@@ -2160,24 +2294,24 @@ private struct GoalWeeklyBurnCard: View {
     private func columnMeta(_ day: DailyBurnSummary) -> some View {
         VStack(spacing: 2) {
             Text(day.dayLabel)
-                .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                .font(.system(size: 10 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
             HStack(spacing: 2) {
                 Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 7 * UIScale.font))
+                    .font(.system(size: 8 * UIScale.font))
                     .foregroundColor(day.setCount > 0 ? Color.duoGreen : Color(.systemGray4))
                 Text(day.setCount > 0 ? "\(day.setCount)" : "-")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(day.setCount > 0 ? Color.duoGreen : Color(.systemGray4))
             }
             HStack(spacing: 2) {
                 Image(systemName: "figure.walk")
-                    .font(.system(size: 7 * UIScale.font))
+                    .font(.system(size: 8 * UIScale.font))
                     .foregroundColor(day.steps > 0 ? Color(hex: "#FF9600") : Color(.systemGray4))
                 Text(day.steps > 0
                     ? (day.steps >= 1000 ? String(format: "%.1fk", Double(day.steps) / 1000.0) : "\(day.steps)")
                     : "-")
-                    .font(.system(size: 7 * UIScale.font, weight: .bold))
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
                     .foregroundColor(day.steps > 0 ? Color(hex: "#FF9600") : Color(.systemGray4))
             }
         }
@@ -2232,26 +2366,26 @@ private struct GoalIntakeTrendCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("🍽️")
-                        .font(.system(size: 15 * UIScale.font))
+                        .font(.system(size: 17 * UIScale.font))
                     Text("食事カロリー")
-                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                        .font(.system(size: 14 * UIScale.font, weight: .black))
                         .foregroundColor(Color.duoDark)
                     Spacer()
                     if let avg = avgIntake, weekTotal > 0 {
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(alignment: .lastTextBaseline, spacing: 3) {
                                 Text("平均 \(avg)")
-                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("/")
-                                    .font(.system(size: 9 * UIScale.font))
+                                    .font(.system(size: 10 * UIScale.font))
                                     .foregroundColor(Color.duoSubtitle)
                                 Text("計 \(weekTotal)")
-                                    .font(.system(size: 14 * UIScale.font, weight: .black))
+                                    .font(.system(size: 16 * UIScale.font, weight: .black))
                                     .foregroundColor(Color(hex: "#FF4B4B"))
                             }
                             Text("kcal")
-                                .font(.system(size: 8 * UIScale.font))
+                                .font(.system(size: 10 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -2267,7 +2401,7 @@ private struct GoalIntakeTrendCard: View {
                                 .fill(GoalIntakeTrendCard.timeColor(hour: hour))
                                 .frame(width: 10, height: 8)
                             Text(label)
-                                .font(.system(size: 8 * UIScale.font))
+                                .font(.system(size: 10 * UIScale.font))
                                 .foregroundColor(Color.duoSubtitle)
                         }
                     }
@@ -2286,7 +2420,7 @@ private struct GoalIntakeTrendCard: View {
                     }
                     if !hasData {
                         Text("今週の食事記録がありません（Apple Health に記録すると表示されます）")
-                            .font(.system(size: 9 * UIScale.font))
+                            .font(.system(size: 10 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -2316,11 +2450,11 @@ private struct GoalIntakeDayColumn: View {
 
         VStack(spacing: 3) {
             Text(totalCal > 0 ? "\(totalCal)" : "")
-                .font(.system(size: 7 * UIScale.font, weight: .bold))
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
                 .foregroundColor(Color.duoDark)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .frame(height: 10)
+                .frame(height: 11)
 
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
@@ -2344,7 +2478,7 @@ private struct GoalIntakeDayColumn: View {
             .frame(height: maxBarH)
 
             Text(day.dayLabel)
-                .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                .font(.system(size: 10 * UIScale.font, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
         }
         .frame(maxWidth: .infinity)
@@ -2898,6 +3032,150 @@ private struct GoalCalorieBalanceBarCard: View {
                     .foregroundColor(Color.duoGreen)
             }
         }
+    }
+}
+
+// MARK: - FITフィード カード（体重計測の写真）
+
+private struct WeightFeedCard: View {
+    let item: EduLogHistoryItem
+
+    private static let mdFmt: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d (E)"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(colors: [Color(hex: "#1CB0F6"), Color(hex: "#58CC02")],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(Text("⚖️").font(.system(size: 44 * UIScale.font)))
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(WeightFeedCard.mdFmt.string(from: item.timestamp))
+                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                HStack(spacing: 6) {
+                    HStack(spacing: 2) {
+                        Text("⚖️").font(.system(size: 10 * UIScale.font))
+                        Text(item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—")
+                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                        Text("kg")
+                            .font(.system(size: 8 * UIScale.font, weight: .bold))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    if let fat = item.bodyFatPercent {
+                        HStack(spacing: 2) {
+                            Text("📉").font(.system(size: 10 * UIScale.font))
+                            Text(String(format: "%.1f", fat))
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                            Text("%")
+                                .font(.system(size: 8 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+                    }
+                    Spacer()
+                }
+                .shadow(color: .black.opacity(0.5), radius: 2)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [.clear, Color.black.opacity(0.65)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+        }
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.14), radius: 6, x: 0, y: 3)
+    }
+}
+
+// MARK: - FITフィード 詳細シート
+
+struct WeightFeedDetailSheet: View {
+    let item: EduLogHistoryItem
+    @Environment(\.dismiss) private var dismiss
+
+    private static let fullFmt: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 (E) HH:mm"; return f
+    }()
+
+    var body: some View {
+        NavigationView {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .cornerRadius(16)
+                    }
+
+                    HStack(spacing: 12) {
+                        metric(emoji: "⚖️", label: "体重",
+                               value: item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—",
+                               unit: "kg", color: Color(hex: "#1CB0F6"))
+                        metric(emoji: "📉", label: "体脂肪率",
+                               value: item.bodyFatPercent != nil ? String(format: "%.1f", item.bodyFatPercent!) : "—",
+                               unit: "%", color: Color(hex: "#CE82FF"))
+                    }
+
+                    if !item.comment.isEmpty {
+                        Text(item.comment)
+                            .font(.system(size: 15 * UIScale.font))
+                            .foregroundColor(Color.duoDark)
+                    }
+
+                    Text(WeightFeedDetailSheet.fullFmt.string(from: item.timestamp))
+                        .font(.system(size: 12 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(16)
+            }
+            .navigationTitle("体重ログ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func metric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 22 * UIScale.font))
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 24 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                Text(unit)
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Text(label)
+                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(color.opacity(0.08))
+        .cornerRadius(14)
     }
 }
 

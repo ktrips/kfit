@@ -163,6 +163,7 @@ struct TomoView: View {
     @State private var shareText = ""
     @StateObject private var photoLogManager = PhotoLogManager.shared
     @State private var selectedEduItem: EduLogHistoryItem? = nil
+    @State private var selectedFoodItem: PhotoLogHistoryItem? = nil   // FOOD投稿の詳細
     @State private var commentTargetItem: EduLogHistoryItem? = nil
     @State private var shareTargetItem: EduLogHistoryItem? = nil
     @State private var categoryGroupTarget: TomoView.FeedCategoryGroup? = nil
@@ -172,6 +173,7 @@ struct TomoView: View {
     @State private var speakingItemID: String? = nil   // TTS 再生中のアイテム ID
     @State private var showFoodLog = false             // FOOD → フォトログ
     @State private var eduRecordTarget: TomoQuickRecord? = nil  // 写真記録シート対象
+    @State private var selectedCategory: String? = nil  // カテゴリー絞り込み（nil=すべて）
     @FocusState private var emailFocused: Bool
 
     // クイック記録カテゴリ（ランキング上部・ヘッダー＋から起動）
@@ -205,6 +207,7 @@ struct TomoView: View {
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
                             .padding(.bottom, 14)
+                        categoryFilterBar
                         eduFeedSection
                         Spacer(minLength: 40)
                     }
@@ -222,6 +225,9 @@ struct TomoView: View {
         .sheet(item: $selectedEduItem) { item in
             EduFeedDetailSheet(item: item)
         }
+        .sheet(item: $selectedFoodItem) { item in
+            PhotoFeedDetailSheet(item: item)
+        }
         .sheet(item: $commentTargetItem) { item in
             FeedCommentsSheet(item: item, eduLogManager: eduLogManager,
                               photoLogManager: photoLogManager)
@@ -232,7 +238,7 @@ struct TomoView: View {
         .sheet(item: $categoryGroupTarget) { grp in
             CategoryGroupListSheet(
                 group: grp,
-                onTapItem: { selectedEduItem = $0; categoryGroupTarget = nil },
+                onTapItem: { openDetail($0); categoryGroupTarget = nil },
                 onLike: { eduLogManager.toggleLike(id: $0.id) },
                 onComment: { commentTargetItem = $0; categoryGroupTarget = nil },
                 onShare: { shareTargetItem = $0; categoryGroupTarget = nil }
@@ -379,6 +385,27 @@ struct TomoView: View {
 
     // MARK: - フィードアクションルーティング
 
+    /// FOOD投稿（food_ プレフィックス）の元データを取得
+    private func originalFoodItem(for item: EduLogHistoryItem) -> PhotoLogHistoryItem? {
+        guard item.id.hasPrefix("food_") else { return nil }
+        let originalId = String(item.id.dropFirst("food_".count))
+        return photoLogManager.history.first { $0.id == originalId }
+    }
+
+    /// FOOD投稿のカロリー（FOOD以外は nil）
+    private func foodCalories(for item: EduLogHistoryItem) -> Int? {
+        originalFoodItem(for: item)?.calories
+    }
+
+    /// 投稿タップ時のルーティング：FOODはFOOD詳細、それ以外はEduFeed詳細
+    private func openDetail(_ item: EduLogHistoryItem) {
+        if let food = originalFoodItem(for: item) {
+            selectedFoodItem = food
+        } else {
+            selectedEduItem = item
+        }
+    }
+
     /// いいね：food_ プレフィックスで PhotoLogManager か EduLogManager に振り分け
     private func toggleLikeFeed(_ item: EduLogHistoryItem) {
         if item.id.hasPrefix("food_") {
@@ -414,14 +441,40 @@ struct TomoView: View {
         return (activity + food).sorted { $0.timestamp > $1.timestamp }
     }
 
-    /// 表示するフィード（直近2週間 or 全件）
-    private var displayFeedItems: [EduLogHistoryItem] {
-        showOlderFeed ? allFeedItems : allFeedItems.filter { $0.timestamp >= twoWeeksAgo }
+    /// アイテムのカテゴリーキー（activityName ベース、空は「その他」）
+    private func categoryKey(for item: EduLogHistoryItem) -> String {
+        item.activityName.trimmingCharacters(in: .whitespaces).isEmpty ? "その他" : item.activityName
     }
 
-    /// 2週間以上前のデータが存在するか（displayFeedItems との件数差で判断し allFeedItems の二重評価を防ぐ）
+    /// フィードに存在するカテゴリー一覧（直近の出現順・代表絵文字付き）
+    private var feedCategories: [(key: String, emoji: String)] {
+        var seen = Set<String>()
+        var result: [(key: String, emoji: String)] = []
+        for item in allFeedItems {
+            let key = categoryKey(for: item)
+            if seen.insert(key).inserted {
+                result.append((key: key, emoji: item.activityEmoji.isEmpty ? "📝" : item.activityEmoji))
+            }
+        }
+        return result
+    }
+
+    /// 表示するフィード（直近2週間 or 全件 ＋ カテゴリー絞り込み）
+    private var displayFeedItems: [EduLogHistoryItem] {
+        var items = showOlderFeed ? allFeedItems : allFeedItems.filter { $0.timestamp >= twoWeeksAgo }
+        if let cat = selectedCategory {
+            items = items.filter { categoryKey(for: $0) == cat }
+        }
+        return items
+    }
+
+    /// 2週間以上前のデータが存在するか（カテゴリー絞り込みを除いた件数で判断）
     private var hasOlderItems: Bool {
-        !showOlderFeed && allFeedItems.count > displayFeedItems.count
+        guard !showOlderFeed else { return false }
+        let base = selectedCategory.map { cat in
+            allFeedItems.filter { categoryKey(for: $0) == cat }
+        } ?? allFeedItems
+        return base.count > displayFeedItems.count
     }
 
     // カテゴリグループ：ユーザー×カテゴリ単位で集約
@@ -466,6 +519,78 @@ struct TomoView: View {
             return (label: label, date: date,
                     items: (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp })
         }
+    }
+
+    // MARK: - カテゴリー絞り込みバー
+
+    @ViewBuilder
+    private var categoryFilterBar: some View {
+        if !feedCategories.isEmpty {
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoBlue)
+                    Text("カテゴリーで絞り込み")
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    if selectedCategory != nil {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                Text("リセット")
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                            }
+                            .foregroundColor(Color.duoSubtitle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        categoryChip(label: "すべて", emoji: "🗂", isSelected: selectedCategory == nil) {
+                            withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
+                        }
+                        ForEach(feedCategories, id: \.key) { cat in
+                            categoryChip(label: cat.key, emoji: cat.emoji,
+                                         isSelected: selectedCategory == cat.key) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selectedCategory = (selectedCategory == cat.key) ? nil : cat.key
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+        }
+    }
+
+    private func categoryChip(label: String, emoji: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(emoji).font(.system(size: 14 * UIScale.font))
+                Text(label)
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundColor(isSelected ? .white : Color.duoDark)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.duoBlue : Color(.systemGray6))
+            .cornerRadius(20)
+        }
+        .buttonStyle(.plain)
     }
 
     private var eduFeedSection: some View {
@@ -611,18 +736,26 @@ struct TomoView: View {
 
                 Spacer()
 
-                // アクティビティタグ
-                HStack(spacing: 3) {
-                    Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
-                        .font(.system(size: 12 * UIScale.font))
-                    Text(item.activityName)
-                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                        .lineLimit(1)
+                // アクティビティタグ（タップで同カテゴリーに絞り込み）
+                Button {
+                    let cat = categoryKey(for: item)
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedCategory = (selectedCategory == cat) ? nil : cat
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                            .font(.system(size: 12 * UIScale.font))
+                        Text(item.activityName)
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(selectedCategory == categoryKey(for: item) ? .white : Color.duoSubtitle)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(selectedCategory == categoryKey(for: item) ? Color.duoBlue : Color(.systemGray6))
+                    .cornerRadius(10)
                 }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .buttonStyle(.plain)
 
                 // 三点メニュー（自分の投稿のみ削除を表示）
                 Menu {
@@ -649,27 +782,44 @@ struct TomoView: View {
             .padding(.vertical, 10)
 
             // ── Instagram風 正方形写真 or グラデーション＋絵文字 ──────────────
-            Button { selectedEduItem = item } label: {
-                if let thumb = item.thumbnail {
-                    // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
-                    Color.clear
+            Button { openDetail(item) } label: {
+                Group {
+                    if let thumb = item.thumbnail {
+                        // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay(
+                                Image(uiImage: thumb)
+                                    .resizable()
+                                    .scaledToFill()
+                            )
+                            .clipped()
+                            .contentShape(Rectangle())
+                    } else {
+                        ZStack {
+                            instaGradient(for: item)
+                            Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                                .font(.system(size: 96 * UIScale.font))
+                                .shadow(color: .black.opacity(0.25), radius: 12)
+                        }
                         .aspectRatio(1, contentMode: .fit)
-                        .overlay(
-                            Image(uiImage: thumb)
-                                .resizable()
-                                .scaledToFill()
-                        )
-                        .clipped()
-                        .contentShape(Rectangle())
-                } else {
-                    ZStack {
-                        instaGradient(for: item)
-                        Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
-                            .font(.system(size: 96 * UIScale.font))
-                            .shadow(color: .black.opacity(0.25), radius: 12)
+                        .frame(maxWidth: .infinity)
                     }
-                    .aspectRatio(1, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
+                }
+                // FOOD投稿はカロリーバッジを表示
+                .overlay(alignment: .bottomLeading) {
+                    if let kcal = foodCalories(for: item) {
+                        HStack(spacing: 3) {
+                            Text("🔥").font(.system(size: 11 * UIScale.font))
+                            Text("\(kcal) kcal")
+                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .padding(10)
+                    }
                 }
             }
             .buttonStyle(.plain)

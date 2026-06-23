@@ -388,7 +388,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 totalTrainingGoal += goal.trainingGoal
                 // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分、ポモドーロ1回=20分）
                 totalMindfulness += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3 + progress.standCompleted * 20
-                totalMindfulnessGoal += goal.mindfulnessGoal
+                let standGoalMinutes = (goal.standGoal.enabled && goal.timeSlot != .midnight) ? 20 : 0
+                totalMindfulnessGoal += goal.mindfulnessGoal + standGoalMinutes
                 if goal.logGoal.mealGoal > 0 {
                     totalMealGoal += goal.logGoal.mealGoal
                     totalMealLogged += progress.logProgress.mealLogged
@@ -894,6 +895,8 @@ struct WatchSetData: Codable {
     let totalXP: Int
     let totalReps: Int
     let timestamp: Date
+    /// Watch 側で HKWorkout を Health に直接書き込み済みか（iPhone 側の重複書き込み回避用）
+    var savedToHealth: Bool? = nil
 }
 
 /// Watch に送信する運動記録（CompletedExercise から変換）

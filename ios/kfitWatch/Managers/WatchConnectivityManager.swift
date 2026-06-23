@@ -526,6 +526,8 @@ struct WatchSetData: Codable {
     let totalXP: Int
     let totalReps: Int
     let timestamp: Date
+    /// Watch 側で HKWorkout を Health に直接書き込めたか（iPhone 側の重複書き込み回避用）
+    var savedToHealth: Bool = false
 }
 
 struct WatchFaceTaskConfig: Codable, Identifiable, Hashable {

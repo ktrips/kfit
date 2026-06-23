@@ -23,6 +23,7 @@ struct Provider: TimelineProvider {
         var s = WidgetStats()
         s.streak               = ud.integer(forKey: "streak")
         s.totalPoints          = ud.integer(forKey: "totalPoints")
+        s.weeklyPoints         = ud.integer(forKey: "weeklyPoints")
         s.calorieBalance       = ud.integer(forKey: "calorieBalance")
         s.trainingCompleted    = ud.integer(forKey: "trainingCompleted")
         s.trainingGoal         = ud.integer(forKey: "trainingGoal")
@@ -53,6 +54,7 @@ struct SimpleEntry: TimelineEntry {
 struct WidgetStats {
     var streak: Int = 0
     var totalPoints: Int = 0
+    var weeklyPoints: Int = 0      // 今週（月〜日）の獲得ポイント
     var calorieBalance: Int = 0
 
     var trainingCompleted: Int = 0
@@ -154,7 +156,7 @@ struct SmallWidgetView: View {
                         sub: "kcal"
                     )
                     Divider().background(Color.white.opacity(0.4)).frame(height: 44)
-                    headerCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                    headerCell(icon: "⭐", value: "\(stats.weeklyPoints)", sub: "今週XP")
                 }
             }
             .padding(8)
@@ -217,9 +219,9 @@ struct MediumWidgetView: View {
                     )
                 }
                 divider
-                // ⭐ XP → ホーム
+                // ⭐ 今週XP → ホーム
                 Link(destination: .fitingoHome) {
-                    mediumCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                    mediumCell(icon: "⭐", value: "\(stats.weeklyPoints)", sub: "今週XP")
                 }
             }
             .padding(.horizontal, 12)
@@ -325,7 +327,7 @@ struct LargeWidgetView: View {
                         )
                     }
                     Link(destination: .fitingoHome) {
-                        largeHeaderCell(icon: "⭐", value: "\(stats.totalPoints)", sub: "XP")
+                        largeHeaderCell(icon: "⭐", value: "\(stats.weeklyPoints)", sub: "今週XP")
                     }
                 }
                 .padding(.vertical, 12)

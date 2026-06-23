@@ -13,6 +13,9 @@ class AuthenticationManager: ObservableObject {
     /// DashboardView.updateWidgetData() がアプリ内記録（Firestore）の摂取カロリーをここに保存。
     /// syncWidgetData() はこの値を優先して HealthKit 値より正確なkcalをウィジェットに書き込む。
     static var cachedAppIntakeCalories: Int = 0
+    /// DashboardView.updateWidgetData() が計算した今週（月〜日）の合計XPをここに保存。
+    /// syncWidgetData() はこの値を weeklyPoints として書き込み、フル更新間でも値を保つ。
+    static var cachedWeeklyPoints: Int = 0
 
     // LOW(M-8): DateFormatter を static let でキャッシュ（毎呼び出しで生成しない）
     static let yyyyMMddFmt: DateFormatter = {
@@ -768,7 +771,11 @@ class AuthenticationManager: ObservableObject {
         await TimeSlotManager.shared.recordTrainingCompleted(at: timeSlot)
 
         // Apple Health にセット全体を記録（権限確認）
-        if HealthKitManager.shared.isAvailable {
+        // Watch 側で既に HKWorkout を直接書き込み済みの場合は重複を避けてスキップ。
+        // Watch が書き込めなかった（HealthKit 未許可など）場合のみ iPhone がフォールバック書き込みする。
+        if set.savedToHealth == true {
+            print("⏭️ HealthKit: Watch already saved workout to Health (setId=\(set.setId ?? "-")) - skipping duplicate write")
+        } else if HealthKitManager.shared.isAvailable {
             if !HealthKitManager.shared.isAuthorized {
                 await HealthKitManager.shared.requestAuthorization()
             }
@@ -776,9 +783,10 @@ class AuthenticationManager: ObservableObject {
                 let setStart = Calendar.current.date(byAdding: .second, value: -max(set.totalReps * 3, 60), to: now) ?? now
                 await HealthKitManager.shared.saveCompletedSet(
                     exercises: set.exercises.map { (id: $0.exerciseId, name: $0.exerciseName, reps: $0.reps) },
-                    startDate: setStart
+                    startDate: setStart,
+                    setId: set.setId
                 )
-                print("✅ HealthKit: Completed set saved - \(set.totalReps)rep / \(set.totalXP)XP")
+                print("✅ HealthKit: Completed set saved (fallback) - \(set.totalReps)rep / \(set.totalXP)XP")
             } else {
                 print("⚠️ HealthKit: Authorization denied for set save")
             }
@@ -2143,22 +2151,27 @@ extension AuthenticationManager {
         // streak / points
         defaults.set(shared.userProfile?.streak ?? 0, forKey: "streak")
         defaults.set(shared.userProfile?.totalPoints ?? 0, forKey: "totalPoints")
+        // 今週のポイント（フル更新時にキャッシュされた値を維持）
+        defaults.set(cachedWeeklyPoints, forKey: "weeklyPoints")
 
-        // 全時間帯のトレーニング・マインドフル・食事・水分
-        var trainingCompleted = 0, trainingGoal = 0
-        var mindfulnessCompleted = 0, mindfulnessGoal = 0
+        // 全時間帯のトレーニング・マインドフル・食事・水分（目標は時間帯設定から）
+        var trainingGoal = 0
+        var mindfulnessGoal = 0
         var mealGoal = 0, drinkGoal = 0
         for slot in TimeSlot.allCases {
             if let goal = tsm.settings.goalFor(slot),
-               let prog = tsm.progress.progressFor(slot) {
-                trainingCompleted += prog.trainingCompleted
+               tsm.progress.progressFor(slot) != nil {
                 trainingGoal      += goal.trainingGoal
-                mindfulnessCompleted += prog.mindfulnessCompleted
-                mindfulnessGoal      += goal.mindfulnessGoal
+                // 20分ポモドーロ（スタンド）も Health 記録時間と同様にマインドフル目標へ合算
+                let standGoalMinutes = (goal.standGoal.enabled && goal.timeSlot != .midnight) ? 20 : 0
+                mindfulnessGoal   += goal.mindfulnessGoal + standGoalMinutes
                 if goal.logGoal.mealGoal  > 0 { mealGoal  += goal.logGoal.mealGoal }
                 if goal.logGoal.drinkGoal > 0 { drinkGoal += goal.logGoal.drinkGoal }
             }
         }
+        // トレーニング回数・マインドフル分数は Apple Health の計測値を正源とする
+        let trainingCompleted = hk.todayWorkoutCount
+        let mindfulnessCompleted = Int(hk.todayMindfulnessMinutes.rounded())
         defaults.set(trainingCompleted,    forKey: "trainingCompleted")
         defaults.set(trainingGoal,         forKey: "trainingGoal")
         defaults.set(mindfulnessCompleted, forKey: "mindfulnessCompleted")
@@ -2196,7 +2209,7 @@ extension AuthenticationManager {
             trainingCompleted, trainingGoal, mindfulnessCompleted, mindfulnessGoal,
             Int(hk.todayIntakeCalories), mealGoal, Int(hk.todayIntakeWater), drinkGoal,
             hk.todayWorkoutMinutes, hk.todayStandHours, intake - burned,
-            shared.userProfile?.streak ?? 0, shared.userProfile?.totalPoints ?? 0
+            shared.userProfile?.streak ?? 0, shared.userProfile?.totalPoints ?? 0, cachedWeeklyPoints
         ].map(String.init).joined(separator: "|")
 
         guard payloadHash != lastWidgetPayloadHash else {
@@ -2723,7 +2736,9 @@ class EduLogManager: ObservableObject {
                  extractedPhrase: String? = nil,
                  extractedLanguageCode: String? = nil,
                  translationJA: String? = nil,
-                 pronunciation: String? = nil) {
+                 pronunciation: String? = nil,
+                 weightKg: Double? = nil,
+                 bodyFatPercent: Double? = nil) {
         let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
         let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
         var item = EduLogHistoryItem(
@@ -2743,6 +2758,9 @@ class EduLogManager: ObservableObject {
         item.extractedLanguageCode = extractedLanguageCode
         item.translationJA         = translationJA
         item.pronunciation         = pronunciation
+        // 体重ログ用：記録時点の体重・体脂肪
+        item.weightKg              = weightKg
+        item.bodyFatPercent        = bodyFatPercent
 
         history.insert(item, at: 0)
         persistHistory()

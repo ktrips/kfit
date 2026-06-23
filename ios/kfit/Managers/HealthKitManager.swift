@@ -482,7 +482,7 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)], startDate: Date) async {
+    func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)], startDate: Date, setId: String? = nil) async {
         guard isAvailable else {
             print("[HealthKit] ⚠️ HealthKit not available")
             return
@@ -502,12 +502,14 @@ final class HealthKitManager: ObservableObject {
             quantity: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
             start: startDate, end: endDate
         )
+        var workoutMetadata: [String: Any]? = nil
+        if let setId { workoutMetadata = ["kfitSetId": setId] }
         let workout = HKWorkout(
             activityType: .functionalStrengthTraining,
             start: startDate, end: endDate,
             duration: max(endDate.timeIntervalSince(startDate), 1),
             totalEnergyBurned: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
-            totalDistance: nil, metadata: nil
+            totalDistance: nil, metadata: workoutMetadata
         )
         do {
             try await store.save(energySample)

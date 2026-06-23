@@ -305,10 +305,11 @@ struct FoodView: View {
                 HStack(spacing: 16) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(LinearGradient(
-                                colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ))
+                            .fill(Color.white.opacity(0.22))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
+                            )
                             .frame(width: 76, height: 76)
                         if recentPhotos.isEmpty {
                             VStack(spacing: 3) {
@@ -317,7 +318,7 @@ struct FoodView: View {
                                     .foregroundColor(.white)
                                 Text("AI")
                                     .font(.system(size: 10 * UIScale.font, weight: .black))
-                                    .foregroundColor(.white.opacity(0.9))
+                                    .foregroundColor(.white.opacity(0.95))
                             }
                         } else {
                             Image(uiImage: recentPhotos[0])
@@ -330,13 +331,13 @@ struct FoodView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("📸 AI食事フォトログ")
                             .font(.system(size: 18 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                         if recentPhotos.isEmpty {
                             Text("写真を撮ってAIカロリー計算")
-                                .font(.system(size: 13 * UIScale.font))
-                                .foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                         } else {
@@ -349,26 +350,27 @@ struct FoodView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 5))
                                 }
                                 Text("最近の記録 \(photoLogManager.history.count)件")
-                                    .font(.system(size: 12 * UIScale.font))
-                                    .foregroundColor(Color.duoSubtitle)
+                                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.92))
                             }
                         }
                     }
                     Spacer()
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20 * UIScale.font, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 24)
                 .background(
-                    LinearGradient(
-                        colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    Color.instagramGradient
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
                 )
+                .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
                 .padding(.horizontal, 12)
             }
             .buttonStyle(.plain)
@@ -2038,6 +2040,7 @@ struct EduFeedDetailSheet: View {
     @StateObject private var eduLogManager = EduLogManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
+    @State private var isSpeaking = false
 
     private var dateLabel: String {
         EduFeedDetailSheet.ymdHhmm.string(from: item.timestamp)
@@ -2149,6 +2152,20 @@ struct EduFeedDetailSheet: View {
                         .padding(.bottom, 8)
                     }
 
+                    // Duolingo: 発音情報＋再生
+                    if let phrase = item.extractedPhrase, !phrase.isEmpty {
+                        duolingoDetailPanel(phrase: phrase)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    }
+
+                    // 体重ログ: 体重・体脂肪
+                    if item.activityName == "体重ログ" || item.weightKg != nil || item.bodyFatPercent != nil {
+                        weightDetailPanel
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
+                    }
+
                     // アクティビティバッジ
                     HStack(spacing: 6) {
                         Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)
@@ -2175,6 +2192,138 @@ struct EduFeedDetailSheet: View {
                 dismiss()
             }
             Button("キャンセル", role: .cancel) {}
+        }
+        .onDisappear {
+            DuolingoTextExtractor.shared.stopSpeaking()
+        }
+    }
+
+    // MARK: - 体重ログ パネル（体重・体脂肪）
+
+    private var weightDetailPanel: some View {
+        HStack(spacing: 12) {
+            weightMetric(emoji: "⚖️", label: "体重",
+                         value: item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—",
+                         unit: "kg", color: Color(hex: "#1CB0F6"))
+            weightMetric(emoji: "📉", label: "体脂肪率",
+                         value: item.bodyFatPercent != nil ? String(format: "%.1f", item.bodyFatPercent!) : "—",
+                         unit: "%", color: Color(hex: "#CE82FF"))
+        }
+    }
+
+    private func weightMetric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 22 * UIScale.font))
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 24 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                Text(unit)
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Text(label)
+                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(color.opacity(0.08))
+        .cornerRadius(14)
+    }
+
+    // MARK: - Duolingo 発音パネル（詳細）
+
+    @ViewBuilder
+    private func duolingoDetailPanel(phrase: String) -> some View {
+        let langCode = item.extractedLanguageCode ?? "en"
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(languageFlag(langCode)).font(.system(size: 18))
+                Text(languageLabel(langCode))
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Button {
+                    if isSpeaking {
+                        DuolingoTextExtractor.shared.stopSpeaking()
+                        isSpeaking = false
+                    } else {
+                        isSpeaking = true
+                        DuolingoTextExtractor.shared.speak(phrase: phrase, languageCode: langCode)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                            isSpeaking = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 15))
+                        Text(isSpeaking ? "停止" : "再生")
+                            .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    }
+                    .foregroundColor(isSpeaking ? Color.red : Color(hex: "#1CB0F6"))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background((isSpeaking ? Color.red : Color(hex: "#1CB0F6")).opacity(0.12))
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(phrase)
+                .font(.system(size: 20 * UIScale.font, weight: .bold))
+                .foregroundColor(Color.duoDark)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let pron = item.pronunciation, !pron.isEmpty {
+                Text(pron)
+                    .font(.system(size: 14 * UIScale.font))
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let tja = item.translationJA, !tja.isEmpty {
+                Text(tja)
+                    .font(.system(size: 14 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemGray6).opacity(0.6))
+        .cornerRadius(14)
+    }
+
+    private func languageFlag(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "🇨🇳"
+        case "zh-Hant":                   return "🇹🇼"
+        case "ko":                        return "🇰🇷"
+        case "fr":                        return "🇫🇷"
+        case "es":                        return "🇪🇸"
+        case "de":                        return "🇩🇪"
+        case "pt":                        return "🇧🇷"
+        case "it":                        return "🇮🇹"
+        case "ru":                        return "🇷🇺"
+        case "ar":                        return "🇸🇦"
+        default:                          return "🇺🇸"
+        }
+    }
+
+    private func languageLabel(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "中国語"
+        case "zh-Hant":                   return "中国語（繁体）"
+        case "ko":                        return "韓国語"
+        case "fr":                        return "フランス語"
+        case "es":                        return "スペイン語"
+        case "de":                        return "ドイツ語"
+        case "pt":                        return "ポルトガル語"
+        case "it":                        return "イタリア語"
+        case "ru":                        return "ロシア語"
+        case "ar":                        return "アラビア語"
+        default:                          return "英語"
         }
     }
 }

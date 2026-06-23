@@ -178,7 +178,6 @@ struct DashboardView: View {
     @StateObject private var debouncer = DashboardDebouncer()
     @State private var showMandalaDetail = false
     @State private var selectedMandalaNode: MandalaNodeData? = nil
-    @State private var showEduPhotoLog = false
     @State private var eduPhotoLogNode: MandalaNodeData? = nil
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
@@ -346,11 +345,10 @@ struct DashboardView: View {
                         showPhotoLog = true
                     } : node.type == .custom ? {
                         // 読書・勉強も含む全カスタムノードでEduPhotoLogSheet（フィード投稿トグル付き）を使用
-                        eduPhotoLogNode = node
+                        // 前のシートを閉じてから item を立てて提示し、ブランク画面（提示競合）を回避
                         selectedMandalaNode = nil
-                        // 前のシートが閉じてから提示し、ブランク画面（提示競合）を回避
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            showEduPhotoLog = true
+                            eduPhotoLogNode = node
                         }
                     } : nil,
                     onDrinkComplete: node.type == .drink ? { ml in
@@ -371,13 +369,12 @@ struct DashboardView: View {
                 .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
-            .sheet(isPresented: $showEduPhotoLog) {
-                if let node = eduPhotoLogNode {
+            .sheet(item: $eduPhotoLogNode) { node in
                     EduPhotoLogSheet(
                         nodeEmoji: node.emoji,
                         nodeName: node.label,
                         onComplete: { saveToFeed, isPublic, image, comment in
-                            showEduPhotoLog = false
+                            eduPhotoLogNode = nil
                             Task {
                                 await handleMandalaComplete(node)
                                 if saveToFeed {
@@ -402,7 +399,6 @@ struct DashboardView: View {
                     )
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                }
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
                 MindfulnessSessionView(
@@ -738,6 +734,15 @@ struct DashboardView: View {
     }
 
     private var todayCurrentProgressPercent: Int {
+        computeTodayProgressPercent()
+    }
+
+    /// 達成度（%）を計算する。
+    /// `trainingCompletedOverride` / `mindfulMinutesOverride` を指定すると、トレーニング回数・
+    /// マインドフル分数の評価にその値（例: Apple Health で計測された回数・分数）を使用する。
+    /// ウィジェットは Health 計測値を正源とするため、これらの override を渡して計算する。
+    private func computeTodayProgressPercent(trainingCompletedOverride: Int? = nil,
+                                             mindfulMinutesOverride: Int? = nil) -> Int {
         let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
 
         var totalTrainingCompleted = 0, totalTrainingGoal = 0
@@ -745,32 +750,33 @@ struct DashboardView: View {
         var totalMealGoal = 0
         var totalDrinkGoal = 0
         var totalCustomCompleted = 0, totalCustomGoal = 0
-        var totalStand = 0, totalStandGoal = 0
 
         for slot in activeSlots {
             guard let goal = timeSlotManager.settings.goalFor(slot),
                   let progress = timeSlotManager.progress.progressFor(slot) else { continue }
             totalTrainingCompleted += countSetsInTimeSlot(slot)
             totalTrainingGoal += goal.trainingGoal
-            totalMindfulMinutes += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3
-            totalMindfulnessGoal += goal.mindfulnessGoal
+            // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分、20分ポモドーロ1回=20分）。
+            // ポモドーロ（スタンド）も Health 記録時間と同様にマインドフルへ合算する。
+            totalMindfulMinutes += progress.mindfulnessCompleted * 1 + progress.stretchSetsCompleted * 3 + progress.standCompleted * 20
+            let standGoalMinutes = goal.standGoal.enabled ? 20 : 0
+            totalMindfulnessGoal += goal.mindfulnessGoal + standGoalMinutes
             totalMealGoal += goal.logGoal.mealGoal
             totalDrinkGoal += goal.logGoal.drinkGoal
-            if goal.standGoal.enabled {
-                totalStandGoal += 1
-                totalStand += min(1, progress.standCompleted)
-            }
             let enabled = goal.customActivities.filter { $0.isEnabled }
             totalCustomGoal += enabled.count
             totalCustomCompleted += enabled.filter { progress.completedActivityIds.contains($0.id) }.count
         }
 
+        // Apple Health 計測値の override があればそれを使用（ウィジェットの達成度計算用）
+        let trainingDone = trainingCompletedOverride ?? totalTrainingCompleted
+        let mindfulDone  = mindfulMinutesOverride ?? totalMindfulMinutes
+
         var totalGoals = 0
         var completedGoals = 0
 
-        if totalTrainingGoal > 0    { totalGoals += 1; if totalTrainingCompleted >= totalTrainingGoal    { completedGoals += 1 } }
-        if totalMindfulnessGoal > 0 { totalGoals += 1; if totalMindfulMinutes    >= totalMindfulnessGoal { completedGoals += 1 } }
-        if totalStandGoal > 0       { totalGoals += 1; if totalStand             >= totalStandGoal       { completedGoals += 1 } }
+        if totalTrainingGoal > 0    { totalGoals += 1; if trainingDone >= totalTrainingGoal    { completedGoals += 1 } }
+        if totalMindfulnessGoal > 0 { totalGoals += 1; if mindfulDone  >= totalMindfulnessGoal { completedGoals += 1 } }
         if totalMealGoal > 0        { totalGoals += 1; if effectiveMealLogged    >= totalMealGoal        { completedGoals += 1 } }
         if totalDrinkGoal > 0       { totalGoals += 1; if Int(healthKit.todayIntakeWater) >= totalDrinkGoal { completedGoals += 1 } }
         if totalCustomGoal > 0      { totalGoals += 1; if totalCustomCompleted   >= totalCustomGoal      { completedGoals += 1 } }
@@ -4330,10 +4336,11 @@ struct DashboardView: View {
             HStack(spacing: 16) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(
-                            colors: [Color.duoOrange, Color(red: 1.0, green: 0.50, blue: 0.08)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ))
+                        .fill(Color.white.opacity(0.22))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
+                        )
                         .frame(width: 76, height: 76)
                     if recentPhotos.isEmpty {
                         VStack(spacing: 3) {
@@ -4342,7 +4349,7 @@ struct DashboardView: View {
                                 .foregroundColor(.white)
                             Text("AI")
                                 .font(.system(size: 10 * UIScale.font, weight: .black))
-                                .foregroundColor(.white.opacity(0.9))
+                                .foregroundColor(.white.opacity(0.95))
                         }
                     } else {
                         Image(uiImage: recentPhotos[0])
@@ -4355,13 +4362,13 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("📸 AI食事フォトログ")
                         .font(.system(size: 18 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
+                        .foregroundColor(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     if recentPhotos.isEmpty {
                         Text("写真を撮ってAIカロリー計算")
-                            .font(.system(size: 13 * UIScale.font))
-                            .foregroundColor(Color.duoSubtitle)
+                            .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.92))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     } else {
@@ -4374,26 +4381,27 @@ struct DashboardView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                             }
                             Text("最近の記録 \(photoLogManager.history.count)件")
-                                .font(.system(size: 12 * UIScale.font))
-                                .foregroundColor(Color.duoSubtitle)
+                                .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
                         }
                     }
                 }
                 Spacer()
+                Image(systemName: "sparkles")
+                    .font(.system(size: 20 * UIScale.font, weight: .bold))
+                    .foregroundColor(.white.opacity(0.9))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 24)
             .background(
-                LinearGradient(
-                    colors: [Color.duoOrange.opacity(0.10), Color.duoOrange.opacity(0.04)],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                Color.instagramGradient
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.duoOrange.opacity(0.18), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
+            .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
             .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
@@ -5595,15 +5603,28 @@ struct DashboardView: View {
         AuthenticationManager.cachedAppIntakeCalories = totalMealLogged
         totalDrinkLogged = Int(healthKit.todayIntakeWater)
 
-        sharedDefaults.set(totalTrainingCompleted, forKey: "trainingCompleted")
+        // ウィジェットのトレーニング・マインドフルは Apple Health の計測値を正源とする
+        // - トレーニング: Health に計測されたワークアウト回数
+        // - マインドフル: Health に計測されたマインドフルネス分数
+        let healthTrainingCount  = healthKit.todayWorkoutCount
+        let healthMindfulMinutes = Int(healthKit.todayMindfulnessMinutes.rounded())
+        // 上記の正しいデータを元に達成度を計算
+        let widgetProgressPercent = computeTodayProgressPercent(
+            trainingCompletedOverride: healthTrainingCount,
+            mindfulMinutesOverride: healthMindfulMinutes
+        )
+
+        sharedDefaults.set(healthTrainingCount, forKey: "trainingCompleted")
         sharedDefaults.set(totalTrainingGoal, forKey: "trainingGoal")
-        sharedDefaults.set(totalMindfulnessCompleted, forKey: "mindfulnessCompleted")
+        sharedDefaults.set(healthMindfulMinutes, forKey: "mindfulnessCompleted")
         sharedDefaults.set(totalMindfulnessGoal, forKey: "mindfulnessGoal")
         sharedDefaults.set(totalMealLogged, forKey: "mealLogged")
         sharedDefaults.set(totalMealGoal, forKey: "mealGoal")
         sharedDefaults.set(totalDrinkLogged, forKey: "drinkLogged")
         sharedDefaults.set(totalDrinkGoal, forKey: "drinkGoal")
-        sharedDefaults.set(todayCurrentProgressPercent, forKey: "progressPercent")
+        sharedDefaults.set(widgetProgressPercent, forKey: "progressPercent")
+
+        print("[Widget] Health-based: training=\(healthTrainingCount)/\(totalTrainingGoal) (app=\(totalTrainingCompleted)), mindful=\(healthMindfulMinutes)min/\(totalMindfulnessGoal) (app=\(totalMindfulnessCompleted)), progress=\(widgetProgressPercent)%")
 
         // カロリー収支を計算して保存（摂取 - 消費）Apple Health方式
         // アプリ内ログを優先、なければHealthKit値を使用
@@ -5618,6 +5639,10 @@ struct DashboardView: View {
         let totalPoints = authManager.userProfile?.totalPoints ?? 0
         sharedDefaults.set(totalPoints, forKey: "totalPoints")
 
+        // 今週（月〜日）のポイントを保存（ウィジェットの XP 表示用）
+        sharedDefaults.set(weeklyXP, forKey: "weeklyPoints")
+        AuthenticationManager.cachedWeeklyPoints = weeklyXP
+
         // ワークアウト・スタンド（HealthKit実績のみ保存、目標は廃止）
         sharedDefaults.set(healthKit.todayWorkoutMinutes, forKey: "workoutMinutes")
         sharedDefaults.set(0, forKey: "workoutGoal")
@@ -5626,10 +5651,10 @@ struct DashboardView: View {
 
         let payloadHash = [
             todaySetCount, dailySetGoal, totalReps, authManager.userProfile?.streak ?? 0,
-            totalXP, totalTrainingCompleted, totalTrainingGoal, totalMindfulnessCompleted,
+            totalXP, healthTrainingCount, totalTrainingGoal, healthMindfulMinutes,
             totalMindfulnessGoal, totalMealLogged, totalMealGoal, totalDrinkLogged, totalDrinkGoal,
-            calorieBalance, totalPoints, healthKit.todayWorkoutMinutes, healthKit.todayStandHours,
-            todayCurrentProgressPercent
+            calorieBalance, totalPoints, weeklyXP, healthKit.todayWorkoutMinutes, healthKit.todayStandHours,
+            widgetProgressPercent
         ].map(String.init).joined(separator: "|")
 
         guard payloadHash != lastWidgetPayloadHash else {
@@ -6225,6 +6250,10 @@ private struct MandalaSpiralCard: View {
     var dailyWaterDone: Bool = false
     @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
 
+    // 体重計測ノード: 記録方法の選択 / 写真記録シート
+    @State private var showWeightOptions = false
+    @State private var showWeightPhotoLog = false
+
     private var currentHour: Int { Calendar.current.component(.hour, from: Date()) }
 
     private var visibleSlots: [TimeSlot] {
@@ -6250,6 +6279,60 @@ private struct MandalaSpiralCard: View {
                 settingsButton
                     .padding(.trailing, 8)
             }
+            .sheet(isPresented: $showWeightOptions) {
+                WeightRecordOptionsSheet(
+                    onWithings: {
+                        showWeightOptions = false
+                        openWithings()
+                    },
+                    onPhoto: {
+                        showWeightOptions = false
+                        // 前のシートが閉じてから提示し、ブランク画面（提示競合）を回避
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            showWeightPhotoLog = true
+                        }
+                    }
+                )
+                .presentationDetents([.height(260)])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showWeightPhotoLog) {
+                EduPhotoLogSheet(
+                    nodeEmoji: "⚖️",
+                    nodeName: "体重ログ",
+                    onComplete: { saveToFeed, isPublic, image, comment in
+                        showWeightPhotoLog = false
+                        // 完了判定は Health の体重計測のみで行うため、ここでは達成マークしない。
+                        // フィードへの投稿（体重ログ）のみ実施する。
+                        if saveToFeed {
+                            EduLogManager.shared.addItem(
+                                activityName: "体重ログ",
+                                activityEmoji: "⚖️",
+                                comment: comment,
+                                image: image,
+                                isPublic: isPublic,
+                                weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
+                                bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil
+                            )
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+    }
+
+    /// Withingsアプリを開く（複数スキームを試してApp Storeへフォールバック）
+    private func openWithings() {
+        let withingsSchemes = ["wiscale2://", "healthmate://", "withings://"]
+        let withingsAppStore = URL(string: "https://apps.apple.com/app/id542701020")!
+        if let scheme = withingsSchemes
+            .compactMap({ URL(string: $0) })
+            .first(where: { UIApplication.shared.canOpenURL($0) }) {
+            UIApplication.shared.open(scheme)
+        } else {
+            UIApplication.shared.open(withingsAppStore)
+        }
     }
 
     private var chart: some View {
@@ -6268,23 +6351,16 @@ private struct MandalaSpiralCard: View {
                 case .stand:          showStandSession = true
                 case .sleep, .activity: break
                 case .weight:
-                    // Withingsアプリを開く（複数スキームを試してApp Storeへフォールバック）
-                    let withingsSchemes = ["wiscale2://", "healthmate://", "withings://"]
-                    let withingsAppStore = URL(string: "https://apps.apple.com/app/id542701020")!
-                    if let scheme = withingsSchemes
-                        .compactMap({ URL(string: $0) })
-                        .first(where: { UIApplication.shared.canOpenURL($0) }) {
-                        UIApplication.shared.open(scheme)
-                    } else {
-                        UIApplication.shared.open(withingsAppStore)
-                    }
+                    // 記録方法を選択（Withingsを開く / 写真で記録する）
+                    showWeightOptions = true
                 case .pfc:            showMandalaDetail = true
                 case .meal, .drink:   selectedMandalaNode = node
                 case .custom:
                     // 読書・勉強はシートを表示（リンクボタンはシート内に配置）
                     selectedMandalaNode = node
                 }
-            }
+            },
+            onTapCenter: { showTracker = true }
         )
     }
 
@@ -6969,7 +7045,7 @@ struct MindfulnessSessionView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let ringSize = min(geo.size.width, geo.size.height) * 0.68
+            let ringSize = min(geo.size.width, geo.size.height) * 0.82
             ZStack {
                 bgGradient.ignoresSafeArea()
 
@@ -7004,7 +7080,7 @@ struct MindfulnessSessionView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 28)
                     }
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 10)
 
                     // ── ストレッチ：フェーズステッパー ──
                     if !isMeditation && !sessionVideos.isEmpty {
@@ -7032,6 +7108,8 @@ struct MindfulnessSessionView: View {
                         .padding(.bottom, 8)
                         .animation(.easeInOut(duration: 0.4), value: currentStretchIndex)
                     }
+
+                    Spacer(minLength: 8)
 
                     // ── メインリング ──
                     ZStack {
@@ -7079,6 +7157,7 @@ struct MindfulnessSessionView: View {
                     Spacer(minLength: 8)
 
                     // ── リング下の補足 ──
+                    // （リングは上下の Spacer で画面中央に配置）
                     if isMeditation {
                         meditationTip
                     } else if let stretch = currentStretch {
@@ -7514,6 +7593,73 @@ struct EduPhotoLogSheet: View {
                     selectedImage = image
                 }
             }
+        }
+    }
+}
+
+// MARK: - 体重計測の記録方法選択シート
+
+private struct WeightRecordOptionsSheet: View {
+    let onWithings: () -> Void
+    let onPhoto: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 6) {
+                Text("⚖️").font(.system(size: 44 * UIScale.font))
+                Text("体重を記録")
+                    .font(.title3).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+                Text("完了は Apple Health にその日の体重が記録されると自動で判定されます")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 14)
+
+            Divider()
+
+            VStack(spacing: 10) {
+                Button {
+                    onWithings()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "scalemass.fill")
+                            .font(.title3)
+                        Text("Withingsを開く")
+                            .font(.headline).fontWeight(.black)
+                        Spacer()
+                    }
+                    .foregroundColor(Color(hex: "#00A6A6"))
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(Color(hex: "#00A6A6").opacity(0.1))
+                    .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    onPhoto()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "camera.fill")
+                            .font(.title3)
+                        Text("写真で記録する")
+                            .font(.headline).fontWeight(.black)
+                        Spacer()
+                    }
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(Color(hex: "#1CB0F6").opacity(0.1))
+                    .cornerRadius(14)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            Spacer()
         }
     }
 }
@@ -8457,7 +8603,7 @@ private struct TodayHistorySection: View {
                             HStack(spacing: 8) {
                                 Text(timeFmt.string(from: rec.measuredAt))
                                     .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                                    .frame(width: 38, alignment: .leading)
+                                    .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                                 Spacer()
                                 if latestBodyFatPercentage > 0 {
                                     Text(String(format: "%.1f%%", latestBodyFatPercentage))
@@ -8486,7 +8632,7 @@ private struct TodayHistorySection: View {
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: s.startDate))
                                             .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                                            .frame(width: 38, alignment: .leading)
+                                            .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                                         Spacer()
                                         Text(String(format: "%.0f kcal", s.value))
                                             .font(.system(size: 11 * UIScale.font, weight: .black))
@@ -8510,7 +8656,7 @@ private struct TodayHistorySection: View {
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: s.startDate))
                                             .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                                            .frame(width: 38, alignment: .leading)
+                                            .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                                         Spacer()
                                         Text(String(format: "%.0f ml", s.value))
                                             .font(.system(size: 11 * UIScale.font, weight: .black))
@@ -8531,7 +8677,7 @@ private struct TodayHistorySection: View {
                                     HStack(spacing: 6) {
                                         Text(timeFmt.string(from: date))
                                             .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                                            .frame(width: 38, alignment: .leading)
+                                            .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                                         Text("1分歯磨き・フロス")
                                             .font(.system(size: 10 * UIScale.font, weight: .black))
                                             .foregroundColor(toothColor)
@@ -8583,7 +8729,7 @@ private struct TodayHistorySection: View {
                     HStack(spacing: 6) {
                         Text(timeFmt.string(from: set.startTime))
                             .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                            .frame(width: 38, alignment: .leading)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                         Text("\(set.slotLabel)セット\(set.setNum)")
                             .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoGreen)
                         Spacer()
@@ -8632,7 +8778,7 @@ private struct TodayHistorySection: View {
                 HStack(spacing: 6) {
                     Text(timeFmt.string(from: s.startDate))
                         .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                        .frame(width: 38, alignment: .leading)
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(width: 44, alignment: .leading)
                     Spacer()
                     Text("\(Int(s.durationMinutes))分")
                         .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(color)

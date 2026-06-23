@@ -152,6 +152,11 @@ class WatchHealthKitManager: ObservableObject {
         if let mindful = HKObjectType.categoryType(forIdentifier: .mindfulSession) {
             typesToWrite.insert(mindful)
         }
+        // トレーニング結果を Watch から直接 Health に書き込むための権限
+        typesToWrite.insert(HKObjectType.workoutType())
+        if let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
+            typesToWrite.insert(energy)
+        }
 
         do {
             try await healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead)
@@ -411,24 +416,37 @@ class WatchHealthKitManager: ObservableObject {
 
     // MARK: - Mindfulness
 
-    func fetchTodayMindfulness() async {
+    func fetchTodayMindfulness(retry: Bool = true) async {
         guard let mindfulType = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else { return }
 
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
 
-        let rawSamples: [HKCategorySample] = await withCheckedContinuation { continuation in
+        let fetch: (samples: [HKCategorySample], hadError: Bool) = await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
                 sampleType: mindfulType,
                 predicate: predicate,
                 limit: HKObjectQueryNoLimit,
                 sortDescriptors: [sortDescriptor]
-            ) { _, samples, _ in
-                continuation.resume(returning: (samples as? [HKCategorySample]) ?? [])
+            ) { _, samples, error in
+                if let error {
+                    print("[WatchHealthKit] ⚠️ Mindfulness fetch error: \(error.localizedDescription)")
+                    continuation.resume(returning: ([], true))
+                    return
+                }
+                continuation.resume(returning: ((samples as? [HKCategorySample]) ?? [], false))
             }
             healthStore.execute(query)
         }
+
+        if fetch.hadError && retry {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            await fetchTodayMindfulness(retry: false)
+            return
+        }
+
+        let rawSamples = fetch.samples
 
         // W4: N+1 直列クエリを withTaskGroup で並列化
         let enriched: [WatchMindfulnessSession] = await withTaskGroup(of: WatchMindfulnessSession.self) { group in
@@ -489,24 +507,37 @@ class WatchHealthKitManager: ObservableObject {
     }
 
     /// Apple Healthに記録された今日のHKWorkout件数を取得（トレーニング完了判定の正源として利用）
-    func fetchTodayHKWorkouts() async {
+    /// 一時的なエラー（HealthKit ストア初期化中など）に備えて1回だけリトライする。
+    func fetchTodayHKWorkouts(retry: Bool = true) async {
         let workoutType = HKObjectType.workoutType()
         let (start, end) = todayBounds()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
-        let count: Int = await withCheckedContinuation { cont in
+        let result: (count: Int, hadError: Bool) = await withCheckedContinuation { cont in
             let query = HKSampleQuery(
                 sampleType: workoutType,
                 predicate: predicate,
                 limit: HKObjectQueryNoLimit,
                 sortDescriptors: [sortDescriptor]
-            ) { _, samples, _ in
-                cont.resume(returning: (samples ?? []).count)
+            ) { _, samples, error in
+                if let error {
+                    print("[WatchHealthKit] ⚠️ HKWorkout fetch error: \(error.localizedDescription)")
+                    cont.resume(returning: (0, true))
+                    return
+                }
+                cont.resume(returning: ((samples ?? []).count, false))
             }
             healthStore.execute(query)
         }
-        await MainActor.run { self.todayHKWorkoutCount = count }
-        print("[WatchHealthKit] 💪 HKWorkoutCount: \(count)")
+
+        if result.hadError && retry {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            await fetchTodayHKWorkouts(retry: false)
+            return
+        }
+
+        await MainActor.run { self.todayHKWorkoutCount = result.count }
+        print("[WatchHealthKit] 💪 HKWorkoutCount: \(result.count)")
     }
 
     // MARK: - Stand Hours
@@ -697,6 +728,68 @@ class WatchHealthKitManager: ObservableObject {
             WatchConnectivityManager.shared.sendMindfulnessCompleted()
         } catch {
             print("[WatchHealthKit] ⚠️ Failed to save mindfulness: \(error)")
+        }
+    }
+
+    // MARK: - Workout 書き込み
+
+    /// iOS 版 HealthKitManager.caloriesPerRep と揃える（消費カロリー推定用）
+    static let caloriesPerRep: [String: Double] = [
+        "pushup": 0.32, "squat": 0.32, "situp": 0.15,
+        "lunge": 0.40,  "burpee": 1.00, "plank": 0.08,
+    ]
+
+    /// Watch で完了したトレーニングセットを HKWorkout として直接 Health に書き込む。
+    ///
+    /// マインドフルネスと同様に Watch から直接書き込むことで、iPhone の到達性や
+    /// HealthKit 同期遅延に依存せず「Watch のトレーニング結果」が確実に Health に残る。
+    /// `setId` をメタデータに含めることで iPhone 側の重複書き込みを防ぐ。
+    /// - Returns: 書き込みに成功したら true（iPhone 側のフォールバック判定に使用）
+    @discardableResult
+    func saveWorkoutSet(setId: String,
+                        exercises: [(id: String, reps: Int)],
+                        endDate: Date = Date()) async -> Bool {
+        guard HKHealthStore.isHealthDataAvailable() else {
+            print("[WatchHealthKit] ⚠️ HealthKit not available - workout not saved")
+            return false
+        }
+        guard let energyType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else {
+            return false
+        }
+
+        let totalReps = exercises.reduce(0) { $0 + $1.reps }
+        let totalKcal = exercises.reduce(0.0) {
+            $0 + (Self.caloriesPerRep[$1.id.lowercased()] ?? 0.25) * Double($1.reps)
+        }
+        // セット所要時間の概算（最低60秒）。開始時刻を逆算する。
+        let startDate = endDate.addingTimeInterval(-Double(max(totalReps * 3, 60)))
+
+        let metadata: [String: Any] = ["kfitSetId": setId]
+
+        let energySample = HKQuantitySample(
+            type: energyType,
+            quantity: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
+            start: startDate, end: endDate
+        )
+        let workout = HKWorkout(
+            activityType: .functionalStrengthTraining,
+            start: startDate, end: endDate,
+            duration: max(endDate.timeIntervalSince(startDate), 1),
+            totalEnergyBurned: HKQuantity(unit: .kilocalorie(), doubleValue: totalKcal),
+            totalDistance: nil,
+            metadata: metadata
+        )
+
+        do {
+            try await healthStore.save(workout)
+            try await healthStore.save(energySample)
+            print("[WatchHealthKit] ✅ Workout saved to Health: \(totalReps)rep, \(String(format: "%.1f", totalKcal))kcal, setId=\(setId)")
+            // ダッシュボードのトレーニング件数を即時更新（同期待ちしない）
+            await fetchTodayHKWorkouts()
+            return true
+        } catch {
+            print("[WatchHealthKit] ⚠️ Failed to save workout: \(error)")
+            return false
         }
     }
 

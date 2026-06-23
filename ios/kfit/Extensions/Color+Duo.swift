@@ -35,6 +35,19 @@ extension Color {
     static let duoCard      = Color(.systemBackground)       // adaptive: white / dark gray
     static let duoBackground = Color(.secondarySystemBackground) // adaptive
 
+    /// Instagram風の鮮やかなブランドグラデーション（イエロー→オレンジ→ピンク→パープル）
+    static let instagramGradient = LinearGradient(
+        colors: [
+            Color(red: 0.996, green: 0.855, blue: 0.459), // #FEDA75 イエロー
+            Color(red: 0.980, green: 0.494, blue: 0.118), // #FA7E1E オレンジ
+            Color(red: 0.839, green: 0.161, blue: 0.463), // #D62976 マゼンタ
+            Color(red: 0.588, green: 0.184, blue: 0.749), // #962FBF パープル
+            Color(red: 0.310, green: 0.357, blue: 0.835)  // #4F5BD5 インディゴ
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0

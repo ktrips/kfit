@@ -183,46 +183,138 @@ def prep_image(rel_path):
         return None
 
 
-def add_image(doc, rel_path):
+def add_image(doc, rel_path, alt=""):
     prepped = prep_image(rel_path)
     if not prepped:
         return
     path, (w, h) = prepped
-    max_w, max_h = 3.5, 4.7  # inches
+    # 1メソッド1ページに収まるよう控えめなサイズ
+    max_w, max_h = 3.4, 3.2  # inches
     if (w / max_w) >= (h / max_h):
         kwargs = {"width": Inches(max_w)}
     else:
         kwargs = {"height": Inches(max_h)}
-    doc.add_picture(path, **kwargs)
+    shape = doc.add_picture(path, **kwargs)
+    # 代替テキスト（alt）を設定 — アクセシビリティ／スクリーンリーダー対応
+    if alt:
+        docPr = shape._inline.find(qn("wp:docPr"))
+        if docPr is not None:
+            docPr.set("descr", alt)
+            docPr.set("title", alt)
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.paragraphs[-1].paragraph_format.space_before = Pt(4)
-    doc.paragraphs[-1].paragraph_format.space_after = Pt(10)
+    doc.paragraphs[-1].paragraph_format.space_before = Pt(2)
+    doc.paragraphs[-1].paragraph_format.space_after = Pt(6)
 
 
 # ── 各ブロックビルダー ───────────────────────────────────────
-def add_heading(doc, level, text, pending_anchor, in_toc):
-    # 目次内の "### カテゴリ" は見出しスタイルにせず、色付き段落にする（ナビ重複防止）
-    if in_toc and level == 3:
-        p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(10)
-        p.paragraph_format.space_after = Pt(2)
-        r = p.add_run(text)
-        r.bold = True
-        r.font.size = Pt(13)
-        r.font.color.rgb = RGBColor.from_string(ORANGE_DK)
-        return None
-
+def add_heading(doc, level, text, pending_anchor, page_break=False, toc_bookmark=None):
     style_map = {1: "Title", 2: "Heading 1", 3: "Heading 2", 4: "Heading 3"}
     p = doc.add_paragraph(style=style_map[level])
+    if page_break:
+        p.paragraph_format.page_break_before = True
     add_inline(p, text, base_color={
         1: GREEN_DK, 2: GREEN_DK, 3: ORANGE_DK, 4: BLUE_DK
     }[level])
     # 大見出し(##)は下線ボーダーで装飾
     if level == 2:
         para_border(p, edges=("bottom",), color=GREEN, sz="8", space="6")
+    # 目次フィールドのジャンプ先ブックマーク（Word標準TOCが参照）
+    if toc_bookmark:
+        add_bookmark_to_paragraph(p, toc_bookmark)
     if pending_anchor:
         add_bookmark_to_paragraph(p, anchor_to_bm(pending_anchor))
     return None
+
+
+# ── Word標準の目次(TOC)フィールド ───────────────────────────
+def prescan_toc(lines):
+    """本文を事前走査し、TOCに載せる見出し(level2/3)を順序通りに収集。"""
+    entries = []
+    in_toc = False
+    in_code = False
+    counter = 0
+    for raw in lines:
+        s = raw.strip()
+        if s.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        hm = re.match(r"^(#{1,6})\s+(.*)$", s)
+        if not hm:
+            continue
+        level = min(len(hm.group(1)), 4)
+        text = hm.group(2).strip()
+        if level == 2 and text == "目次":
+            in_toc = True
+            continue
+        if level <= 2 and text != "目次":
+            in_toc = False
+        # 目次内の "### カテゴリ" ラベルは見出しにしないため対象外
+        if in_toc and level == 3:
+            continue
+        if level in (2, 3) and text != "目次":
+            counter += 1
+            entries.append((level, _strip_inline(text), f"_Toc{90000000 + counter}"))
+    return entries
+
+
+def _strip_inline(text):
+    """目次表示用にインライン記法を除去（[x](y)→x, **x**→x）。"""
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = text.replace("**", "").replace("*", "")
+    return text.strip()
+
+
+def _toc_field_run(parent_par, char_type=None, instr=None):
+    r = parent_par.add_run()
+    if char_type:
+        fc = OxmlElement("w:fldChar")
+        fc.set(qn("w:fldCharType"), char_type)
+        r._r.append(fc)
+    if instr is not None:
+        it = OxmlElement("w:instrText")
+        it.set(qn("xml:space"), "preserve")
+        it.text = instr
+        r._r.append(it)
+    return r
+
+
+def emit_toc_field(doc, entries):
+    """Word標準のTOCフィールドを、各見出しブックマークへのリンク付きで出力。
+    KDPはこのフィールドをKindleのナビゲーション目次として変換する。"""
+    if not entries:
+        return
+    last = len(entries) - 1
+    for idx, (level, text, tocname) in enumerate(entries):
+        ep = doc.add_paragraph()
+        ep.paragraph_format.left_indent = Pt(0 if level == 2 else 18)
+        ep.paragraph_format.space_after = Pt(3)
+        ep.paragraph_format.line_spacing = 1.1
+        if idx == 0:
+            _toc_field_run(ep, char_type="begin")
+            _toc_field_run(ep, instr=' TOC \\h \\z \\u ')
+            _toc_field_run(ep, char_type="separate")
+        # ジャンプ用ハイパーリンク
+        hl = OxmlElement("w:hyperlink")
+        hl.set(qn("w:anchor"), tocname)
+        hl.set(qn("w:history"), "1")
+        run = OxmlElement("w:r")
+        rPr = OxmlElement("w:rPr")
+        rf = OxmlElement("w:rFonts"); rf.set(qn("w:eastAsia"), JP_FONT); rPr.append(rf)
+        col = OxmlElement("w:color")
+        col.set(qn("w:val"), GREEN_DK if level == 2 else INK)
+        rPr.append(col)
+        if level == 2:
+            rPr.append(OxmlElement("w:b"))
+        sz = OxmlElement("w:sz"); sz.set(qn("w:val"), "26" if level == 2 else "21"); rPr.append(sz)
+        run.append(rPr)
+        t = OxmlElement("w:t"); t.set(qn("xml:space"), "preserve"); t.text = text
+        run.append(t)
+        hl.append(run)
+        ep._p.append(hl)
+        if idx == last:
+            _toc_field_run(ep, char_type="end")
 
 
 def add_blockquote(doc, lines):
@@ -340,6 +432,10 @@ def build():
         except KeyError:
             pass
 
+    # TOCに載せる見出しを事前収集し、レンダリング時にブックマークを割り当てる
+    toc_entries = prescan_toc(lines)
+    toc_queue = [e[2] for e in toc_entries]
+
     pending_anchor = None
     in_toc = False
     in_code = False
@@ -373,8 +469,43 @@ def build():
             i += 1
             continue
 
+        # 見出し（in_toc 遷移を管理。TOC領域内の本文はスキップ）
+        hm = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        if hm:
+            level = min(len(hm.group(1)), 4)
+            text = hm.group(2).strip()
+            if level == 2 and text == "目次":
+                in_toc = True
+                add_heading(doc, level, text, pending_anchor)
+                emit_toc_field(doc, toc_entries)
+                pending_anchor = None
+                i += 1
+                continue
+            if level <= 2 and text != "目次":
+                in_toc = False
+            # 目次領域内の "### カテゴリ" ラベルはTOCフィールドで代替するため描画しない
+            if in_toc and level == 3:
+                pending_anchor = None
+                i += 1
+                continue
+            # 各「方法（No.xxx）」は改ページして1ページに収める
+            is_method = (level == 3 and text.startswith("No."))
+            toc_bm = None
+            if level in (2, 3) and text != "目次":
+                toc_bm = toc_queue.pop(0) if toc_queue else None
+            add_heading(doc, level, text, pending_anchor,
+                        page_break=is_method, toc_bookmark=toc_bm)
+            pending_anchor = None
+            i += 1
+            continue
+
         # 空行
         if stripped == "":
+            i += 1
+            continue
+
+        # 目次領域内の本文（カテゴリ見出し・リンク箇条書き・区切り線）はスキップ
+        if in_toc:
             i += 1
             continue
 
@@ -384,25 +515,10 @@ def build():
             i += 1
             continue
 
-        # 見出し
-        hm = re.match(r"^(#{1,6})\s+(.*)$", stripped)
-        if hm:
-            level = len(hm.group(1))
-            text = hm.group(2).strip()
-            level = min(level, 4)
-            if level == 2 and text == "目次":
-                in_toc = True
-            elif level <= 2 and text != "目次":
-                in_toc = False
-            add_heading(doc, level, text, pending_anchor, in_toc)
-            pending_anchor = None
-            i += 1
-            continue
-
         # 画像
-        im = re.match(r"^!\[[^\]]*\]\(([^)]+)\)\s*$", stripped)
+        im = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", stripped)
         if im:
-            add_image(doc, im.group(1))
+            add_image(doc, im.group(2), im.group(1))
             i += 1
             continue
 

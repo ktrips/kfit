@@ -638,7 +638,7 @@ struct PhotoLogView: View {
                         .fill(isSelected ? Color.duoGreen.opacity(0.15) : Color(.systemGray6))
                         .frame(width: 72, height: 72)
 
-                    if let thumb = item.thumbnail {
+                    if let thumb = item.smallThumbnail {
                         Image(uiImage: thumb)
                             .resizable()
                             .scaledToFill()
@@ -1212,7 +1212,7 @@ struct PhotoLogManageView: View {
             editingItem = item
         } label: {
             HStack(spacing: 12) {
-                if let thumb = item.thumbnail {
+                if let thumb = item.smallThumbnail {
                     Image(uiImage: thumb)
                         .resizable()
                         .scaledToFill()
@@ -1319,7 +1319,7 @@ struct PhotoLogEditView: View {
             Form {
                 Section(header: Text("食品情報")) {
                     HStack {
-                        if let thumb = item.thumbnail {
+                        if let thumb = item.smallThumbnail {
                             Image(uiImage: thumb)
                                 .resizable()
                                 .scaledToFill()

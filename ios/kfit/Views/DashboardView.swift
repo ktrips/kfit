@@ -4331,7 +4331,7 @@ struct DashboardView: View {
     }
 
     private var photoLogButton: some View {
-        let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
+        let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
         return Button(action: { showPhotoLog = true }) {
             HStack(spacing: 16) {
                 ZStack {

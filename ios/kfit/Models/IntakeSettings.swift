@@ -1,5 +1,59 @@
 import Foundation
 import UIKit
+import ImageIO
+
+/// サムネイル画像のデコード結果をキャッシュし、表示サイズに合わせてダウンサンプリングするユーティリティ。
+///
+/// 保存画像は最大1200px のフルサイズJPEG。これを `UIImage(data:)` で毎描画デコードすると
+/// メインスレッドが詰まるため、（1）デコード済み `UIImage` を `NSCache` で再利用し、
+/// （2）`CGImageSourceCreateThumbnailAtIndex` で表示に必要な画素数まで縮小してから保持する。
+final class ThumbnailCache {
+    static let shared = ThumbnailCache()
+
+    private let cache = NSCache<NSString, UIImage>()
+
+    private init() {
+        cache.countLimit = 300
+        // メモリ警告時はシステムが自動でパージするが、明示的にも空にする
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil, queue: .main
+        ) { [weak cache] _ in
+            cache?.removeAllObjects()
+        }
+    }
+
+    /// キャッシュ済みのデコード画像を返す。なければダウンサンプリングしてキャッシュする。
+    /// - Parameters:
+    ///   - key: アイテムの安定ID（同一データなら同一キー）
+    ///   - data: 元画像データ
+    ///   - maxPixel: 長辺の最大ピクセル数（表示サイズに合わせる）
+    func image(for key: String, data: Data, maxPixel: CGFloat) -> UIImage? {
+        let cacheKey = "\(key)|\(data.count)|\(Int(maxPixel))" as NSString
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+        guard let image = Self.downsample(data: data, maxPixel: maxPixel) else { return nil }
+        cache.setObject(image, forKey: cacheKey)
+        return image
+    }
+
+    /// 画像データを指定の最大ピクセルまで縮小してデコードする。
+    static func downsample(data: Data, maxPixel: CGFloat) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
+            return UIImage(data: data)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(1, maxPixel)
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: cg)
+    }
+}
 
 /// 摂取記録のデフォルト設定
 struct IntakeSettings: Codable {
@@ -260,9 +314,16 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         self.isPublic          = isPublic
     }
 
+    /// フィード等の大きめ表示用（デコード結果はキャッシュされる）
     var thumbnail: UIImage? {
         guard let data = thumbnailData else { return nil }
-        return UIImage(data: data)
+        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 1024)
+    }
+
+    /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
+    var smallThumbnail: UIImage? {
+        guard let data = thumbnailData else { return nil }
+        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 240)
     }
 
     var displayName: String {
@@ -362,9 +423,16 @@ struct EduLogHistoryItem: Codable, Identifiable {
         self.isPublic       = isPublic
     }
 
+    /// フィード等の大きめ表示用（デコード結果はキャッシュされる）
     var thumbnail: UIImage? {
         guard let data = thumbnailData else { return nil }
-        return UIImage(data: data)
+        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 1024)
+    }
+
+    /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
+    var smallThumbnail: UIImage? {
+        guard let data = thumbnailData else { return nil }
+        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 240)
     }
 
     /// authorNameが空（旧データ）の場合はUserDefaultsキャッシュのユーザー名でフォールバック

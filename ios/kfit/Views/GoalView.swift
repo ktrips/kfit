@@ -1494,7 +1494,7 @@ struct GoalView: View {
 
     private var weightFeedSection: some View {
         let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let allLogs = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnail != nil }
+        let allLogs = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnailData != nil }
         let recent  = allLogs.filter { $0.timestamp >= twoWeeksAgo }
         let older   = allLogs.filter { $0.timestamp < twoWeeksAgo }
         let displayed = showOlderWeightFeed ? allLogs : recent

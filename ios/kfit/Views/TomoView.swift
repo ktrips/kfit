@@ -176,6 +176,11 @@ struct TomoView: View {
     @State private var selectedCategory: String? = nil  // カテゴリー絞り込み（nil=すべて）
     @FocusState private var emailFocused: Bool
 
+    // フィード集計のキャッシュ（body 毎の merge+sort+grouping 再計算を回避）
+    @State private var cachedFeedGroups: [FeedDayGroup] = []
+    @State private var cachedFeedCategories: [FeedCategoryChip] = []
+    @State private var cachedHasOlderFeed: Bool = false
+
     // クイック記録カテゴリ（ランキング上部・ヘッダー＋から起動）
     private let quickRecords: [TomoQuickRecord] = [
         TomoQuickRecord(id: "food",     label: "FOOD",     emoji: "🍽️", color: Color(hex: "#FF9600"), isFood: true),
@@ -219,6 +224,15 @@ struct TomoView: View {
             .safeAreaInset(edge: .top, spacing: 0) { tomoHeader }
         }
         .task { await manager.load() }
+        .onAppear { rebuildFeedCache() }
+        .onReceive(eduLogManager.$history) { _ in
+            DispatchQueue.main.async { rebuildFeedCache() }
+        }
+        .onReceive(photoLogManager.$history) { _ in
+            DispatchQueue.main.async { rebuildFeedCache() }
+        }
+        .onChange(of: selectedCategory) { _, _ in rebuildFeedCache() }
+        .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(items: [shareText])
         }
@@ -441,41 +455,38 @@ struct TomoView: View {
         return (activity + food).sorted { $0.timestamp > $1.timestamp }
     }
 
-    /// アイテムのカテゴリーキー（activityName ベース、空は「その他」）
-    private func categoryKey(for item: EduLogHistoryItem) -> String {
-        item.activityName.trimmingCharacters(in: .whitespaces).isEmpty ? "その他" : item.activityName
-    }
-
-    /// フィードに存在するカテゴリー一覧（直近の出現順・代表絵文字付き）
-    private var feedCategories: [(key: String, emoji: String)] {
-        var seen = Set<String>()
-        var result: [(key: String, emoji: String)] = []
-        for item in allFeedItems {
-            let key = categoryKey(for: item)
-            if seen.insert(key).inserted {
-                result.append((key: key, emoji: item.activityEmoji.isEmpty ? "📝" : item.activityEmoji))
+    /// activityName をグループ化したカテゴリー表記（FIT / FOOD / EDU / DIARY / OTHERS）と代表絵文字
+    private func categoryInfo(for item: EduLogHistoryItem) -> (label: String, emoji: String) {
+        let name = item.activityName.trimmingCharacters(in: .whitespaces)
+        switch name {
+        case "体重ログ":
+            return ("FIT", "💪")
+        case "食事ログ":
+            return ("FOOD", "🍽")
+        case "読書", "勉強":
+            return ("EDU", "📚")
+        case "日記", "フォト日記":
+            return ("DIARY", "📔")
+        default:
+            if name.localizedCaseInsensitiveContains("Duolingo") {
+                return ("Duolingo", "🦉")
             }
+            return ("OTHERS", "📝")
         }
-        return result
     }
 
-    /// 表示するフィード（直近2週間 or 全件 ＋ カテゴリー絞り込み）
-    private var displayFeedItems: [EduLogHistoryItem] {
-        var items = showOlderFeed ? allFeedItems : allFeedItems.filter { $0.timestamp >= twoWeeksAgo }
-        if let cat = selectedCategory {
-            items = items.filter { categoryKey(for: $0) == cat }
-        }
-        return items
+    /// アイテムのカテゴリーキー（FIT / FOOD / EDU / DIARY / OTHERS）
+    private func categoryKey(for item: EduLogHistoryItem) -> String {
+        categoryInfo(for: item).label
     }
 
-    /// 2週間以上前のデータが存在するか（カテゴリー絞り込みを除いた件数で判断）
-    private var hasOlderItems: Bool {
-        guard !showOlderFeed else { return false }
-        let base = selectedCategory.map { cat in
-            allFeedItems.filter { categoryKey(for: $0) == cat }
-        } ?? allFeedItems
-        return base.count > displayFeedItems.count
+    /// アイテムのカテゴリー代表絵文字
+    private func categoryEmoji(for item: EduLogHistoryItem) -> String {
+        categoryInfo(for: item).emoji
     }
+
+    // フィードの集計（カテゴリー一覧・表示対象・過去有無・日付グループ）は
+    // rebuildFeedCache() に集約し、結果を cachedFeed* に保持する。
 
     // カテゴリグループ：ユーザー×カテゴリ単位で集約
     struct FeedCategoryGroup: Identifiable {
@@ -506,18 +517,60 @@ struct TomoView: View {
 
     // MARK: - Instagram 縦フィード
 
-    /// 日付ごとにグループ化した投稿リスト
-    private var instagramGroups: [(label: String, date: Date, items: [EduLogHistoryItem])] {
-        let cal = Calendar.current
-        let byDay = Dictionary(grouping: displayFeedItems) { item in
-            cal.startOfDay(for: item.timestamp)
+    // カテゴリーチップ（キャッシュ用）
+    struct FeedCategoryChip: Identifiable {
+        var id: String { key }
+        let key: String
+        let emoji: String
+    }
+
+    // 日付グループ（キャッシュ用）
+    struct FeedDayGroup: Identifiable {
+        var id: String { label }
+        let label: String
+        let items: [EduLogHistoryItem]
+    }
+
+    /// フィード集計を 1 回だけ実行してキャッシュに格納する。
+    /// `allFeedItems`（2履歴の filter+merge+sort）は body 評価ごとに複数回呼ばれていたため、
+    /// 履歴・絞り込み・表示範囲が変化したときだけ再計算する。
+    private func rebuildFeedCache() {
+        let all = allFeedItems
+
+        // カテゴリーチップ
+        var seen = Set<String>()
+        var cats: [FeedCategoryChip] = []
+        for item in all {
+            let info = categoryInfo(for: item)
+            if seen.insert(info.label).inserted {
+                cats.append(FeedCategoryChip(key: info.label, emoji: info.emoji))
+            }
         }
-        return byDay.keys.sorted(by: >).map { date in
+        cachedFeedCategories = cats
+
+        // 表示対象（直近2週間 or 全件 ＋ カテゴリー絞り込み）
+        var items = showOlderFeed ? all : all.filter { $0.timestamp >= twoWeeksAgo }
+        if let cat = selectedCategory {
+            items = items.filter { categoryKey(for: $0) == cat }
+        }
+
+        // 日付グループ化
+        let cal = Calendar.current
+        let byDay = Dictionary(grouping: items) { cal.startOfDay(for: $0.timestamp) }
+        cachedFeedGroups = byDay.keys.sorted(by: >).map { date in
             let label = cal.isDateInToday(date) ? "今日" :
                         cal.isDateInYesterday(date) ? "昨日" :
                         TomoView.dateGroupFormatter.string(from: date)
-            return (label: label, date: date,
-                    items: (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp })
+            return FeedDayGroup(label: label,
+                                items: (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp })
+        }
+
+        // 過去フィードの有無
+        if showOlderFeed {
+            cachedHasOlderFeed = false
+        } else {
+            let base = selectedCategory.map { cat in all.filter { categoryKey(for: $0) == cat } } ?? all
+            cachedHasOlderFeed = base.count > base.filter { $0.timestamp >= twoWeeksAgo }.count
         }
     }
 
@@ -525,7 +578,7 @@ struct TomoView: View {
 
     @ViewBuilder
     private var categoryFilterBar: some View {
-        if !feedCategories.isEmpty {
+        if !cachedFeedCategories.isEmpty {
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "line.3.horizontal.decrease.circle.fill")
@@ -556,7 +609,7 @@ struct TomoView: View {
                         categoryChip(label: "すべて", emoji: "🗂", isSelected: selectedCategory == nil) {
                             withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
                         }
-                        ForEach(feedCategories, id: \.key) { cat in
+                        ForEach(cachedFeedCategories) { cat in
                             categoryChip(label: cat.key, emoji: cat.emoji,
                                          isSelected: selectedCategory == cat.key) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -594,9 +647,9 @@ struct TomoView: View {
     }
 
     private var eduFeedSection: some View {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
             // ── 空状態 ───────────────────────────────────────────────────
-            if instagramGroups.isEmpty {
+            if cachedFeedGroups.isEmpty {
                 VStack(spacing: 18) {
                     ZStack {
                         Circle()
@@ -628,7 +681,7 @@ struct TomoView: View {
             }
 
             // ── 投稿一覧 ──────────────────────────────────────────────────
-            ForEach(instagramGroups, id: \.label) { group in
+            ForEach(cachedFeedGroups) { group in
                 // 日付ラベル
                 HStack {
                     Text(group.label)
@@ -648,7 +701,7 @@ struct TomoView: View {
             }
 
             // ── 過去フィード展開ボタン ────────────────────────────────────
-            if !showOlderFeed && hasOlderItems {
+            if !showOlderFeed && cachedHasOlderFeed {
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         showOlderFeed = true
@@ -744,9 +797,9 @@ struct TomoView: View {
                     }
                 } label: {
                     HStack(spacing: 3) {
-                        Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                        Text(categoryEmoji(for: item))
                             .font(.system(size: 12 * UIScale.font))
-                        Text(item.activityName)
+                        Text(categoryKey(for: item))
                             .font(.system(size: 10 * UIScale.font, weight: .semibold))
                             .foregroundColor(selectedCategory == categoryKey(for: item) ? .white : Color.duoSubtitle)
                             .lineLimit(1)

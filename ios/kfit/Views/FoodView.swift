@@ -301,7 +301,7 @@ struct FoodView: View {
         VStack(spacing: 0) {
             // ── 食事フォトログ ────────────────────────────────────────────
             Button { showPhotoLog = true } label: {
-                let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.thumbnail }
+                let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
                 HStack(spacing: 16) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 16)
@@ -1919,7 +1919,7 @@ struct EduFeedCard: View {
                         }
                     }
 
-                    if item.thumbnail != nil {
+                    if item.thumbnailData != nil {
                         LinearGradient(
                             colors: [.clear, Color.black.opacity(0.55)],
                             startPoint: .center, endPoint: .bottom
@@ -1940,7 +1940,7 @@ struct EduFeedCard: View {
                     }
                 }
             }
-            .frame(height: item.thumbnail != nil ? 240 : 180)
+            .frame(height: item.thumbnailData != nil ? 240 : 180)
             .clipped()
 
             // ── コメント ───────────────────────────────────────────────────
@@ -2811,7 +2811,7 @@ struct CategoryMiniCard: View {
                 ZStack {
                     ForEach(Array(group.items.dropFirst().prefix(2).enumerated()), id: \.element.id) { idx, item in
                         Group {
-                            if let thumb = item.thumbnail {
+                            if let thumb = item.smallThumbnail {
                                 Image(uiImage: thumb)
                                     .resizable().scaledToFill()
                             } else {
@@ -2896,7 +2896,7 @@ struct CategoryGroupListSheet: View {
 
             // サムネイル
             Group {
-                if let thumb = item.thumbnail {
+                if let thumb = item.smallThumbnail {
                     Image(uiImage: thumb).resizable().scaledToFill()
                 } else {
                     LinearGradient(
@@ -3100,7 +3100,7 @@ struct CompactCategoryCard: View {
     private func compactThumb(item: EduLogHistoryItem) -> some View {
         let size: CGFloat = 74
         ZStack(alignment: .bottomLeading) {
-            if let thumb = item.thumbnail {
+            if let thumb = item.smallThumbnail {
                 Image(uiImage: thumb)
                     .resizable()
                     .scaledToFill()

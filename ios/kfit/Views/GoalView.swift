@@ -1131,23 +1131,23 @@ struct GoalView: View {
                         ActivityRingView(
                             progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
                             color: Color(red: 0.98, green: 0.07, blue: 0.31),
-                            diameter: 70,
-                            lineWidth: 8
+                            diameter: 90,
+                            lineWidth: 10
                         )
                         ActivityRingView(
                             progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
                             color: Color(red: 0.57, green: 0.91, blue: 0.16),
-                            diameter: 50,
-                            lineWidth: 8
+                            diameter: 66,
+                            lineWidth: 10
                         )
                         ActivityRingView(
                             progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
                             color: Color(red: 0.12, green: 0.89, blue: 0.94),
-                            diameter: 30,
-                            lineWidth: 8
+                            diameter: 42,
+                            lineWidth: 10
                         )
                     }
-                    .frame(width: 70, height: 70)
+                    .frame(width: 90, height: 90)
 
                     VStack(alignment: .leading, spacing: 8) {
                         goalActivityRingLegend(color: Color(red: 0.98, green: 0.07, blue: 0.31), label: "ムーブ", value: "\(Int(healthKit.activityMoveCalories))", goal: "\(Int(healthKit.activityMoveGoal)) kcal")
@@ -1170,7 +1170,7 @@ struct GoalView: View {
                                             .foregroundColor(Color.duoSubtitle)
                                     }
                                     Text(String(format: "%.1f kg", healthKit.latestBodyMass))
-                                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let change = healthKit.weeklyBodyMassChange {
                                         let sign = change >= 0 ? "+" : ""
@@ -1191,7 +1191,7 @@ struct GoalView: View {
                                             .foregroundColor(Color.duoSubtitle)
                                     }
                                     Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                         .foregroundColor(Color.duoDark)
                                     if let change = healthKit.weeklyBodyFatChange {
                                         let sign = change >= 0 ? "+" : ""
@@ -1225,14 +1225,14 @@ struct GoalView: View {
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
-                    .font(.system(size: 7 * UIScale.font, weight: .semibold))
+                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                 HStack(alignment: .lastTextBaseline, spacing: 3) {
                     Text(value)
-                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
                     Text("/ \(goal)")
-                        .font(.system(size: 7 * UIScale.font))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
             }
@@ -3107,7 +3107,9 @@ private struct WeightFeedCard: View {
 
 struct WeightFeedDetailSheet: View {
     let item: EduLogHistoryItem
+    @StateObject private var eduLogManager = EduLogManager.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var isPublicInTomo: Bool = false
 
     private static let fullFmt: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
@@ -3144,6 +3146,8 @@ struct WeightFeedDetailSheet: View {
                     Text(WeightFeedDetailSheet.fullFmt.string(from: item.timestamp))
                         .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
+
+                    weightTomoPublicToggle
                 }
                 .padding(16)
             }
@@ -3154,7 +3158,40 @@ struct WeightFeedDetailSheet: View {
                     Button("閉じる") { dismiss() }
                 }
             }
+            .onAppear { isPublicInTomo = item.isPublic }
         }
+    }
+
+    private var weightTomoPublicToggle: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
+                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
+                .frame(width: 32, height: 32)
+                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TOMOフィードに公開")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のFITページにのみ表示")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isPublicInTomo },
+                set: { v in
+                    isPublicInTomo = v
+                    eduLogManager.setPublic(id: item.id, isPublic: v)
+                }
+            ))
+            .labelsHidden()
+            .tint(Color.duoBlue)
+        }
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
     }
 
     private func metric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {

@@ -470,8 +470,8 @@ struct PhotoLogView: View {
     @State private var fromHistory = false          // 履歴から選択したか
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
     @State private var showManageView = false
-    @State private var markAsFavorite = true   // "フィードに追加" の同期用
-    @State private var isPublicPost = true
+    @State private var markAsFavorite = true   // FOODページへの保存（常にtrue）
+    @State private var isPublicPost = false   // TOMOフィードへの公開（デフォルトOff）
 
     var body: some View {
         NavigationStack {
@@ -1014,25 +1014,22 @@ struct PhotoLogView: View {
 
     private var saveButton: some View {
         VStack(spacing: 10) {
-            // フィードに追加（FOODフィード + TOMOフィードを同時制御）
-            Toggle(isOn: Binding(
-                get: { markAsFavorite },
-                set: { v in markAsFavorite = v; isPublicPost = v }
-            )) {
+            // TOMOフィードへの公開トグル（FOODページへの保存は常にON）
+            Toggle(isOn: $isPublicPost) {
                 HStack(spacing: 6) {
-                    Image(systemName: markAsFavorite ? "rectangle.stack.fill" : "rectangle.stack")
-                        .foregroundColor(markAsFavorite ? Color.duoGreen : Color.duoSubtitle)
+                    Image(systemName: isPublicPost ? "person.2.fill" : "person.2")
+                        .foregroundColor(isPublicPost ? Color.duoBlue : Color(.systemGray3))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("フィードに追加")
+                        Text("TOMOフィードに公開")
                             .font(.system(size: 14 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoDark)
-                        Text(markAsFavorite ? "FOODフィード・TOMOフィードに公開" : "フィードには追加しない")
+                        Text(isPublicPost ? "TOMOの友達にも表示されます" : "自分のFOODページにのみ表示")
                             .font(.system(size: 10 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
                     }
                 }
             }
-            .tint(Color.duoGreen)
+            .tint(Color.duoBlue)
 
             Button {
                 Task {
@@ -1073,7 +1070,7 @@ struct PhotoLogView: View {
         fromHistory = false
         selectedHistoryId = nil
         markAsFavorite = true
-        isPublicPost = true
+        isPublicPost = false   // TOMOフィード公開はデフォルトOff
     }
 
     private func analyzePhoto() async {
@@ -1130,8 +1127,8 @@ struct PhotoLogView: View {
         entry.imageData = selectedImage?.jpegData(compressionQuality: 0.82)
         entry.comment = comment
         entry.analyzedNutrition = nutrition
-        entry.isFavorite = markAsFavorite
-        entry.isPublic   = isPublicPost
+        entry.isFavorite = true          // FOODページへは常に保存
+        entry.isPublic   = isPublicPost  // TOMOフィードへの公開はユーザー選択
         if fromHistory {
             photoLogManager.savePhotoLogWithoutHistory(entry)
         } else {

@@ -152,75 +152,92 @@ final class TomoManager: ObservableObject {
             return ids
         }) ?? []
 
-        // 友達の公開プロフィール（ランキング用）
-        for fid in friendIds {
-            let profile = try? await withAsyncTimeout(seconds: 12) { () -> FriendProfile? in
-                let pdoc = try await Firestore.firestore()
-                    .collection("publicProfiles").document(fid).getDocument()
-                guard pdoc.exists, let data = pdoc.data() else { return nil }
-                return FriendProfile(
-                    email: data["email"] as? String ?? "",
-                    username: data["username"] as? String ?? "TOMO",
-                    totalPoints: data["totalPoints"] as? Int ?? 0,
-                    streak: data["streak"] as? Int ?? 0,
-                    weeklyPoints: data["weeklyPoints"] as? Int ?? 0
-                )
+        // 友達のプロフィールと投稿を並列フェッチ
+        struct FriendResult: Sendable {
+            let profile: FriendProfile?
+            let posts: [FriendPostData]
+            let fid: String
+        }
+
+        let friendResults: [FriendResult] = await withTaskGroup(of: FriendResult.self) { group in
+            for fid in friendIds {
+                group.addTask {
+                    async let profileTask = { () -> FriendProfile? in
+                        try? await withAsyncTimeout(seconds: 12) { () -> FriendProfile? in
+                            let pdoc = try await Firestore.firestore()
+                                .collection("publicProfiles").document(fid).getDocument()
+                            guard pdoc.exists, let data = pdoc.data() else { return nil }
+                            return FriendProfile(
+                                email: data["email"] as? String ?? "",
+                                username: data["username"] as? String ?? "TOMO",
+                                totalPoints: data["totalPoints"] as? Int ?? 0,
+                                streak: data["streak"] as? Int ?? 0,
+                                weeklyPoints: data["weeklyPoints"] as? Int ?? 0
+                            )
+                        }
+                    }()
+
+                    async let postsTask = { () -> [FriendPostData] in
+                        (try? await withAsyncTimeout(seconds: 12) {
+                            let snap = try await Firestore.firestore()
+                                .collection("publicProfiles").document(fid)
+                                .collection("posts")
+                                .order(by: "timestamp", descending: true)
+                                .limit(to: 50)
+                                .getDocuments()
+                            return snap.documents.map { doc -> FriendPostData in
+                                let data = doc.data()
+                                return FriendPostData(
+                                    id: "friend_\(fid)_\(doc.documentID)",
+                                    timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
+                                    activityName: data["activityName"] as? String ?? "",
+                                    activityEmoji: data["activityEmoji"] as? String ?? "",
+                                    comment: data["comment"] as? String ?? "",
+                                    authorName: data["authorName"] as? String ?? "TOMO",
+                                    authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
+                                    likeCount: data["likeCount"] as? Int ?? 0,
+                                    thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
+                                    weightKg: data["weightKg"] as? Double,
+                                    bodyFatPercent: data["bodyFatPercent"] as? Double,
+                                    extractedPhrase: data["extractedPhrase"] as? String,
+                                    extractedLanguageCode: data["extractedLanguageCode"] as? String,
+                                    translationJA: data["translationJA"] as? String,
+                                    pronunciation: data["pronunciation"] as? String,
+                                    calories: data["calories"] as? Int
+                                )
+                            }
+                        }) ?? []
+                    }()
+
+                    let (profile, posts) = await (profileTask, postsTask)
+                    return FriendResult(profile: profile, posts: posts, fid: fid)
+                }
             }
-            guard let p = profile ?? nil else { continue }
-            all.append(TomoEntry(
-                id: fid,
-                email: p.email,
-                username: p.username,
-                totalPoints: p.totalPoints,
-                streak: p.streak,
-                weeklyPoints: p.weeklyPoints
-            ))
+            var results: [FriendResult] = []
+            for await result in group { results.append(result) }
+            return results
+        }
+
+        // ランキングエントリーとフィードアイテムをまとめて構築
+        var feedItems: [EduLogHistoryItem] = []
+        for result in friendResults {
+            if let p = result.profile {
+                all.append(TomoEntry(
+                    id: result.fid,
+                    email: p.email,
+                    username: p.username,
+                    totalPoints: p.totalPoints,
+                    streak: p.streak,
+                    weeklyPoints: p.weeklyPoints
+                ))
+            }
+            for p in result.posts { feedItems.append(makeFriendItem(from: p)) }
         }
 
         all.sort { $0.weeklyPoints > $1.weeklyPoints }
         for i in all.indices { all[i].rank = i + 1 }
         entries = all
-
-        await loadFriendFeed(friendIds: friendIds)
-    }
-
-    /// 友達の公開投稿を取得してフィード用アイテムに変換（タイムアウト付き）
-    private func loadFriendFeed(friendIds: [String]) async {
-        guard !friendIds.isEmpty else { friendFeedItems = []; return }
-        var items: [EduLogHistoryItem] = []
-        for fid in friendIds {
-            let posts: [FriendPostData] = (try? await withAsyncTimeout(seconds: 12) {
-                let snap = try await Firestore.firestore()
-                    .collection("publicProfiles").document(fid)
-                    .collection("posts")
-                    .order(by: "timestamp", descending: true)
-                    .limit(to: 50)
-                    .getDocuments()
-                return snap.documents.map { doc -> FriendPostData in
-                    let data = doc.data()
-                    return FriendPostData(
-                        id: "friend_\(fid)_\(doc.documentID)",
-                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
-                        activityName: data["activityName"] as? String ?? "",
-                        activityEmoji: data["activityEmoji"] as? String ?? "",
-                        comment: data["comment"] as? String ?? "",
-                        authorName: data["authorName"] as? String ?? "TOMO",
-                        authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
-                        likeCount: data["likeCount"] as? Int ?? 0,
-                        thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
-                        weightKg: data["weightKg"] as? Double,
-                        bodyFatPercent: data["bodyFatPercent"] as? Double,
-                        extractedPhrase: data["extractedPhrase"] as? String,
-                        extractedLanguageCode: data["extractedLanguageCode"] as? String,
-                        translationJA: data["translationJA"] as? String,
-                        pronunciation: data["pronunciation"] as? String,
-                        calories: data["calories"] as? Int
-                    )
-                }
-            }) ?? []
-            for p in posts { items.append(makeFriendItem(from: p)) }
-        }
-        friendFeedItems = items
+        friendFeedItems = feedItems
     }
 
     /// Sendable な素データからフィード用 EduLogHistoryItem を構築
@@ -391,6 +408,8 @@ struct TomoView: View {
     @State private var cachedFeedGroups: [FeedDayGroup] = []
     @State private var cachedFeedCategories: [FeedCategoryChip] = []
     @State private var cachedHasOlderFeed: Bool = false
+    // rebuildFeedCache() の多重発火をデバウンス（50ms）
+    @State private var feedRebuildWork: DispatchWorkItem? = nil
 
     // クイック記録カテゴリ（ランキング上部・ヘッダー＋から起動）
     private let quickRecords: [TomoQuickRecord] = [
@@ -436,15 +455,9 @@ struct TomoView: View {
         }
         .task { await manager.load() }
         .onAppear { rebuildFeedCache() }
-        .onReceive(eduLogManager.$history) { _ in
-            DispatchQueue.main.async { rebuildFeedCache() }
-        }
-        .onReceive(photoLogManager.$history) { _ in
-            DispatchQueue.main.async { rebuildFeedCache() }
-        }
-        .onReceive(manager.$friendFeedItems) { _ in
-            DispatchQueue.main.async { rebuildFeedCache() }
-        }
+        .onReceive(eduLogManager.$history) { _ in scheduleFeedRebuild() }
+        .onReceive(photoLogManager.$history) { _ in scheduleFeedRebuild() }
+        .onReceive(manager.$friendFeedItems) { _ in scheduleFeedRebuild() }
         .onChange(of: selectedCategory) { _, _ in rebuildFeedCache() }
         .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
@@ -741,11 +754,32 @@ struct TomoView: View {
         let emoji: String
     }
 
+    /// 同一ユーザー × 同一カテゴリーの投稿をまとめた単位（カルーセル表示の1カード分）
+    struct FeedPostGroup: Identifiable {
+        let id: String           // authorName_categoryKey
+        let authorName: String
+        let authorFirstName: String
+        let authorPhotoURL: String
+        let categoryKey: String
+        let categoryEmoji: String
+        let items: [EduLogHistoryItem]  // 時刻降順
+        var isSingle: Bool { items.count == 1 }
+        var latestItem: EduLogHistoryItem { items[0] }
+    }
+
     // 日付グループ（キャッシュ用）
     struct FeedDayGroup: Identifiable {
         var id: String { label }
         let label: String
-        let items: [EduLogHistoryItem]
+        let postGroups: [FeedPostGroup]  // 1日内を「ユーザー×カテゴリー」でまとめたグループ列
+    }
+
+    /// 連続する履歴更新をまとめて1回だけ rebuildFeedCache() を実行する（50msデバウンス）
+    private func scheduleFeedRebuild() {
+        feedRebuildWork?.cancel()
+        let work = DispatchWorkItem { rebuildFeedCache() }
+        feedRebuildWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
     }
 
     /// フィード集計を 1 回だけ実行してキャッシュに格納する。
@@ -771,15 +805,40 @@ struct TomoView: View {
             items = items.filter { categoryKey(for: $0) == cat }
         }
 
-        // 日付グループ化
+        // 日付グループ化 → ユーザー×カテゴリーグループ化
         let cal = Calendar.current
         let byDay = Dictionary(grouping: items) { cal.startOfDay(for: $0.timestamp) }
         cachedFeedGroups = byDay.keys.sorted(by: >).map { date in
             let label = cal.isDateInToday(date) ? "今日" :
                         cal.isDateInYesterday(date) ? "昨日" :
                         TomoView.dateGroupFormatter.string(from: date)
-            return FeedDayGroup(label: label,
-                                items: (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp })
+            let dayItems = (byDay[date] ?? []).sorted { $0.timestamp > $1.timestamp }
+
+            // 同一ユーザー×同一カテゴリーをまとめ、最新投稿の時刻順に並べる
+            let groupKey: (EduLogHistoryItem) -> String = { item in
+                "\(item.authorName)__\(self.categoryKey(for: item))"
+            }
+            var keyOrder: [String] = []
+            var grouped: [String: [EduLogHistoryItem]] = [:]
+            for item in dayItems {
+                let k = groupKey(item)
+                if grouped[k] == nil { keyOrder.append(k) }
+                grouped[k, default: []].append(item)
+            }
+            let postGroups: [FeedPostGroup] = keyOrder.compactMap { k in
+                guard let grpItems = grouped[k], let first = grpItems.first else { return nil }
+                let info = self.categoryInfo(for: first)
+                return FeedPostGroup(
+                    id: k,
+                    authorName: first.authorName,
+                    authorFirstName: first.authorFirstName,
+                    authorPhotoURL: first.authorPhotoURL,
+                    categoryKey: info.label,
+                    categoryEmoji: info.emoji,
+                    items: grpItems
+                )
+            }
+            return FeedDayGroup(label: label, postGroups: postGroups)
         }
 
         // 過去フィードの有無
@@ -910,9 +969,13 @@ struct TomoView: View {
                 .padding(.vertical, 10)
                 .background(Color(UIColor.systemGroupedBackground))
 
-                // 投稿カード
-                ForEach(group.items) { item in
-                    instaPostCard(item)
+                // 投稿カード（ユーザー×カテゴリー単位でカルーセルまとめ）
+                ForEach(group.postGroups) { pg in
+                    if pg.isSingle {
+                        instaPostCard(pg.latestItem)
+                    } else {
+                        instaCarouselCard(pg)
+                    }
                     Divider()
                 }
             }
@@ -987,16 +1050,18 @@ struct TomoView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
+                    let displayName = isOwnPost(item) ? "YOU" : item.authorFirstName
+                    let isYou = isOwnPost(item)
                     if item.comment.isEmpty {
-                        Text(item.authorFirstName)
+                        Text(displayName)
                             .font(.system(size: 13 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                     } else {
-                        (Text(item.authorFirstName + "  ")
+                        (Text(displayName + "  ")
                             .font(.system(size: 13 * UIScale.font, weight: .black))
                          + Text(item.comment)
                             .font(.system(size: 13 * UIScale.font)))
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                             .lineLimit(1)
                     }
                     Text(relativeTimeString(item.timestamp))
@@ -1155,6 +1220,200 @@ struct TomoView: View {
             Spacer().frame(height: 4)
         }
         .background(Color(.systemBackground))
+    }
+
+    // MARK: - カルーセルカード（同一ユーザー×同一カテゴリー複数投稿）
+
+    private func instaCarouselCard(_ pg: FeedPostGroup) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+
+            // ── ヘッダー（ユーザー + カテゴリー + 件数） ───────────────────
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .fill(Color(.systemBackground))
+                        .frame(width: 37, height: 37)
+                    UserAvatarView(
+                        name: pg.authorFirstName,
+                        photoURL: pg.authorPhotoURL.isEmpty
+                            ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+                            : pg.authorPhotoURL,
+                        size: 33
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    let isYou = isOwnPost(pg.latestItem)
+                    Text(isYou ? "YOU" : pg.authorFirstName)
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
+                    Text(relativeTimeString(pg.latestItem.timestamp))
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                Spacer()
+
+                // カテゴリータグ（件数バッジ付き）
+                Button {
+                    let cat = pg.categoryKey
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedCategory = (selectedCategory == cat) ? nil : cat
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(pg.categoryEmoji)
+                            .font(.system(size: 12 * UIScale.font))
+                        Text(pg.categoryKey)
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(selectedCategory == pg.categoryKey ? .white : Color.duoSubtitle)
+                        Text("×\(pg.items.count)")
+                            .font(.system(size: 10 * UIScale.font, weight: .black))
+                            .foregroundColor(selectedCategory == pg.categoryKey ? .white.opacity(0.85) : Color.duoBlue)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(selectedCategory == pg.categoryKey ? Color.duoBlue : Color(.systemGray6))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+
+                // 三点メニュー
+                Menu {
+                    if pg.items.contains(where: { isOwnPost($0) }) {
+                        Button(role: .destructive) {
+                            deleteConfirmItem = pg.latestItem
+                        } label: { Label("最新の投稿を削除", systemImage: "trash") }
+                    }
+                    Button {
+                        shareTargetItem = pg.latestItem
+                    } label: { Label("シェア", systemImage: "square.and.arrow.up") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.leading, 4)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            // ── 横スクロールカルーセル ────────────────────────────────────
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 3) {
+                    ForEach(Array(pg.items.enumerated()), id: \.element.id) { idx, item in
+                        carouselSlide(item: item, index: idx, total: pg.items.count)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // ── アクションボタン行（代表アイテム基準） ───────────────────
+            HStack(spacing: 0) {
+                Button { toggleLikeFeed(pg.latestItem) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: pg.latestItem.isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 24 * UIScale.font, weight: .regular))
+                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
+                        if pg.latestItem.likeCount > 0 {
+                            Text("\(pg.latestItem.likeCount)")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                Button { commentTargetItem = pg.latestItem } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bubble.right")
+                            .font(.system(size: 22 * UIScale.font, weight: .regular))
+                            .foregroundColor(Color.duoDark)
+                        if !pg.latestItem.feedComments.isEmpty {
+                            Text("\(pg.latestItem.feedComments.count)")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                        }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                Button { shareTargetItem = pg.latestItem } label: {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 22 * UIScale.font, weight: .regular))
+                        .foregroundColor(Color.duoDark)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+            Spacer().frame(height: 4)
+        }
+        .background(Color(.systemBackground))
+    }
+
+    /// カルーセル内の1スライド（タップで詳細表示）
+    private func carouselSlide(item: EduLogHistoryItem, index: Int, total: Int) -> some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let slideWidth: CGFloat = total == 1 ? screenWidth : screenWidth * 0.72
+
+        return Button { openDetail(item) } label: {
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            instaGradient(for: item)
+                            Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                                .font(.system(size: 72 * UIScale.font))
+                                .shadow(color: .black.opacity(0.25), radius: 8)
+                        }
+                    }
+                }
+                .frame(width: slideWidth, height: slideWidth)
+                .clipped()
+                .contentShape(Rectangle())
+
+                // 番号バッジ
+                if total > 1 {
+                    Text("\(index + 1)/\(total)")
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .padding(8)
+                }
+
+                // カロリーバッジ（FOOD）
+                if let kcal = foodCalories(for: item) {
+                    HStack(spacing: 3) {
+                        Text("🔥").font(.system(size: 10 * UIScale.font))
+                        Text("\(kcal) kcal")
+                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Capsule())
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .bottomTrailing)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Duolingo フレーズパネル

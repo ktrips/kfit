@@ -20,12 +20,18 @@ import { MindView } from './components/MindView';
 import { signOutUser } from './services/firebase';
 import { BooksLanding } from './components/books/BooksLanding';
 import { BookViewer, BookId } from './components/books/BookViewer';
+import { PremiumView } from './components/PremiumView';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium';
 
 /** URL パスから初期ビューを判定する */
 function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   const path = window.location.pathname;
+  if (path.startsWith('/privacy-policy')) {
+    // プライバシーポリシーページへ直接リダイレクト
+    window.location.replace('https://fit.ktrips.net/privacy-policy/');
+    return { view: 'login' };
+  }
   if (path.startsWith('/books/apple-watch-diet')) return { view: 'bookDetail', bookId: 'apple-watch-diet' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
   if (path.startsWith('/books')) return { view: 'books' };
@@ -204,6 +210,24 @@ function App() {
                         </button>
                       ))}
                       <div style={{ borderTop: '1.5px solid #e5e5e5', margin: '4px 0' }} />
+                      {/* Plus */}
+                      <button
+                        onClick={() => navigate('premium')}
+                        className="flex items-center gap-3 px-4 py-3 text-left font-extrabold text-sm transition-all"
+                        style={{
+                          color: currentView === 'premium' ? '#FF8C00' : '#FF8C00',
+                          background: currentView === 'premium' ? 'rgba(255,140,0,0.08)' : 'transparent',
+                        }}
+                      >
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%',
+                          background: 'linear-gradient(135deg,#FFD700,#FF8C00)',
+                          color: '#fff', fontSize: 11, fontWeight: 900,
+                        }}>P</span>
+                        <span>Plus にアップグレード</span>
+                      </button>
+                      <div style={{ borderTop: '1.5px solid #e5e5e5', margin: '4px 0' }} />
                       {/* 設定 */}
                       <button
                         onClick={() => navigate('settings')}
@@ -306,17 +330,42 @@ function App() {
         {currentView === 'mind' && user && (
           <MindView />
         )}
+        {currentView === 'premium' && user && (
+          <PremiumView onBack={() => navigate('dashboard')} />
+        )}
       </main>
 
-      {/* ── ログイン後フッター: Booksリンク ── */}
+      {/* ── ログイン後フッター: BooksリンクとPrivacyポリシー ── */}
       {user && currentView !== 'books' && currentView !== 'bookDetail' && (
-        <footer className="text-center py-4 border-t border-gray-100">
+        <footer className="text-center py-4 border-t border-gray-100 flex flex-col items-center gap-2">
           <button
             onClick={() => navigate('books')}
             className="text-xs text-gray-400 hover:text-green-600 transition-colors font-semibold"
           >
             📚 Books — AppleWatch Diet / Cursor開発書を読む
           </button>
+          <a
+            href="https://fit.ktrips.net/privacy-policy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-400 hover:text-green-600 transition-colors font-semibold"
+          >
+            🔐 プライバシーポリシー
+          </a>
+        </footer>
+      )}
+
+      {/* ── ログイン前フッター（未ログイン時も表示） ── */}
+      {!user && currentView !== 'books' && currentView !== 'bookDetail' && (
+        <footer className="text-center py-4">
+          <a
+            href="https://fit.ktrips.net/privacy-policy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-400 hover:text-green-600 transition-colors font-semibold"
+          >
+            🔐 プライバシーポリシー
+          </a>
         </footer>
       )}
     </div>

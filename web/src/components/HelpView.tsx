@@ -199,6 +199,23 @@ export const HelpView: React.FC = () => {
           <span className="font-black text-sm shrink-0" style={{ color: '#58CC02' }}>→</span>
         </a>
 
+        {/* プライバシーポリシー */}
+        <a
+          href="https://fit.ktrips.net/privacy-policy/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="duo-card p-4 flex items-center gap-3 no-underline hover:opacity-80 transition-opacity"
+        >
+          <span className="text-2xl shrink-0">🔐</span>
+          <div className="flex-1">
+            <p className="font-black text-duo-dark text-sm">プライバシーポリシー</p>
+            <p className="text-duo-gray font-bold text-xs">
+              個人情報・HealthKit データの取り扱いについて
+            </p>
+          </div>
+          <span className="font-black text-sm shrink-0" style={{ color: '#58CC02' }}>→</span>
+        </a>
+
       </div>
     </div>
   );

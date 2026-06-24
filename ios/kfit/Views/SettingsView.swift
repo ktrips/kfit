@@ -55,6 +55,8 @@ struct SettingsView: View {
     @StateObject private var notif = NotificationManager.shared
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @StateObject private var dietGoalManager = DietGoalManager.shared
+    @StateObject private var premium = PremiumManager.shared
+    @State private var showPremiumView = false
     @State private var watchAutoLaunch = iOSWatchBridge.isWatchAutoLaunchEnabled
     @State private var permStatus: UNAuthorizationStatus = .notDetermined
     @State private var showHabitStack = false
@@ -106,6 +108,7 @@ struct SettingsView: View {
             Color.duoBg.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
+                    premiumSection
                     appearanceSection
                     tabMenuSettingsSection
                     permissionBanner
@@ -137,6 +140,7 @@ struct SettingsView: View {
             loadDailyFixedGoals()
             loadWeekdayGoals()
         }
+        .sheet(isPresented: $showPremiumView) { PremiumView() }
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showHabitSettings) { habitSettingsSheet }
         .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
@@ -491,6 +495,59 @@ struct SettingsView: View {
         tabOrderRaw = MainMenuTabPreferences.storedOrder(from: tabs)
         // 先頭タブを自動的にデフォルトに設定
         defaultTabRaw = tabs.first?.rawValue ?? MainMenuTab.fit.rawValue
+    }
+
+    // MARK: - Premium セクション
+
+    private var premiumSection: some View {
+        Button { showPremiumView = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(
+                            colors: [Color(hex: "#FFD700"), Color(hex: "#FF8C00")],
+                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 36, height: 36)
+                    Text("P")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .shadow(color: Color(hex: "#FFD700").opacity(0.4), radius: 4, y: 2)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Fitingo Premium")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color(hex: "#FF8C00"))
+                        if premium.isPremium {
+                            Text("有効")
+                                .font(.system(size: 10, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color(hex: "#FF8C00"))
+                                .cornerRadius(6)
+                        }
+                    }
+                    Text(premium.isPremium
+                         ? (premium.isAdmin ? "Admin" : premium.codeUnlocked ? "コード解放済み" : "サブスク有効")
+                         : "全機能を解放 · 月額¥480〜")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(premium.isPremium
+                        ? Color(hex: "#FFD700").opacity(0.5) : Color(.systemGray5), lineWidth: 1.5))
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 毎日の習慣・目標設定（インライン）

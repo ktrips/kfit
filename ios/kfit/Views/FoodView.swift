@@ -1523,10 +1523,12 @@ struct PhotoFeedDetailSheet: View {
 
     let item: PhotoLogHistoryItem
     @StateObject private var healthKit = HealthKitManager.shared
+    @StateObject private var photoLogManager = PhotoLogManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var isSaving = false
     @State private var savedOK = false
     @State private var showSaveConfirm = false
+    @State private var isPublicInTomo: Bool = false
 
     private let cardGradients: [[Color]] = [
         [Color(hex: "#FF6B6B"), Color(hex: "#FF8E53")],
@@ -1547,6 +1549,7 @@ struct PhotoFeedDetailSheet: View {
                         }
                         nutritionGrid
                         recordButton
+                        photoTomoPublicToggle
                     }
                     .padding(16)
                 }
@@ -1560,6 +1563,7 @@ struct PhotoFeedDetailSheet: View {
                         .foregroundColor(Color.duoGreen)
                 }
             }
+            .onAppear { isPublicInTomo = item.isPublic }
             .alert("食事を記録しますか？", isPresented: $showSaveConfirm) {
                 Button("記録する") {
                     Task {
@@ -1809,6 +1813,38 @@ struct PhotoFeedDetailSheet: View {
     private func timeLabel(_ date: Date) -> String {
         PhotoFeedDetailSheet.mdHhmm.string(from: date)
     }
+
+    private var photoTomoPublicToggle: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
+                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
+                .frame(width: 32, height: 32)
+                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TOMOフィードに公開")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のFOODページにのみ表示")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isPublicInTomo },
+                set: { v in
+                    isPublicInTomo = v
+                    photoLogManager.setPublic(id: item.id, isPublic: v)
+                }
+            ))
+            .labelsHidden()
+            .tint(Color.duoBlue)
+        }
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
+    }
 }
 
 // MARK: - Daily Feed Card (Instagram style)
@@ -2041,6 +2077,10 @@ struct EduFeedDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
     @State private var isSpeaking = false
+    @State private var isPublicInTomo: Bool = false
+
+    /// 友達の投稿は ID が "friend_" プレフィックス
+    private var isOwnPost: Bool { !item.id.hasPrefix("friend_") }
 
     private var dateLabel: String {
         EduFeedDetailSheet.ymdHhmm.string(from: item.timestamp)
@@ -2195,7 +2235,14 @@ struct EduFeedDetailSheet: View {
                     .background(Color.duoPurple.opacity(0.10))
                     .cornerRadius(20)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 12)
+
+                    // TOMOフィード公開トグル（自分の投稿のみ）
+                    if isOwnPost {
+                        tomoPublicToggle
+                    }
+
+                    Spacer(minLength: 24)
                 }
             }
         }
@@ -2209,9 +2256,44 @@ struct EduFeedDetailSheet: View {
             }
             Button("キャンセル", role: .cancel) {}
         }
+        .onAppear { isPublicInTomo = item.isPublic }
         .onDisappear {
             DuolingoTextExtractor.shared.stopSpeaking()
         }
+    }
+
+    private var tomoPublicToggle: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
+                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
+                .frame(width: 32, height: 32)
+                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TOMOフィードに公開")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のページにのみ表示")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isPublicInTomo },
+                set: { v in
+                    isPublicInTomo = v
+                    eduLogManager.setPublic(id: item.id, isPublic: v)
+                }
+            ))
+            .labelsHidden()
+            .tint(Color.duoBlue)
+        }
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     // MARK: - 体重ログ パネル（体重・体脂肪）

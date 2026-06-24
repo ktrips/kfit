@@ -127,6 +127,7 @@ struct kfitApp: App {
     @StateObject private var timeSlotMgr   = TimeSlotManager.shared
     @StateObject private var photoLogMgr   = PhotoLogManager.shared
     @StateObject private var dietGoalMgr   = DietGoalManager.shared
+    @StateObject private var premiumMgr    = PremiumManager.shared
     @AppStorage("app.colorScheme") private var colorSchemePref = "light"
     @Environment(\.scenePhase) private var scenePhase
 
@@ -149,6 +150,7 @@ struct kfitApp: App {
                         .environmentObject(timeSlotMgr)
                         .environmentObject(photoLogMgr)
                         .environmentObject(dietGoalMgr)
+                        .environmentObject(premiumMgr)
                 } else {
                     LoginView()
                         .environmentObject(authManager)
@@ -160,15 +162,16 @@ struct kfitApp: App {
             .dynamicTypeSize(.xLarge ... .accessibility3)
         }
         // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
-        .onChange(of: scenePhase) { oldPhase, newPhase in
-            if newPhase == .active {
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
                 // Watchに最新データを送信
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
                 Task {
                     await authManager.performEndOfDayCalorieTopUpIfNeeded()
+                    await premiumMgr.setup()
                 }
-            } else if newPhase == .background {
+            } else if phase == .background {
                 // バックグラウンド移行時もWatchに最新データを送信（ApplicationContext経由）
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
             }

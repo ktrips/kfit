@@ -98,6 +98,11 @@ struct IntakeSettings: Codable {
     var coffeePerCup: Int = 150      // ml
     var caffeinePerCup: Int = 90     // mg
 
+    // フルーツジュース1杯の設定
+    var juicePerCup: Int = 200       // ml
+    var juiceCaloriesPerCup: Int = 100  // kcal（フルーツジュース約200ml）
+    var juiceSugarPerCup: Double = 24.0 // g（炭水化物/糖質）
+
     // アルコールのカスタム設定
     var alcoholSettings: [CustomAlcoholSetting] = [
         CustomAlcoholSetting(type: .beer, amountMl: 350, alcoholG: 14.0, displayName: "ビール（缶350ml）"),

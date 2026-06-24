@@ -352,49 +352,51 @@ struct HelpView: View {
                         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         .padding(.horizontal, 20)
 
-                        // Fitingoの本を読んでみる
-                        VStack(spacing: 10) {
-                            Link(destination: URL(string: "https://amzn.to/4epQJxQ")!) {
-                                HStack(spacing: 12) {
-                                    Text("📱").font(.title3)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Fitingoの本を読んでみる")
-                                            .font(.subheadline).fontWeight(.black)
-                                            .foregroundColor(Color.duoDark)
-                                        Text("Cursor + Claudeで iOS・Apple Watch アプリを週末だけで作る方法")
-                                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                                            .lineLimit(2)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundColor(Color.duoGreen)
+                        // プライバシーポリシー
+                        Link(destination: URL(string: "https://fit.ktrips.net/privacy-policy/")!) {
+                            HStack(spacing: 12) {
+                                Text("🔐").font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("プライバシーポリシー")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("個人情報・HealthKitデータの取り扱いについて")
+                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                                        .lineLimit(2)
                                 }
-                                .padding(16)
-                                .background(Color(.systemBackground))
-                                .cornerRadius(14)
-                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color.duoGreen)
                             }
-                            Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
-                                HStack(spacing: 12) {
-                                    Text("⌚").font(.title3)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("AppleWatch Diet Ultra2")
-                                            .font(.subheadline).fontWeight(.black)
-                                            .foregroundColor(Color.duoDark)
-                                        Text("Apple Watchで痩せる100のメソッド")
-                                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.0))
+                            .padding(16)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Fitingo書籍情報
+                        Link(destination: URL(string: "https://fit.ktrips.net/books")!) {
+                            HStack(spacing: 12) {
+                                Text("📚").font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Fitingo書籍情報")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("iOS開発 / Apple Watch Diet など関連書籍一覧")
+                                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                                        .lineLimit(2)
                                 }
-                                .padding(16)
-                                .background(Color(.systemBackground))
-                                .cornerRadius(14)
-                                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color.duoGreen)
                             }
+                            .padding(16)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         }
                         .padding(.horizontal, 20)
 

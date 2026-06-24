@@ -1663,6 +1663,29 @@ class AuthenticationManager: ObservableObject {
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
+    /// フルーツジュースを記録（水分＋カロリー）
+    func recordJuice(cups: Int = 1) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+        let settings = await getIntakeSettings()
+        let amountMl = cups * settings.juicePerCup
+        let kcal     = cups * settings.juiceCaloriesPerCup
+
+        // 水分ログ
+        let waterData: [String: Any] = ["amountMl": amountMl, "timestamp": now]
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("water")
+            .collection("logs").addDocument(data: waterData)
+
+        // サマリー更新（水分＋カロリー）
+        await updateSummaryForIntake(userId: userId, calories: kcal,
+                                     waterMl: amountMl, timestamp: now)
+
+        // HealthKit: 水分として記録
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
     /// コーヒーを記録
     func recordCoffee(cups: Int = 1) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
@@ -2395,6 +2418,18 @@ class PhotoLogManager: ObservableObject {
         PublicFeedPublisher.deleteFood(id: id)
     }
 
+    /// TOMOフィードへの公開フラグを切り替える
+    func setPublic(id: String, isPublic: Bool) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx].isPublic = isPublic
+        persistHistory()
+        if isPublic {
+            PublicFeedPublisher.publishFood(history[idx])
+        } else {
+            PublicFeedPublisher.deleteFood(id: id)
+        }
+    }
+
     /// いいねをトグル
     func toggleLike(id: String) {
         guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
@@ -2945,6 +2980,18 @@ class EduLogManager: ObservableObject {
         history.removeAll { $0.id == id }
         persistHistory()
         PublicFeedPublisher.deleteEdu(id: id)
+    }
+
+    /// TOMOフィードへの公開フラグを切り替える
+    func setPublic(id: String, isPublic: Bool) {
+        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx].isPublic = isPublic
+        persistHistory()
+        if isPublic {
+            PublicFeedPublisher.publishEdu(history[idx])
+        } else {
+            PublicFeedPublisher.deleteEdu(id: id)
+        }
     }
 
     func toggleLike(id: String) {

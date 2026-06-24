@@ -252,21 +252,7 @@ struct MainTabView: View {
                     .environmentObject(timeSlotMgr)
             }
             .fullScreenCover(isPresented: $showMindfulnessWidget) {
-                MindfulnessSessionView(
-                    durationSeconds: 60,
-                    title: "1分瞑想",
-                    completedButtonTitle: "Breatheとして保存"
-                ) { startDate, endDate in
-                    showMindfulnessWidget = false
-                    Task {
-                        _ = await HealthKitManager.shared.saveMindfulnessSession(
-                            startDate: startDate,
-                            endDate: endDate,
-                            durationSeconds: endDate.timeIntervalSince(startDate),
-                            sessionType: "Breathe"
-                        )
-                    }
-                }
+                mindfulnessSessionCover
             }
             .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
                 selectedTab = MainMenuTab.fit.rawValue
@@ -303,6 +289,27 @@ struct MainTabView: View {
             .onChange(of: tomoVisible) { _, _ in normalizeSelection() }
             .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
             .onChange(of: tabOrderRaw) { _, _ in normalizeSelection() }
+    }
+
+    // MindfulnessSessionView を独立した computed property に切り出し
+    // （複合クロージャがコンパイラの型推論タイムアウトを起こすのを防ぐため）
+    private var mindfulnessSessionCover: some View {
+        MindfulnessSessionView(
+            durationSeconds: 60,
+            title: "1分瞑想",
+            completedButtonTitle: "Breatheとして保存",
+            onComplete: { (startDate: Date, endDate: Date) in
+                showMindfulnessWidget = false
+                Task {
+                    _ = await HealthKitManager.shared.saveMindfulnessSession(
+                        startDate: startDate,
+                        endDate: endDate,
+                        durationSeconds: endDate.timeIntervalSince(startDate),
+                        sessionType: "Breathe"
+                    )
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -668,6 +675,7 @@ struct HeaderNavigationMenu: View {
             ?? Auth.auth().currentUser?.email?.components(separatedBy: "@").first
             ?? "ユーザー"
     }
+    private var googlePhotoURL: URL? { Auth.auth().currentUser?.photoURL }
 
     var body: some View {
         Menu {
@@ -715,33 +723,35 @@ struct HeaderNavigationMenu: View {
                 }
             }
         } label: {
-            // アバター頭文字 or ハンバーガーアイコン
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.22))
-                    .frame(width: 28, height: 28)
-                if let initial = displayName.first {
-                    Text(String(initial).uppercased())
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
+            // Google アバター > 頭文字 > ハンバーガーアイコンの優先順
+            ZStack(alignment: .bottomTrailing) {
+                if let url = googlePhotoURL {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFill()
+                                .frame(width: 28, height: 28)
+                                .clipShape(Circle())
+                        } else {
+                            initialsCircleLabel
+                        }
+                    }
                 } else {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.white)
+                    initialsCircleLabel
                 }
-                // Plus バッジ（右下）
                 if plus.isPlus {
-                    PlusBadge(size: 12)
-                        .offset(x: 9, y: 9)
+                    PlusBadge(size: 11).offset(x: 4, y: 4)
                 }
             }
             .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showUserStatus) {
-            UserStatusSheet(onShowPlus: { showPlusViewFromMenu = true })
-                .environmentObject(authManager)
-                .environmentObject(plus)
+            UserStatusSheet(
+                onShowPlus: { showPlusViewFromMenu = true },
+                onSetup: { selectedTab = 4 }
+            )
+            .environmentObject(authManager)
+            .environmentObject(plus)
         }
         .sheet(isPresented: $showPlusViewFromMenu) {
             PlusView()
@@ -756,15 +766,39 @@ struct HeaderNavigationMenu: View {
             Button("キャンセル", role: .cancel) {}
         }
     }
+
+    // アバター頭文字サークル（メニューラベル用・小サイズ）
+    private var initialsCircleLabel: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.22))
+                .frame(width: 28, height: 28)
+            if let initial = displayName.first {
+                Text(String(initial).uppercased())
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            } else {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundColor(.white)
+            }
+        }
+    }
 }
 
 // MARK: - UserStatusSheet
 
 struct UserStatusSheet: View {
     var onShowPlus: () -> Void = {}
+    var onSetup: () -> Void = {}
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var plus: PlusManager
     @Environment(\.dismiss) private var dismiss
+
+    // Admin パネル用ローカル状態
+    @State private var adminNewCode: String = ""
+    @State private var adminCodeResult: String? = nil
+    @State private var isUpdatingCode: Bool = false
 
     private var displayName: String {
         authManager.userProfile?.username
@@ -774,6 +808,7 @@ struct UserStatusSheet: View {
     }
     private var email: String { Auth.auth().currentUser?.email ?? "" }
     private var avatarLetter: String { String((displayName.first ?? "U")).uppercased() }
+    private var googlePhotoURL: URL? { Auth.auth().currentUser?.photoURL }
 
     var body: some View {
         NavigationStack {
@@ -782,20 +817,9 @@ struct UserStatusSheet: View {
                     // ── アバター ──
                     VStack(spacing: 10) {
                         ZStack(alignment: .bottomTrailing) {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.duoGreen, Color(hex: "#26A800")],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 80, height: 80)
-                            Text(avatarLetter)
-                                .font(.system(size: 36, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
+                            avatarImage
                             if plus.isPlus {
-                                PlusBadge(size: 22)
-                                    .offset(x: 4, y: 4)
+                                PlusBadge(size: 22).offset(x: 4, y: 4)
                             }
                         }
                         Text(displayName)
@@ -804,12 +828,33 @@ struct UserStatusSheet: View {
                         Text(email)
                             .font(.system(size: 12))
                             .foregroundColor(Color.duoSubtitle)
+
+                        // SETUP ショートカット
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSetup() }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 11))
+                                Text("セットアップを開く")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(20)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
 
                     // ── プランステータスカード ──
                     planStatusCard
+
+                    // ── Admin パネル ──
+                    if plus.isAdmin { adminPanel }
 
                     // ── Free vs Plus 簡易比較（Freeの場合のみ） ──
                     if !plus.isPlus { miniComparisonSection }
@@ -829,6 +874,43 @@ struct UserStatusSheet: View {
             }
         }
         .task { await plus.setup() }
+    }
+
+    // MARK: - アバター（Google 画像優先、なければ頭文字）
+    @ViewBuilder
+    private var avatarImage: some View {
+        if let url = googlePhotoURL {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                        .frame(width: 80, height: 80)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(
+                            plus.isPlus ? Color(hex: "#FFD700") : Color.duoGreen,
+                            lineWidth: 3
+                        ))
+                default:
+                    initialsCircle
+                }
+            }
+        } else {
+            initialsCircle
+        }
+    }
+
+    private var initialsCircle: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(
+                    colors: [Color.duoGreen, Color(hex: "#26A800")],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ))
+                .frame(width: 80, height: 80)
+            Text(avatarLetter)
+                .font(.system(size: 36, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+        }
     }
 
     // MARK: プランカード
@@ -879,11 +961,75 @@ struct UserStatusSheet: View {
                     lineWidth: 1.5))
     }
 
+    // MARK: - Admin パネル（コード変更）
+
+    private var adminPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "crown.fill").foregroundColor(Color(hex: "#FFD700"))
+                Text("管理者パネル")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.leading, 4)
+
+            VStack(spacing: 12) {
+                // 現在のコード表示
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("現在のシークレットコード")
+                        .font(.system(size: 10, weight: .semibold)).foregroundColor(Color.duoSubtitle)
+                    Text(plus.secretCode)
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundColor(Color(hex: "#FF8C00"))
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(hex: "#FF8C00").opacity(0.08)).cornerRadius(8)
+                }
+
+                // コード変更フォーム
+                HStack(spacing: 8) {
+                    TextField("新しいコード", text: $adminNewCode)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .padding(10).background(Color(.systemGray6)).cornerRadius(8)
+                    Button {
+                        guard !adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        isUpdatingCode = true
+                        adminCodeResult = nil
+                        Task {
+                            let ok = await plus.updateSecretCode(adminNewCode)
+                            adminCodeResult = ok ? "✅ 変更完了" : "❌ 失敗（Xcodeコンソールを確認）"
+                            if ok { adminNewCode = "" }
+                            isUpdatingCode = false
+                        }
+                    } label: {
+                        if isUpdatingCode {
+                            ProgressView().tint(.white).frame(width: 40)
+                        } else {
+                            Text("変更")
+                        }
+                    }
+                    .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Color(hex: "#FF8C00")).cornerRadius(8)
+                    .disabled(adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty || isUpdatingCode)
+                }
+
+                if let res = adminCodeResult {
+                    Text(res)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(res.hasPrefix("✅") ? Color.duoGreen : .red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(14).background(Color(.systemBackground)).cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#FFD700").opacity(0.5), lineWidth: 1.5))
+        }
+    }
+
     // MARK: 簡易比較（Freeユーザー向け）
 
     private var miniComparisonSection: some View {
         VStack(spacing: 12) {
-            // セクションタイトル
             HStack {
                 Text("Plus にすると使えること")
                     .font(.system(size: 13, weight: .black))
@@ -891,8 +1037,8 @@ struct UserStatusSheet: View {
                 Spacer()
             }
 
-            // 特典リスト
             let benefits: [(String, String)] = [
+                ("🚫", "広告なし"),
                 ("📊", "AI による詳細アクティビティ分析"),
                 ("📸", "フォトログ AI 栄養解析"),
                 ("✨", "AI スリープ・マインドコーチング"),
@@ -921,7 +1067,6 @@ struct UserStatusSheet: View {
             .background(Color(.systemBackground))
             .cornerRadius(14)
 
-            // AI 注意書き
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 11)).foregroundColor(Color.duoBlue)
@@ -930,30 +1075,24 @@ struct UserStatusSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // アップグレードボタン
             Button {
                 dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    onShowPlus()
-                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onShowPlus() }
             } label: {
                 HStack(spacing: 8) {
                     PlusBadge(size: 20)
                     Text("Plus にアップグレード")
                         .font(.system(size: 14, weight: .black))
                     Text("月額¥480〜")
-                        .font(.system(size: 11))
-                        .opacity(0.85)
+                        .font(.system(size: 11)).opacity(0.85)
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "#FF8C00"), Color(hex: "#FFD700")],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                )
+                .background(LinearGradient(
+                    colors: [Color(hex: "#FF8C00"), Color(hex: "#FFD700")],
+                    startPoint: .leading, endPoint: .trailing
+                ))
                 .cornerRadius(14)
                 .shadow(color: Color(hex: "#FF8C00").opacity(0.35), radius: 8, y: 3)
             }

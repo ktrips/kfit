@@ -417,9 +417,6 @@ class TimeSlotManager: ObservableObject {
             }
         }
 
-        if changed {
-            print("[TimeSlot] 🤸 Synced stretch from single mindfulness session")
-        }
     }
 
     /// HealthKitの歯磨きイベントを、対応する時間帯の「歯磨き・フロス」カスタムアクティビティに反映
@@ -461,10 +458,7 @@ class TimeSlotManager: ObservableObject {
             }
         }
 
-        if changed {
-            await saveTodayProgress()
-            print("[TimeSlot] 🦷 Synced toothbrushing from HealthKit")
-        }
+        if changed { await saveTodayProgress() }
     }
 
     /// HealthKitの水分・食事サンプルを時間帯別進捗に反映
@@ -526,9 +520,6 @@ class TimeSlotManager: ObservableObject {
             }
         }
 
-        if changed {
-            print("[TimeSlot] 💧🍽️ Synced water/meal intake from HealthKit to time slots")
-        }
     }
 
     /// ダイエット目標の摂取カロリー設定を時間帯目標へ反映
@@ -596,12 +587,8 @@ class TimeSlotManager: ObservableObject {
         do {
             try await db.collection("users").document(userId)
                 .collection("time-slot-progress").document(dateStr).setData(docData)
-            print("✅ TimeSlotManager: Saved progress for \(dateStr)")
-            // DashboardViewにUserDefaults更新を依頼してからウィジェットをリロードさせる
             NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
-        } catch {
-            print("❌ TimeSlotManager: Failed to save progress: \(error)")
-        }
+        } catch { /* 保存エラーはサイレントに無視（次回保存で上書き） */ }
     }
 
     // MARK: - 実績更新ヘルパー
@@ -614,8 +601,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Training recorded for \(timeSlot.displayName) - \(prog.trainingCompleted)")
+            debouncedSave()
         }
     }
 
@@ -627,8 +613,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Mindfulness recorded for \(timeSlot.displayName) - \(prog.mindfulnessCompleted)")
+            debouncedSave()
         }
     }
 
@@ -641,8 +626,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Stand recorded for \(timeSlot.displayName)")
+            debouncedSave()
         }
     }
 
@@ -654,8 +638,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Meal logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mealLogged)")
+            debouncedSave()
         }
     }
 
@@ -667,8 +650,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Drink logged for \(timeSlot.displayName) - Total: \(prog.logProgress.drinkLogged)")
+            debouncedSave()
         }
     }
 
@@ -680,8 +662,7 @@ class TimeSlotManager: ObservableObject {
             var updatedProgress = progress
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
-            debouncedSave()  // LOW(M-6): デバウンス保存
-            print("✅ TimeSlot: Mind input logged for \(timeSlot.displayName) - Total: \(prog.logProgress.mindInputLogged)")
+            debouncedSave()
         }
     }
 
@@ -737,7 +718,6 @@ class TimeSlotManager: ObservableObject {
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
             await saveTodayProgress()
-            print("✅ TimeSlot: CustomActivity \(id) toggled for \(timeSlot.displayName)")
         }
     }
 

@@ -6,6 +6,7 @@ struct LoginView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var isLoading = false
     @State private var mascotBounce = false
+    @State private var showPlusInfo = false
 
     private let features: [(icon: String, text: String)] = [
         ("🔥", "連続記録でストリーク継続"),
@@ -106,6 +107,54 @@ struct LoginView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         }
+                    }
+
+                    // Plus プランバナー
+                    Button {
+                        showPlusInfo = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(LinearGradient(
+                                        colors: [Color(hex: "#FF8C00").opacity(0.15), Color(hex: "#FFD700").opacity(0.15)],
+                                        startPoint: .leading, endPoint: .trailing
+                                    ))
+                                    .frame(width: 44, height: 44)
+                                Text("✦").font(.title3)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Text("Fitingo Plus")
+                                        .font(.subheadline).fontWeight(.black)
+                                        .foregroundColor(Color(hex: "#FF8C00"))
+                                    Text("広告なし・AI機能・全テーマ")
+                                        .font(.caption)
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .lineLimit(1)
+                                }
+                                Text("Free プランとの違いを見る")
+                                    .font(.caption2).fontWeight(.bold)
+                                    .foregroundColor(Color(hex: "#FF8C00"))
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Color(hex: "#FF8C00").opacity(0.7))
+                        }
+                        .padding(12)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "#FFD700").opacity(0.5), lineWidth: 1)
+                        )
+                        .shadow(color: Color(hex: "#FF8C00").opacity(0.08), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
+                    .sheet(isPresented: $showPlusInfo) {
+                        PlusView()
                     }
 
                     // 関連書籍バナー

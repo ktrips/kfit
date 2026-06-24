@@ -495,13 +495,11 @@ struct DashboardView: View {
         recomputePhotoLogTotals()
         rebuildSlotSetCounts()
         guard !hasLoadedOnce else {
-            print("⚠️ DashboardView.onAppear - 既にロード済み、スキップ")
             return
         }
         hasLoadedOnce = true
         isLoading = true
         Task {
-            print("🟢 DashboardView.onAppear - loadDataを開始")
             // ① キャッシュ優先の loadData を最初に実行し、スピナーを最短で解除する。
             //    Firestore/HealthKit の取得を待たないことで初期表示を高速化。
             await loadData()
@@ -569,7 +567,6 @@ struct DashboardView: View {
         .onChange(of: showTracker) { _, newValue in
             if !newValue {
                 Task {
-                    print("🔄 ExerciseTrackerView閉じた - データ再読み込み")
                     await loadData()
                 }
             }
@@ -738,7 +735,6 @@ struct DashboardView: View {
 
     private func handleMindfulnessChange(old: Int, new: Int) {
         Task {
-            print("🧘 Mindfulness sessions: \(old) → \(new)")
             // TimeSlotManagerの合計とHealthKitの差分だけ記録（二重カウント防止）
             let totalInSlots = TimeSlot.allCases.compactMap {
                 timeSlotManager.progress.progressFor($0)?.mindfulnessCompleted
@@ -749,7 +745,6 @@ struct DashboardView: View {
                 for _ in 0..<needed {
                     await timeSlotManager.recordMindfulnessCompleted(at: currentSlot)
                 }
-                print("✅ Recorded \(needed) mindfulness session(s) to \(currentSlot.displayName)")
             }
             updateWidgetData()
         }
@@ -2131,7 +2126,8 @@ struct DashboardView: View {
         debouncer.mandalaRecompute?.cancel()
         let work = DispatchWorkItem { recomputeMandalaNodes() }
         debouncer.mandalaRecompute = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        // 0.6s debounce: HealthKit の連続バースト更新をまとめて処理
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
     private func computeMandalaNodes() -> [MandalaNodeData] {
@@ -5679,7 +5675,6 @@ struct DashboardView: View {
             let lastDate = lastLoadDataTime.map { cal.startOfDay(for: $0) } ?? Date.distantPast
             if lastDate < today {
                 // 日付が変わっていたら設定・進捗を完全リロード
-                print("🗓 Date changed - reloading settings and progress")
                 Task {
                     await timeSlotManager.loadTodaySettings()
                     await timeSlotManager.loadTodayProgress(syncHealthKit: true)
@@ -5690,21 +5685,16 @@ struct DashboardView: View {
                 // 前回ロードから10分以上経過した場合のみ再取得（バッテリー節約）
                 let isStale = lastLoadDataTime.map { Date().timeIntervalSince($0) > 600 } ?? true
                 if isStale {
-                    print("🔄 App became active (stale data) - refreshing HealthKit data")
                     Task { await periodicWidgetSync() }
-                } else {
-                    print("✅ App became active (fresh data) - skipping refresh")
                 }
             }
         } else if newPhase == .background {
-            print("📲 App moved to background - flushing Widget data")
             updateWidgetData()
         }
     }
 
     private func periodicWidgetSync() async {
         guard healthKit.isAvailable && healthKit.isAuthorized else { return }
-        print("⏱ [Widget] Syncing HealthKit data...")
         await healthKit.fetchDashboardHealth()
         await timeSlotManager.loadTodayProgress(syncHealthKit: false)
         await timeSlotManager.updateGlobalProgressFromHealthKit()
@@ -5712,173 +5702,117 @@ struct DashboardView: View {
     }
 
     private func updateWidgetData() {
-        guard let sharedDefaults = UserDefaults(suiteName: "group.com.kfit.app") else {
-            print("[Widget] ❌ Failed to access App Group UserDefaults")
-            return
-        }
-
-        print("[Widget] 🔄 Updating widget data...")
-
-        sharedDefaults.set(todaySetCount, forKey: "todaySetCount")
-        sharedDefaults.set(dailySetGoal, forKey: "dailySetGoal")
-        sharedDefaults.set(totalReps, forKey: "todayReps")
-        sharedDefaults.set(authManager.userProfile?.streak ?? 0, forKey: "streak")
-        sharedDefaults.set(totalXP, forKey: "todayXP")
-
-        // 時間帯別の情報を追加
+        // ── 全値をメインスレッドでキャプチャ ──
         let currentHour = Calendar.current.component(.hour, from: Date())
         let currentSlot: TimeSlot
         let timeSlotName: String
-
         if currentHour < 6 {
-            currentSlot = .evening
-            timeSlotName = "夜"
+            currentSlot = .evening; timeSlotName = "夜"
         } else if currentHour < 10 {
-            currentSlot = .morning
-            timeSlotName = "朝"
+            currentSlot = .morning; timeSlotName = "朝"
         } else if currentHour < 14 {
-            currentSlot = .noon
-            timeSlotName = "昼"
+            currentSlot = .noon; timeSlotName = "昼"
         } else if currentHour < 18 {
-            currentSlot = .afternoon
-            timeSlotName = "午後"
+            currentSlot = .afternoon; timeSlotName = "午後"
         } else {
-            currentSlot = .evening
-            timeSlotName = "夜"
+            currentSlot = .evening; timeSlotName = "夜"
         }
+        let slotCompleted = timeSlotManager.progress.progressFor(currentSlot)?.trainingCompleted ?? 0
+        let slotGoal      = timeSlotManager.settings.goalFor(currentSlot)?.trainingGoal ?? 1
 
-        if let goal = timeSlotManager.settings.goalFor(currentSlot),
-           let progress = timeSlotManager.progress.progressFor(currentSlot) {
-            sharedDefaults.set(timeSlotName, forKey: "currentTimeSlot")
-            sharedDefaults.set(progress.trainingCompleted, forKey: "timeSlotCompleted")
-            sharedDefaults.set(goal.trainingGoal, forKey: "timeSlotGoal")
-        } else {
-            sharedDefaults.set(timeSlotName, forKey: "currentTimeSlot")
-            sharedDefaults.set(0, forKey: "timeSlotCompleted")
-            sharedDefaults.set(1, forKey: "timeSlotGoal")
-        }
-
-        // 到達度情報を追加（今日1日分の全時間帯）
-        var totalTrainingCompleted = 0
-        var totalTrainingGoal = 0
-        var totalMindfulnessCompleted = 0
+        var totalTrainingGoal    = 0
         var totalMindfulnessGoal = 0
-        var totalMealLogged = 0
-        var totalMealGoal = 0
-        var totalDrinkLogged = 0
-        var totalDrinkGoal = 0
-
-        // 今日1日分の全時間帯をカウント（ウィジェット表示用）
+        var totalMealGoal        = 0
+        var totalDrinkGoal       = 0
         for slot in TimeSlot.allCases {
-            if let goal = timeSlotManager.settings.goalFor(slot),
-               let prog = timeSlotManager.progress.progressFor(slot) {
-                // 永続化されたTimeSlot進捗を使用（Firestore依存のcountSetsより正確）
-                totalTrainingCompleted += prog.trainingCompleted
-                totalTrainingGoal += goal.trainingGoal
-                // マインドフルネスは分換算（瞑想1回=1分、ストレッチ1セット=3分、ポモドーロ1回=20分）
-                totalMindfulnessCompleted += prog.mindfulnessCompleted * 1 + prog.stretchSetsCompleted * 3 + prog.standCompleted * 20
-                let standGoalMinutes = (goal.standGoal.enabled && goal.timeSlot != .midnight) ? 20 : 0
-                totalMindfulnessGoal += goal.mindfulnessGoal + standGoalMinutes
-
-                if goal.logGoal.mealGoal > 0 {
-                    totalMealGoal += goal.logGoal.mealGoal
-                }
-                if goal.logGoal.drinkGoal > 0 {
-                    totalDrinkGoal += goal.logGoal.drinkGoal
-                }
+            if let goal = timeSlotManager.settings.goalFor(slot) {
+                totalTrainingGoal    += goal.trainingGoal
+                totalMindfulnessGoal += goal.mindfulnessGoal
+                    + ((goal.standGoal.enabled && goal.timeSlot != .midnight) ? 20 : 0)
+                if goal.logGoal.mealGoal  > 0 { totalMealGoal  += goal.logGoal.mealGoal }
+                if goal.logGoal.drinkGoal > 0 { totalDrinkGoal += goal.logGoal.drinkGoal }
             }
         }
 
-        // ウィジェット用はアプリ内記録（Firestore）を優先し、なければ HealthKit 値を使用。
-        // effectiveMealLogged はスロット記録モード時に「回数」を返すため kcal 表示と不一致になる。
-        totalMealLogged = todayIntake.totalCalories > 0
-            ? todayIntake.totalCalories
-            : Int(healthKit.todayIntakeCalories)
-        // AuthenticationManager.syncWidgetData() からも同じ値を参照できるようキャッシュ
+        let totalMealLogged  = todayIntake.totalCalories > 0
+            ? todayIntake.totalCalories : Int(healthKit.todayIntakeCalories)
+        let totalDrinkLogged = Int(healthKit.todayIntakeWater)
         AuthenticationManager.cachedAppIntakeCalories = totalMealLogged
-        totalDrinkLogged = Int(healthKit.todayIntakeWater)
 
-        // ウィジェットのトレーニング・マインドフルは Apple Health の計測値を正源とする
-        // - トレーニング: Health に計測されたワークアウト回数
-        // - マインドフル: Health に計測されたマインドフルネス分数
         let healthTrainingCount  = healthKit.todayWorkoutCount
         let healthMindfulMinutes = Int(healthKit.todayMindfulnessMinutes.rounded())
-        // 上記の正しいデータを元に達成度を計算
         let widgetProgressPercent = computeTodayProgressPercent(
             trainingCompletedOverride: healthTrainingCount,
             mindfulMinutesOverride: healthMindfulMinutes
         )
 
-        sharedDefaults.set(healthTrainingCount, forKey: "trainingCompleted")
-        sharedDefaults.set(totalTrainingGoal, forKey: "trainingGoal")
-        sharedDefaults.set(healthMindfulMinutes, forKey: "mindfulnessCompleted")
-        sharedDefaults.set(totalMindfulnessGoal, forKey: "mindfulnessGoal")
-        sharedDefaults.set(totalMealLogged, forKey: "mealLogged")
-        sharedDefaults.set(totalMealGoal, forKey: "mealGoal")
-        sharedDefaults.set(totalDrinkLogged, forKey: "drinkLogged")
-        sharedDefaults.set(totalDrinkGoal, forKey: "drinkGoal")
-        sharedDefaults.set(widgetProgressPercent, forKey: "progressPercent")
-
-        print("[Widget] Health-based: training=\(healthTrainingCount)/\(totalTrainingGoal) (app=\(totalTrainingCompleted)), mindful=\(healthMindfulMinutes)min/\(totalMindfulnessGoal) (app=\(totalMindfulnessCompleted)), progress=\(widgetProgressPercent)%")
-
-        // カロリー収支を計算して保存（摂取 - 消費）Apple Health方式
-        // アプリ内ログを優先、なければHealthKit値を使用
-        let totalBurned = Int(healthKit.todayRestingCalories + healthKit.todayActiveCalories)
-        let totalIntake = todayIntake.totalCalories > 0 ? todayIntake.totalCalories : Int(healthKit.todayIntakeCalories)
+        let totalBurned    = Int(healthKit.todayRestingCalories + healthKit.todayActiveCalories)
+        let totalIntake    = todayIntake.totalCalories > 0
+            ? todayIntake.totalCalories : Int(healthKit.todayIntakeCalories)
         let calorieBalance = totalIntake - totalBurned
-        sharedDefaults.set(calorieBalance, forKey: "calorieBalance")
+        let totalPoints    = authManager.userProfile?.totalPoints ?? 0
+        let streak         = authManager.userProfile?.streak ?? 0
+        let wkMinutes      = healthKit.todayWorkoutMinutes
+        let standHours     = healthKit.todayStandHours
 
-        print("[Widget] Updated: burned=\(totalBurned), intake=\(totalIntake) (appLog=\(todayIntake.totalCalories), hk=\(Int(healthKit.todayIntakeCalories))), balance=\(calorieBalance)")
-
-        // 総ポイントを保存
-        let totalPoints = authManager.userProfile?.totalPoints ?? 0
-        sharedDefaults.set(totalPoints, forKey: "totalPoints")
-
-        // 今週（月〜日）のポイントを保存（ウィジェットの XP 表示用）
-        sharedDefaults.set(weeklyXP, forKey: "weeklyPoints")
+        // ペイロードハッシュで変化なければ書き込みスキップ
+        let newHash = "\(todaySetCount)|\(dailySetGoal)|\(totalReps)|\(streak)|\(totalXP)|\(healthTrainingCount)|\(totalTrainingGoal)|\(healthMindfulMinutes)|\(totalMindfulnessGoal)|\(totalMealLogged)|\(calorieBalance)|\(totalPoints)|\(weeklyXP)|\(widgetProgressPercent)"
+        guard newHash != lastWidgetPayloadHash else { return }
+        lastWidgetPayloadHash = newHash
         AuthenticationManager.cachedWeeklyPoints = weeklyXP
 
-        // ワークアウト・スタンド（HealthKit実績のみ保存、目標は廃止）
-        sharedDefaults.set(healthKit.todayWorkoutMinutes, forKey: "workoutMinutes")
-        sharedDefaults.set(0, forKey: "workoutGoal")
-        sharedDefaults.set(healthKit.todayStandHours, forKey: "standHours")
-        sharedDefaults.set(0, forKey: "standGoal")
-
-        let payloadHash = [
-            todaySetCount, dailySetGoal, totalReps, authManager.userProfile?.streak ?? 0,
-            totalXP, healthTrainingCount, totalTrainingGoal, healthMindfulMinutes,
-            totalMindfulnessGoal, totalMealLogged, totalMealGoal, totalDrinkLogged, totalDrinkGoal,
-            calorieBalance, totalPoints, weeklyXP, healthKit.todayWorkoutMinutes, healthKit.todayStandHours,
-            widgetProgressPercent
-        ].map(String.init).joined(separator: "|")
-
-        guard payloadHash != lastWidgetPayloadHash else {
-            print("[Widget] Skipped reload - payload unchanged")
-            return
+        // UserDefaults 書き込みをバックグラウンドへ（I/O をメインスレッドから排除）
+        let snapshot: [(String, Any)] = [
+            ("todaySetCount",        todaySetCount),
+            ("dailySetGoal",         dailySetGoal),
+            ("todayReps",            totalReps),
+            ("streak",               streak),
+            ("todayXP",              totalXP),
+            ("trainingCompleted",    healthTrainingCount),
+            ("trainingGoal",         totalTrainingGoal),
+            ("mindfulnessCompleted", healthMindfulMinutes),
+            ("mindfulnessGoal",      totalMindfulnessGoal),
+            ("mealLogged",           totalMealLogged),
+            ("mealGoal",             totalMealGoal),
+            ("drinkLogged",          totalDrinkLogged),
+            ("drinkGoal",            totalDrinkGoal),
+            ("progressPercent",      widgetProgressPercent),
+            ("calorieBalance",       calorieBalance),
+            ("totalPoints",          totalPoints),
+            ("weeklyPoints",         weeklyXP),
+            ("workoutMinutes",       wkMinutes),
+            ("workoutGoal",          0),
+            ("standHours",           standHours),
+            ("standGoal",            0),
+            ("currentTimeSlot",      timeSlotName),
+            ("timeSlotCompleted",    slotCompleted),
+            ("timeSlotGoal",         slotGoal),
+        ]
+        Task.detached(priority: .utility) {
+            guard let defaults = UserDefaults(suiteName: "group.com.kfit.app") else { return }
+            for (key, value) in snapshot { defaults.set(value, forKey: key) }
         }
-        lastWidgetPayloadHash = payloadHash
 
-        print("[Widget] Synced changed data to shared UserDefaults")
         scheduleWidgetReload()
     }
 
     /// HealthKitプロパティが同時に複数変化しても updateWidgetData() を1回だけ呼ぶ
-    /// debouncer は @StateObject のため workItem 更新は再レンダリングを起こさない
+    /// debounce を 0.8s に設定し HealthKit の連続更新をまとめて処理する
     private func scheduleWidgetDataUpdate() {
         debouncer.widgetUpdate?.cancel()
         let workItem = DispatchWorkItem { updateWidgetData() }
         debouncer.widgetUpdate = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
     }
 
     private func scheduleWidgetReload() {
         debouncer.widgetReload?.cancel()
         let workItem = DispatchWorkItem {
             WidgetCenter.shared.reloadAllTimelines()
-            print("[Widget] Reloaded timelines")
         }
         debouncer.widgetReload = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+        // 2.5s の debounce で連続更新をまとめ、WidgetCenter の重い処理を最小限に
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: workItem)
     }
 
     private func recalcTotals() {
@@ -5920,22 +5854,29 @@ struct DashboardView: View {
     }
 
     /// タイムスロット別セット数キャッシュを再構築（todayExercises 変化時のみ呼び出す）
+    /// O(n*m) → O(n+m) に最適化: 1パスでスロット別タイムスタンプを振り分け
     private func rebuildSlotSetCounts() {
         let calendar = Calendar.current
         let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
+
+        // 1パス: 各エクササイズをスロットへ振り分け
+        var grouped: [String: [Date]] = [:]
+        for ex in sorted {
+            let hour = calendar.component(.hour, from: ex.timestamp)
+            let slot = TimeSlot.forHour(hour)
+            grouped[slot.rawValue, default: []].append(ex.timestamp)
+        }
+
         var counts: [String: Int] = [:]
         for slot in TimeSlot.allCases {
-            let inSlot = sorted.filter { ex in
-                let hour = calendar.component(.hour, from: ex.timestamp)
-                return hour >= slot.startHour && hour < slot.endHour
-            }
-            guard !inSlot.isEmpty else { counts[slot.rawValue] = 0; continue }
+            let timestamps = grouped[slot.rawValue] ?? []
+            guard !timestamps.isEmpty else { counts[slot.rawValue] = 0; continue }
             var count = 0
             var lastTime: Date? = nil
-            for ex in inSlot {
-                if let last = lastTime, ex.timestamp.timeIntervalSince(last) <= 30 * 60 { }
+            for ts in timestamps {
+                if let last = lastTime, ts.timeIntervalSince(last) <= 30 * 60 { }
                 else { count += 1 }
-                lastTime = ex.timestamp
+                lastTime = ts
             }
             counts[slot.rawValue] = count
         }

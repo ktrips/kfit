@@ -545,24 +545,10 @@ final class HealthKitManager: ObservableObject {
     // MARK: - 全データ取得
 
     func fetchAll(force: Bool = false) async {
-        guard isAvailable else {
-            print("[HealthKit] HealthKit not available - skipping fetch")
-            return
-        }
-        guard isAuthorized else {
-            print("[HealthKit] Not authorized - skipping fetch")
-            return
-        }
-        if isLoading {
-            print("[HealthKit] ⏳ fetchAll already running - skip duplicate")
-            return
-        }
-        if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL {
-            print("[HealthKit] ✅ fetchAll skipped by TTL")
-            return
-        }
-
-        print("[HealthKit] 🔄 Fetching all health data...")
+        guard isAvailable else { return }
+        guard isAuthorized else { return }
+        if isLoading { return }
+        if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL { return }
         isLoading = true
         defer {
             lastFetchAllAt = Date()
@@ -641,12 +627,10 @@ final class HealthKitManager: ObservableObject {
         if newSessions > previousMindfulnessSessions && previousMindfulnessSessions > 0 {
             let hour = Calendar.current.component(.hour, from: Date())
             let timeSlot = TimeSlot.forHour(hour)
-
             let diff = newSessions - previousMindfulnessSessions
             for _ in 0..<diff {
                 await TimeSlotManager.shared.recordMindfulnessCompleted(at: timeSlot)
             }
-            print("[HealthKit] 🧘 Mindfulness sessions increased by \(diff), updated time slot: \(timeSlot.displayName)")
         }
 
         todayMindfulnessSessions = newSessions
@@ -665,8 +649,6 @@ final class HealthKitManager: ObservableObject {
         todayMealSamples        = await mealSamples
         todayToothbrushingSamples = await toothbrushing
         weeklyCalorieData       = await fetchWeeklyCalories()
-
-        print("[HealthKit] ✅ Fetched: steps=\(todaySteps), active=\(Int(todayActiveCalories))kcal, resting=\(Int(todayRestingCalories))kcal, total=\(Int(todayTotalCalories))kcal, hr=\(Int(latestHeartRate)), hrv=\(String(format: "%.1f", latestHRV))ms, sleep=\(String(format: "%.1f", lastNightTotalHours))h, daylight=\(Int(todayDaylightMinutes))min, weight=\(String(format: "%.1f", latestBodyMass))kg, bodyFat=\(String(format: "%.1f", latestBodyFatPercentage))%, intake=\(Int(todayIntakeCalories))kcal, P:\(String(format: "%.1f", todayIntakeProtein))g, F:\(String(format: "%.1f", todayIntakeFat))g, C:\(String(format: "%.1f", todayIntakeCarbs))g, water=\(Int(todayIntakeWater))ml, caffeine=\(Int(todayIntakeCaffeine))mg, alcohol=\(String(format: "%.1f", todayIntakeAlcohol))g, mindfulness=\(String(format: "%.1f", todayMindfulnessMinutes))min (\(todayMindfulnessSessions) sessions)")
     }
 
     func fetchDashboardHealth(force: Bool = false) async {
@@ -840,27 +822,13 @@ final class HealthKitManager: ObservableObject {
     }
 
     private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval? = nil) -> Bool {
-        guard isAvailable else {
-            print("[HealthKit] HealthKit not available - skipping \(scope) fetch")
-            return false
-        }
-        guard isAuthorized else {
-            print("[HealthKit] Not authorized - skipping \(scope) fetch")
-            return false
-        }
+        guard isAvailable, isAuthorized else { return false }
         if isLoading {
-            if force {
-                // 強制更新時は実行中フラグをリセットして続行
-                print("[HealthKit] ⚡ \(scope) force-fetch: resetting isLoading")
-                isLoading = false
-            } else {
-                print("[HealthKit] ⏳ \(scope) fetch skipped; another fetch is running")
-                return false
-            }
+            if force { isLoading = false }
+            else { return false }
         }
         let scopeTTL = ttl ?? fetchAllTTL
         if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < scopeTTL {
-            print("[HealthKit] ✅ \(scope) fetch skipped by TTL")
             return false
         }
         isLoading = true
@@ -885,7 +853,6 @@ final class HealthKitManager: ObservableObject {
                     await TimeSlotManager.shared.recordMindfulnessCompleted(at: timeSlot)
                 }
             }
-            print("[HealthKit] 🧘 Mindfulness sessions increased by \(diff), updated time slot: \(timeSlot.displayName)")
         }
 
         todayMindfulnessSessions = newSessions
@@ -2056,7 +2023,6 @@ final class HealthKitManager: ObservableObject {
         todayMindfulnessMinutes = result.minutes
         todayMindfulnessSessions = result.sessions
         todayMindfulnessSamples = result.samples
-        print("[HealthKit] 🧘 Refreshed mindfulness: \(result.sessions) sessions, \(String(format: "%.1f", result.minutes)) min")
     }
 
     /// アプリ内セッションをHealthKitのマインドフルネスとして保存

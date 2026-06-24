@@ -30,6 +30,12 @@ private struct PlanFeature: Identifiable {
 }
 
 private let planFeatures: [PlanFeature] = [
+    // 全般
+    PlanFeature(icon: "nosign",       iconColor: Color(hex: "#555555"),
+                category: "全般", title: "広告なし",                        free: .no,              plus: .yes),
+    PlanFeature(icon: "gearshape.2.fill", iconColor: Color(hex: "#555555"),
+                category: "全般", title: "全機能フルアクセス",               free: .no,              plus: .yes),
+
     // FIT
     PlanFeature(icon: "figure.run",   iconColor: Color(hex: "#FF4B4B"),
                 category: "FIT", title: "アクティビティ記録",          free: .yes,             plus: .yes),
@@ -211,7 +217,7 @@ struct PlusView: View {
             .padding(.horizontal, 14)
 
             // カテゴリ別テーブル
-            let categories = ["FIT", "FOOD", "MIND", "BOOKS", "TOMO", "カスタマイズ"]
+            let categories = ["全般", "FIT", "FOOD", "MIND", "BOOKS", "TOMO", "カスタマイズ"]
             ForEach(categories, id: \.self) { cat in
                 featureCategoryCard(category: cat,
                     features: planFeatures.filter { $0.category == cat })

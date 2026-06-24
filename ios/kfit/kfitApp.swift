@@ -127,7 +127,7 @@ struct kfitApp: App {
     @StateObject private var timeSlotMgr   = TimeSlotManager.shared
     @StateObject private var photoLogMgr   = PhotoLogManager.shared
     @StateObject private var dietGoalMgr   = DietGoalManager.shared
-    @StateObject private var premiumMgr    = PremiumManager.shared
+    @StateObject private var plusMgr       = PlusManager.shared
     @AppStorage("app.colorScheme") private var colorSchemePref = "light"
     @Environment(\.scenePhase) private var scenePhase
 
@@ -150,7 +150,7 @@ struct kfitApp: App {
                         .environmentObject(timeSlotMgr)
                         .environmentObject(photoLogMgr)
                         .environmentObject(dietGoalMgr)
-                        .environmentObject(premiumMgr)
+                        .environmentObject(plusMgr)
                 } else {
                     LoginView()
                         .environmentObject(authManager)
@@ -162,17 +162,16 @@ struct kfitApp: App {
             .dynamicTypeSize(.xLarge ... .accessibility3)
         }
         // アプリがフォアグラウンドになるたびに Watch へシグナルを送る
-        .onChange(of: scenePhase) { phase in
-            if phase == .active {
+        // iOS 17+ では onChange の trailing closure は引数なし。scenePhase を直接参照する。
+        .onChange(of: scenePhase) {
+            if scenePhase == .active {
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
-                // Watchに最新データを送信
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
                 Task {
                     await authManager.performEndOfDayCalorieTopUpIfNeeded()
-                    await premiumMgr.setup()
+                    await plusMgr.setup()
                 }
-            } else if phase == .background {
-                // バックグラウンド移行時もWatchに最新データを送信（ApplicationContext経由）
+            } else if scenePhase == .background {
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
             }
         }
@@ -186,13 +185,16 @@ struct MainTabView: View {
     @EnvironmentObject var timeSlotMgr: TimeSlotManager
     @EnvironmentObject var photoLogMgr: PhotoLogManager
     @EnvironmentObject var dietGoalMgr: DietGoalManager
+    @StateObject private var plus = PlusManager.shared
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
     @State private var showTrainingTracker = false
     @State private var showMindfulnessWidget = false
+    @State private var showPlusView = false
     @State private var isTabBarHidden = false
     @State private var tabBarHideWorkItem: DispatchWorkItem?
     @State private var tabBarRevealWorkItem: DispatchWorkItem?
+    @State private var promoBannerDismissed = false
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = true
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
@@ -228,8 +230,15 @@ struct MainTabView: View {
                 .opacity(isTabBarHidden ? 0 : 1)
                 .allowsHitTesting(!isTabBarHidden)
                 .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
+
+            // Freeユーザー向けプロモーションバナー（タブバー非表示時のみ表示）
+            if isTabBarHidden && !plus.isPlus && !promoBannerDismissed {
+                plusPromoBanner
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
             .ignoresSafeArea(.keyboard, edges: .bottom)
+            .sheet(isPresented: $showPlusView) { PlusView() }
             .fullScreenCover(isPresented: $showRecordMenu) {
                 RecordMenuView(isPresented: $showRecordMenu)
                     .environmentObject(authManager)
@@ -475,6 +484,73 @@ struct MainTabView: View {
         )
     }
 
+    // MARK: - Plus プロモーションバナー（Freeユーザー・タブバー非表示時）
+
+    private var plusPromoBanner: some View {
+        HStack(spacing: 10) {
+            PlusBadge(size: 32)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Fitingo Plus で全機能を解放")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundColor(Color(hex: "#FF8C00"))
+                Text("AI解析・Kindle本読み放題・友達無制限")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(hex: "#994D00"))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Button {
+                revealTabBar()
+                showPlusView = true
+            } label: {
+                Text("詳細")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(hex: "#FF8C00"))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    promoBannerDismissed = true
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color(hex: "#994D00").opacity(0.6))
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#FFF5CC"), Color(hex: "#FFE580")],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: "#FFD700").opacity(0.4))
+                .frame(height: 1),
+            alignment: .top
+        )
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
+        .onTapGesture {
+            revealTabBar()
+            showPlusView = true
+        }
+    }
+
     private var recordBtn: some View {
         Button {
             revealTabBar()
@@ -527,6 +603,7 @@ struct MainTabView: View {
         tabBarHideWorkItem?.cancel()
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
             isTabBarHidden = false
+            promoBannerDismissed = false  // タブバー再表示時にバナーを次回も出せるようリセット
         }
         // スクロール開始まで出っ放し — オートハイドは行わない
     }
@@ -572,46 +649,316 @@ struct MainTabView: View {
 struct HeaderNavigationMenu: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var plus: PlusManager
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
-    // ハンバーガーメニューでは全タブを表示（表示設定でフィルタしない）
+    @State private var showUserStatus = false
+    @State private var showLogoutConfirm = false
+    @State private var showPlusViewFromMenu = false
+
     private var allPrimaryTabs: [MainMenuTab] {
         MainMenuTabPreferences.orderedTabs(from: tabOrderRaw)
     }
-
     private let bookURL = URL(string: "https://fit.ktrips.net/books")!
+
+    private var displayName: String {
+        authManager.userProfile?.username
+            ?? Auth.auth().currentUser?.displayName
+            ?? Auth.auth().currentUser?.email?.components(separatedBy: "@").first
+            ?? "ユーザー"
+    }
 
     var body: some View {
         Menu {
-            ForEach(allPrimaryTabs) { tab in
+            // ── ユーザー情報セクション ──
+            Section {
                 Button {
-                    selectedTab = tab.rawValue
+                    showUserStatus = true
                 } label: {
-                    Label(tab.label, systemImage: tab.icon)
+                    Label(
+                        "\(displayName)  \(plus.isPlus ? "✦ Plus" : "Free")",
+                        systemImage: plus.isPlus ? "star.circle.fill" : "person.circle"
+                    )
+                }
+                if !plus.isPlus {
+                    Button {
+                        showPlusViewFromMenu = true
+                    } label: {
+                        Label("Plus にアップグレード", systemImage: "plus.circle.fill")
+                    }
+                }
+                Button(role: .destructive) {
+                    showLogoutConfirm = true
+                } label: {
+                    Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } header: {
+                Text(Auth.auth().currentUser?.email ?? "")
+            }
+
+            // ── ナビゲーションセクション ──
+            Section {
+                ForEach(allPrimaryTabs) { tab in
+                    Button { selectedTab = tab.rawValue } label: {
+                        Label(tab.label, systemImage: tab.icon)
+                    }
+                }
+                Button { showRecordMenu = true } label: {
+                    Label("LOG", systemImage: "plus.circle.fill")
+                }
+                Button { selectedTab = 4 } label: {
+                    Label("SETUP", systemImage: "gearshape.fill")
+                }
+                Link(destination: bookURL) {
+                    Label("BOOKS", systemImage: "book.fill")
                 }
             }
-            Button {
-                showRecordMenu = true
-            } label: {
-                Label("LOG", systemImage: "plus.circle.fill")
-            }
-            Button {
-                selectedTab = 4
-            } label: {
-                Label("SETUP", systemImage: "gearshape.fill")
-            }
-            Link(destination: bookURL) {
-                Label("BOOKS", systemImage: "book.fill")
-            }
         } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 13 * UIScale.font, weight: .black))
-                .foregroundColor(.white)
-                .frame(width: 26, height: 26)
-                .background(Color.white.opacity(0.18))
-                .clipShape(Circle())
+            // アバター頭文字 or ハンバーガーアイコン
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 28, height: 28)
+                if let initial = displayName.first {
+                    Text(String(initial).uppercased())
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                } else {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.white)
+                }
+                // Plus バッジ（右下）
+                if plus.isPlus {
+                    PlusBadge(size: 12)
+                        .offset(x: 9, y: 9)
+                }
+            }
+            .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
+        .sheet(isPresented: $showUserStatus) {
+            UserStatusSheet(onShowPlus: { showPlusViewFromMenu = true })
+                .environmentObject(authManager)
+                .environmentObject(plus)
+        }
+        .sheet(isPresented: $showPlusViewFromMenu) {
+            PlusView()
+        }
+        .confirmationDialog("ログアウトしますか？",
+                            isPresented: $showLogoutConfirm,
+                            titleVisibility: .visible) {
+            Button("ログアウト", role: .destructive) {
+                GIDSignIn.sharedInstance.signOut()
+                try? Auth.auth().signOut()
+            }
+            Button("キャンセル", role: .cancel) {}
+        }
+    }
+}
+
+// MARK: - UserStatusSheet
+
+struct UserStatusSheet: View {
+    var onShowPlus: () -> Void = {}
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var plus: PlusManager
+    @Environment(\.dismiss) private var dismiss
+
+    private var displayName: String {
+        authManager.userProfile?.username
+            ?? Auth.auth().currentUser?.displayName
+            ?? Auth.auth().currentUser?.email?.components(separatedBy: "@").first
+            ?? "ユーザー"
+    }
+    private var email: String { Auth.auth().currentUser?.email ?? "" }
+    private var avatarLetter: String { String((displayName.first ?? "U")).uppercased() }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 20) {
+                    // ── アバター ──
+                    VStack(spacing: 10) {
+                        ZStack(alignment: .bottomTrailing) {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.duoGreen, Color(hex: "#26A800")],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 80, height: 80)
+                            Text(avatarLetter)
+                                .font(.system(size: 36, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                            if plus.isPlus {
+                                PlusBadge(size: 22)
+                                    .offset(x: 4, y: 4)
+                            }
+                        }
+                        Text(displayName)
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text(email)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+
+                    // ── プランステータスカード ──
+                    planStatusCard
+
+                    // ── Free vs Plus 簡易比較（Freeの場合のみ） ──
+                    if !plus.isPlus { miniComparisonSection }
+
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, 20)
+            }
+            .background(Color.duoBg.ignoresSafeArea())
+            .navigationTitle("プロフィール")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+        }
+        .task { await plus.setup() }
+    }
+
+    // MARK: プランカード
+
+    private var planStatusCard: some View {
+        HStack(spacing: 14) {
+            if plus.isPlus {
+                PlusBadge(size: 44)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Fitingo Plus")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundColor(Color(hex: "#FF8C00"))
+                    Text(plus.isAdmin ? "Admin アカウント"
+                         : plus.codeUnlocked ? "シークレットコードで解放済み"
+                         : "サブスクリプション有効")
+                        .font(.system(size: 12)).foregroundColor(Color.duoSubtitle)
+                    Text("すべての機能が使えます ✓")
+                        .font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoGreen)
+                }
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Free プラン")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("基本機能が無料で使えます")
+                        .font(.system(size: 12)).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            plus.isPlus
+            ? Color(hex: "#FFD700").opacity(0.12)
+            : Color(.systemBackground)
+        )
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16)
+            .stroke(plus.isPlus ? Color(hex: "#FFD700").opacity(0.5) : Color(.systemGray5),
+                    lineWidth: 1.5))
+    }
+
+    // MARK: 簡易比較（Freeユーザー向け）
+
+    private var miniComparisonSection: some View {
+        VStack(spacing: 12) {
+            // セクションタイトル
+            HStack {
+                Text("Plus にすると使えること")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Spacer()
+            }
+
+            // 特典リスト
+            let benefits: [(String, String)] = [
+                ("📊", "AI による詳細アクティビティ分析"),
+                ("📸", "フォトログ AI 栄養解析"),
+                ("✨", "AI スリープ・マインドコーチング"),
+                ("📚", "Kindle本をWebで全文読む"),
+                ("👥", "友達追加 無制限"),
+                ("📱", "Plus ウィジェット"),
+                ("🎨", "スパイラルテーマ 10種以上"),
+                ("🔔", "全時間帯リマインダー"),
+            ]
+            VStack(spacing: 0) {
+                ForEach(Array(benefits.enumerated()), id: \.offset) { idx, item in
+                    if idx > 0 { Divider().padding(.leading, 36) }
+                    HStack(spacing: 10) {
+                        Text(item.0).font(.system(size: 16)).frame(width: 26)
+                        Text(item.1)
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.duoDark)
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "#FF8C00"))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                }
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+
+            // AI 注意書き
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 11)).foregroundColor(Color.duoBlue)
+                Text("AI機能はSETTINGS > LLM設定でAPIキーを設定すると利用できます")
+                    .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // アップグレードボタン
+            Button {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    onShowPlus()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    PlusBadge(size: 20)
+                    Text("Plus にアップグレード")
+                        .font(.system(size: 14, weight: .black))
+                    Text("月額¥480〜")
+                        .font(.system(size: 11))
+                        .opacity(0.85)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#FF8C00"), Color(hex: "#FFD700")],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+                .cornerRadius(14)
+                .shadow(color: Color(hex: "#FF8C00").opacity(0.35), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

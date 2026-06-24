@@ -20,7 +20,7 @@ import { MindView } from './components/MindView';
 import { signOutUser } from './services/firebase';
 import { BooksLanding } from './components/books/BooksLanding';
 import { BookViewer, BookId } from './components/books/BookViewer';
-import { PremiumView } from './components/PremiumView';
+import { PlusView } from './components/PlusView';
 
 type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium';
 
@@ -225,7 +225,7 @@ function App() {
                           background: 'linear-gradient(135deg,#FFD700,#FF8C00)',
                           color: '#fff', fontSize: 11, fontWeight: 900,
                         }}>P</span>
-                        <span>Plus にアップグレード</span>
+                        <span>Plus にアップグレード ✦</span>
                       </button>
                       <div style={{ borderTop: '1.5px solid #e5e5e5', margin: '4px 0' }} />
                       {/* 設定 */}
@@ -331,7 +331,7 @@ function App() {
           <MindView />
         )}
         {currentView === 'premium' && user && (
-          <PremiumView onBack={() => navigate('dashboard')} />
+          <PlusView onBack={() => navigate('dashboard')} />
         )}
       </main>
 

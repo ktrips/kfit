@@ -1,63 +1,73 @@
 import SwiftUI
 
-// MARK: - ゴールドPバッジ（Premium機能マーカー）
+// MARK: - PlusBadge
 
-struct PremiumBadge: View {
-    var size: CGFloat = 16
+/// Plusユーザー限定機能に表示するゴールドの「+」バッジ
+struct PlusBadge: View {
+    var size: CGFloat = 18
 
     var body: some View {
-        Text("P")
-            .font(.system(size: size * 0.65, weight: .black, design: .rounded))
-            .foregroundColor(.white)
-            .frame(width: size, height: size)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "#FFD700"), Color(hex: "#FF8C00")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "#FFD700"), Color(hex: "#FF8C00")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-            )
-            .clipShape(Circle())
-            .shadow(color: Color(hex: "#FFD700").opacity(0.5), radius: 2, x: 0, y: 1)
+                .frame(width: size, height: size)
+            Text("+")
+                .font(.system(size: size * 0.62, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .shadow(color: Color(hex: "#FF8C00").opacity(0.4), radius: 3, y: 1)
     }
 }
 
-// MARK: - ViewModifier: Premium機能オーバーレイ
+// MARK: - PlusOverlay ViewModifier
 
-struct PremiumOverlay: ViewModifier {
-    let isPremium: Bool
-    let onTapUpgrade: (() -> Void)?
+/// Plus限定コンテンツをラップするViewModifier
+struct PlusOverlay: ViewModifier {
+    let isPlus: Bool
+    var onTapUpgrade: (() -> Void)?
 
     func body(content: Content) -> some View {
         ZStack(alignment: .topTrailing) {
             content
-                .opacity(isPremium ? 1.0 : 0.45)
-                .allowsHitTesting(isPremium)
-            if !isPremium {
-                Button {
-                    onTapUpgrade?()
-                } label: {
-                    PremiumBadge(size: 20)
-                        .padding(4)
-                }
-                .buttonStyle(.plain)
+                .opacity(isPlus ? 1.0 : 0.45)
+                .allowsHitTesting(isPlus)
+
+            if !isPlus {
+                PlusBadge(size: 18)
+                    .offset(x: 4, y: -4)
+                    .onTapGesture { onTapUpgrade?() }
             }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isPlus { onTapUpgrade?() }
         }
     }
 }
 
 extension View {
-    /// Premium機能のガード — isPremium=false の時は半透明＋バッジ表示
-    func premiumGated(isPremium: Bool, onTapUpgrade: (() -> Void)? = nil) -> some View {
-        modifier(PremiumOverlay(isPremium: isPremium, onTapUpgrade: onTapUpgrade))
+    /// Plus限定機能にゲートをかけるmodifier
+    func plusGated(isPlus: Bool, onTapUpgrade: (() -> Void)? = nil) -> some View {
+        modifier(PlusOverlay(isPlus: isPlus, onTapUpgrade: onTapUpgrade))
     }
 }
 
+// MARK: - 後方互換エイリアス（削除予定）
+typealias PremiumBadge = PlusBadge
+
 #Preview {
-    HStack(spacing: 12) {
-        PremiumBadge(size: 14)
-        PremiumBadge(size: 20)
-        PremiumBadge(size: 28)
+    HStack(spacing: 20) {
+        PlusBadge(size: 16)
+        PlusBadge(size: 24)
+        PlusBadge(size: 40)
+        Text("Plus機能").plusGated(isPlus: false)
+        Text("Plus機能").plusGated(isPlus: true)
     }
     .padding()
 }

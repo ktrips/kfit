@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-interface PremiumViewProps {
+interface PlusViewProps {
   onBack: () => void;
 }
 
@@ -10,22 +10,27 @@ interface Feature {
   title: string;
   free: string | boolean;
   plus: string | boolean;
+  plusNote?: string;
 }
 
 const FEATURES: Feature[] = [
   // FIT
   { icon: '🏃', category: 'FIT', title: 'アクティビティ記録', free: true, plus: true },
-  { icon: '📊', category: 'FIT', title: '詳細アクティビティ分析', free: false, plus: true },
-  { icon: '🎯', category: 'FIT', title: '目標自動調整提案', free: false, plus: true },
+  { icon: '📊', category: 'FIT', title: '詳細アクティビティ分析', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
+  { icon: '🎯', category: 'FIT', title: '目標自動調整提案', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
 
   // FOOD
   { icon: '🍽️', category: 'FOOD', title: '食事ログ記録', free: true, plus: true },
-  { icon: '📸', category: 'FOOD', title: 'フォトログ AI 栄養解析', free: false, plus: true },
+  { icon: '📸', category: 'FOOD', title: 'フォトログ AI 栄養解析', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
   { icon: '📋', category: 'FOOD', title: '週次・月次 食事レポート', free: false, plus: true },
 
   // MIND
   { icon: '🌙', category: 'MIND', title: '睡眠・マインドフル記録', free: true, plus: true },
-  { icon: '✨', category: 'MIND', title: 'AI コーチングコメント', free: false, plus: true },
+  { icon: '✨', category: 'MIND', title: 'AI コーチングコメント', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
+
+  // BOOKS
+  { icon: '📚', category: 'BOOKS', title: 'Kindle本をWebで全文読む', free: false, plus: true },
+  { icon: '📲', category: 'BOOKS', title: '書籍のオフライン保存', free: false, plus: true },
 
   // TOMO
   { icon: '👥', category: 'TOMO', title: '友達追加', free: '3人まで', plus: '無制限' },
@@ -33,47 +38,52 @@ const FEATURES: Feature[] = [
 
   // カスタマイズ
   { icon: '🎨', category: 'カスタマイズ', title: 'スパイラルテーマ', free: '1種', plus: '10種以上' },
-  { icon: '📱', category: 'カスタマイズ', title: 'プレミアムウィジェット', free: false, plus: true },
+  { icon: '📱', category: 'カスタマイズ', title: 'Plusウィジェット', free: false, plus: true },
   { icon: '🔔', category: 'カスタマイズ', title: '時間帯リマインダー', free: '1スロット', plus: '全スロット' },
 ];
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  FIT: { bg: 'rgba(255,75,75,0.08)', text: '#FF4B4B', border: 'rgba(255,75,75,0.2)' },
-  FOOD: { bg: 'rgba(88,204,2,0.08)', text: '#58CC02', border: 'rgba(88,204,2,0.2)' },
-  MIND: { bg: 'rgba(150,71,232,0.08)', text: '#9247E8', border: 'rgba(150,71,232,0.2)' },
-  TOMO: { bg: 'rgba(28,176,246,0.08)', text: '#1CB0F6', border: 'rgba(28,176,246,0.2)' },
+  FIT:      { bg: 'rgba(255,75,75,0.08)',  text: '#FF4B4B', border: 'rgba(255,75,75,0.2)' },
+  FOOD:     { bg: 'rgba(88,204,2,0.08)',   text: '#58CC02', border: 'rgba(88,204,2,0.2)' },
+  MIND:     { bg: 'rgba(150,71,232,0.08)', text: '#9247E8', border: 'rgba(150,71,232,0.2)' },
+  BOOKS:    { bg: 'rgba(255,122,0,0.08)',  text: '#FF7A00', border: 'rgba(255,122,0,0.2)' },
+  TOMO:     { bg: 'rgba(28,176,246,0.08)', text: '#1CB0F6', border: 'rgba(28,176,246,0.2)' },
   カスタマイズ: { bg: 'rgba(255,150,0,0.08)', text: '#FF9600', border: 'rgba(255,150,0,0.2)' },
 };
 
-const CATEGORIES = ['FIT', 'FOOD', 'MIND', 'TOMO', 'カスタマイズ'];
+const CATEGORIES = ['FIT', 'FOOD', 'MIND', 'BOOKS', 'TOMO', 'カスタマイズ'];
 
 const CellValue = ({ value }: { value: string | boolean }) => {
   if (value === true) {
-    return (
-      <span style={{ color: '#58CC02', fontSize: 18, fontWeight: 900 }}>✓</span>
-    );
+    return <span style={{ color: '#FF8C00', fontSize: 15, fontWeight: 900 }}>✓</span>;
   }
   if (value === false) {
-    return (
-      <span style={{ color: '#e0e0e0', fontSize: 18 }}>—</span>
-    );
+    return <span style={{ color: '#e0e0e0', fontSize: 18 }}>—</span>;
   }
-  return (
-    <span style={{ color: '#FF8C00', fontSize: 12, fontWeight: 800 }}>{value}</span>
-  );
+  return <span style={{ color: '#FF8C00', fontSize: 11, fontWeight: 800 }}>{value}</span>;
 };
 
-export const PremiumView = ({ onBack }: PremiumViewProps) => {
+const PlusBadge = ({ size = 24 }: { size?: number }) => (
+  <div style={{
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: size, height: size, borderRadius: '50%',
+    background: 'linear-gradient(135deg, #FFD700 0%, #FF8C00 100%)',
+    color: '#fff', fontWeight: 900,
+    fontSize: size * 0.6,
+    boxShadow: '0 2px 6px rgba(255,140,0,0.35)',
+    flexShrink: 0,
+  }}>
+    +
+  </div>
+);
+
+export const PlusView = ({ onBack }: PlusViewProps) => {
   const [codeInput, setCodeInput] = useState('');
   const [codeStatus, setCodeStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showCode, setShowCode] = useState(false);
 
   const handleCodeSubmit = () => {
-    if (codeInput.trim() === 'kfit5526') {
-      setCodeStatus('success');
-    } else {
-      setCodeStatus('error');
-    }
+    setCodeStatus(codeInput.trim() === 'kfit5526' ? 'success' : 'error');
   };
 
   return (
@@ -102,12 +112,8 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
           position: 'absolute', top: -20, right: -20,
           fontSize: 80, opacity: 0.15, pointerEvents: 'none',
         }}>👑</div>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 52, height: 52, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.3)', fontSize: 28, marginBottom: 12,
-        }}>
-          P
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <PlusBadge size={56} />
         </div>
         <h1 style={{
           color: '#fff', fontSize: 24, fontWeight: 900, margin: '0 0 8px',
@@ -133,7 +139,7 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
             <div style={{
               position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
               background: '#FF4B4B', color: '#fff', fontSize: 9, fontWeight: 900,
-              padding: '2px 8px', borderRadius: 20,
+              padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
             }}>おすすめ</div>
             <div style={{ color: '#FF8C00', fontSize: 20, fontWeight: 900 }}>¥3,800</div>
             <div style={{ color: '#666', fontSize: 10, fontWeight: 700 }}>/ 年（約34%お得）</div>
@@ -150,12 +156,12 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
       </h2>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28 }}>
         {[
-          { icon: '📊', title: 'AI 詳細分析', desc: '毎日の活動をAIが解析しフィードバック' },
-          { icon: '📸', title: 'フォト栄養解析', desc: '写真を撮るだけでカロリー・栄養を自動算出' },
-          { icon: '✨', title: 'AIコーチング', desc: '睡眠・マインドフルの傾向を分析してアドバイス' },
-          { icon: '👥', title: '友達無制限', desc: 'TOMOフィードで無制限にフレンドと交流' },
-          { icon: '🎨', title: 'テーマ全解放', desc: 'スパイラルのテーマを10種類以上から選択' },
-          { icon: '📱', title: 'プレミアムWidget', desc: '高機能ウィジェットで常にデータをチェック' },
+          { icon: '📊', title: 'AI 詳細分析',    desc: '毎日の活動をAIが解析しフィードバック。AIはAPIキー設定が必要。' },
+          { icon: '📸', title: 'フォト栄養解析',  desc: '写真を撮るだけでカロリー・栄養を自動算出。AIはAPIキー設定が必要。' },
+          { icon: '✨', title: 'AIコーチング',    desc: '睡眠・マインドフルの傾向を分析してアドバイス。AIはAPIキー設定が必要。' },
+          { icon: '📚', title: 'Kindle本を全文読む', desc: 'Web上でFitingo関連のKindle本を全て読める。' },
+          { icon: '👥', title: '友達無制限',      desc: 'TOMOフィードで無制限にフレンドと交流。' },
+          { icon: '📱', title: 'Plusウィジェット', desc: '高機能ウィジェットで常にデータをチェック。' },
         ].map((item) => (
           <div
             key={item.title}
@@ -170,6 +176,21 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
             <div style={{ fontSize: 10, color: '#888', lineHeight: 1.4 }}>{item.desc}</div>
           </div>
         ))}
+      </div>
+
+      {/* AI についての注意書き */}
+      <div style={{
+        background: 'rgba(28,176,246,0.08)', borderRadius: 12, padding: '12px 14px',
+        marginBottom: 24, display: 'flex', gap: 8, alignItems: 'flex-start',
+      }}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>ℹ️</span>
+        <div>
+          <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 800, color: '#1CB0F6' }}>AIについて</p>
+          <p style={{ margin: 0, fontSize: 11, color: '#555', lineHeight: 1.5 }}>
+            AI機能（栄養解析・コーチング・目標提案など）はPlusプランでご利用可能ですが、
+            <strong>SETTINGS → LLM設定</strong> から別途APIキーを設定する必要があります。
+          </p>
+        </div>
       </div>
 
       {/* 機能比較テーブル */}
@@ -190,38 +211,46 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
                 background: color.bg, padding: '8px 14px',
                 borderBottom: `1px solid ${color.border}`,
               }}>
-                <span style={{ fontSize: 12, fontWeight: 900, color: color.text }}>
-                  {cat}
-                </span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: color.text }}>{cat}</span>
               </div>
               {/* テーブルヘッダー */}
               <div style={{
-                display: 'grid', gridTemplateColumns: '1fr 80px 90px',
+                display: 'grid', gridTemplateColumns: '1fr 72px 88px',
                 padding: '6px 14px', background: 'rgba(0,0,0,0.02)',
                 borderBottom: '1px solid #f0f0f0',
               }}>
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#aaa' }}>機能</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#aaa', textAlign: 'center' }}>Free</span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: '#FF8C00', textAlign: 'center' }}>✦ Plus</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#aaa', textAlign: 'center' as const }}>Free</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <PlusBadge size={14} />
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#FF8C00' }}>Plus</span>
+                </div>
               </div>
               {/* 機能行 */}
               {features.map((f, i) => (
                 <div
                   key={f.title}
                   style={{
-                    display: 'grid', gridTemplateColumns: '1fr 80px 90px',
+                    display: 'grid', gridTemplateColumns: '1fr 72px 88px',
                     padding: '10px 14px', alignItems: 'center',
                     borderBottom: i < features.length - 1 ? '1px solid #f5f5f5' : 'none',
                   }}
                 >
-                  <span style={{ fontSize: 13, color: '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 14 }}>{f.icon}</span>
-                    {f.title}
-                  </span>
-                  <div style={{ textAlign: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: 13, color: '#333', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>{f.icon}</span>
+                      {f.title}
+                    </span>
+                    {f.plusNote && (
+                      <span style={{ fontSize: 9, color: '#aaa', display: 'block', paddingLeft: 20 }}>
+                        {f.plusNote}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'center' as const }}>
                     <CellValue value={f.free} />
                   </div>
-                  <div style={{ textAlign: 'center' }}>
+                  <div style={{ textAlign: 'center' as const }}>
                     <CellValue value={f.plus} />
                   </div>
                 </div>
@@ -237,13 +266,15 @@ export const PremiumView = ({ onBack }: PremiumViewProps) => {
         borderRadius: 20, padding: '24px 20px', marginBottom: 24,
         border: '1.5px solid rgba(255,200,0,0.3)', textAlign: 'center',
       }}>
-        <div style={{ fontSize: 28, marginBottom: 8 }}>👑</div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+          <PlusBadge size={40} />
+        </div>
         <h3 style={{ fontSize: 16, fontWeight: 900, color: '#FF8C00', margin: '0 0 6px' }}>
           iOSアプリからアップグレード
         </h3>
         <p style={{ fontSize: 12, color: '#888', margin: '0 0 12px', lineHeight: 1.5 }}>
           App Store 経由のサブスクリプションは<br />
-          iOS アプリの 設定 → Plus/Premium から利用できます。
+          iOS アプリの 設定 → Plus から利用できます。
         </p>
         <div style={{
           background: 'rgba(255,140,0,0.1)', borderRadius: 10, padding: '10px 14px',

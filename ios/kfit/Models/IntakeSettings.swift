@@ -388,6 +388,9 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var weightKg: Double?              // 体重（kg）
     var bodyFatPercent: Double?        // 体脂肪率（%）
 
+    // FOOD投稿用：共有フィードでカロリーを表示するための値（食事ログのみ）
+    var calories: Int?
+
     // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -409,6 +412,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
         pronunciation         = try c.decodeIfPresent(String.self,         forKey: .pronunciation)
         weightKg              = try c.decodeIfPresent(Double.self,         forKey: .weightKg)
         bodyFatPercent        = try c.decodeIfPresent(Double.self,         forKey: .bodyFatPercent)
+        calories              = try c.decodeIfPresent(Int.self,            forKey: .calories)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

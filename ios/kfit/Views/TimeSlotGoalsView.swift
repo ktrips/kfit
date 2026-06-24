@@ -722,11 +722,12 @@ struct MandalaChartView: View {
         dailyTrainingDone: Bool = false,
         dailyMindfulnessDone: Bool = false,
         dailyMindfulAndStandDone: Bool = false,  // 瞑想+ストレッチ+スタンドの統合日次達成
-        loggedCompletionIds: Set<String> = []    // MandalaCompletionLogger からの確定済み完了ID
+        loggedCompletionIds: Set<String> = [],   // MandalaCompletionLogger からの確定済み完了ID
+        fixedGoals fixedGoalsOverride: DailyFixedGoals? = nil  // 呼び出し側がキャッシュ済みなら渡す（UserDefaults/JSONデコード回避）
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
-        let fixedGoals: DailyFixedGoals? = {
+        let fixedGoals: DailyFixedGoals? = fixedGoalsOverride ?? {
             guard let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
                   let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) else { return nil }
             return fixed

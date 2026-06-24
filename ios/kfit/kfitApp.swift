@@ -191,10 +191,10 @@ struct MainTabView: View {
     @State private var tabBarHideWorkItem: DispatchWorkItem?
     @State private var tabBarRevealWorkItem: DispatchWorkItem?
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
-    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = false
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = true
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
-    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = true
-    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = true
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = false
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = false
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)

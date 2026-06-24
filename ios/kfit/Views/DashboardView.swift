@@ -94,6 +94,7 @@ struct ActivityRingView: View {
 private final class DashboardDebouncer: ObservableObject {
     var widgetUpdate: DispatchWorkItem?
     var widgetReload: DispatchWorkItem?
+    var mandalaRecompute: DispatchWorkItem?
 }
 
 struct DashboardView: View {
@@ -182,9 +183,9 @@ struct DashboardView: View {
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
-    @AppStorage("mainTab.food.visible") private var foodTabVisible = true
+    @AppStorage("mainTab.food.visible") private var foodTabVisible = false
     @AppStorage("mainTab.mind.visible") private var mindTabVisible = false
-    @AppStorage("mainTab.goal.visible") private var goalTabVisible = false
+    @AppStorage("mainTab.goal.visible") private var goalTabVisible = true
     @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
     @Environment(\.scenePhase) private var scenePhase
 
@@ -195,15 +196,15 @@ struct DashboardView: View {
         let withHealthKitObservers = coreView
             .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
                 handleMindfulnessChange(old: oldValue, new: newValue)
-                recomputeMandalaNodes()
+                scheduleMandalaRecompute()
                 scheduleWidgetDataUpdate()
             }
-            .onChange(of: healthKit.todayActiveCalories) { _, _ in recomputeMandalaNodes(); scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayActiveCalories) { _, _ in scheduleMandalaRecompute(); scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayRestingCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayStandHours) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayIntakeWater) { _, _ in recomputeMandalaNodes(); scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayIntakeCalories) { _, _ in recomputeMandalaNodes() }
+            .onChange(of: healthKit.todayIntakeWater) { _, _ in scheduleMandalaRecompute(); scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.todayIntakeCalories) { _, _ in scheduleMandalaRecompute() }
             .onChange(of: healthKit.todayBodyMassMeasurements) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.lastNightTotalHours) { _, _ in scheduleWidgetDataUpdate() }
         return withHealthKitObservers
@@ -236,12 +237,16 @@ struct DashboardView: View {
         isLoading = true
         Task {
             print("🟢 DashboardView.onAppear - loadDataを開始")
+            // ① キャッシュ優先の loadData を最初に実行し、スピナーを最短で解除する。
+            //    Firestore/HealthKit の取得を待たないことで初期表示を高速化。
+            await loadData()
+            // ② 残りの取得（認可・時間帯別設定/進捗）はスピナー解除後にバックグラウンドで実行。
             if healthKit.isAvailable && !healthKit.isAuthorized {
                 await healthKit.requestAuthorization()
             }
             await timeSlotManager.loadTodaySettings()
             await timeSlotManager.loadTodayProgress()
-            await loadData()
+            recomputeMandalaNodes()
         }
     }
 
@@ -1957,6 +1962,15 @@ struct DashboardView: View {
         cachedMandalaNodes = computeMandalaNodes()
     }
 
+    /// HealthKit の各値変化など高頻度トリガー用。連続発火をデバウンスして
+    /// マンダラノードの再計算（全スロット走査）が連打されるのを防ぐ。
+    private func scheduleMandalaRecompute() {
+        debouncer.mandalaRecompute?.cancel()
+        let work = DispatchWorkItem { recomputeMandalaNodes() }
+        debouncer.mandalaRecompute = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
     private func computeMandalaNodes() -> [MandalaNodeData] {
         let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
         let calendar = Calendar.current
@@ -2067,7 +2081,8 @@ struct DashboardView: View {
             dailyTrainingDone: dailyTrainingDone,
             dailyMindfulnessDone: dailyMindfulnessDone,
             dailyMindfulAndStandDone: dailyMindfulAndStandDone,
-            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds
+            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
+            fixedGoals: dailyFixedGoals
         )
     }
 

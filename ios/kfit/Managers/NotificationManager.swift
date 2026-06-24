@@ -19,11 +19,11 @@ struct NotificationPrefs: Codable {
     var streakAlert:       ReminderConfig
 
     static let defaultPrefs = NotificationPrefs(
-        amReminder:        ReminderConfig(enabled: true, hour: 6,  minute: 0),
-        noonReminder:      ReminderConfig(enabled: true, hour: 10, minute: 0),
-        afternoonReminder: ReminderConfig(enabled: true, hour: 14, minute: 0),
-        pmReminder:        ReminderConfig(enabled: true, hour: 18, minute: 0),
-        streakAlert:       ReminderConfig(enabled: true, hour: 22, minute: 0)
+        amReminder:        ReminderConfig(enabled: false, hour: 6,  minute: 0),
+        noonReminder:      ReminderConfig(enabled: false, hour: 10, minute: 0),
+        afternoonReminder: ReminderConfig(enabled: false, hour: 14, minute: 0),
+        pmReminder:        ReminderConfig(enabled: false, hour: 18, minute: 0),
+        streakAlert:       ReminderConfig(enabled: true,  hour: 22, minute: 0)
     )
 
     subscript(id: String) -> ReminderConfig {

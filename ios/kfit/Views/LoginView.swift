@@ -152,7 +152,7 @@ struct LoginView: View {
                         .padding(.horizontal, 24)
 
                         // iOSアプリの作り方
-                        Link(destination: URL(string: "https://amzn.to/4ek5fHi")!) {
+                        Link(destination: URL(string: "https://amzn.to/4ajt7s7")!) {
                             HStack(spacing: 12) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 10)

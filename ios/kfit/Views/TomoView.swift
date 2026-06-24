@@ -2,7 +2,70 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
+// MARK: - 非同期タイムアウト
+
+struct AsyncTimeoutError: Error {}
+
+/// 指定秒数以内に終わらない非同期処理をタイムアウトさせる。
+/// Firestore の getDocuments はオフライン永続キャッシュ有効時に応答が返らず
+/// ハングすることがあるため、UIが固まらないよう保険として使用する。
+func withAsyncTimeout<T: Sendable>(
+    seconds: Double,
+    _ operation: @Sendable @escaping () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw AsyncTimeoutError()
+        }
+        guard let result = try await group.next() else { throw AsyncTimeoutError() }
+        group.cancelAll()
+        return result
+    }
+}
+
 // MARK: - TomoManager
+
+/// emailLower 検索の結果（タスクグループ越えのため Sendable）
+struct TomoSearchResult: Sendable {
+    let id: String
+    let username: String
+    var email: String = ""
+    var totalPoints: Int = 0
+    var streak: Int = 0
+    var weeklyPoints: Int = 0
+    var photoURL: String = ""
+}
+
+/// 友達の公開プロフィール（タスクグループ越えのため Sendable）
+struct FriendProfile: Sendable {
+    let email: String
+    let username: String
+    let totalPoints: Int
+    let streak: Int
+    let weeklyPoints: Int
+}
+
+/// 友達の公開投稿（タスクグループ越えのため Sendable な素データ）
+struct FriendPostData: Sendable {
+    let id: String
+    let timestamp: Date
+    let activityName: String
+    let activityEmoji: String
+    let comment: String
+    let authorName: String
+    let authorPhotoURL: String
+    let likeCount: Int
+    let thumbnailData: Data?
+    let weightKg: Double?
+    let bodyFatPercent: Double?
+    let extractedPhrase: String?
+    let extractedLanguageCode: String?
+    let translationJA: String?
+    let pronunciation: String?
+    let calories: Int?
+}
 
 @MainActor
 final class TomoManager: ObservableObject {
@@ -20,8 +83,8 @@ final class TomoManager: ObservableObject {
 
     enum AddResult {
         case idle, searching
-        case notFound(String)   // email → show share sheet
-        case added(String)      // success → name
+        case notFound(String)        // email → show share sheet
+        case added(TomoSearchResult) // success → 友達のプロフィール情報
         case alreadyAdded
         case selfAdd
         case error(String)
@@ -30,46 +93,158 @@ final class TomoManager: ObservableObject {
     @Published var entries: [TomoEntry] = []
     @Published var isLoading = false
     @Published var addResult: AddResult = .idle
+    /// 友達の公開投稿（TOMOフィードにマージ）
+    @Published var friendFeedItems: [EduLogHistoryItem] = []
 
     private let db = Firestore.firestore()
+    private static var didBackfillPublicPosts = false
+
+    /// 2人のuidから決定的な friendship ドキュメントIDを生成
+    private func friendshipId(_ a: String, _ b: String) -> String {
+        [a, b].sorted().joined(separator: "_")
+    }
 
     func load() async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isLoading = true
         defer { isLoading = false }
 
-        var all: [TomoEntry] = []
-
-        // Self
-        if let me = AuthenticationManager.shared.userProfile {
-            let wPts = await weeklyPoints(userId: uid)
-            all.append(TomoEntry(id: uid, email: me.email, username: me.username,
-                                 totalPoints: me.totalPoints, streak: me.streak,
-                                 weeklyPoints: wPts, isMe: true))
+        // 自分の既存公開投稿を一度だけバックフィル（機能導入前の投稿を友達に見せるため）
+        if !Self.didBackfillPublicPosts {
+            Self.didBackfillPublicPosts = true
+            EduLogManager.shared.syncAllPublicPosts()
+            PhotoLogManager.shared.syncAllPublicPosts()
         }
 
-        // Tomos
-        let snap = try? await db.collection("users").document(uid)
-            .collection("tomos").getDocuments()
-        for doc in snap?.documents ?? [] {
-            let tomoId = doc.documentID
-            guard let profileDoc = try? await db.collection("users").document(tomoId).getDocument(),
-                  profileDoc.exists,
-                  let data = profileDoc.data() else { continue }
-            let wPts = await weeklyPoints(userId: tomoId)
+        var all: [TomoEntry] = []
+
+        // Self（自分の週間ポイントは completed-exercises から計算できる）
+        let myWeekly = await weeklyPoints(userId: uid)
+        if let me = AuthenticationManager.shared.userProfile {
+            all.append(TomoEntry(id: uid, email: me.email, username: me.username,
+                                 totalPoints: me.totalPoints, streak: me.streak,
+                                 weeklyPoints: myWeekly, isMe: true))
+            // 友達がランキングで参照できるよう、自分の週間ポイントを公開プロフィールへ反映
+            let myPoints = me.totalPoints
+            let myStreak = me.streak
+            try? await withAsyncTimeout(seconds: 12) {
+                try await Firestore.firestore().collection("publicProfiles").document(uid).setData([
+                    "weeklyPoints": myWeekly,
+                    "totalPoints": myPoints,
+                    "streak": myStreak,
+                    "updatedAt": Timestamp(date: Date())
+                ], merge: true)
+            }
+        }
+
+        // 友達（friendships の members に自分が含まれるもの）
+        let friendIds: [String] = (try? await withAsyncTimeout(seconds: 12) {
+            let snap = try await Firestore.firestore().collection("friendships")
+                .whereField("members", arrayContains: uid)
+                .getDocuments()
+            var ids: [String] = []
+            for doc in snap.documents {
+                let members = doc.data()["members"] as? [String] ?? []
+                if let other = members.first(where: { $0 != uid }) {
+                    ids.append(other)
+                }
+            }
+            return ids
+        }) ?? []
+
+        // 友達の公開プロフィール（ランキング用）
+        for fid in friendIds {
+            let profile = try? await withAsyncTimeout(seconds: 12) { () -> FriendProfile? in
+                let pdoc = try await Firestore.firestore()
+                    .collection("publicProfiles").document(fid).getDocument()
+                guard pdoc.exists, let data = pdoc.data() else { return nil }
+                return FriendProfile(
+                    email: data["email"] as? String ?? "",
+                    username: data["username"] as? String ?? "TOMO",
+                    totalPoints: data["totalPoints"] as? Int ?? 0,
+                    streak: data["streak"] as? Int ?? 0,
+                    weeklyPoints: data["weeklyPoints"] as? Int ?? 0
+                )
+            }
+            guard let p = profile ?? nil else { continue }
             all.append(TomoEntry(
-                id: tomoId,
-                email: data["email"] as? String ?? "",
-                username: data["username"] as? String ?? "TOMO",
-                totalPoints: data["totalPoints"] as? Int ?? 0,
-                streak: data["streak"] as? Int ?? 0,
-                weeklyPoints: wPts
+                id: fid,
+                email: p.email,
+                username: p.username,
+                totalPoints: p.totalPoints,
+                streak: p.streak,
+                weeklyPoints: p.weeklyPoints
             ))
         }
 
         all.sort { $0.weeklyPoints > $1.weeklyPoints }
         for i in all.indices { all[i].rank = i + 1 }
         entries = all
+
+        await loadFriendFeed(friendIds: friendIds)
+    }
+
+    /// 友達の公開投稿を取得してフィード用アイテムに変換（タイムアウト付き）
+    private func loadFriendFeed(friendIds: [String]) async {
+        guard !friendIds.isEmpty else { friendFeedItems = []; return }
+        var items: [EduLogHistoryItem] = []
+        for fid in friendIds {
+            let posts: [FriendPostData] = (try? await withAsyncTimeout(seconds: 12) {
+                let snap = try await Firestore.firestore()
+                    .collection("publicProfiles").document(fid)
+                    .collection("posts")
+                    .order(by: "timestamp", descending: true)
+                    .limit(to: 50)
+                    .getDocuments()
+                return snap.documents.map { doc -> FriendPostData in
+                    let data = doc.data()
+                    return FriendPostData(
+                        id: "friend_\(fid)_\(doc.documentID)",
+                        timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
+                        activityName: data["activityName"] as? String ?? "",
+                        activityEmoji: data["activityEmoji"] as? String ?? "",
+                        comment: data["comment"] as? String ?? "",
+                        authorName: data["authorName"] as? String ?? "TOMO",
+                        authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
+                        likeCount: data["likeCount"] as? Int ?? 0,
+                        thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
+                        weightKg: data["weightKg"] as? Double,
+                        bodyFatPercent: data["bodyFatPercent"] as? Double,
+                        extractedPhrase: data["extractedPhrase"] as? String,
+                        extractedLanguageCode: data["extractedLanguageCode"] as? String,
+                        translationJA: data["translationJA"] as? String,
+                        pronunciation: data["pronunciation"] as? String,
+                        calories: data["calories"] as? Int
+                    )
+                }
+            }) ?? []
+            for p in posts { items.append(makeFriendItem(from: p)) }
+        }
+        friendFeedItems = items
+    }
+
+    /// Sendable な素データからフィード用 EduLogHistoryItem を構築
+    private func makeFriendItem(from p: FriendPostData) -> EduLogHistoryItem {
+        var item = EduLogHistoryItem(
+            activityName: p.activityName,
+            activityEmoji: p.activityEmoji,
+            comment: p.comment,
+            authorName: p.authorName,
+            authorPhotoURL: p.authorPhotoURL,
+            isPublic: true
+        )
+        item.id = p.id
+        item.timestamp = p.timestamp
+        item.likeCount = p.likeCount
+        item.thumbnailData = p.thumbnailData
+        item.weightKg = p.weightKg
+        item.bodyFatPercent = p.bodyFatPercent
+        item.extractedPhrase = p.extractedPhrase
+        item.extractedLanguageCode = p.extractedLanguageCode
+        item.translationJA = p.translationJA
+        item.pronunciation = p.pronunciation
+        item.calories = p.calories
+        return item
     }
 
     func addTomo(email rawEmail: String) async {
@@ -84,36 +259,68 @@ final class TomoManager: ObservableObject {
         }
 
         addResult = .searching
-        let snap = try? await db.collection("users")
-            .whereField("email", isEqualTo: email)
-            .limit(to: 1)
-            .getDocuments()
-        guard let tomoDoc = snap?.documents.first else {
+
+        // 公開プロフィールを emailLower（小文字正規化）で検索（タイムアウト付き）
+        let found: TomoSearchResult?
+        do {
+            found = try await withAsyncTimeout(seconds: 12) {
+                let snap = try await Firestore.firestore()
+                    .collection("publicProfiles")
+                    .whereField("emailLower", isEqualTo: email)
+                    .limit(to: 1)
+                    .getDocuments()
+                guard let doc = snap.documents.first else { return nil }
+                let d = doc.data()
+                return TomoSearchResult(
+                    id: doc.documentID,
+                    username: d["username"] as? String ?? email,
+                    email: d["email"] as? String ?? email,
+                    totalPoints: d["totalPoints"] as? Int ?? 0,
+                    streak: d["streak"] as? Int ?? 0,
+                    weeklyPoints: d["weeklyPoints"] as? Int ?? 0,
+                    photoURL: d["photoURL"] as? String ?? ""
+                )
+            }
+        } catch is AsyncTimeoutError {
+            addResult = .error("通信に時間がかかっています。ネットワークを確認して、もう一度お試しください")
+            return
+        } catch {
+            addResult = .error("検索に失敗しました。時間をおいて再度お試しください")
+            return
+        }
+
+        guard let tomo = found else {
             addResult = .notFound(email); return
         }
-        let tomoId = tomoDoc.documentID
-        guard tomoId != uid else { addResult = .selfAdd; return }
+        guard tomo.id != uid else { addResult = .selfAdd; return }
 
-        let now = Timestamp(date: Date())
-        let myEmail = AuthenticationManager.shared.userProfile?.email ?? ""
-        try? await db.collection("users").document(uid)
-            .collection("tomos").document(tomoId)
-            .setData(["email": email, "addedAt": now])
-        try? await db.collection("users").document(tomoId)
-            .collection("tomos").document(uid)
-            .setData(["email": myEmail, "addedAt": now])
+        // 相互の友達関係を1ドキュメントで作成（双方が読み書き可能）
+        let pairId = friendshipId(uid, tomo.id)
+        do {
+            try await withAsyncTimeout(seconds: 12) {
+                try await Firestore.firestore()
+                    .collection("friendships").document(pairId)
+                    .setData([
+                        "members": [uid, tomo.id],
+                        "createdAt": Timestamp(date: Date())
+                    ], merge: true)
+            }
+        } catch {
+            addResult = .error("TOMOの追加に失敗しました。時間をおいて再度お試しください")
+            return
+        }
 
-        let name = tomoDoc.data()["username"] as? String ?? email
-        addResult = .added(name)
+        addResult = .added(tomo)
         await load()
     }
 
     func removeTomo(id: String) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        try? await db.collection("users").document(uid)
-            .collection("tomos").document(id).delete()
+        let pairId = friendshipId(uid, id)
+        try? await db.collection("friendships").document(pairId).delete()
         entries.removeAll { $0.id == id }
         for i in entries.indices { entries[i].rank = i + 1 }
+        friendFeedItems.removeAll { $0.id.hasPrefix("friend_\(id)_") }
     }
 
     private func weeklyPoints(userId: String) async -> Int {
@@ -123,11 +330,15 @@ final class TomoManager: ObservableObject {
         let daysSinceMonday = weekday == 1 ? 6 : weekday - 2
         guard let monday = calendar.date(byAdding: .day, value: -daysSinceMonday,
                                          to: calendar.startOfDay(for: today)) else { return 0 }
-        let snap = try? await db.collection("users").document(userId)
-            .collection("completed-exercises")
-            .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: monday))
-            .getDocuments()
-        return snap?.documents.compactMap { $0.data()["points"] as? Int }.reduce(0, +) ?? 0
+        let points: [Int] = (try? await withAsyncTimeout(seconds: 12) {
+            let snap = try await Firestore.firestore()
+                .collection("users").document(userId)
+                .collection("completed-exercises")
+                .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: monday))
+                .getDocuments()
+            return snap.documents.compactMap { $0.data()["points"] as? Int }
+        }) ?? []
+        return points.reduce(0, +)
     }
 }
 
@@ -229,6 +440,9 @@ struct TomoView: View {
             DispatchQueue.main.async { rebuildFeedCache() }
         }
         .onReceive(photoLogManager.$history) { _ in
+            DispatchQueue.main.async { rebuildFeedCache() }
+        }
+        .onReceive(manager.$friendFeedItems) { _ in
             DispatchQueue.main.async { rebuildFeedCache() }
         }
         .onChange(of: selectedCategory) { _, _ in rebuildFeedCache() }
@@ -406,9 +620,10 @@ struct TomoView: View {
         return photoLogManager.history.first { $0.id == originalId }
     }
 
-    /// FOOD投稿のカロリー（FOOD以外は nil）
+    /// FOOD投稿のカロリー（FOOD以外は nil）。友達の投稿はアイテム自身の calories を使用
     private func foodCalories(for item: EduLogHistoryItem) -> Int? {
-        originalFoodItem(for: item)?.calories
+        if let local = originalFoodItem(for: item)?.calories { return local }
+        return item.calories
     }
 
     /// 投稿タップ時のルーティング：FOODはFOOD詳細、それ以外はEduFeed詳細
@@ -442,17 +657,19 @@ struct TomoView: View {
 
     /// 自分の投稿かどうか
     private func isOwnPost(_ item: EduLogHistoryItem) -> Bool {
+        if item.id.hasPrefix("friend_") { return false }
         let myName = AuthenticationManager.shared.userProfile?.username
             ?? UserDefaults.standard.string(forKey: "cachedCurrentUserName")
             ?? ""
         return item.authorName == myName || item.authorName.isEmpty
     }
 
-    /// アクティビティ＋食事ログを統合したフィード全件（公開のもののみ）
+    /// アクティビティ＋食事ログ＋友達の公開投稿を統合したフィード全件（公開のもののみ）
     private var allFeedItems: [EduLogHistoryItem] {
         let activity = eduLogManager.history.filter { $0.isPublic }
         let food     = photoLogManager.history.filter { $0.isPublic }.map { makeFoodFeedItem($0) }
-        return (activity + food).sorted { $0.timestamp > $1.timestamp }
+        let friends  = manager.friendFeedItems
+        return (activity + food + friends).sorted { $0.timestamp > $1.timestamp }
     }
 
     /// activityName をグループ化したカテゴリー表記（FIT / FOOD / EDU / DIARY / OTHERS）と代表絵文字
@@ -1168,6 +1385,25 @@ struct TomoView: View {
     }
 
     @ViewBuilder
+    private func addedFriendAvatar(_ tomo: TomoSearchResult) -> some View {
+        let initial = String(tomo.username.prefix(1)).uppercased()
+        ZStack {
+            Circle().fill(Color.duoBlue.opacity(0.15)).frame(width: 44, height: 44)
+            if let url = URL(string: tomo.photoURL), !tomo.photoURL.isEmpty {
+                AsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Text(initial).font(.system(size: 18 * UIScale.font, weight: .black)).foregroundColor(Color.duoBlue)
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+            } else {
+                Text(initial).font(.system(size: 18 * UIScale.font, weight: .black)).foregroundColor(Color.duoBlue)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var addResultView: some View {
         switch manager.addResult {
         case .idle:
@@ -1199,9 +1435,40 @@ struct TomoView: View {
                 }
                 .buttonStyle(.plain)
             }
-        case .added(let name):
-            Label("\(name) をTOMOに追加しました！", systemImage: "checkmark.circle.fill")
-                .font(.caption).foregroundColor(Color.duoGreen)
+        case .added(let tomo):
+            VStack(alignment: .leading, spacing: 10) {
+                Label("TOMOに追加しました！", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoGreen)
+                HStack(spacing: 12) {
+                    addedFriendAvatar(tomo)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(tomo.username)
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
+                        HStack(spacing: 12) {
+                            Label("\(tomo.weeklyPoints) pt", systemImage: "bolt.fill")
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoBlue)
+                            Label("\(tomo.streak) 日", systemImage: "flame.fill")
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoOrange)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(Color.duoGreen.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.duoGreen.opacity(0.30), lineWidth: 1)
+                )
+                .cornerRadius(12)
+                Text("ランキングとフィードに反映されました")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+            }
         case .alreadyAdded:
             Label("すでにTOMOです", systemImage: "info.circle.fill")
                 .font(.caption).foregroundColor(Color.duoOrange)

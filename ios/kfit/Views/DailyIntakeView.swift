@@ -516,6 +516,9 @@ struct PhotoLogView: View {
                     if selectedImage != nil || (fromHistory && analyzedNutrition != nil) {
                         VStack(spacing: 10) {
                             if !fromHistory && analyzedNutrition == nil && !photoLogManager.isAnalyzing {
+                                if llmSettings.apiKey.isEmpty {
+                                    LLMAPIKeyNotice()
+                                }
                                 analyzeButton
                             }
                             if analyzedNutrition != nil {

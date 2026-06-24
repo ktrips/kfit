@@ -73,10 +73,10 @@ struct SettingsView: View {
     @State private var newGoalName = ""
     @State private var newGoalEmoji = "⭐"
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitTabVisible = true
-    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = false
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = true
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindTabVisible = false
-    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodTabVisible = true
-    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoTabVisible = true
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodTabVisible = false
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoTabVisible = false
     @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logTabVisible = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
@@ -569,7 +569,7 @@ struct SettingsView: View {
 
             Toggle(isOn: Binding(
                 get: { dailyFixedGoals.foodEnabled },
-                set: { v in dailyFixedGoals.foodEnabled = v; saveDailyFixedGoals() }
+                set: { v in dailyFixedGoals.foodEnabled = v; foodTabVisible = v; saveDailyFixedGoals() }
             )) {
                 HStack(spacing: 8) {
                     Text("🍽️").font(.title3)
@@ -798,6 +798,8 @@ struct SettingsView: View {
            let saved = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) {
             dailyFixedGoals = saved
         }
+        // FOODタブの表示は「毎日の設定 > 食事の記録」に追従させる
+        foodTabVisible = dailyFixedGoals.foodEnabled
     }
 
     private func saveDailyFixedGoals() {

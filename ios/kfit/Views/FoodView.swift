@@ -2166,6 +2166,22 @@ struct EduFeedDetailSheet: View {
                             .padding(.bottom, 12)
                     }
 
+                    // 食事ログ（友達の共有投稿など）: カロリー
+                    if let cal = item.calories, cal > 0 {
+                        HStack(spacing: 6) {
+                            Text("🔥").font(.system(size: 18 * UIScale.font))
+                            Text("\(cal) kcal")
+                                .font(.system(size: 18 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(Color(hex: "#FF9600"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(hex: "#FF9600").opacity(0.10))
+                        .cornerRadius(14)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                    }
+
                     // アクティビティバッジ
                     HStack(spacing: 6) {
                         Text(item.activityEmoji.isEmpty ? "📚" : item.activityEmoji)

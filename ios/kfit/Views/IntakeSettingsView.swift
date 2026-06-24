@@ -521,6 +521,37 @@ struct LLMSettingsView: View {
     }
 }
 
+/// AI機能を使う画面で、APIキー未設定時に表示する案内バナー
+struct LLMAPIKeyNotice: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 14 * UIScale.font, weight: .bold))
+                .foregroundColor(Color.duoOrange)
+                .frame(width: 30, height: 30)
+                .background(Color.duoOrange.opacity(0.14))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text("AI機能を使うにはAPIキーが必要です")
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                Text("SETUP ＞ LLM設定 からAPIキーをセットすると使えるようになります")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.duoOrange.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.duoOrange.opacity(0.30), lineWidth: 1)
+        )
+        .cornerRadius(12)
+    }
+}
+
 #Preview {
     NavigationView {
         LLMSettingsView()

@@ -148,7 +148,31 @@ class AuthenticationManager: ObservableObject {
                 if let photoURL = Auth.auth().currentUser?.photoURL?.absoluteString {
                     UserDefaults.standard.set(photoURL, forKey: "cachedCurrentUserPhotoURL")
                 }
+                // TOMO の友達検索・ランキング用に公開プロフィールを同期
+                if let profile = self.userProfile {
+                    Task { await self.syncPublicProfile(profile) }
+                }
             }
+    }
+
+    /// 友達検索（メール）・ランキング表示のための公開プロフィールを publicProfiles/{uid} に同期する。
+    /// `email` は大文字小文字を無視して検索できるよう `emailLower` として正規化保存する。
+    func syncPublicProfile(_ profile: UserProfile) async {
+        let uid = profile.uid
+        guard !uid.isEmpty else { return }
+        let photoURL = Auth.auth().currentUser?.photoURL?.absoluteString
+            ?? UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+        let data: [String: Any] = [
+            "uid": uid,
+            "email": profile.email,
+            "emailLower": profile.email.lowercased(),
+            "username": profile.username,
+            "totalPoints": profile.totalPoints,
+            "streak": profile.streak,
+            "photoURL": photoURL,
+            "updatedAt": Timestamp(date: Date())
+        ]
+        try? await db.collection("publicProfiles").document(uid).setData(data, merge: true)
     }
 
     private func loadExercises() async {
@@ -2236,6 +2260,98 @@ import Foundation
 import UIKit
 
 @MainActor
+/// 公開投稿を publicProfiles/{uid}/posts に同期するヘルパー（TOMOフィードの友達共有用）。
+/// Firestore ドキュメントの 1MiB 制限に収めるため、画像は長辺800px・JPEG0.7 に縮小して埋め込む。
+enum PublicFeedPublisher {
+    private static var db: Firestore { Firestore.firestore() }
+    private static var currentUid: String? { Auth.auth().currentUser?.uid }
+    private static var authorName: String {
+        UserDefaults.standard.string(forKey: "cachedCurrentUserName") ?? ""
+    }
+    private static var authorPhotoURL: String {
+        UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+    }
+
+    static func sharedThumbnailBase64(from data: Data?) -> String? {
+        guard let data else { return nil }
+        guard let img = ThumbnailCache.downsample(data: data, maxPixel: 800),
+              let jpeg = img.jpegData(compressionQuality: 0.7) else { return nil }
+        return jpeg.base64EncodedString()
+    }
+
+    /// EDU/体重/Duolingo等の公開投稿を同期。非公開なら既存の共有投稿を削除する。
+    static func publishEdu(_ item: EduLogHistoryItem) {
+        guard let uid = currentUid else { return }
+        guard item.isPublic else { delete(uid: uid, postId: item.id); return }
+        var data: [String: Any] = [
+            "kind": "edu",
+            "id": item.id,
+            "activityName": item.activityName,
+            "activityEmoji": item.activityEmoji,
+            "comment": item.comment,
+            "timestamp": Timestamp(date: item.timestamp),
+            "likeCount": item.likeCount,
+            "authorName": item.authorName.isEmpty ? authorName : item.authorName,
+            "authorPhotoURL": item.authorPhotoURL.isEmpty ? authorPhotoURL : item.authorPhotoURL
+        ]
+        if let t = sharedThumbnailBase64(from: item.thumbnailData) { data["thumbnail"] = t }
+        if let v = item.weightKg { data["weightKg"] = v }
+        if let v = item.bodyFatPercent { data["bodyFatPercent"] = v }
+        if let v = item.extractedPhrase { data["extractedPhrase"] = v }
+        if let v = item.extractedLanguageCode { data["extractedLanguageCode"] = v }
+        if let v = item.translationJA { data["translationJA"] = v }
+        if let v = item.pronunciation { data["pronunciation"] = v }
+        if let v = item.calories { data["calories"] = v }
+        write(uid: uid, postId: item.id, data: data)
+    }
+
+    /// 食事フォトログの公開投稿を同期。非公開なら削除する。
+    static func publishFood(_ item: PhotoLogHistoryItem) {
+        guard let uid = currentUid else { return }
+        let postId = "food_\(item.id)"
+        guard item.isPublic else { delete(uid: uid, postId: postId); return }
+        var data: [String: Any] = [
+            "kind": "food",
+            "id": item.id,
+            "activityName": "食事ログ",
+            "activityEmoji": "🍽️",
+            "comment": item.displayName,
+            "timestamp": Timestamp(date: item.timestamp),
+            "likeCount": item.likeCount,
+            "calories": item.calories,
+            "authorName": authorName,
+            "authorPhotoURL": authorPhotoURL
+        ]
+        if let t = sharedThumbnailBase64(from: item.thumbnailData) { data["thumbnail"] = t }
+        write(uid: uid, postId: postId, data: data)
+    }
+
+    static func deleteEdu(id: String) {
+        guard let uid = currentUid else { return }
+        delete(uid: uid, postId: id)
+    }
+
+    static func deleteFood(id: String) {
+        guard let uid = currentUid else { return }
+        delete(uid: uid, postId: "food_\(id)")
+    }
+
+    private static func write(uid: String, postId: String, data: [String: Any]) {
+        Task {
+            try? await db.collection("publicProfiles").document(uid)
+                .collection("posts").document(postId).setData(data, merge: true)
+        }
+    }
+
+    private static func delete(uid: String, postId: String) {
+        Task {
+            try? await db.collection("publicProfiles").document(uid)
+                .collection("posts").document(postId).delete()
+        }
+    }
+}
+
+@MainActor
 class PhotoLogManager: ObservableObject {
     static let shared = PhotoLogManager()
 
@@ -2265,10 +2381,18 @@ class PhotoLogManager: ObservableObject {
         }
     }
 
+    /// 既存の公開投稿をまとめて共有フィードへ同期（機能導入前の投稿のバックフィル用）
+    func syncAllPublicPosts() {
+        for item in history where item.isPublic {
+            PublicFeedPublisher.publishFood(item)
+        }
+    }
+
     /// 履歴アイテムを削除
     func deleteHistoryItem(id: String) {
         history.removeAll { $0.id == id }
         persistHistory()
+        PublicFeedPublisher.deleteFood(id: id)
     }
 
     /// いいねをトグル
@@ -2277,6 +2401,7 @@ class PhotoLogManager: ObservableObject {
         history[idx].isLiked.toggle()
         history[idx].likeCount = max(0, history[idx].likeCount + (history[idx].isLiked ? 1 : -1))
         persistHistory()
+        PublicFeedPublisher.publishFood(history[idx])
     }
 
     /// フィードコメントを追加
@@ -2309,6 +2434,7 @@ class PhotoLogManager: ObservableObject {
         if let idx = history.firstIndex(where: { $0.id == item.id }) {
             history[idx] = item
             persistHistory()
+            PublicFeedPublisher.publishFood(item)
         }
     }
 
@@ -2368,6 +2494,7 @@ class PhotoLogManager: ObservableObject {
         }
         history.insert(item, at: 0)
         persistHistory()
+        PublicFeedPublisher.publishFood(item)
     }
 
     /// description の最初の文（句読点または改行まで）を料理名として抽出
@@ -2764,6 +2891,7 @@ class EduLogManager: ObservableObject {
 
         history.insert(item, at: 0)
         persistHistory()
+        PublicFeedPublisher.publishEdu(item)
 
         // OCR 結果未提供かつ Duolingo 画像の場合は自動抽出
         let isDuolingo = activityName.localizedCaseInsensitiveContains("Duolingo")
@@ -2782,6 +2910,8 @@ class EduLogManager: ObservableObject {
                     self.history[idx].translationJA         = result.translationJA
                     self.history[idx].pronunciation         = pinyin
                     self.persistHistory()
+                    // OCR結果反映後に共有投稿も更新
+                    PublicFeedPublisher.publishEdu(self.history[idx])
                 }
             }
         }
@@ -2804,9 +2934,17 @@ class EduLogManager: ObservableObject {
         return target.jpegData(compressionQuality: 0.88)
     }
 
+    /// 既存の公開投稿をまとめて共有フィードへ同期（機能導入前の投稿のバックフィル用）
+    func syncAllPublicPosts() {
+        for item in history where item.isPublic {
+            PublicFeedPublisher.publishEdu(item)
+        }
+    }
+
     func deleteItem(id: String) {
         history.removeAll { $0.id == id }
         persistHistory()
+        PublicFeedPublisher.deleteEdu(id: id)
     }
 
     func toggleLike(id: String) {
@@ -2814,6 +2952,7 @@ class EduLogManager: ObservableObject {
         history[idx].isLiked.toggle()
         history[idx].likeCount = max(0, history[idx].likeCount + (history[idx].isLiked ? 1 : -1))
         persistHistory()
+        PublicFeedPublisher.publishEdu(history[idx])
     }
 
     func addFeedComment(id: String, text: String) {

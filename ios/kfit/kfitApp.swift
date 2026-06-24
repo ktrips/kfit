@@ -205,38 +205,44 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            mainContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 10)
-                        .onChanged { value in
-                            if value.translation.height < -20 && !isTabBarHidden {
-                                hideTabBarNow()
-                            }
-                            // スクロール中はリビールタイマーをリセット
-                            if isTabBarHidden {
-                                scheduleTabBarAutoReveal()
-                            }
-                        }
-                )
-
-            bottomRevealZone
-
-            tabBarRevealHandle
-
-            compactTabBar
-                .offset(y: isTabBarHidden ? 76 : 0)
-                .opacity(isTabBarHidden ? 0 : 1)
-                .allowsHitTesting(!isTabBarHidden)
-                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
-
-            // Freeユーザー向けプロモーションバナー（タブバー非表示時のみ表示）
-            if isTabBarHidden && !plus.isPlus && !promoBannerDismissed {
-                plusPromoBanner
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+        decoratedContent
+            .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
+                selectedTab = MainMenuTab.fit.rawValue
+                showTrainingTracker = true
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
             }
-        }
+            .onReceive(NotificationCenter.default.publisher(for: .requestStartMindfulness)) { _ in
+                showMindfulnessWidget = true
+            }
+            .onOpenURL { url in handleDeepLink(url) }
+            .onAppear {
+                selectedTab = defaultVisibleTab.rawValue
+                normalizeSelection()
+                checkEndOfDayCalorieTopUp()
+                if let uid = Auth.auth().currentUser?.uid,
+                   let name = authManager.userProfile?.username ?? Auth.auth().currentUser?.displayName {
+                    Task {
+                        await PendingShareProcessor.shared.processPendingShares(
+                            userID: uid, userName: name
+                        )
+                    }
+                }
+            }
+            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                checkEndOfDayCalorieTopUp()
+            }
+            .onChange(of: fitVisible)    { _, _ in normalizeSelection() }
+            .onChange(of: goalVisible)   { _, _ in normalizeSelection() }
+            .onChange(of: mindVisible)   { _, _ in normalizeSelection() }
+            .onChange(of: foodVisible)   { _, _ in normalizeSelection() }
+            .onChange(of: tomoVisible)   { _, _ in normalizeSelection() }
+            .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
+            .onChange(of: tabOrderRaw)   { _, _ in normalizeSelection() }
+    }
+
+    // body を分割してコンパイラの型推論タイムアウトを回避
+    private var decoratedContent: some View {
+        overlayStack
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .sheet(isPresented: $showPlusView) { PlusView() }
             .fullScreenCover(isPresented: $showRecordMenu) {
@@ -254,41 +260,37 @@ struct MainTabView: View {
             .fullScreenCover(isPresented: $showMindfulnessWidget) {
                 mindfulnessSessionCover
             }
-            .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
-                selectedTab = MainMenuTab.fit.rawValue
-                showTrainingTracker = true
-                iOSWatchBridge.shared.sendStartWorkoutSignal()
+    }
+
+    private var overlayStack: some View {
+        ZStack(alignment: .bottom) {
+            mainContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            if value.translation.height < -20 && !isTabBarHidden {
+                                hideTabBarNow()
+                            }
+                            if isTabBarHidden { scheduleTabBarAutoReveal() }
+                        }
+                )
+
+            bottomRevealZone
+
+            tabBarRevealHandle
+
+            compactTabBar
+                .offset(y: isTabBarHidden ? 76 : 0)
+                .opacity(isTabBarHidden ? 0 : 1)
+                .allowsHitTesting(!isTabBarHidden)
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
+
+            if isTabBarHidden && !plus.isPlus && !promoBannerDismissed {
+                plusPromoBanner
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .onReceive(NotificationCenter.default.publisher(for: .requestStartMindfulness)) { _ in
-                showMindfulnessWidget = true
-            }
-            .onOpenURL { url in
-                handleDeepLink(url)
-            }
-            .onAppear {
-                selectedTab = defaultVisibleTab.rawValue
-                normalizeSelection()
-                checkEndOfDayCalorieTopUp()
-                // Share Extension から共有された Duolingo 画像を処理
-                if let uid = Auth.auth().currentUser?.uid,
-                   let name = authManager.userProfile?.username ?? Auth.auth().currentUser?.displayName {
-                    Task {
-                        await PendingShareProcessor.shared.processPendingShares(
-                            userID: uid, userName: name
-                        )
-                    }
-                }
-            }
-            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                checkEndOfDayCalorieTopUp()
-            }
-            .onChange(of: fitVisible) { _, _ in normalizeSelection() }
-            .onChange(of: goalVisible) { _, _ in normalizeSelection() }
-            .onChange(of: mindVisible) { _, _ in normalizeSelection() }
-            .onChange(of: foodVisible) { _, _ in normalizeSelection() }
-            .onChange(of: tomoVisible) { _, _ in normalizeSelection() }
-            .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
-            .onChange(of: tabOrderRaw) { _, _ in normalizeSelection() }
+        }
     }
 
     // MindfulnessSessionView を独立した computed property に切り出し

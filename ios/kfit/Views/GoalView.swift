@@ -8,6 +8,7 @@ struct GoalView: View {
     @EnvironmentObject private var dietManager: DietGoalManager
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject private var timeSlotManager: TimeSlotManager
+    @EnvironmentObject private var plus: PlusManager
     @State private var showDietGoalSettings = false
     @State private var showCharts = false
     @State private var showActivityHistory = false
@@ -51,6 +52,7 @@ struct GoalView: View {
         return f
     }()
 
+    @State private var showPlusViewFromFit = false
     // V25: トレーニング合計を @State にキャッシュ（body 評価ごとの再計算を防止）
     @State private var cachedTotalTrainingSets: Int = 0
     @State private var cachedTotalTrainingGoalSets: Int = 0
@@ -80,21 +82,33 @@ struct GoalView: View {
                         }
                         fitingoTrainingButton
                         todayActivityWithHistoryCard
-                        progressCard
-                        HStack(spacing: 6) {
-                            Image(systemName: "chart.bar.doc.horizontal.fill")
-                                .font(.system(size: 14 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoGreen)
-                            Text("週間実績")
-                                .font(.system(size: 15 * UIScale.font, weight: .black))
-                                .foregroundColor(Color.duoDark)
-                            Spacer()
+                        if plus.isPlus {
+                            progressCard
+                            HStack(spacing: 6) {
+                                Image(systemName: "chart.bar.doc.horizontal.fill")
+                                    .font(.system(size: 14 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color.duoGreen)
+                                Text("週間実績")
+                                    .font(.system(size: 15 * UIScale.font, weight: .black))
+                                    .foregroundColor(Color.duoDark)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.bottom, -4)
+                            weeklyBurnCard
+                            intakeTrendCard
+                            weeklyCalorieCard
+                        } else {
+                            PlusLockedSection(
+                                features: [
+                                    "目標プランレポート",
+                                    "週間実績（燃焼カロリー）",
+                                    "摂取カロリー推移",
+                                    "週間カロリー分析"
+                                ],
+                                onUpgrade: { showPlusViewFromFit = true }
+                            )
                         }
-                        .padding(.horizontal, 4)
-                        .padding(.bottom, -4)
-                        weeklyBurnCard
-                        intakeTrendCard
-                        weeklyCalorieCard
                         weightFeedSection
                         Spacer(minLength: 40)
                     }
@@ -118,6 +132,7 @@ struct GoalView: View {
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
+            .sheet(isPresented: $showPlusViewFromFit) { PlusView() }
             .sheet(isPresented: $showDietGoalSettings) {
                 NavigationView { DietGoalSettingsView() }
             }
@@ -1494,41 +1509,83 @@ struct GoalView: View {
 
     private var weightFeedSection: some View {
         let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let allLogs = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnailData != nil }
-        let recent  = allLogs.filter { $0.timestamp >= twoWeeksAgo }
-        let older   = allLogs.filter { $0.timestamp < twoWeeksAgo }
+        let allLogs   = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnailData != nil }
+        let recent    = allLogs.filter { $0.timestamp >= twoWeeksAgo }
+        let older     = allLogs.filter { $0.timestamp < twoWeeksAgo }
         let displayed = showOlderWeightFeed ? allLogs : recent
+        let fitBlue   = Color(hex: "#1CB0F6")
 
         return VStack(alignment: .leading, spacing: 10) {
+            // ── ヘッダー（FOODフィードと同スタイル） ──
             HStack(spacing: 6) {
                 Image(systemName: "scalemass.fill")
-                    .font(.system(size: 13 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .font(.system(size: 12 * UIScale.font))
+                    .foregroundColor(fitBlue)
                 Text("FITフィード")
-                    .font(.system(size: 15 * UIScale.font, weight: .black))
+                    .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
-                Text("\(displayed.count)件")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-            .padding(.horizontal, 4)
-
-            if allLogs.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "camera.on.rectangle")
-                        .font(.system(size: 26 * UIScale.font))
-                        .foregroundColor(Color(.systemGray4))
-                    Text("体重計測の写真がまだありません\n上部の体重（⚖️）をタップして記録できます")
-                        .font(.system(size: 11 * UIScale.font))
+                if plus.isPlus {
+                    Text("\(displayed.count)件")
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
-                        .multilineTextAlignment(.center)
+                } else {
+                    HStack(spacing: 3) {
+                        Text("+")
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                            .frame(width: 14, height: 14)
+                            .background(Color.duoGold)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                        Text("Plus限定")
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoGold)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.duoGold.opacity(0.1))
+                    .clipShape(Capsule())
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-                .background(Color(.systemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            }
+
+            // ── コンテンツ ──
+            if !plus.isPlus {
+                // Free ユーザー向けプロモ（FOODフィードプロモと同スタイル）
+                Button { showPlusViewFromFit = true } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 14) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22 * UIScale.font))
+                                .foregroundColor(.white)
+                                .frame(width: 48, height: 48)
+                                .background(fitBlue)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("FIT に関する写真を記録できます")
+                                    .font(.system(size: 13 * UIScale.font, weight: .black))
+                                    .foregroundColor(Color.duoDark)
+                                Text("体重変化・体型の推移を写真で管理")
+                                    .font(.system(size: 11 * UIScale.font))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(16)
+                    .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+                }
+                .buttonStyle(.plain)
+            } else if displayed.isEmpty {
+                // Plus ユーザーだが写真なし
+                Text("直近2週間の体重ログ写真はありません")
+                    .font(.system(size: 12 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 16)
             } else {
                 LazyVGrid(
                     columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
@@ -1555,10 +1612,10 @@ struct GoalView: View {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 10 * UIScale.font, weight: .semibold))
                         }
-                        .foregroundColor(Color(hex: "#1CB0F6"))
+                        .foregroundColor(fitBlue)
                         .padding(.vertical, 10)
                         .padding(.horizontal, 12)
-                        .background(Color(hex: "#1CB0F6").opacity(0.08))
+                        .background(fitBlue.opacity(0.08))
                         .cornerRadius(10)
                     }
                     .buttonStyle(.plain)

@@ -551,6 +551,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             // ログ入力状態を含める
             payload["todayMealLogged"] = summary.mealCount > 0
 
+            // Plus状態を含める（Watch側のゲート制御に使用）
+            payload["isPlus"] = PlusManager.shared.isPlus
+
             // HealthKitデータを含める
             let healthKit = HealthKitManager.shared
             payload["todaySteps"] = Int(healthKit.todaySteps)

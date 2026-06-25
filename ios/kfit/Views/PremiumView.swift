@@ -55,9 +55,9 @@ private let planFeatures: [PlanFeature] = [
     PlanFeature(icon: "doc.text.fill", iconColor: Color.duoGreen,
                 category: "FOOD", title: "週次・月次 食事レポート",      free: .no,              plus: .yes),
 
-    // MIND
+    // MIND（タブ全体がPlus限定）
     PlanFeature(icon: "moon.fill",    iconColor: Color(hex: "#CE82FF"),
-                category: "MIND", title: "睡眠・マインドフル記録",      free: .yes,             plus: .yes),
+                category: "MIND", title: "睡眠・マインドフル記録",      free: .no,              plus: .yes),
     PlanFeature(icon: "sparkles",     iconColor: Color(hex: "#CE82FF"),
                 category: "MIND", title: "AI コーチングコメント",       free: .no,              plus: .yes,
                 plusNote: "※ AI機能はAPIキー設定が必要"),
@@ -73,6 +73,14 @@ private let planFeatures: [PlanFeature] = [
                 category: "TOMO", title: "友達追加",                    free: .text("3人まで"), plus: .text("無制限")),
     PlanFeature(icon: "eye.fill",     iconColor: Color.duoBlue,
                 category: "TOMO", title: "フレンドフィード閲覧",        free: .text("一部"),    plus: .text("すべて")),
+
+    // Apple Watch
+    PlanFeature(icon: "applewatch", iconColor: Color(hex: "#333333"),
+                category: "Watch", title: "Apple Watchアプリ",       free: .no,              plus: .yes),
+    PlanFeature(icon: "figure.run.circle.fill", iconColor: Color(hex: "#333333"),
+                category: "Watch", title: "Watchモーション運動検出",   free: .no,              plus: .yes),
+    PlanFeature(icon: "chart.bar.xaxis", iconColor: Color(hex: "#333333"),
+                category: "Watch", title: "Watchウィジェット",         free: .no,              plus: .yes),
 
     // カスタマイズ
     PlanFeature(icon: "paintpalette.fill", iconColor: Color(hex: "#FF7A6B"),

@@ -467,6 +467,8 @@ struct MainTabView: View {
             tabBtn(tag: 4, icon: "gearshape.fill",       label: "SETUP")
             tabBtn(tag: 5, icon: "ellipsis.circle.fill", label: "MORE...")
         }
+        // Dynamic Type をタブバー固定サイズにピン留め（文字を大きくしても折り返しを防ぐ）
+        .dynamicTypeSize(.medium)
         .padding(.horizontal, 6)
         .padding(.top, 3)
         .padding(.bottom, 3)
@@ -592,9 +594,12 @@ struct MainTabView: View {
         } label: {
             VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: 15 * UIScale.font, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 9 * UIScale.font, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundColor(isSelected ? Color(red: 0.22, green: 0.68, blue: 0.0) : .white.opacity(0.88))
             .padding(.vertical, 4)

@@ -60,6 +60,7 @@ private struct FoodViewSheets: ViewModifier {
     var authManager: AuthenticationManager
     @Binding var showIntakeSettings: Bool
     @Binding var selectedFeedItem: PhotoLogHistoryItem?
+    @Binding var showPlusView: Bool
     var confirmMessage: String
     @Binding var showIntakeConfirm: Bool
     var onConfirm: () -> Void
@@ -73,6 +74,7 @@ private struct FoodViewSheets: ViewModifier {
             }
             .sheet(isPresented: $showIntakeSettings) { IntakeSettingsView() }
             .sheet(item: $selectedFeedItem) { item in PhotoFeedDetailSheet(item: item) }
+            .sheet(isPresented: $showPlusView) { PlusView() }
             .alert(confirmMessage, isPresented: $showIntakeConfirm) {
                 Button("記録する", role: .none, action: onConfirm)
                 Button("キャンセル", role: .cancel, action: onCancel)
@@ -96,7 +98,9 @@ struct FoodView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject private var timeSlotManager: TimeSlotManager
     @EnvironmentObject private var photoLogManager: PhotoLogManager
+    @EnvironmentObject private var plus: PlusManager
 
+    @State private var showPlusViewFromFood = false
     @State private var pfcAnalysis:  PFCBalanceAnalysis?
     @State private var todayIntake = TodayIntakeSummary()
     @State private var intakeGoals = IntakeSettings.defaultSettings
@@ -147,6 +151,9 @@ struct FoodView: View {
                         photoFeedSection
                     }
 
+                    // FOODフィードプロモーション（Freeユーザー向け）
+                    foodFeedPromoSection
+
                     Spacer(minLength: 80)
                 }
                 .padding(.horizontal, 14)
@@ -176,6 +183,7 @@ struct FoodView: View {
             authManager: authManager,
             showIntakeSettings: $showIntakeSettings,
             selectedFeedItem: $selectedFeedItem,
+            showPlusView: $showPlusViewFromFood,
             confirmMessage: confirmMessage,
             showIntakeConfirm: $showIntakeConfirm,
             onConfirm: { pendingIntakeAction?(); pendingIntakeAction = nil },
@@ -300,7 +308,7 @@ struct FoodView: View {
     private var mealRecordCard: some View {
         VStack(spacing: 0) {
             // ── 食事フォトログ ────────────────────────────────────────────
-            Button { showPhotoLog = true } label: {
+            Button { plus.isPlus ? (showPhotoLog = true) : (showPlusViewFromFood = true) } label: {
                 let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
                 HStack(spacing: 16) {
                     ZStack {
@@ -371,6 +379,25 @@ struct FoodView: View {
                         .stroke(Color.white.opacity(0.25), lineWidth: 1)
                 )
                 .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
+                .overlay(alignment: .topTrailing) {
+                    if !plus.isPlus {
+                        HStack(spacing: 3) {
+                            Text("+")
+                                .font(.system(size: 9 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .frame(width: 14, height: 14)
+                                .background(Color.duoGold)
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                            Text("Plus限定")
+                                .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                        .padding(.top, 8).padding(.trailing, 20)
+                    }
+                }
                 .padding(.horizontal, 12)
             }
             .buttonStyle(.plain)
@@ -1294,6 +1321,66 @@ struct FoodView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: - FOODフィードプロモーション（Freeユーザー向け）
+
+    private var foodFeedPromoSection: some View {
+        guard !plus.isPlus else { return AnyView(EmptyView()) }
+        return AnyView(
+            Button { showPlusViewFromFood = true } label: {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "fork.knife.circle.fill")
+                            .font(.system(size: 13 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoGreen)
+                        Text("FOODフィード")
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Spacer()
+                        HStack(spacing: 3) {
+                            Text("+")
+                                .font(.system(size: 9 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .frame(width: 15, height: 15)
+                                .background(Color.duoGold)
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                            Text("Plus限定")
+                                .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoGold)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.duoGold.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    HStack(spacing: 14) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 22 * UIScale.font))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Color.duoGreen)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("FOOD に関する写真とカロリーを記録できます")
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text("AIが写真から栄養素を解析 · 食事推移を可視化")
+                                .font(.system(size: 11 * UIScale.font))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+            }
+            .buttonStyle(.plain)
+        )
     }
 
     // MARK: - Helpers

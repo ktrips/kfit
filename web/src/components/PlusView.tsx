@@ -14,6 +14,10 @@ interface Feature {
 }
 
 const FEATURES: Feature[] = [
+  // 全般
+  { icon: '🚫', category: '全般', title: '広告なし', free: false, plus: true },
+  { icon: '⚙️', category: '全般', title: '全機能フルアクセス', free: false, plus: true },
+
   // FIT
   { icon: '🏃', category: 'FIT', title: 'アクティビティ記録', free: true, plus: true },
   { icon: '📊', category: 'FIT', title: '詳細アクティビティ分析', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
@@ -24,8 +28,8 @@ const FEATURES: Feature[] = [
   { icon: '📸', category: 'FOOD', title: 'フォトログ AI 栄養解析', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
   { icon: '📋', category: 'FOOD', title: '週次・月次 食事レポート', free: false, plus: true },
 
-  // MIND
-  { icon: '🌙', category: 'MIND', title: '睡眠・マインドフル記録', free: true, plus: true },
+  // MIND（タブ全体がPlus限定）
+  { icon: '🌙', category: 'MIND', title: '睡眠・マインドフル記録', free: false, plus: true },
   { icon: '✨', category: 'MIND', title: 'AI コーチングコメント', free: false, plus: true, plusNote: '※ AI機能はAPIキー設定が必要' },
 
   // BOOKS
@@ -36,6 +40,11 @@ const FEATURES: Feature[] = [
   { icon: '👥', category: 'TOMO', title: '友達追加', free: '3人まで', plus: '無制限' },
   { icon: '👁️', category: 'TOMO', title: 'フレンドフィード閲覧', free: '一部', plus: 'すべて' },
 
+  // Apple Watch
+  { icon: '⌚', category: 'Watch', title: 'Apple Watchアプリ', free: false, plus: true },
+  { icon: '🏅', category: 'Watch', title: 'Watchモーション運動検出', free: false, plus: true },
+  { icon: '📲', category: 'Watch', title: 'Watchウィジェット', free: false, plus: true },
+
   // カスタマイズ
   { icon: '🎨', category: 'カスタマイズ', title: 'スパイラルテーマ', free: '1種', plus: '10種以上' },
   { icon: '📱', category: 'カスタマイズ', title: 'Plusウィジェット', free: false, plus: true },
@@ -43,15 +52,17 @@ const FEATURES: Feature[] = [
 ];
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  全般:     { bg: 'rgba(85,85,85,0.07)',   text: '#555555', border: 'rgba(85,85,85,0.18)' },
   FIT:      { bg: 'rgba(255,75,75,0.08)',  text: '#FF4B4B', border: 'rgba(255,75,75,0.2)' },
   FOOD:     { bg: 'rgba(88,204,2,0.08)',   text: '#58CC02', border: 'rgba(88,204,2,0.2)' },
   MIND:     { bg: 'rgba(150,71,232,0.08)', text: '#9247E8', border: 'rgba(150,71,232,0.2)' },
   BOOKS:    { bg: 'rgba(255,122,0,0.08)',  text: '#FF7A00', border: 'rgba(255,122,0,0.2)' },
   TOMO:     { bg: 'rgba(28,176,246,0.08)', text: '#1CB0F6', border: 'rgba(28,176,246,0.2)' },
+  Watch:    { bg: 'rgba(51,51,51,0.07)',   text: '#333333', border: 'rgba(51,51,51,0.15)' },
   カスタマイズ: { bg: 'rgba(255,150,0,0.08)', text: '#FF9600', border: 'rgba(255,150,0,0.2)' },
 };
 
-const CATEGORIES = ['FIT', 'FOOD', 'MIND', 'BOOKS', 'TOMO', 'カスタマイズ'];
+const CATEGORIES = ['全般', 'FIT', 'FOOD', 'MIND', 'BOOKS', 'TOMO', 'Watch', 'カスタマイズ'];
 
 const CellValue = ({ value }: { value: string | boolean }) => {
   if (value === true) {
@@ -156,12 +167,12 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
       </h2>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28 }}>
         {[
-          { icon: '📊', title: 'AI 詳細分析',    desc: '毎日の活動をAIが解析しフィードバック。AIはAPIキー設定が必要。' },
-          { icon: '📸', title: 'フォト栄養解析',  desc: '写真を撮るだけでカロリー・栄養を自動算出。AIはAPIキー設定が必要。' },
-          { icon: '✨', title: 'AIコーチング',    desc: '睡眠・マインドフルの傾向を分析してアドバイス。AIはAPIキー設定が必要。' },
+          { icon: '📊', title: 'AI 詳細分析',      desc: '毎日の活動をAIが解析しフィードバック。APIキー設定が必要。' },
+          { icon: '📸', title: 'フォト栄養解析',    desc: '写真を撮るだけでカロリー・栄養を自動算出。APIキー設定が必要。' },
+          { icon: '🌙', title: 'MIND タブ全解放',   desc: '睡眠・マインドフルネス分析とAIコーチングが使えるようになる。' },
           { icon: '📚', title: 'Kindle本を全文読む', desc: 'Web上でFitingo関連のKindle本を全て読める。' },
-          { icon: '👥', title: '友達無制限',      desc: 'TOMOフィードで無制限にフレンドと交流。' },
-          { icon: '📱', title: 'Plusウィジェット', desc: '高機能ウィジェットで常にデータをチェック。' },
+          { icon: '⌚', title: 'Apple Watchアプリ', desc: 'Watch専用アプリとモーション運動検出・ウィジェットが使える。' },
+          { icon: '👥', title: '友達無制限',        desc: 'TOMOフィードで無制限にフレンドと交流できる。' },
         ].map((item) => (
           <div
             key={item.title}

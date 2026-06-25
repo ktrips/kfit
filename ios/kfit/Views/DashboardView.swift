@@ -112,29 +112,25 @@ private struct TripleRingFitSection: View {
 
 private struct TripleRingFoodSection: View {
     let pfcScore: Int
-    let proteinPercent: Double
-    let fatPercent: Double
-    let carbsPercent: Double
+    // FOODページのPFCMiniRingViewと同じ入力（kcal）
+    let proteinKcal: Double
+    let fatKcal: Double
+    let carbsKcal: Double
     let waterFraction: Double   // 0〜1
     let intakeCalories: Double
     let intakeWater: Double     // ml
     let onTap: () -> Void
 
-    private var segments: [(Color, Double)] {
-        let hasFood = (proteinPercent + fatPercent + carbsPercent) > 0
-        let scale   = hasFood ? min(Double(pfcScore) / 100.0, 1.0) * 0.85 : 0.0
-        return [
-            (Color(hex: "#FF9600"), proteinPercent / 100.0 * scale),
-            (Color(hex: "#1CB0F6"), waterFraction * 0.15),
-            (Color(hex: "#58CC02"), carbsPercent  / 100.0 * scale),
-            (Color(hex: "#CE82FF"), fatPercent    / 100.0 * scale),
-        ].filter { $0.1 > 0.005 }
-    }
-
     private var waterText: String {
         intakeWater >= 1000
             ? String(format: "%.1fL", intakeWater / 1000.0)
             : "\(Int(intakeWater))ml"
+    }
+
+    private var scoreColor: Color {
+        pfcScore >= 80 ? Color.duoGreen
+            : pfcScore >= 60 ? Color(hex: "#FF9600")
+            : Color(hex: "#FF4B4B")
     }
 
     var body: some View {
@@ -146,12 +142,16 @@ private struct TripleRingFoodSection: View {
                     .padding(.horizontal, 8).padding(.vertical, 2)
                     .background(Color.duoGreen)
                     .cornerRadius(6)
-                TripleRingSegmentedView(
-                    segments: segments,
+                // FOODページのヘッダーリングと同一コンポーネント
+                PFCMiniRingView(
+                    proteinKcal: proteinKcal,
+                    fatKcal: fatKcal,
+                    carbsKcal: carbsKcal,
+                    diameter: 70,
+                    lineWidth: 9,
                     centerText: pfcScore > 0 ? "\(pfcScore)" : "—",
-                    centerSubText: pfcScore > 0 ? "点" : nil
+                    centerTextColor: pfcScore > 0 ? scoreColor : Color.duoSubtitle
                 )
-                .frame(width: 70, height: 70)
                 VStack(spacing: 2) {
                     HStack(spacing: 3) {
                         Image(systemName: "drop.fill")
@@ -383,6 +383,7 @@ struct DashboardView: View {
     @EnvironmentObject private var timeSlotManager: TimeSlotManager
     @EnvironmentObject private var dietGoalManager: DietGoalManager
     @EnvironmentObject private var photoLogManager: PhotoLogManager
+    @EnvironmentObject private var plus: PlusManager
     // DashboardView 固有 — 他タブで使わないため StateObject のまま維持
     @StateObject private var habitManager = HabitStackManager.shared
     @StateObject private var completionLogger = MandalaCompletionLogger.shared
@@ -440,6 +441,7 @@ struct DashboardView: View {
     @State private var trainingVideoIndex = 0  // ホーム動画GIFの再生位置
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
+    @State private var showPlusViewFromDashboard = false
     @State private var lastWidgetPayloadHash = ""
     @StateObject private var debouncer = DashboardDebouncer()
     @State private var showMandalaDetail = false
@@ -471,7 +473,16 @@ struct DashboardView: View {
             .onChange(of: healthKit.todayIntakeWater) { _, _ in scheduleMandalaRecompute(); scheduleWidgetDataUpdate() }
             .onChange(of: healthKit.todayIntakeCalories) { _, _ in scheduleMandalaRecompute() }
             .onChange(of: healthKit.todayBodyMassMeasurements) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.lastNightTotalHours) { _, _ in scheduleWidgetDataUpdate() }
+            .onChange(of: healthKit.lastNightTotalHours) { _, _ in
+                scheduleWidgetDataUpdate()
+                sleepScore = healthKit.analyzeSleepScore(targetHours: Double(dailyFixedGoals.sleepHoursGoal))
+            }
+            .onChange(of: healthKit.sleepSegments.count) { _, _ in
+                sleepScore = healthKit.analyzeSleepScore(targetHours: Double(dailyFixedGoals.sleepHoursGoal))
+            }
+            .onChange(of: healthKit.todayIntakeProtein) { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
+            .onChange(of: healthKit.todayIntakeFat)     { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
+            .onChange(of: healthKit.todayIntakeCarbs)   { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
         return withHealthKitObservers
             .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }
@@ -530,12 +541,18 @@ struct DashboardView: View {
                             dailySetsCard
                             foodLogCard
                             if healthKit.isAvailable && healthKit.isAuthorized {
-                                tripleRingCard
+                                if plus.isPlus {
+                                    tripleRingCard
+                                    if goalTabVisible {
+                                        calorieBalanceBarCard
+                                    }
+                                } else {
+                                    PlusLockedSection(
+                                        features: ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放"],
+                                        onUpgrade: { showPlusViewFromDashboard = true }
+                                    )
+                                }
                             }
-                            if goalTabVisible && healthKit.isAvailable && healthKit.isAuthorized {
-                                calorieBalanceBarCard
-                            }
-                            pointsCard
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)
@@ -586,6 +603,7 @@ struct DashboardView: View {
             .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
             .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
             .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
+            .sheet(isPresented: $showPlusViewFromDashboard) { PlusView() }
             .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
             .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
             .sheet(isPresented: $showIntakeGoalEdit) {
@@ -1200,19 +1218,23 @@ struct DashboardView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Divider().padding(.horizontal, 16)
 
-            DailySetsMandalaSectionView(
-                mandalaNodes: mandalaNodes,
-                timeSlotManager: timeSlotManager,
-                healthKit: healthKit,
-                showTracker: $showTracker,
-                showMindfulnessSession: $showMindfulnessSession,
-                showStretchSession: $showStretchSession,
-                showStandSession: $showStandSession,
-                showMandalaDetail: $showMandalaDetail,
-                selectedMandalaNode: $selectedMandalaNode,
-                dailyCalorieDone: dailyCalorieDone,
-                dailyWaterDone: dailyWaterDone
-            )
+            ZStack(alignment: .bottom) {
+                DailySetsMandalaSectionView(
+                    mandalaNodes: mandalaNodes,
+                    timeSlotManager: timeSlotManager,
+                    healthKit: healthKit,
+                    showTracker: $showTracker,
+                    showMindfulnessSession: $showMindfulnessSession,
+                    showStretchSession: $showStretchSession,
+                    showStandSession: $showStandSession,
+                    showMandalaDetail: $showMandalaDetail,
+                    selectedMandalaNode: $selectedMandalaNode,
+                    dailyCalorieDone: dailyCalorieDone,
+                    dailyWaterDone: dailyWaterDone
+                )
+
+                compactPointsBar
+            }
 
             // 展開ボタン + アコーディオン（独立 View でスタックオーバーフローを防止）
             DailySetsExpandableSection(
@@ -1230,6 +1252,73 @@ struct DashboardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    private var compactPointsBar: some View {
+        Button { showPointsDetail = true } label: {
+            HStack(spacing: 0) {
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoGreen)
+                    Text("今日")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                    Text("\(totalXP)XP")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle()
+                    .fill(Color(.systemGray5))
+                    .frame(width: 1, height: 12)
+
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoBlue)
+                    Text("今週")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                    Text("\(weeklyXP)XP")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoBlue)
+                }
+                .frame(maxWidth: .infinity)
+
+                Rectangle()
+                    .fill(Color(.systemGray5))
+                    .frame(width: 1, height: 12)
+
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color.duoOrange)
+                    Text("総計")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                    Text("\(authManager.userProfile?.totalPoints ?? 0)XP")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoOrange)
+                }
+                .frame(maxWidth: .infinity)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.5))
+                    .padding(.trailing, 10)
+            }
+            .padding(.vertical, 6)
+            .background(
+                Color(.systemBackground).opacity(0.88)
+                    .background(.ultraThinMaterial)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 今日の状況カード ヘルパー（スタックオーバーフロー防止のため分離）
@@ -2626,18 +2715,22 @@ struct DashboardView: View {
             ? min(Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal), 1.0) : 0
         let standP    = healthKit.activityStandGoal > 0
             ? min(Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal), 1.0) : 0
-        let pfcScore      = pfcAnalysis?.score ?? 0
-        let pP            = pfcAnalysis?.proteinPercent ?? 0
-        let fP            = pfcAnalysis?.fatPercent ?? 0
-        let cP            = pfcAnalysis?.carbsPercent ?? 0
+        // PFC: FoodViewと同一ロジック
+        // - リング分布: HealthKit + photoLog 合算値（FoodViewのPFCMiniRingViewと同じ）
+        // - スコア: pfcAnalysis（FoodViewのpfcAnalysisと同じ、intakeGoals設定込み）
+        // PFC: FOODページのPFCMiniRingViewと同一データ（HealthKit + photoLog合算kcal）
+        let rawP = combinedProtein; let rawF = combinedFat; let rawC = combinedCarbs
+        let pKcal = rawP * 4.0; let fKcal = rawF * 9.0; let cKcal = rawC * 4.0
+        // スコア: FOODページのpfcAnalysisと同じ（intakeGoals設定込み）
+        let pfcScore: Int = pfcAnalysis?.score ?? 0
         let waterFrac     = min(healthKit.todayIntakeWater / 2500.0, 1.0)
         let sleepHours    = healthKit.lastNightTotalHours
         let sleepGoal     = Double(dailyFixedGoals.sleepHoursGoal > 0 ? dailyFixedGoals.sleepHoursGoal : 8)
         let mindMinutes   = healthKit.todayMindfulnessMinutes
-        let sleepScoreVal = timeSlotManager.progress.globalProgress.sleepScore
         let moveCalories  = healthKit.activityMoveCalories
         let totalCalories = healthKit.todayTotalCalories
-        let intakeCalories = healthKit.todayIntakeCalories
+        // 摂取カロリーは HealthKit + photoLog の合算値を使用
+        let intakeCalories = Double(combinedIntakeCalories)
         let intakeWater   = healthKit.todayIntakeWater
         let sleepAnalysis = sleepScore   // SleepScoreAnalysis?
         let goFit  = { selectedTab = MainMenuTab.goal.rawValue }
@@ -2649,7 +2742,7 @@ struct DashboardView: View {
                                 onTap: goFit)
             Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 90)
             TripleRingFoodSection(pfcScore: pfcScore,
-                                  proteinPercent: pP, fatPercent: fP, carbsPercent: cP,
+                                  proteinKcal: pKcal, fatKcal: fKcal, carbsKcal: cKcal,
                                   waterFraction: waterFrac,
                                   intakeCalories: intakeCalories, intakeWater: intakeWater,
                                   onTap: goFood)
@@ -4525,7 +4618,7 @@ struct DashboardView: View {
 
     private var photoLogButton: some View {
         let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
-        return Button(action: { showPhotoLog = true }) {
+        return Button(action: { plus.isPlus ? (showPhotoLog = true) : (showPlusViewFromDashboard = true) }) {
             HStack(spacing: 16) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
@@ -4595,6 +4688,25 @@ struct DashboardView: View {
                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
             .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
+            .overlay(alignment: .topTrailing) {
+                if !plus.isPlus {
+                    HStack(spacing: 3) {
+                        Text("+")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(.white)
+                            .frame(width: 14, height: 14)
+                            .background(Color.duoGold)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                        Text("Plus限定")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.black.opacity(0.45))
+                    .clipShape(Capsule())
+                    .padding(.top, 8).padding(.trailing, 20)
+                }
+            }
             .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
@@ -5464,7 +5576,7 @@ struct DashboardView: View {
         // HealthKitを強制再同期（TTLバイパス）
         if healthKit.isAvailable && healthKit.isAuthorized {
             await healthKit.fetchAll(force: true)
-            pfcAnalysis = healthKit.analyzePFCBalance()
+            pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
             sleepScore  = healthKit.analyzeSleepScore(
                 targetHours: Double(dailyFixedGoals.sleepHoursGoal)
             )
@@ -5559,10 +5671,14 @@ struct DashboardView: View {
                 await healthKit.fetchBodyMassHistory(days: 7)
             }
 
-            // PFCバランス分析・睡眠スコアを最終更新（1回だけ）
-            if healthKit.isAuthorized {
-                pfcAnalysis = healthKit.analyzePFCBalance()
-                sleepScore  = healthKit.analyzeSleepScore(
+            // PFC・睡眠データを取得してスコアを計算（fetchDashboardHealthでは未取得のため）
+            if healthKit.isAvailable && healthKit.isAuthorized {
+                // PFCマクロ栄養素を取得（fetchDashboardHealthに含まれないため個別取得）
+                await healthKit.fetchIntakeHealth()
+                pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
+                // 睡眠データを取得（fetchDashboardHealthに含まれないため個別取得）
+                await healthKit.fetchMindHealth()
+                sleepScore = healthKit.analyzeSleepScore(
                     targetHours: Double(dailyFixedGoals.sleepHoursGoal)
                 )
             }
@@ -5987,11 +6103,11 @@ struct DashboardView: View {
     }
 
     private var relatedBooksSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Text("📚")
                     .font(.system(size: 13 * UIScale.font))
-                Text("関連情報")
+                Text("もっと知りたい人の為のKindle書籍")
                     .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
@@ -5999,17 +6115,47 @@ struct DashboardView: View {
             Link(destination: URL(string: "https://amzn.to/4eEsrPg")!) {
                 HStack(spacing: 12) {
                     Text("⌚")
-                        .font(.system(size: 22 * UIScale.font))
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 24 * UIScale.font))
+                        .frame(width: 50, height: 50)
                         .background(Color.duoBlue.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 3) {
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("AppleWatch Diet Ultra2")
                             .font(.system(size: 13 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoDark)
                         Text("Apple Watchでダイエットを最大化する方法")
                             .font(.system(size: 11 * UIScale.font))
                             .foregroundColor(Color.duoSubtitle)
+                        if plus.isPlus {
+                            HStack(spacing: 4) {
+                                Text("+")
+                                    .font(.system(size: 9 * UIScale.font, weight: .black))
+                                    .foregroundColor(.white)
+                                    .frame(width: 14, height: 14)
+                                    .background(Color.duoGold)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                                Text("Webで全文読めます")
+                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoGold)
+                            }
+                        } else {
+                            Button {
+                                showPlusViewFromDashboard = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("+")
+                                        .font(.system(size: 9 * UIScale.font, weight: .black))
+                                        .foregroundColor(.white)
+                                        .frame(width: 14, height: 14)
+                                        .background(Color.duoSubtitle)
+                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                                    Text("Plusなら全文Webで読める →")
+                                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     Spacer()
                     Image(systemName: "arrow.up.right")
@@ -6021,32 +6167,6 @@ struct DashboardView: View {
                 .background(Color.duoBlue.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoBlue.opacity(0.18), lineWidth: 1))
-            }
-            Link(destination: URL(string: "https://amzn.to/4aYIyGj")!) {
-                HStack(spacing: 12) {
-                    Text("📱")
-                        .font(.system(size: 22 * UIScale.font))
-                        .frame(width: 44, height: 44)
-                        .background(Color.duoPurple.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Cursor + Claude で iOS アプリを作る")
-                            .font(.system(size: 13 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                        Text("AIを活用したiOSアプリ開発の実践ガイド")
-                            .font(.system(size: 11 * UIScale.font))
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoPurple.opacity(0.7))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.duoPurple.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoPurple.opacity(0.18), lineWidth: 1))
             }
         }
         .padding(14)

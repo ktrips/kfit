@@ -9,6 +9,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var lastWorkout: WorkoutData?
 
     // Watch側でリアルタイム表示するデータ（統一指標）
+    @Published var isPlus: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.bool(forKey: "watch_isPlus") ?? false
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
@@ -247,6 +248,11 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
     // MARK: - iOS → Watch: プロフィール更新受信
     private func handleProfileUpdate(_ message: [String: Any]) {
+        // Plus状態を受信・永続化
+        if let plus = message["isPlus"] as? Bool {
+            self.isPlus = plus
+            UserDefaults(suiteName: "group.com.kfit.app")?.set(plus, forKey: "watch_isPlus")
+        }
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
         if let reps  = message["todayReps"] as? Int { self.todayReps = reps }

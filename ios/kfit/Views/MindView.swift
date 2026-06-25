@@ -12,6 +12,7 @@ struct MindView: View {
     // V1: 共有シングルトンは kfitApp から EnvironmentObject で受け取る
     @EnvironmentObject private var healthKit: HealthKitManager
     @EnvironmentObject private var timeSlotManager: TimeSlotManager
+    @EnvironmentObject private var plus: PlusManager
     @Environment(\.openURL) private var openURL
     @State private var showMindfulnessSession = false
     @State private var showStretchSession = false
@@ -39,29 +40,47 @@ struct MindView: View {
         }
     }
 
+    @State private var showPlusViewFromMind = false
+
     var body: some View {
         NavigationView {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        currentStressCard
-                        averageStressCard
-                        sleepScoreCard
-                        suggestionsCard
-                        Spacer(minLength: 40)
+                if plus.isPlus {
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            currentStressCard
+                            averageStressCard
+                            sleepScoreCard
+                            suggestionsCard
+                            Spacer(minLength: 40)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
-                }
-                .refreshable {
-                    await healthKit.fetchMindHealth(force: true)
-                    await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
+                    .refreshable {
+                        await healthKit.fetchMindHealth(force: true)
+                        await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
+                    }
+                } else {
+                    // Free ユーザー: タブ全体をロック
+                    PlusFullLockView(
+                        tabIcon: "brain.head.profile",
+                        tabName: "MIND",
+                        features: [
+                            "ストレス分析（HRVモニタリング）",
+                            "今日のまとめ（心拍・HRV）",
+                            "昨晩の睡眠スコア詳細",
+                            "健康改善の提案"
+                        ],
+                        onUpgrade: { showPlusViewFromMind = true }
+                    )
                 }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { mindHeader }
+            .sheet(isPresented: $showPlusViewFromMind) { PlusView() }
             .sheet(isPresented: $showHRVHelp) {
                 HRVStressHelpView()
             }

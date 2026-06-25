@@ -28,11 +28,20 @@ type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 
 function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   const path = window.location.pathname;
   if (path.startsWith('/privacy-policy')) {
-    // プライバシーポリシーページへ直接リダイレクト
     window.location.replace('https://fit.ktrips.net/privacy-policy/');
     return { view: 'login' };
   }
+  // ?plus=1 パラメータ: iOSアプリのPlusユーザーがWebで全文読む際に付与される
+  // localStorage に保存してセッション以降も有効にする
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('plus') === '1') {
+    localStorage.setItem('isPlus_secret', 'true');
+    // クリーンなURLに書き換え（パラメータ除去）
+    const cleanPath = window.location.pathname;
+    window.history.replaceState({}, '', cleanPath);
+  }
   if (path.startsWith('/books/apple-watch-diet')) return { view: 'bookDetail', bookId: 'apple-watch-diet' };
+  if (path.startsWith('/books/cursor-claude-code-plus')) return { view: 'bookDetail', bookId: 'cursor-claude-code-plus' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
   if (path.startsWith('/books')) return { view: 'books' };
   return { view: 'login' };
@@ -40,10 +49,19 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId } {
 
 function App() {
   const user = useAppStore((state) => state.user);
+  const userProfile = useAppStore((state) => state.userProfile);
   const setUser = useAppStore((state) => state.setUser);
   const setUserProfile = useAppStore((state) => state.setUserProfile);
   const setExercises = useAppStore((state) => state.setExercises);
   const setLoading = useAppStore((state) => state.setLoading);
+
+  // Plus 判定: Firestore の isPlus フィールド / Admin メール / localStorage Plusコード
+  const ADMIN_EMAIL = 'kenichiyoshida13@gmail.com';
+  const isPlus: boolean = !!(
+    (userProfile as any)?.isPlus ||
+    user?.email === ADMIN_EMAIL ||
+    localStorage.getItem('isPlus_secret') === 'true'
+  );
 
   const initial = getInitialViewFromPath();
   const [currentView, setCurrentView] = useState<View>(initial.view);
@@ -266,12 +284,15 @@ function App() {
           <BooksLanding
             onSelectBook={openBook}
             onBackToApp={user ? () => navigate('dashboard') : undefined}
+            isPlus={isPlus}
+            isLoggedIn={!!user}
           />
         )}
         {currentView === 'bookDetail' && selectedBookId && (
           <BookViewer
             bookId={selectedBookId}
             onBack={() => navigate('books')}
+            isPlus={isPlus}
           />
         )}
 

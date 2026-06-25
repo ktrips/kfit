@@ -26,15 +26,26 @@ final class PlusManager: ObservableObject {
     private let plusCodeValue = "fitingo_plus_code_value"
     private let db = Firestore.firestore()
 
+    // TTL ガード: 1時間以内の再 setup() はネットワーク処理をスキップ
+    private var lastSetupDate: Date? = nil
+    private let setupTTL: TimeInterval = 3600
+
     private init() {}
 
     // MARK: - Setup（起動時に呼ぶ）
 
     @MainActor
     func setup() async {
+        // ローカル判定は毎回実行（UI状態の整合性を保つ）
         checkAdminStatus()
-        await fetchSecretCode()
         checkCodeUnlock()
+
+        // ネットワーク処理は TTL 内ならスキップ
+        if let last = lastSetupDate, Date().timeIntervalSince(last) < setupTTL {
+            return
+        }
+        lastSetupDate = Date()
+        await fetchSecretCode()
         await checkSubscription()
         await loadProducts()
     }
@@ -67,7 +78,7 @@ final class PlusManager: ObservableObject {
         }
     }
 
-    /// シークレットコード入力 → Plus解放
+    /// Plusコード入力 → Plus解放
     @discardableResult
     @MainActor
     func unlockWithCode(_ input: String) -> Bool {
@@ -102,13 +113,13 @@ final class PlusManager: ObservableObject {
         Task { await checkSubscription() }
     }
 
-    /// Admin専用: シークレットコードを変更
+    /// Admin専用: Plusコードを変更
     @MainActor
     func updateSecretCode(_ newCode: String) async -> Bool {
         // setup() 前に呼ばれた場合も確実に管理者確認
         checkAdminStatus()
         guard isAdmin else {
-            print("[PlusManager] updateSecretCode failed: not admin (email=\(Auth.auth().currentUser?.email ?? "nil"))")
+            dlog("[PlusManager] updateSecretCode failed: not admin (email=\(Auth.auth().currentUser?.email ?? "nil"))")
             return false
         }
         let trimmed = newCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,10 +128,10 @@ final class PlusManager: ObservableObject {
             try await db.collection("appConfig").document("plus")
                 .setData(["secretCode": trimmed], merge: true)
             secretCode = trimmed
-            print("[PlusManager] Secret code updated to: \(trimmed)")
+            dlog("[PlusManager] Secret code updated to: \(trimmed)")
             return true
         } catch {
-            print("[PlusManager] Firestore write failed: \(error.localizedDescription)")
+            dlog("[PlusManager] Firestore write failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -133,7 +144,7 @@ final class PlusManager: ObservableObject {
             let products = try await Product.products(for: Set(Self.productIDs))
             availableProducts = products.sorted { $0.price < $1.price }
         } catch {
-            print("[Plus] Product load failed: \(error)")
+            dlog("[Plus] Product load failed: \(error)")
         }
     }
 

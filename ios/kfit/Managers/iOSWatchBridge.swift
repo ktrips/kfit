@@ -51,7 +51,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     /// ユーザーが設定で無効にしている場合は何もしない。
     func sendStartWorkoutSignal() {
         guard Self.isWatchAutoLaunchEnabled else {
-            print("[iOSWatchBridge] Watch自動起動はユーザーによって無効化されています")
+            dlog("[iOSWatchBridge] Watch自動起動はユーザーによって無効化されています")
             return
         }
         guard WCSession.isSupported() else { return }
@@ -62,7 +62,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { error in
-                print("[iOSWatchBridge] sendMessage error: \(error)")
+                dlog("[iOSWatchBridge] sendMessage error: \(error)")
             }
         } else {
             // Watch が非到達 → Application Context に保存（Watch 次回起動時に読まれる）
@@ -77,7 +77,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
-        if let error { print("[iOSWatchBridge] activation error: \(error)") }
+        if let error { dlog("[iOSWatchBridge] activation error: \(error)") }
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
@@ -91,7 +91,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             // ① 種目ごとのデータ（通知キャンセル用）
             if let workoutData = message["workout"] as? Data,
                let workout = try? JSONDecoder().decode(WatchWorkoutData.self, from: workoutData) {
-                print("[iOSWatchBridge] 種目受信: \(workout.exerciseName) \(workout.reps)rep")
+                dlog("[iOSWatchBridge] 種目受信: \(workout.exerciseName) \(workout.reps)rep")
                 await AuthenticationManager.shared.recordWatchWorkout(workout)
                 return
             }
@@ -99,7 +99,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             // ② セット完了（全種目まとめて）
             if let setData = message["completed_set"] as? Data,
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
-                print("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
+                dlog("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
                 let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                 let todayExercises = await AuthenticationManager.shared.getTodayExercises()
@@ -122,7 +122,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     } else if let lastReq = lastStatsRequestTime,
                               Date().timeIntervalSince(lastReq) < statsRequestCacheInterval {
                         // 5秒以内の再リクエスト: fetch をスキップして前回の結果を再送
-                        print("[iOSWatchBridge] request_stats キャッシュ利用（fetch スキップ）")
+                        dlog("[iOSWatchBridge] request_stats キャッシュ利用（fetch スキップ）")
                         let summary = await AuthenticationManager.shared.getTodayActivitySummary()
                         let todayExercises = await AuthenticationManager.shared.getTodayExercises()
                         self.sendStatsToWatch(
@@ -155,7 +155,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             // ④ Watch側でマインドフルネス完了
             if (message["action"] as? String) == "mindfulness_completed" {
                 Task {
-                    print("[iOSWatchBridge] 🧘 Watch mindfulness completed — refreshing HealthKit")
+                    dlog("[iOSWatchBridge] 🧘 Watch mindfulness completed — refreshing HealthKit")
                     await HealthKitManager.shared.refreshMindfulness()
                     // TimeSlotManagerの合計とHealthKitの差分だけ記録（二重カウント防止）
                     let hkCount = HealthKitManager.shared.todayMindfulnessSessions
@@ -168,7 +168,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         for _ in 0..<needed {
                             await TimeSlotManager.shared.recordMindfulnessCompleted(at: currentSlot)
                         }
-                        print("[iOSWatchBridge] ✅ Recorded \(needed) mindfulness to \(currentSlot.displayName)")
+                        dlog("[iOSWatchBridge] ✅ Recorded \(needed) mindfulness to \(currentSlot.displayName)")
                     }
                     let profile = AuthenticationManager.shared.userProfile
                     let summary = await AuthenticationManager.shared.getTodayActivitySummary()
@@ -184,7 +184,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     let currentSlot = TimeSlot.current()
                     await TimeSlotManager.shared.recordStandCompleted(at: currentSlot)
                     await Self.saveMindfulStandSession(at: currentSlot)
-                    print("[iOSWatchBridge] 🧍 Watch stand completed at \(currentSlot.displayName)")
+                    dlog("[iOSWatchBridge] 🧍 Watch stand completed at \(currentSlot.displayName)")
                 }
                 return
             }
@@ -205,7 +205,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                                 let calories = IntakeSettings.defaultSettings.caloriesFor(mealType: mealType)
                                 await TimeSlotManager.shared.recordMealLog(at: timeSlot, calories: calories)
                                 await AuthenticationManager.shared.recordMeal(mealType: mealType)
-                                print("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) \(calories)kcal at \(timeSlot.displayName)")
+                                dlog("[iOSWatchBridge] ✅ 食事記録完了: \(mealType.rawValue) \(calories)kcal at \(timeSlot.displayName)")
                             }
                         }
                     case "water", "coffee", "alcohol":
@@ -228,7 +228,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         } else if let alcoholType = AlcoholType(rawValue: subtype ?? "") {
                             await AuthenticationManager.shared.recordAlcohol(alcoholType: alcoholType)
                         }
-                        print("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) \(drinkMl)ml at \(timeSlot.displayName)")
+                        dlog("[iOSWatchBridge] ✅ ドリンク記録完了: \(type) \(drinkMl)ml at \(timeSlot.displayName)")
                     default:
                         break
                     }
@@ -237,7 +237,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     // Firestoreへの書き込みはローカルキャッシュに即時反映されるため
                     // 500ms の固定待機 + 全ドキュメント再読み込みは不要。
                     // インメモリの progress は上記の record* 呼び出し内で更新済み。
-                    print("[iOSWatchBridge] 📊 摂取記録完了（インメモリ状態を使用）")
+                    dlog("[iOSWatchBridge] 📊 摂取記録完了（インメモリ状態を使用）")
 
                     // 最新データをWatchに送信
                     let profile = AuthenticationManager.shared.userProfile
@@ -280,7 +280,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 let slot = TimeSlot.current()
                 await TimeSlotManager.shared.recordStandCompleted(at: slot)
                 await Self.saveMindfulStandSession(at: slot)
-                print("[iOSWatchBridge] 🧍 Watch stand completed (context)")
+                dlog("[iOSWatchBridge] 🧍 Watch stand completed (context)")
             }
         }
     }
@@ -528,7 +528,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["intakeAlcohol"] = summary.intakeAlcoholG
             payload["intakeAlcoholLimit"] = intakeGoals.dailyAlcoholLimit
 
-            print("[iOSWatchBridge] 📤 Sending intake data to Watch: cal=\(summary.intakeCalories), water=\(summary.intakeWaterMl)ml, caffeine=\(summary.intakeCaffeineMg)mg, alcohol=\(String(format: "%.1f", summary.intakeAlcoholG))g")
+            dlog("[iOSWatchBridge] 📤 Sending intake data to Watch: cal=\(summary.intakeCalories), water=\(summary.intakeWaterMl)ml, caffeine=\(summary.intakeCaffeineMg)mg, alcohol=\(String(format: "%.1f", summary.intakeAlcoholG))g")
 
             // 摂取記録のデフォルト設定を含める（Watch用）
             payload["breakfastCalories"] = intakeGoals.breakfastCalories
@@ -568,18 +568,18 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             payload["todayMindfulnessMinutes"] = healthKit.todayMindfulnessMinutes
             payload["todayWorkoutMinutes"] = healthKit.todayWorkoutMinutes
 
-            print("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), workout=\(healthKit.todayWorkoutMinutes), mindfulness=\(healthKit.todayMindfulnessSessions)")
+            dlog("[iOSWatchBridge] 📤 Sending HealthKit data to Watch: steps=\(Int(healthKit.todaySteps)), cal=\(Int(healthKit.todayTotalCalories)), workout=\(healthKit.todayWorkoutMinutes), mindfulness=\(healthKit.todayMindfulnessSessions)")
 
             let signature = self.statsPayloadSignature(for: payload)
             if !force,
                let lastSend = self.lastStatsSendTime,
                Date().timeIntervalSince(lastSend) < self.statsDebounceInterval,
                signature == self.lastStatsPayloadSignature {
-                print("[iOSWatchBridge] Stats送信スキップ（デバウンス）")
+                dlog("[iOSWatchBridge] Stats送信スキップ（デバウンス）")
                 return
             }
             if !force, signature == self.lastStatsPayloadSignature {
-                print("[iOSWatchBridge] Stats送信スキップ（差分なし）")
+                dlog("[iOSWatchBridge] Stats送信スキップ（差分なし）")
                 return
             }
             self.lastStatsPayloadSignature = signature
@@ -614,7 +614,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                 "watch_totalMealGoal":      ud.integer(forKey: "mealGoal"),
             ]
             session.transferCurrentComplicationUserInfo(complicationPayload)
-            print("[iOSWatchBridge] 📲 Transferred complication stats to Watch")
+            dlog("[iOSWatchBridge] 📲 Transferred complication stats to Watch")
         }
     }
 

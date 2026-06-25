@@ -200,10 +200,43 @@ struct PlusView: View {
         .background(Color(.systemBackground))
     }
 
+    // MARK: - アップグレードボタン（比較画面の上下に共通利用）
+
+    private var upgradeButtonInline: some View {
+        Group {
+            if !plus.isPlus {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedTab = .upgrade }
+                } label: {
+                    HStack(spacing: 8) {
+                        PlusBadge(size: 16)
+                        Text("Plusにアップグレード")
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#FF8C00"), Color(hex: "#FFB347")],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(16)
+                    .shadow(color: Color(hex: "#FF8C00").opacity(0.35), radius: 8, y: 3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     // MARK: - プラン比較タブ
 
     private var compareSection: some View {
         VStack(spacing: 16) {
+            // 上部アップグレードボタン
+            upgradeButtonInline
+
             // テーブルヘッダー行
             HStack(spacing: 0) {
                 Text("機能")
@@ -250,11 +283,14 @@ struct PlusView: View {
             .background(Color.duoBlue.opacity(0.06))
             .cornerRadius(10)
 
-            Text("* 全機能はサブスクリプションまたはシークレットコードで解放できます")
+            Text("* 全機能はサブスクリプションまたはPlusコードで解放できます")
                 .font(.system(size: 10))
                 .foregroundColor(Color.duoSubtitle)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+
+            // 下部アップグレードボタン
+            upgradeButtonInline
         }
     }
 
@@ -341,7 +377,7 @@ struct PlusView: View {
                 .font(.system(size: 20, weight: .black))
                 .foregroundColor(Color(hex: "#FF8C00"))
             Text(plus.isAdmin ? "Adminアカウント"
-                 : plus.codeUnlocked ? "シークレットコードで解放済み"
+                 : plus.codeUnlocked ? "Plusコードで解放済み"
                  : "サブスクリプション有効")
                 .font(.system(size: 13))
                 .foregroundColor(Color.duoSubtitle)
@@ -435,7 +471,7 @@ struct PlusView: View {
 
     private var codeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("シークレットコード")
+            Text("Plusコード")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Color.duoSubtitle)
                 .padding(.leading, 4)
@@ -457,7 +493,7 @@ struct PlusView: View {
                 .buttonStyle(.plain)
             } else {
                 VStack(spacing: 10) {
-                    SecureField("シークレットコードを入力", text: $codeInput)
+                    SecureField("Plusコードを入力", text: $codeInput)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($codeFocused)
                         .padding(12).background(Color(.systemGray6)).cornerRadius(10)

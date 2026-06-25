@@ -139,7 +139,7 @@ struct FoodView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 14) {
+            LazyVStack(spacing: 14) {
                     // 栄養サマリーカード（PFC・水分・クイックログ・アドバイス・食事履歴）
                     nutritionSummaryCard
 
@@ -1444,16 +1444,8 @@ struct FoodView: View {
 
     private var foodSummaryRow: some View {
         let foodColor = Color.duoGreen
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let photoTotals = photoLogManager.history
-            .filter { cal.startOfDay(for: $0.timestamp) == today }
-            .reduce(into: (protein: 0.0, fat: 0.0, carbs: 0.0, calories: 0)) { acc, item in
-                acc.protein += item.analyzedNutrition.protein
-                acc.fat += item.analyzedNutrition.fat
-                acc.carbs += item.analyzedNutrition.carbs
-                acc.calories += item.analyzedNutrition.calories
-            }
+        // cachedPhotoLogTotals を再利用（body評価ごとの重複filter/reduce防止）
+        let photoTotals = cachedPhotoLogTotals
         let prot = healthKit.todayIntakeProtein + photoTotals.protein
         let fat_ = healthKit.todayIntakeFat + photoTotals.fat
         let carb = healthKit.todayIntakeCarbs + photoTotals.carbs

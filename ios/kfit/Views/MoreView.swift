@@ -5,6 +5,7 @@ struct MoreView: View {
     @Binding var showRecordMenu: Bool
     var overflowTabs: [MainMenuTab] = []
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var plus: PlusManager
     @State private var showLogoutConfirm = false
 
     var body: some View {
@@ -59,8 +60,11 @@ struct MoreView: View {
                     }
                     .listRowBackground(Color.white)
 
-                    // Fitingoの本を読んでみる
-                    Link(destination: URL(string: "https://amzn.to/4epQJxQ")!) {
+                    // Fitingoの本を読んでみる（Plus: Webで全文 / Free: Booksページ）
+                    let booksURL = URL(string: plus.isPlus
+                        ? "https://fit.ktrips.net/books?plus=1"
+                        : "https://fit.ktrips.net/books")!
+                    Link(destination: booksURL) {
                         MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの本を読んでみる")
                     }
                     .listRowBackground(Color.white)

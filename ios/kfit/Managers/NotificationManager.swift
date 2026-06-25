@@ -106,7 +106,7 @@ final class NotificationManager: ObservableObject {
             return try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .badge, .sound])
         } catch {
-            print("[NotificationManager] permission error: \(error)")
+            dlog("[NotificationManager] permission error: \(error)")
             return false
         }
     }
@@ -123,7 +123,7 @@ final class NotificationManager: ObservableObject {
             let msg = Self.messages[id] ?? (title: id, body: "")
             add(id: id, hour: cfg.hour, minute: cfg.minute, title: msg.title, body: msg.body)
         }
-        print("[NotificationManager] 通知スケジュール完了")
+        dlog("[NotificationManager] 通知スケジュール完了")
     }
 
     // MARK: - 1件だけ即時スケジュール／キャンセル（設定画面でON/OFFしたとき）
@@ -154,7 +154,7 @@ final class NotificationManager: ObservableObject {
 
     func debugPrintPending() async {
         let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        print("[NotificationManager] Pending: \(requests.map { $0.identifier })")
+        dlog("[NotificationManager] Pending: \(requests.map { $0.identifier })")
     }
 
     // MARK: - Private helpers
@@ -173,7 +173,7 @@ final class NotificationManager: ObservableObject {
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request) { error in
-            if let error { print("[NotificationManager] add error (\(id)): \(error)") }
+            if let error { dlog("[NotificationManager] add error (\(id)): \(error)") }
         }
     }
 }

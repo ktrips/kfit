@@ -182,23 +182,24 @@ private struct TripleRingMindSection: View {
     let mindMinutes: Double
     let onTap: () -> Void
 
+    // DateFormatter は生成コストが高いため static で一度だけ生成
+    private static let bedtimeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
     // ─ 3指標のリング比率（スコアの重みをそのまま fraction に変換）
-    // durationScore: max 50pt → ring の最大 50%
-    // bedtimeScore:  max 30pt → ring の最大 30%
-    // interruptScore: max 20pt → ring の最大 20%
     private var durationSeg:    Double { Double(sleepAnalysis?.durationScore    ?? 0) / 100.0 }
     private var bedtimeSeg:     Double { Double(sleepAnalysis?.bedtimeScore     ?? 0) / 100.0 }
     private var interruptSeg:   Double { Double(sleepAnalysis?.interruptionScore ?? 0) / 100.0 }
 
     private var segments: [(Color, Double)] {
         [
-            (Color(hex: "#00C8B4"), durationSeg),   // ティール: 睡眠時間
-            (Color(hex: "#FF7A6B"), bedtimeSeg),    // コーラル: 就寝時刻
-            (Color(hex: "#CE82FF"), interruptSeg),  // パープル: 中断なし
+            (Color(hex: "#00C8B4"), durationSeg),
+            (Color(hex: "#FF7A6B"), bedtimeSeg),
+            (Color(hex: "#CE82FF"), interruptSeg),
         ].filter { $0.1 > 0.005 }
     }
 
-    // 総合スコア: durationScore + bedtimeScore + interruptionScore = 0〜100
     private var displayScore: Int { sleepAnalysis?.score ?? 0 }
 
     // ─ 数値テキスト
@@ -209,9 +210,7 @@ private struct TripleRingMindSection: View {
 
     private var bedtimeText: String {
         guard let date = sleepAnalysis?.firstSleepTime else { return "—" }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "HH:mm"
-        return fmt.string(from: date)
+        return Self.bedtimeFmt.string(from: date)
     }
 
     private var interruptText: String {
@@ -6112,7 +6111,11 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoDark)
                 Spacer()
             }
-            Link(destination: URL(string: "https://amzn.to/4eEsrPg")!) {
+            // Plus: Webで全文読む / Free: Kindleリンク
+            let booksWebURL = URL(string: plus.isPlus
+                ? "https://fit.ktrips.net/books/apple-watch-diet?plus=1"
+                : "https://amzn.to/4eEsrPg")!
+            Link(destination: booksWebURL) {
                 HStack(spacing: 12) {
                     Text("⌚")
                         .font(.system(size: 24 * UIScale.font))
@@ -6134,39 +6137,36 @@ struct DashboardView: View {
                                     .frame(width: 14, height: 14)
                                     .background(Color.duoGold)
                                     .clipShape(RoundedRectangle(cornerRadius: 3))
-                                Text("Webで全文読めます")
+                                Text("Webで全文読めます →")
                                     .font(.system(size: 10 * UIScale.font, weight: .semibold))
                                     .foregroundColor(Color.duoGold)
                             }
                         } else {
-                            Button {
-                                showPlusViewFromDashboard = true
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text("+")
-                                        .font(.system(size: 9 * UIScale.font, weight: .black))
-                                        .foregroundColor(.white)
-                                        .frame(width: 14, height: 14)
-                                        .background(Color.duoSubtitle)
-                                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                                    Text("Plusなら全文Webで読める →")
-                                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                                        .foregroundColor(Color.duoSubtitle)
-                                }
+                            HStack(spacing: 4) {
+                                Text("+")
+                                    .font(.system(size: 9 * UIScale.font, weight: .black))
+                                    .foregroundColor(.white)
+                                    .frame(width: 14, height: 14)
+                                    .background(Color.duoSubtitle)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                                Text("Plusなら全文Webで読める →")
+                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoSubtitle)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoBlue.opacity(0.7))
+                        .foregroundColor(plus.isPlus ? Color.duoGold.opacity(0.8) : Color.duoBlue.opacity(0.7))
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(Color.duoBlue.opacity(0.07))
+                .background(plus.isPlus ? Color.duoGold.opacity(0.07) : Color.duoBlue.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.duoBlue.opacity(0.18), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                    plus.isPlus ? Color.duoGold.opacity(0.25) : Color.duoBlue.opacity(0.18),
+                    lineWidth: 1))
             }
         }
         .padding(14)

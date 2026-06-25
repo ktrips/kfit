@@ -160,7 +160,7 @@ class TimeSlotManager: ObservableObject {
                 await saveTodaySettings()
             }
         } catch {
-            print("❌ TimeSlotManager: Failed to load settings: \(error)")
+            dlog("❌ TimeSlotManager: Failed to load settings: \(error)")
             settings = DailyTimeSlotSettings(date: today)
         }
     }
@@ -237,9 +237,9 @@ class TimeSlotManager: ObservableObject {
         do {
             try await db.collection("users").document(userId)
                 .collection("time-slot-goals").document(dateStr).setData(docData)
-            print("✅ TimeSlotManager: Saved settings for \(dateStr)")
+            dlog("✅ TimeSlotManager: Saved settings for \(dateStr)")
         } catch {
-            print("❌ TimeSlotManager: Failed to save settings: \(error)")
+            dlog("❌ TimeSlotManager: Failed to save settings: \(error)")
         }
     }
 
@@ -332,7 +332,7 @@ class TimeSlotManager: ObservableObject {
                 await syncMealProgressFromDietGoal(saveProgress: false)
             }
         } catch {
-            print("❌ TimeSlotManager: Failed to load progress: \(error)")
+            dlog("❌ TimeSlotManager: Failed to load progress: \(error)")
             progress = DailyTimeSlotProgress(date: today)
         }
     }

@@ -295,7 +295,7 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
         </div>
       </div>
 
-      {/* シークレットコード */}
+      {/* Plusコード */}
       <div style={{
         background: '#fff', borderRadius: 16, overflow: 'hidden',
         boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
@@ -312,7 +312,7 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>🔑</span>
             <span style={{ fontSize: 13, fontWeight: 800, color: '#333' }}>
-              シークレットコードで解放
+              Plusコードで解放
             </span>
           </div>
           <span style={{ color: '#aaa', fontSize: 12 }}>{showCode ? '▲' : '▼'}</span>
@@ -328,7 +328,7 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
                 type="password"
                 value={codeInput}
                 onChange={(e) => { setCodeInput(e.target.value); setCodeStatus('idle'); }}
-                placeholder="シークレットコード"
+                placeholder="Plusコードを入力"
                 style={{
                   flex: 1, padding: '10px 12px', borderRadius: 8,
                   border: `1.5px solid ${codeStatus === 'error' ? '#FF4B4B' : '#e5e5e5'}`,

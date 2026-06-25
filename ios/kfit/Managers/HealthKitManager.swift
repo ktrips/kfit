@@ -430,16 +430,16 @@ final class HealthKitManager: ObservableObject {
 
     func requestAuthorization() async {
         guard isAvailable else {
-            print("[HealthKit] HealthKit not available on this device")
+            dlog("[HealthKit] HealthKit not available on this device")
             return
         }
         do {
             try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
             isAuthorized = true
-            print("[HealthKit] ✅ Authorization granted")
+            dlog("[HealthKit] ✅ Authorization granted")
             await fetchAll()
         } catch {
-            print("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
         }
     }
 
@@ -452,11 +452,11 @@ final class HealthKitManager: ObservableObject {
 
     func saveExercise(exerciseId: String, reps: Int, startDate: Date, endDate: Date) async {
         guard isAvailable else {
-            print("[HealthKit] ⚠️ HealthKit not available")
+            dlog("[HealthKit] ⚠️ HealthKit not available")
             return
         }
         guard isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping save")
             return
         }
         let kcal = (Self.caloriesPerRep[exerciseId.lowercased()] ?? 0.25) * Double(reps)
@@ -476,19 +476,19 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.save(energySample)
             try await store.save(workout)
-            print("[HealthKit] ✅ Saved: \(exerciseId) \(reps)rep (\(String(format: "%.1f", kcal))kcal)")
+            dlog("[HealthKit] ✅ Saved: \(exerciseId) \(reps)rep (\(String(format: "%.1f", kcal))kcal)")
         } catch {
-            print("[HealthKit] ❌ 書き込みエラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ 書き込みエラー: \(error.localizedDescription)")
         }
     }
 
     func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)], startDate: Date, setId: String? = nil) async {
         guard isAvailable else {
-            print("[HealthKit] ⚠️ HealthKit not available")
+            dlog("[HealthKit] ⚠️ HealthKit not available")
             return
         }
         guard isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping set save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping set save")
             return
         }
         let endDate = Date()
@@ -514,9 +514,9 @@ final class HealthKitManager: ObservableObject {
         do {
             try await store.save(energySample)
             try await store.save(workout)
-            print("[HealthKit] ✅ Set saved: \(totalReps)rep (\(String(format: "%.1f", totalKcal))kcal)")
+            dlog("[HealthKit] ✅ Set saved: \(totalReps)rep (\(String(format: "%.1f", totalKcal))kcal)")
         } catch {
-            print("[HealthKit] ❌ セット書き込みエラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ セット書き込みエラー: \(error.localizedDescription)")
         }
     }
 
@@ -1622,7 +1622,7 @@ final class HealthKitManager: ObservableObject {
     @discardableResult
     func saveDietaryEnergy(calories: Double, timestamp: Date, metadata: [String: Any]? = nil) async -> Bool {
         guard isAvailable, isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping dietary energy save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping dietary energy save")
             return false
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else { return false }
@@ -1630,10 +1630,10 @@ final class HealthKitManager: ObservableObject {
         let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
         do {
             try await store.save(sample)
-            print("[HealthKit] ✅ Saved dietary energy: \(calories)kcal")
+            dlog("[HealthKit] ✅ Saved dietary energy: \(calories)kcal")
             return true
         } catch {
-            print("[HealthKit] ❌ 食事記録エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ 食事記録エラー: \(error.localizedDescription)")
             return false
         }
     }
@@ -1641,7 +1641,7 @@ final class HealthKitManager: ObservableObject {
     /// 水分摂取を Apple Health に記録
     func saveWaterIntake(amountMl: Double, timestamp: Date) async {
         guard isAvailable, isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping water save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping water save")
             return
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
@@ -1649,16 +1649,16 @@ final class HealthKitManager: ObservableObject {
         let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
         do {
             try await store.save(sample)
-            print("[HealthKit] ✅ Saved water: \(amountMl)ml")
+            dlog("[HealthKit] ✅ Saved water: \(amountMl)ml")
         } catch {
-            print("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
         }
     }
 
     /// カフェイン摂取を Apple Health に記録
     func saveCaffeineIntake(caffeineMg: Double, timestamp: Date) async {
         guard isAvailable, isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping caffeine save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping caffeine save")
             return
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) else { return }
@@ -1666,9 +1666,9 @@ final class HealthKitManager: ObservableObject {
         let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
         do {
             try await store.save(sample)
-            print("[HealthKit] ✅ Saved caffeine: \(caffeineMg)mg")
+            dlog("[HealthKit] ✅ Saved caffeine: \(caffeineMg)mg")
         } catch {
-            print("[HealthKit] ❌ カフェイン記録エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ カフェイン記録エラー: \(error.localizedDescription)")
         }
     }
 
@@ -1678,7 +1678,7 @@ final class HealthKitManager: ObservableObject {
     /// - dietaryWater に液量（amountMl）として保存
     func saveAlcoholIntake(amountMl: Double, alcoholG: Double, timestamp: Date) async {
         guard isAvailable, isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping alcohol save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping alcohol save")
             return
         }
 
@@ -1711,16 +1711,16 @@ final class HealthKitManager: ObservableObject {
         guard !samples.isEmpty else { return }
         do {
             try await store.save(samples)
-            print("[HealthKit] ✅ Saved alcohol: \(amountMl)ml, \(alcoholG)g → \(String(format: "%.2f", alcoholG / 12.0))drinks")
+            dlog("[HealthKit] ✅ Saved alcohol: \(amountMl)ml, \(alcoholG)g → \(String(format: "%.2f", alcoholG / 12.0))drinks")
         } catch {
-            print("[HealthKit] ❌ アルコール記録エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ アルコール記録エラー: \(error.localizedDescription)")
         }
     }
 
     /// 歯磨きを Apple Health に記録（toothbrushingEvent: 1分）
     func saveToothbrushing(durationSeconds: Double = 60, timestamp: Date = Date()) async {
         guard isAvailable, isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized - skipping toothbrushing save")
+            dlog("[HealthKit] ⚠️ Not authorized - skipping toothbrushing save")
             return
         }
         guard let type = HKCategoryType.categoryType(forIdentifier: .toothbrushingEvent) else { return }
@@ -1729,11 +1729,11 @@ final class HealthKitManager: ObservableObject {
                                       start: start, end: timestamp)
         do {
             try await store.save(sample)
-            print("[HealthKit] ✅ Saved toothbrushing: \(Int(durationSeconds))s")
+            dlog("[HealthKit] ✅ Saved toothbrushing: \(Int(durationSeconds))s")
             todayToothbrushingSamples = await fetchTodayToothbrushingRaw()
             await TimeSlotManager.shared.syncToothbrushingFromHealthKit()
         } catch {
-            print("[HealthKit] ❌ 歯磨き記録エラー: \(error.localizedDescription)")
+            dlog("[HealthKit] ❌ 歯磨き記録エラー: \(error.localizedDescription)")
         }
     }
 
@@ -2033,11 +2033,11 @@ final class HealthKitManager: ObservableObject {
         sessionType: String = "Breathe"
     ) async -> Bool {
         guard isAvailable else {
-            print("[HealthKit] ⚠️ HealthKit not available for mindfulness save")
+            dlog("[HealthKit] ⚠️ HealthKit not available for mindfulness save")
             return false
         }
         guard let type = HKCategoryType.categoryType(forIdentifier: .mindfulSession) else {
-            print("[HealthKit] ⚠️ Mindful session type unavailable")
+            dlog("[HealthKit] ⚠️ Mindful session type unavailable")
             return false
         }
 
@@ -2062,9 +2062,9 @@ final class HealthKitManager: ObservableObject {
         let success = await withCheckedContinuation { continuation in
             store.save(sample) { success, error in
                 if let error {
-                    print("[HealthKit] ❌ Mindfulness save failed: \(error.localizedDescription)")
+                    dlog("[HealthKit] ❌ Mindfulness save failed: \(error.localizedDescription)")
                 } else {
-                    print("[HealthKit] ✅ Mindfulness saved: \(success)")
+                    dlog("[HealthKit] ✅ Mindfulness saved: \(success)")
                 }
                 continuation.resume(returning: success)
             }
@@ -2399,7 +2399,7 @@ final class HealthKitManager: ObservableObject {
     /// 食事の栄養素をHealthKitに保存
     func saveMealNutrition(_ nutrition: MealNutrition, date: Date = Date()) async {
         guard isAuthorized else {
-            print("[HealthKit] ⚠️ Not authorized to save nutrition data")
+            dlog("[HealthKit] ⚠️ Not authorized to save nutrition data")
             return
         }
 
@@ -2459,9 +2459,9 @@ final class HealthKitManager: ObservableObject {
         // HealthKitに保存
         do {
             try await store.save(samples)
-            print("[HealthKit] ✅ Saved meal nutrition: \(nutrition.calories)kcal, protein:\(nutrition.protein)g, fat:\(nutrition.fat)g, carbs:\(nutrition.carbs)g")
+            dlog("[HealthKit] ✅ Saved meal nutrition: \(nutrition.calories)kcal, protein:\(nutrition.protein)g, fat:\(nutrition.fat)g, carbs:\(nutrition.carbs)g")
         } catch {
-            print("[HealthKit] ❌ Failed to save nutrition: \(error)")
+            dlog("[HealthKit] ❌ Failed to save nutrition: \(error)")
         }
     }
 }

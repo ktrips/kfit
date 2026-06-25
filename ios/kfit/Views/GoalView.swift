@@ -72,7 +72,7 @@ struct GoalView: View {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
+                    LazyVStack(spacing: 16) {
                         goalHeroCard
                         if showCharts {
                             weightChartCard
@@ -81,8 +81,8 @@ struct GoalView: View {
                                 .transition(.opacity)
                         }
                         fitingoTrainingButton
-                        todayActivityWithHistoryCard
                         if plus.isPlus {
+                            todayActivityWithHistoryCard
                             progressCard
                             HStack(spacing: 6) {
                                 Image(systemName: "chart.bar.doc.horizontal.fill")
@@ -101,6 +101,7 @@ struct GoalView: View {
                         } else {
                             PlusLockedSection(
                                 features: [
+                                    "今日のアクティビティ",
                                     "目標プランレポート",
                                     "週間実績（燃焼カロリー）",
                                     "摂取カロリー推移",

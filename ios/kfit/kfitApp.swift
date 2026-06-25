@@ -185,7 +185,7 @@ struct MainTabView: View {
     @EnvironmentObject var timeSlotMgr: TimeSlotManager
     @EnvironmentObject var photoLogMgr: PhotoLogManager
     @EnvironmentObject var dietGoalMgr: DietGoalManager
-    @StateObject private var plus = PlusManager.shared
+    @EnvironmentObject var plus: PlusManager
     @State private var selectedTab = 0
     @State private var showRecordMenu = false
     @State private var showTrainingTracker = false
@@ -931,7 +931,7 @@ struct UserStatusSheet: View {
                         .font(.system(size: 16, weight: .black))
                         .foregroundColor(Color(hex: "#FF8C00"))
                     Text(plus.isAdmin ? "Admin アカウント"
-                         : plus.codeUnlocked ? "シークレットコードで解放済み"
+                         : plus.codeUnlocked ? "Plusコードで解放済み"
                          : "サブスクリプション有効")
                         .font(.system(size: 12)).foregroundColor(Color.duoSubtitle)
                     Text("すべての機能が使えます ✓")
@@ -983,7 +983,7 @@ struct UserStatusSheet: View {
             VStack(spacing: 12) {
                 // 現在のコード表示
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("現在のシークレットコード")
+                    Text("現在のPlusコード")
                         .font(.system(size: 10, weight: .semibold)).foregroundColor(Color.duoSubtitle)
                     Text(plus.secretCode)
                         .font(.system(size: 14, weight: .black, design: .monospaced))
@@ -1157,7 +1157,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // アクションボタンがタップされた場合
         if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
             if let action = userInfo["action"] as? String, action == "startWorkout" {
-                print("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
+                dlog("[AppDelegate] 🏋️ Notification tapped - sending signal to Watch")
                 iOSWatchBridge.shared.sendStartWorkoutSignal()
             }
         }

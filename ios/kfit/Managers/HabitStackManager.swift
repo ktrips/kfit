@@ -82,7 +82,7 @@ final class HabitStackManager: ObservableObject {
         )
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                print("[HabitStackManager] schedule error (\(habit.name)): \(error)")
+                dlog("[HabitStackManager] schedule error (\(habit.name)): \(error)")
             }
         }
     }

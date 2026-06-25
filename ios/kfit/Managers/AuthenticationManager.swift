@@ -259,9 +259,9 @@ class AuthenticationManager: ObservableObject {
                         exerciseId: exercise.id ?? exercise.name.lowercased(),
                         reps: reps, startDate: now, endDate: now
                     )
-                    print("✅ HealthKit: Exercise saved - \(exercise.name) \(reps)rep")
+                    dlog("✅ HealthKit: Exercise saved - \(exercise.name) \(reps)rep")
                 } else {
-                    print("⚠️ HealthKit: Authorization denied")
+                    dlog("⚠️ HealthKit: Authorization denied")
                 }
             }
         } catch {
@@ -309,7 +309,7 @@ class AuthenticationManager: ObservableObject {
         try? await db.collection("users").document(userId).updateData([
             "totalPoints": FieldValue.increment(Int64(points))
         ])
-        print("[XP] Awarded \(points)pts")
+        dlog("[XP] Awarded \(points)pts")
     }
 
     /// マインドフルネスセッションにXPを付与（セッション開始日時で重複防止）
@@ -328,7 +328,7 @@ class AuthenticationManager: ObservableObject {
             let isReflect = session.sessionTypeLabel == "Reflect"
             totalNew += isReflect ? 30 : 10
             awarded.insert(sid)
-            print("[XP] Mindful session \(isReflect ? "Reflect" : "Breathe") +\(isReflect ? 30 : 10)pts")
+            dlog("[XP] Mindful session \(isReflect ? "Reflect" : "Breathe") +\(isReflect ? 30 : 10)pts")
         }
 
         if totalNew > 0 {
@@ -344,7 +344,7 @@ class AuthenticationManager: ObservableObject {
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
         await awardPoints(points)
-        print("[XP] Daily bonus: \(type) +\(points)pts")
+        dlog("[XP] Daily bonus: \(type) +\(points)pts")
     }
 
     /// 今週（月曜〜本日）の合計XP
@@ -366,10 +366,10 @@ class AuthenticationManager: ObservableObject {
     // MARK: - キャッシュから即時取得（ブロックしない）
     func getTodayExercisesFromCache() async -> [CompletedExercise] {
         guard let userId = Auth.auth().currentUser?.uid else {
-            print("❌ getTodayExercisesFromCache: userId is nil")
+            dlog("❌ getTodayExercisesFromCache: userId is nil")
             return []
         }
-        print("🔵 getTodayExercisesFromCache: userId=\(userId)")
+        dlog("🔵 getTodayExercisesFromCache: userId=\(userId)")
         let (startOfDay, endOfDay) = todayRange()
         do {
             let snapshot = try await db.collection("users").document(userId)
@@ -377,10 +377,10 @@ class AuthenticationManager: ObservableObject {
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .cache)
-            print("✅ getTodayExercisesFromCache: \(snapshot.documents.count) docs from cache")
+            dlog("✅ getTodayExercisesFromCache: \(snapshot.documents.count) docs from cache")
             return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
         } catch {
-            print("❌ getTodayExercisesFromCache error: \(error)")
+            dlog("❌ getTodayExercisesFromCache error: \(error)")
             return []
         }
     }
@@ -388,18 +388,18 @@ class AuthenticationManager: ObservableObject {
     // MARK: - サーバーから最新取得（バックグラウンド用）
     func getTodayExercises() async -> [CompletedExercise] {
         guard let userId = Auth.auth().currentUser?.uid else {
-            print("❌ getTodayExercises: userId is nil")
+            dlog("❌ getTodayExercises: userId is nil")
             return []
         }
 
         // キャッシュチェック
         if let lastFetch = lastTodayExercisesFetch,
            Date().timeIntervalSince(lastFetch) < cacheExpiry {
-            print("⚡ getTodayExercises: returning cached data (\(cachedTodayExercises.count) items)")
+            dlog("⚡ getTodayExercises: returning cached data (\(cachedTodayExercises.count) items)")
             return cachedTodayExercises
         }
 
-        print("🔵 getTodayExercises: userId=\(userId), fetching from server...")
+        dlog("🔵 getTodayExercises: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
         do {
             let snapshot = try await db.collection("users").document(userId)
@@ -407,7 +407,7 @@ class AuthenticationManager: ObservableObject {
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .default) // キャッシュ優先、必要時のみサーバー
-            print("✅ getTodayExercises: \(snapshot.documents.count) docs")
+            dlog("✅ getTodayExercises: \(snapshot.documents.count) docs")
             let exercises = snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
 
             // キャッシュ更新
@@ -416,7 +416,7 @@ class AuthenticationManager: ObservableObject {
 
             return exercises
         } catch {
-            print("❌ getTodayExercises error: \(error)")
+            dlog("❌ getTodayExercises error: \(error)")
             return cachedTodayExercises // エラー時はキャッシュを返す
         }
     }
@@ -493,7 +493,7 @@ class AuthenticationManager: ObservableObject {
             try await summaryDocument(userId: userId, id: dailyId).setData(dailyBase, merge: true)
             try await summaryDocument(userId: userId, id: weeklyId).setData(weeklyBase, merge: true)
         } catch {
-            print("❌ Summary exercise update failed: \(error)")
+            dlog("❌ Summary exercise update failed: \(error)")
         }
     }
 
@@ -524,7 +524,7 @@ class AuthenticationManager: ObservableObject {
             try await summaryDocument(userId: userId, id: dailyId).setData(dailyData, merge: true)
             try await summaryDocument(userId: userId, id: weeklyId).setData(weeklyData, merge: true)
         } catch {
-            print("❌ Summary set update failed: \(error)")
+            dlog("❌ Summary set update failed: \(error)")
         }
     }
 
@@ -564,7 +564,7 @@ class AuthenticationManager: ObservableObject {
             try await summaryDocument(userId: userId, id: "daily-\(dayKey(for: timestamp))").setData(dailyData, merge: true)
             try await summaryDocument(userId: userId, id: "weekly-\(weekKey(for: timestamp))").setData(weeklyData, merge: true)
         } catch {
-            print("❌ Summary intake update failed: \(error)")
+            dlog("❌ Summary intake update failed: \(error)")
         }
     }
 
@@ -719,7 +719,7 @@ class AuthenticationManager: ObservableObject {
                 .limit(to: 1)
                 .getDocuments()
             if existing?.documents.isEmpty == false {
-                print("✅ Watch set already recorded, skipping duplicate: \(setId)")
+                dlog("✅ Watch set already recorded, skipping duplicate: \(setId)")
                 let snap = try? await db.collection("users").document(userId).getDocument()
                 let streak = snap?.data()?["streak"] as? Int ?? (userProfile?.streak ?? 0)
                 let totalXP = snap?.data()?["totalPoints"] as? Int ?? (userProfile?.totalPoints ?? 0)
@@ -752,9 +752,9 @@ class AuthenticationManager: ObservableObject {
             try? await db.collection("users").document(userId)
                 .collection("completed-sets").addDocument(data: setDoc)
             await updateSummaryForSet(userId: userId, totalReps: set.totalReps, totalXP: set.totalXP, timestamp: now)
-            print("✅ Valid set recorded: All exercises met target reps")
+            dlog("✅ Valid set recorded: All exercises met target reps")
         } else {
-            print("⚠️ Set not counted: Some exercises did not meet target reps")
+            dlog("⚠️ Set not counted: Some exercises did not meet target reps")
         }
 
         // 各種目を completed-exercises に書き込む（履歴表示で正しい回数を出すため）
@@ -798,7 +798,7 @@ class AuthenticationManager: ObservableObject {
         // Watch 側で既に HKWorkout を直接書き込み済みの場合は重複を避けてスキップ。
         // Watch が書き込めなかった（HealthKit 未許可など）場合のみ iPhone がフォールバック書き込みする。
         if set.savedToHealth == true {
-            print("⏭️ HealthKit: Watch already saved workout to Health (setId=\(set.setId ?? "-")) - skipping duplicate write")
+            dlog("⏭️ HealthKit: Watch already saved workout to Health (setId=\(set.setId ?? "-")) - skipping duplicate write")
         } else if HealthKitManager.shared.isAvailable {
             if !HealthKitManager.shared.isAuthorized {
                 await HealthKitManager.shared.requestAuthorization()
@@ -810,9 +810,9 @@ class AuthenticationManager: ObservableObject {
                     startDate: setStart,
                     setId: set.setId
                 )
-                print("✅ HealthKit: Completed set saved (fallback) - \(set.totalReps)rep / \(set.totalXP)XP")
+                dlog("✅ HealthKit: Completed set saved (fallback) - \(set.totalReps)rep / \(set.totalXP)XP")
             } else {
-                print("⚠️ HealthKit: Authorization denied for set save")
+                dlog("⚠️ HealthKit: Authorization denied for set save")
             }
         }
 
@@ -878,7 +878,7 @@ class AuthenticationManager: ObservableObject {
                 await HealthKitManager.shared.saveExercise(
                     exerciseId: exerciseId, reps: reps, startDate: now, endDate: now
                 )
-                print("✅ HealthKit: Direct exercise saved - \(exerciseName) \(reps)rep")
+                dlog("✅ HealthKit: Direct exercise saved - \(exerciseName) \(reps)rep")
             }
         }
 
@@ -955,9 +955,9 @@ class AuthenticationManager: ObservableObject {
             try? await db.collection("users").document(userId)
                 .collection("completed-sets").addDocument(data: setDoc)
             await updateSummaryForSet(userId: userId, totalReps: totalReps, totalXP: totalXP, timestamp: now)
-            print("✅ Valid set recorded: All exercises met target reps")
+            dlog("✅ Valid set recorded: All exercises met target reps")
         } else {
-            print("⚠️ Set not counted: Some exercises did not meet target reps")
+            dlog("⚠️ Set not counted: Some exercises did not meet target reps")
         }
 
         await updateStreakAndPoints(userId: userId, points: totalXP, now: now)
@@ -1092,10 +1092,10 @@ class AuthenticationManager: ObservableObject {
     /// 今日のセット状況（30分間隔でセッションを分割し、午前/午後を判定）
     func getDailySetsFromCache() async -> DailySets {
         guard let userId = Auth.auth().currentUser?.uid else {
-            print("❌ getDailySetsFromCache: userId is nil")
+            dlog("❌ getDailySetsFromCache: userId is nil")
             return DailySets(amSets: 0, pmSets: 0)
         }
-        print("🔵 getDailySetsFromCache: userId=\(userId)")
+        dlog("🔵 getDailySetsFromCache: userId=\(userId)")
         let (startOfDay, endOfDay) = todayRange()
         do {
             let snapshot = try await db.collection("users").document(userId)
@@ -1104,22 +1104,22 @@ class AuthenticationManager: ObservableObject {
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .cache)
             let sets = buildDailySets(from: snapshot)
-            print("✅ getDailySetsFromCache: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
+            dlog("✅ getDailySetsFromCache: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
             return sets
         } catch {
-            print("❌ getDailySetsFromCache error: \(error)")
+            dlog("❌ getDailySetsFromCache error: \(error)")
             return DailySets(amSets: 0, pmSets: 0)
         }
     }
 
     func getDailySets() async -> DailySets {
         guard let userId = Auth.auth().currentUser?.uid else {
-            print("❌ getDailySets: userId is nil")
+            dlog("❌ getDailySets: userId is nil")
             return DailySets(amSets: 0, pmSets: 0)
         }
         // 30秒キャッシュ
         if let last = lastDailySetsCache, Date().timeIntervalSince(last) < cacheExpiry {
-            print("⚡ getDailySets: returning cached data")
+            dlog("⚡ getDailySets: returning cached data")
             return cachedDailySets
         }
         let summary = await getTodayActivitySummary()
@@ -1129,7 +1129,7 @@ class AuthenticationManager: ObservableObject {
             lastDailySetsCache = Date()
             return sets
         }
-        print("🔵 getDailySets: userId=\(userId), fetching from server...")
+        dlog("🔵 getDailySets: userId=\(userId), fetching from server...")
         let (startOfDay, endOfDay) = todayRange()
 
         do {
@@ -1141,10 +1141,10 @@ class AuthenticationManager: ObservableObject {
             let sets = buildDailySets(from: snapshot)
             cachedDailySets = sets
             lastDailySetsCache = Date()
-            print("✅ getDailySets: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
+            dlog("✅ getDailySets: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
             return sets
         } catch {
-            print("❌ getDailySets error: \(error)")
+            dlog("❌ getDailySets error: \(error)")
             return cachedDailySets
         }
     }
@@ -1288,12 +1288,12 @@ class AuthenticationManager: ObservableObject {
             if let completedExercise = exercises.first(where: { $0.exerciseId == targetExercise.exerciseId }) {
                 // 目標回数未達の場合は無効
                 if completedExercise.reps < targetExercise.targetReps {
-                    print("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
+                    dlog("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
                     return false
                 }
             } else {
                 // 目標種目が実施されていない場合は無効
-                print("⚠️ \(targetExercise.exerciseName): 未実施")
+                dlog("⚠️ \(targetExercise.exerciseName): 未実施")
                 return false
             }
         }
@@ -1308,12 +1308,12 @@ class AuthenticationManager: ObservableObject {
             if let completedExercise = exercises.first(where: { $0.exerciseId == targetExercise.exerciseId }) {
                 // 目標回数未達の場合は無効
                 if completedExercise.reps < targetExercise.targetReps {
-                    print("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
+                    dlog("⚠️ \(targetExercise.exerciseName): \(completedExercise.reps)/\(targetExercise.targetReps) - 目標未達")
                     return false
                 }
             } else {
                 // 目標種目が実施されていない場合は無効
-                print("⚠️ \(targetExercise.exerciseName): 未実施")
+                dlog("⚠️ \(targetExercise.exerciseName): 未実施")
                 return false
             }
         }
@@ -1553,7 +1553,7 @@ class AuthenticationManager: ObservableObject {
                 return settings
             }
         } catch {
-            print("❌ Failed to load LLM settings: \(error)")
+            dlog("❌ Failed to load LLM settings: \(error)")
         }
 
         return LLMSettings.defaultSettings
@@ -2177,7 +2177,7 @@ extension AuthenticationManager {
             }
         }
 
-        print("[LogComplete] ✅ ログコンプリートボーナス付与: +\(bonusXP) XP")
+        dlog("[LogComplete] ✅ ログコンプリートボーナス付与: +\(bonusXP) XP")
     }
 
     private var dateFormatter: DateFormatter {
@@ -2260,19 +2260,19 @@ extension AuthenticationManager {
         ].map(String.init).joined(separator: "|")
 
         guard payloadHash != lastWidgetPayloadHash else {
-            print("[Widget] ✅ syncWidgetData skipped - payload unchanged")
+            dlog("[Widget] ✅ syncWidgetData skipped - payload unchanged")
             return
         }
         lastWidgetPayloadHash = payloadHash
         scheduleWidgetReload()
-        print("[Widget] ✅ syncWidgetData: training=\(trainingCompleted)/\(trainingGoal) streak=\(shared.userProfile?.streak ?? 0)")
+        dlog("[Widget] ✅ syncWidgetData: training=\(trainingCompleted)/\(trainingGoal) streak=\(shared.userProfile?.streak ?? 0)")
     }
 
     private static func scheduleWidgetReload() {
         pendingWidgetReload?.cancel()
         let workItem = DispatchWorkItem {
             WidgetCenter.shared.reloadAllTimelines()
-            print("[Widget] ✅ reloadAllTimelines debounced")
+            dlog("[Widget] ✅ reloadAllTimelines debounced")
         }
         pendingWidgetReload = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
@@ -2649,7 +2649,7 @@ class PhotoLogManager: ObservableObject {
 
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("[PhotoLog] OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            dlog("[PhotoLog] OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
             throw PhotoLogError.apiError("OpenAI API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
@@ -2658,7 +2658,7 @@ class PhotoLogManager: ObservableObject {
         guard let choices = json?["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            print("[PhotoLog] Failed to parse OpenAI API response structure: \(rawOpenAIResponse)")
+            dlog("[PhotoLog] Failed to parse OpenAI API response structure: \(rawOpenAIResponse)")
             throw PhotoLogError.invalidResponse("[OpenAI] レスポンス構造が想定外:\n\(rawOpenAIResponse)")
         }
 
@@ -2699,7 +2699,7 @@ class PhotoLogManager: ObservableObject {
 
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("[PhotoLog] Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            dlog("[PhotoLog] Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
             throw PhotoLogError.apiError("Anthropic API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
@@ -2707,7 +2707,7 @@ class PhotoLogManager: ObservableObject {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let content = json?["content"] as? [[String: Any]],
               let text = content.first?["text"] as? String else {
-            print("[PhotoLog] Failed to parse Anthropic API response structure: \(rawAnthropicResponse)")
+            dlog("[PhotoLog] Failed to parse Anthropic API response structure: \(rawAnthropicResponse)")
             throw PhotoLogError.invalidResponse("[Anthropic] レスポンス構造が想定外:\n\(rawAnthropicResponse)")
         }
 
@@ -2724,7 +2724,7 @@ class PhotoLogManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        print("[PhotoLog] Google API URL: \(url.absoluteString.replacingOccurrences(of: settings.apiKey, with: "***"))")
+        dlog("[PhotoLog] Google API URL: \(url.absoluteString.replacingOccurrences(of: settings.apiKey, with: "***"))")
 
         let payload: [String: Any] = [
             "contents": [
@@ -2746,7 +2746,7 @@ class PhotoLogManager: ObservableObject {
             ]
         ]
 
-        print("[PhotoLog] Google API request payload keys: \(payload.keys)")
+        dlog("[PhotoLog] Google API request payload keys: \(payload.keys)")
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -2759,7 +2759,7 @@ class PhotoLogManager: ObservableObject {
         // エラーレスポンスをログに出力
         if httpResponse.statusCode != 200 {
             let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("[PhotoLog] Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
+            dlog("[PhotoLog] Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
             throw PhotoLogError.apiError("Google API error (status \(httpResponse.statusCode)): \(errorMessage)")
         }
 
@@ -2767,13 +2767,13 @@ class PhotoLogManager: ObservableObject {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
         // レスポンス構造をログに出力
-        print("[PhotoLog] Google API response: \(json ?? [:])")
+        dlog("[PhotoLog] Google API response: \(json ?? [:])")
 
         guard let candidates = json?["candidates"] as? [[String: Any]],
               let content = candidates.first?["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let text = parts.first?["text"] as? String else {
-            print("[PhotoLog] Failed to parse Google API response structure: \(rawGoogleResponse)")
+            dlog("[PhotoLog] Failed to parse Google API response structure: \(rawGoogleResponse)")
             throw PhotoLogError.invalidResponse("[Google] レスポンス構造が想定外:\n\(rawGoogleResponse)")
         }
 
@@ -2783,7 +2783,7 @@ class PhotoLogManager: ObservableObject {
     // MARK: - JSON Parsing
 
     private func parseNutritionJSON(_ jsonString: String) throws -> AnalyzedNutrition {
-        print("[PhotoLog] Parsing JSON from: \(jsonString.prefix(200))...")
+        dlog("[PhotoLog] Parsing JSON from: \(jsonString.prefix(200))...")
 
         // JSONの前後にあるテキストを除去
         var cleanedString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2824,7 +2824,7 @@ class PhotoLogManager: ObservableObject {
         } else if let parsed = tryParse(cleanedString + "}") {
             json = parsed
         } else {
-            print("[PhotoLog] Failed to parse JSON: \(cleanedString)")
+            dlog("[PhotoLog] Failed to parse JSON: \(cleanedString)")
             throw PhotoLogError.invalidResponse("[JSONパース失敗] モデルの返答:\n\(cleanedString)")
         }
 
@@ -2843,7 +2843,7 @@ class PhotoLogManager: ObservableObject {
         nutrition.alcohol = (json["alcohol"] as? NSNumber)?.doubleValue ?? 0.0
         nutrition.confidence = (json["confidence"] as? NSNumber)?.doubleValue ?? 0.8
 
-        print("[PhotoLog] Successfully parsed nutrition: \(nutrition.calories)kcal")
+        dlog("[PhotoLog] Successfully parsed nutrition: \(nutrition.calories)kcal")
 
         return nutrition
     }

@@ -284,6 +284,38 @@ const sections: Section[] = [
     ),
   },
 
+  // ─── Kindle 書籍 ────────────────────────────────────────────
+  {
+    icon: '📚',
+    title: 'Kindle書籍（Books）',
+    content: (
+      <div className="space-y-3 text-sm font-bold text-duo-gray">
+        <p>
+          Fitingo 関連の3冊のKindle書籍を
+          <a href="https://fit.ktrips.net/books" target="_blank" rel="noopener noreferrer" className="text-duo-green underline mx-1">fit.ktrips.net/books</a>
+          で読めます。
+        </p>
+        <Ul>
+          <Li>
+            <strong className="text-duo-dark">⌚ AppleWatch Diet Ultra2</strong><br />
+            Apple Watch Ultra 2 を使ったダイエット・健康管理の100メソッド
+          </Li>
+          <Li>
+            <strong className="text-duo-dark">📱 Cursor + ClaudeでiPhoneアプリを作る</strong><br />
+            SwiftUI・HealthKit・Apple Watch 連携アプリを個人開発した全工程
+          </Li>
+          <Li>
+            <strong className="text-duo-dark">🚀 iPhoneアプリ＋！マーケティングする方法</strong> <PlusBadge /><br />
+            Kindle出版・Plusマネタイズ・SNS拡散戦略まで解説するコンパニオン本
+          </Li>
+        </Ul>
+        <p style={{ fontSize: 11, color: '#aaa' }}>
+          Free: 各書籍の試し読みが無料（約10ページ分）。Plus: 全3冊の全文をWebで読めます。
+        </p>
+      </div>
+    ),
+  },
+
   // ─── iOSアプリ・Watch ────────────────────────────────────────
   {
     icon: '📱',
@@ -405,7 +437,7 @@ export const HelpView: React.FC = () => {
           <div className="flex-1">
             <p className="font-black text-duo-dark text-sm">もっと知りたい人の為のKindle書籍</p>
             <p className="text-duo-gray font-bold text-xs">
-              AppleWatch Diet Ultra2 など ─ Plusなら全文Webで読める
+              AppleWatch Diet / Cursor+Claude iOSアプリ開発 / マーケティング ─ Plusなら全3冊Webで全文読める
             </p>
           </div>
           <span className="font-black text-sm shrink-0" style={{ color: '#58CC02' }}>→</span>

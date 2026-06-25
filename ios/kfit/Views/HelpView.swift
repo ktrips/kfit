@@ -338,6 +338,27 @@ private let helpItems: [HelpItem] = [
         """
     ),
 
+    // ─── Kindle 書籍 ─────────────────────────────────────────────
+    HelpItem(
+        icon: "📚",
+        title: "Kindle書籍（Books）",
+        content: """
+        Fitingo に関連する3冊のKindle書籍をWebで読めます。
+        「その他」メニュー →「Fitingoの本を読んでみる」からアクセスできます（https://fit.ktrips.net/books）。
+        【書籍一覧】
+        ⌚ AppleWatch Diet Ultra2
+        Apple Watch Ultra 2 を使ったダイエット・健康管理の100メソッドを徹底解説。
+        📱 Cursor + ClaudeでiPhoneアプリを作る
+        Cursor と Claude Sonnet を使い、SwiftUI・HealthKit・Apple Watch 連携アプリを個人開発した全工程。
+        🚀 iPhoneアプリ＋！マーケティングする方法（Plus限定）
+        Kindle出版・Plusマネタイズ・SNS拡散戦略まで解説するコンパニオン本。
+        【読み方】
+        • Free: 各書籍の試し読みが無料で読めます（約10ページ分）
+        • Plus: 全3冊の全文をWebで読むことができます
+        Plusユーザーは「その他」メニューからアクセスすると自動的に全文が解放されます。
+        """
+    ),
+
     // ─── ウィジェット・その他 ─────────────────────────────────────
     HelpItem(
         icon: "🔲",
@@ -468,9 +489,9 @@ struct HelpView: View {
                                     Text("もっと知りたい人の為のKindle書籍")
                                         .font(.subheadline).fontWeight(.black)
                                         .foregroundColor(Color.duoDark)
-                                    Text("AppleWatch Diet Ultra2 など ─ Plusなら全文Webで読める")
+                                    Text("AppleWatch Diet / Cursor+Claude iOSアプリ開発 / マーケティング ─ Plusなら全3冊Webで全文読める")
                                         .font(.caption).foregroundColor(Color.duoSubtitle)
-                                        .lineLimit(2)
+                                        .lineLimit(3)
                                 }
                                 Spacer()
                                 Image(systemName: "arrow.up.right")

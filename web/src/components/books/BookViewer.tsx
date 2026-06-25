@@ -220,7 +220,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
 
           const mdComponents = {
               // 画像: 相対パスを GitHub raw URL に変換、レスポンシブ
-              img({ src, alt }) {
+              img({ src, alt }: { src?: string; alt?: string }) {
                 const resolved = resolveImageSrc(src ?? '');
                 return (
                   <figure className="my-6 text-center">

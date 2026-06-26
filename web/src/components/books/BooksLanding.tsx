@@ -101,28 +101,28 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
                   onClick={() => onSelectBook(book.id)}
                   className={`
                     group text-left rounded-2xl border-2 ${book.borderColor} ${book.bgColor}
-                    p-6 shadow-sm hover:shadow-lg transition-all duration-200
+                    p-4 shadow-sm hover:shadow-lg transition-all duration-200
                     hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-offset-2
                   `}
                 >
                   {/* 絵文字アイコン */}
-                  <div className="text-5xl mb-4">{book.emoji}</div>
+                  <div className="text-4xl mb-2">{book.emoji}</div>
 
                   {/* タイトル */}
-                  <h2 className={`text-xl font-black ${book.color} leading-snug mb-1`}>
+                  <h2 className={`text-base font-black ${book.color} leading-snug mb-0.5`}>
                     {book.title}
                   </h2>
-                  <p className="text-sm text-gray-500 mb-3 font-medium">{book.subtitle}</p>
+                  <p className="text-xs text-gray-500 mb-2 font-medium">{book.subtitle}</p>
 
                   {/* 説明 */}
-                  <p className="text-sm text-gray-600 leading-relaxed mb-4">{book.description}</p>
+                  <p className="text-xs text-gray-600 leading-relaxed mb-2">{book.description}</p>
 
                   {/* タグ */}
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {book.tags.map((tag) => (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {book.tags.slice(0, 4).map((tag) => (
                       <span
                         key={tag}
-                        className="text-xs bg-white/70 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-medium"
+                        className="text-[11px] bg-white/70 text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded-full"
                       >
                         {tag}
                       </span>
@@ -130,7 +130,7 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
                   </div>
 
                   {/* CTA ラベル */}
-                  <div className={`flex items-center gap-1 ${book.color} font-bold text-sm group-hover:gap-2 transition-all`}>
+                  <div className={`flex items-center gap-1 ${book.color} font-bold text-xs group-hover:gap-2 transition-all`}>
                     {isPlus ? (
                       <>
                         <span>全文をウェブで読む</span>

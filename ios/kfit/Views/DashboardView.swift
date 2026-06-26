@@ -77,23 +77,23 @@ private struct TripleRingFitSection: View {
                 ZStack {
                     ActivityRingView(progress: moveP,
                                      color: Color(red: 0.98, green: 0.07, blue: 0.31),
-                                     diameter: 70, lineWidth: 9)
+                                     diameter: 84, lineWidth: 11)
                     ActivityRingView(progress: exerciseP,
                                      color: Color(red: 0.57, green: 0.91, blue: 0.16),
-                                     diameter: 52, lineWidth: 9)
+                                     diameter: 62, lineWidth: 11)
                     ActivityRingView(progress: standP,
                                      color: Color(red: 0.12, green: 0.89, blue: 0.94),
-                                     diameter: 34, lineWidth: 9)
+                                     diameter: 40, lineWidth: 11)
                     let avgP = Int(((moveP + exerciseP + standP) / 3.0) * 100)
                     let avgColor: Color = avgP >= 80 ? Color.duoGreen
                         : avgP >= 60 ? Color(hex: "#FF9600")
                         : Color(hex: "#FF4B4B")
                     Text("\(avgP)%")
-                        .font(.system(size: 9 * UIScale.font, weight: .black))
+                        .font(.system(size: 10 * UIScale.font, weight: .black))
                         .foregroundColor(avgColor)
                         .minimumScaleFactor(0.5)
                 }
-                .frame(width: 70, height: 70)
+                .frame(width: 84, height: 84)
                 VStack(spacing: 2) {
                     HStack(spacing: 3) {
                         Image(systemName: "bolt.fill")
@@ -156,8 +156,8 @@ private struct TripleRingFoodSection: View {
                     proteinKcal: proteinKcal,
                     fatKcal: fatKcal,
                     carbsKcal: carbsKcal,
-                    diameter: 70,
-                    lineWidth: 11,
+                    diameter: 84,
+                    lineWidth: 13,
                     centerText: pfcScore > 0 ? "\(pfcScore)" : "—",
                     centerSubText: pfcScore > 0 ? "点" : nil,
                     centerTextColor: pfcScore > 0 ? scoreColor : Color.duoSubtitle
@@ -242,9 +242,9 @@ private struct TripleRingMindSection: View {
                     segments: segments,
                     centerText: displayScore > 0 ? "\(displayScore)" : "—",
                     centerSubText: displayScore > 0 ? "点" : nil,
-                    lineWidth: 11
+                    lineWidth: 13
                 )
-                .frame(width: 70, height: 70)
+                .frame(width: 84, height: 84)
                 VStack(spacing: 2) {
                     HStack(spacing: 3) {
                         Image(systemName: "moon.fill")
@@ -866,7 +866,7 @@ struct DashboardView: View {
             VStack(spacing: 8) {
                 compactMindfulnessCTA(
                     icon: "🧘",
-                    title: "マインドフルネス",
+                    title: "Mindfulness",
                     subtitle: "1分瞑想",
                     colors: [Color.duoPurple, Color(red: 0.58, green: 0.32, blue: 0.76)]
                 ) {
@@ -875,7 +875,7 @@ struct DashboardView: View {
 
                 compactMindfulnessCTA(
                     icon: "🤸",
-                    title: "マインドフルネス",
+                    title: "Mindfulness",
                     subtitle: "3分ストレッチ",
                     colors: [Color.duoBlue, Color.duoPurple]
                 ) {
@@ -1751,7 +1751,7 @@ struct DashboardView: View {
                 VStack(spacing: 4) {
                     HStack(spacing: 6) {
                         Text("🧘").font(.caption)
-                        Text("マインドフルネス")
+                        Text("Mindfulness")
                             .font(.caption).fontWeight(.black)
                             .foregroundColor(Color.duoPurple)
                         Text("·")
@@ -2795,19 +2795,19 @@ struct DashboardView: View {
             TripleRingFitSection(moveP: moveP, exerciseP: exerciseP, standP: standP,
                                 moveCalories: moveCalories, totalCalories: totalCalories,
                                 onTap: goFit)
-            Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 90)
+            Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 110)
             TripleRingFoodSection(pfcScore: pfcScore,
                                   proteinKcal: pKcal, fatKcal: fKcal, carbsKcal: cKcal,
                                   waterFraction: waterFrac,
                                   intakeCalories: intakeCalories, intakeWater: intakeWater,
                                   onTap: goFood)
-            Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 90)
+            Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 110)
             TripleRingMindSection(sleepAnalysis: sleepAnalysis,
                                   mindMinutes: mindMinutes,
                                   onTap: goMind)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
         .padding(.horizontal, 6)
         .background(Color(.systemBackground))
         .cornerRadius(14)
@@ -4643,7 +4643,7 @@ struct DashboardView: View {
             HStack(spacing: 5) {
                 Text("🍽️")
                     .font(.system(size: 14 * UIScale.font))
-                Text("食事カロリー記録")
+                Text("Food Log")
                     .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
                 Spacer()
@@ -6160,7 +6160,7 @@ struct DashboardView: View {
             HStack(spacing: 6) {
                 Text("📚")
                     .font(.system(size: 13 * UIScale.font))
-                Text("もっと知りたい人の為のKindle書籍")
+                Text("More to Read")
                     .font(.system(size: 13 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
                 Spacer()
@@ -6201,15 +6201,15 @@ struct DashboardView: View {
                             }
                         } else {
                             HStack(spacing: 4) {
-                                Text("+")
-                                    .font(.system(size: 9 * UIScale.font, weight: .black))
+                                Text("kindle")
+                                    .font(.system(size: 8 * UIScale.font, weight: .black))
                                     .foregroundColor(.white)
-                                    .frame(width: 14, height: 14)
-                                    .background(Color.duoSubtitle)
+                                    .padding(.horizontal, 5).padding(.vertical, 2)
+                                    .background(Color(hex: "#FF9900"))
                                     .clipShape(RoundedRectangle(cornerRadius: 3))
-                                Text("Plusなら全文Webで読める →")
+                                Text("Kindleで読む →")
                                     .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                                    .foregroundColor(Color.duoSubtitle)
+                                    .foregroundColor(Color(hex: "#FF9900"))
                             }
                         }
                     }
@@ -6322,7 +6322,7 @@ private struct DailySetsCardButtonsView: View {
             )
 
             // ── マインドフルネス ──────────────────────────────────────────
-            sectionHeader(icon: "🧘‍♀️", title: "マインドフルネス")
+            sectionHeader(icon: "🧘‍♀️", title: "Mindfulness")
 
             HStack(spacing: 8) {
                 compactActionButton(icon: "🧘", label: "1分瞑想",
@@ -8992,7 +8992,7 @@ private struct TodayHistorySection: View {
                     if !mindfulSessions.isEmpty {
                         let mindfulDoneMin = Int(mindfulSessions.reduce(0.0) { $0 + $1.durationMinutes }.rounded())
                         let mindfulProg = mindfulGoalMinutes > 0 ? "\(mindfulDoneMin)/\(mindfulGoalMinutes)分" : nil
-                        sectionGroup(icon: "🧘", label: "マインドフルネス",
+                        sectionGroup(icon: "🧘", label: "Mindfulness",
                                      progress: mindfulProg, progressDone: mindfulGoalMinutes > 0 && mindfulDoneMin >= mindfulGoalMinutes) {
                             mindfulnessRows(sessions: mindfulSessions,
                                             color: Color(hex: "#CE93D8"),

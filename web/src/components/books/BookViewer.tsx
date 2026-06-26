@@ -182,7 +182,17 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                       <a
                         href={`#${anchor}`}
                         className="text-sm text-blue-600 hover:underline block py-0.5"
-                        onClick={() => setTocOpen(false)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setTocOpen(false);
+                          // id が見つかれば smooth scroll、なければ hash 遷移
+                          const el = document.getElementById(anchor);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          } else {
+                            window.location.hash = anchor;
+                          }
+                        }}
                       >
                         {text}
                       </a>
@@ -218,6 +228,17 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
             displayContent = idx !== -1 ? content.slice(0, idx) : content.slice(0, FREE_CHAR_LIMIT);
           }
 
+          // 見出しテキストから URL アンカーを生成（TOC と同じロジック）
+          const toAnchor = (children: React.ReactNode): string => {
+            const text = Array.isArray(children)
+              ? children.map(c => (typeof c === 'string' ? c : typeof c === 'object' && c !== null && 'props' in (c as object) ? String((c as { props?: { children?: unknown } }).props?.children ?? '') : '')).join('')
+              : typeof children === 'string' ? children : String(children ?? '');
+            return text
+              .toLowerCase()
+              .replace(/[^\w\u3040-\u30FF\u4E00-\u9FAF]+/g, '-')
+              .replace(/^-|-$/g, '');
+          };
+
           const mdComponents = {
               // 画像: 相対パスを GitHub raw URL に変換、レスポンシブ
               img({ src, alt }: { src?: string; alt?: string }) {
@@ -237,18 +258,17 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                   </figure>
                 );
               },
-              // 見出し
+              // 見出し（すべてに id を付与して TOC アンカーリンクを機能させる）
               h1({ children }: { children?: React.ReactNode }) {
-                return <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-8 mb-3 leading-tight">{children}</h1>;
+                const id = toAnchor(children);
+                return <h1 id={id} className="text-2xl sm:text-3xl font-black text-gray-900 mt-8 mb-3 leading-tight">{children}</h1>;
               },
               h2({ children }: { children?: React.ReactNode }) {
-                return <h2 className="text-xl sm:text-2xl font-black text-gray-800 mt-7 mb-3 pt-4 border-t-2 border-green-200">{children}</h2>;
+                const id = toAnchor(children);
+                return <h2 id={id} className="text-xl sm:text-2xl font-black text-gray-800 mt-7 mb-3 pt-4 border-t-2 border-green-200">{children}</h2>;
               },
               h3({ children }: { children?: React.ReactNode }) {
-                const id = String(children)
-                  .toLowerCase()
-                  .replace(/[^\w\u3040-\u30FF\u4E00-\u9FAF]+/g, '-')
-                  .replace(/^-|-$/g, '');
+                const id = toAnchor(children);
                 return <h3 id={id} className="text-lg sm:text-xl font-bold text-gray-800 mt-5 mb-2">{children}</h3>;
               },
               h4({ children }: { children?: React.ReactNode }) {

@@ -597,7 +597,7 @@ struct MainTabView: View {
     // 下端スワイプ or ハンドルタップによる手動復元は revealTabBar() で即時実行される。
     private func scheduleTabBarAutoReveal() {
         tabBarRevealWorkItem?.cancel()
-        let delay: Double = plus.isPlus ? 0.6 : 4.0
+        let delay: Double = plus.isPlus ? 0.6 : 5.0
         let workItem = DispatchWorkItem {
             guard isTabBarHidden else { return }
             revealTabBar()

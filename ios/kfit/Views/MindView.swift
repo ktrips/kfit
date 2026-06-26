@@ -65,18 +65,25 @@ struct MindView: View {
                         await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
                     }
                 } else {
-                    // Free ユーザー: タブ全体をロック
-                    PlusFullLockView(
-                        tabIcon: "brain.head.profile",
-                        tabName: "MIND",
-                        features: [
-                            "ストレス分析（HRVモニタリング）",
-                            "今日のまとめ（心拍・HRV）",
-                            "昨晩の睡眠スコア詳細",
-                            "健康改善の提案"
-                        ],
-                        onUpgrade: { showPlusViewFromMind = true }
-                    )
+                    // Free ユーザー: ロック画面 + Smartfulness バナー
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            PlusFullLockView(
+                                tabIcon: "brain.head.profile",
+                                tabName: "MIND",
+                                features: [
+                                    "ストレス分析（HRVモニタリング）",
+                                    "今日のまとめ（心拍・HRV）",
+                                    "昨晩の睡眠スコア詳細",
+                                    "健康改善の提案"
+                                ],
+                                onUpgrade: { showPlusViewFromMind = true }
+                            )
+                            smartfulnessBanner
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 32)
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -932,6 +939,64 @@ struct MindView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(
                 Color(hex: "#CE82FF").opacity(0.25), lineWidth: 1))
+        }
+    }
+
+    /// Free ユーザー向け Smartfulness Kindle バナー
+    private var smartfulnessBanner: some View {
+        let bookURL = URL(string: "https://amzn.to/4xODH4z")!
+        return Link(destination: bookURL) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Text("📚")
+                        .font(.system(size: 12 * UIScale.font))
+                    Text("Kindle書籍でマインドフルネスを学ぶ")
+                        .font(.system(size: 12 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                }
+                HStack(spacing: 12) {
+                    Text("🧘")
+                        .font(.system(size: 26 * UIScale.font))
+                        .frame(width: 50, height: 50)
+                        .background(Color(hex: "#CE82FF").opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Smartfulness")
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("AppleWatchで簡単、手軽にマインドフルなライフ&ワーク")
+                            .font(.system(size: 11 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 4) {
+                            Text("kindle")
+                                .font(.system(size: 8 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color(hex: "#FF9900"))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                            Text("Kindleで読む →")
+                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                .foregroundColor(Color(hex: "#FF9900"))
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF9900").opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color(hex: "#FF9900").opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                    Color(hex: "#FF9900").opacity(0.2), lineWidth: 1))
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
         }
     }
 

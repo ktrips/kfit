@@ -4644,8 +4644,8 @@ struct DashboardView: View {
                 Text("🍽️")
                     .font(.system(size: 14 * UIScale.font))
                 Text("Food Log")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
+                    .font(.system(size: 12 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoSubtitle)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -6161,8 +6161,8 @@ struct DashboardView: View {
                 Text("📚")
                     .font(.system(size: 13 * UIScale.font))
                 Text("More to Read")
-                    .font(.system(size: 13 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoDark)
+                    .font(.system(size: 12 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoSubtitle)
                 Spacer()
             }
             // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）

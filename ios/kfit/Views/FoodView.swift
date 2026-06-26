@@ -272,14 +272,15 @@ struct FoodView: View {
 
     private var nutritionSummaryCard: some View {
         VStack(spacing: 0) {
-            // ── PFCバランス ──────────────────────────────────────────────
-            if let analysis = pfcAnalysis, analysis.score > 0 {
-                pfcBalanceCard(analysis)
-            } else {
-                noPFCDataCard
+            // ── PFCバランス（Plus のみ） ─────────────────────────────────
+            if plus.isPlus {
+                if let analysis = pfcAnalysis, analysis.score > 0 {
+                    pfcBalanceCard(analysis)
+                } else {
+                    noPFCDataCard
+                }
+                Divider().padding(.horizontal, 12)
             }
-
-            Divider().padding(.horizontal, 12)
 
             // ── 水分・カフェイン・アルコール ────────────────────────────
             hydrationRow
@@ -290,8 +291,10 @@ struct FoodView: View {
             // ── クイックログパネル（タップで展開） ─────────────────────
             hydrationQuickLogPanel
 
-            // ── 改善ポイント ─────────────────────────────────────────
-            adviceInlineSection
+            // ── 改善ポイント（Plus のみ） ────────────────────────────────
+            if plus.isPlus {
+                adviceInlineSection
+            }
 
             Divider().padding(.horizontal, 12)
 

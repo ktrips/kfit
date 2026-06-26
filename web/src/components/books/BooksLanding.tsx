@@ -1,11 +1,8 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { BOOKS, BookId } from './BookViewer';
 
 // App Store のリンク
 const APP_STORE_URL = 'https://apps.apple.com/jp/app/kfit-fitingo/id6746108484';
-// iOS カスタム URL スキーム（アプリ起動 → 未インストール時は App Store へフォールバック）
-const IOS_SCHEME = 'fitingo://';
-
 interface BooksLandingProps {
   onSelectBook: (id: BookId) => void;
   onBackToApp?: () => void;
@@ -19,14 +16,6 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
   isPlus = false,
   isLoggedIn = false,
 }) => {
-  /** fitingo:// でアプリ起動し、2.5秒後に未インストールなら App Store へ */
-  const openIOSApp = useCallback(() => {
-    window.location.href = IOS_SCHEME;
-    setTimeout(() => {
-      window.location.href = APP_STORE_URL;
-    }, 2500);
-  }, []);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-green-50">
       {/* ── ヘッダー ── */}
@@ -188,36 +177,22 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
         </div>
 
         {/* ── iOS アプリを使う CTA ── */}
-        <div className="mt-10 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 sm:p-8 text-center shadow-xl">
-          <div className="text-4xl mb-3">📱</div>
-          <h3 className="text-2xl font-black mb-2">Fitingo iOSアプリを使う</h3>
-          <p className="text-green-100 mb-6 max-w-md mx-auto">
-            本書で解説したFitingoアプリをインストール済みの方はそのまま起動できます。<br />
-            未インストールの方は App Store からダウンロード。
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-            {/* アプリ起動ボタン（fitingo:// → 未インストール時 App Store へ） */}
-            <button
-              onClick={openIOSApp}
-              className="bg-white text-green-700 font-bold px-6 py-3 rounded-xl hover:bg-green-50 transition-colors flex items-center gap-2 shadow-md"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
-              </svg>
-              iOSアプリを使う
-            </button>
-            <a
-              href={APP_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white/20 hover:bg-white/30 text-white font-bold px-6 py-3 rounded-xl transition-colors text-sm"
-            >
-              App Store でダウンロード
-            </a>
+        <div className="mt-6 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 text-center shadow-lg flex flex-col sm:flex-row items-center gap-3 justify-between">
+          <div className="flex items-center gap-3 text-left">
+            <span className="text-2xl">📱</span>
+            <div>
+              <p className="font-bold text-sm leading-tight">Fitingo iOSアプリ</p>
+              <p className="text-green-100 text-xs">本書で解説したアプリを App Store で入手</p>
+            </div>
           </div>
-          <p className="text-green-200 text-xs mt-4">
-            アプリが起動しない場合は App Store からインストールしてください
-          </p>
+          <a
+            href={APP_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 bg-white text-green-700 font-bold px-5 py-2 rounded-xl hover:bg-green-50 transition-colors text-sm"
+          >
+            App Store でダウンロード
+          </a>
         </div>
       </section>
 

@@ -60,16 +60,16 @@ export const BOOKS: BookMeta[] = [
   },
   {
     id: 'cursor-claude-code-plus',
-    title: 'iPhoneアプリでプラスを作って収益化！',
-    subtitle: '個人開発アプリにPlus機能で収益化！',
+    title: 'Cursor + Claudeで個人開発アプリを収益化する方法',
+    subtitle: 'Kindle出版 & Plusサブスク実装 — AI個人開発 完全ガイド',
     emoji: '🚀',
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
     borderColor: 'border-purple-400',
     description:
-      'アプリ開発の次のステップ。Kindleドキュメント作成・KDP出版・Freemium設計・' +
-      'SNSマーケティングまで実践的に解説するPlusガイド。',
-    tags: ['マーケティング', 'Kindle', 'Freemium', 'Plus', 'SNS', '収益化'],
+      'アプリ開発の次のステップ。KDP出版・Freemium設計・Plusサブスク実装・' +
+      'SNSマーケティングまで実践的に解説するAI個人開発完全ガイド。',
+    tags: ['収益化', 'Kindle', 'Freemium', 'Plus', 'マーケティング', 'SNS'],
     companionFor: 'cursor-claude-code',
   },
 ];

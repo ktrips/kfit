@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GoalView: View {
     @Binding var selectedTab: Int
@@ -532,7 +533,12 @@ struct GoalView: View {
                     daysRemaining: daysRemaining,
                     startDate: goal.startDate,
                     targetDate: goal.targetDate,
-                    onGearTap: { showDietGoalSettings = true }
+                    onGearTap: { showDietGoalSettings = true },
+                    onWeightTap: {
+                        if let url = URL(string: "x-apple-health://") {
+                            UIApplication.shared.open(url)
+                        }
+                    }
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -2559,6 +2565,7 @@ private struct GoalTimelineStrip: View {
     var startDate: Date? = nil
     var targetDate: Date? = nil
     var onGearTap: (() -> Void)? = nil
+    var onWeightTap: (() -> Void)? = nil
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -2689,15 +2696,30 @@ private struct GoalTimelineStrip: View {
                 deltaArrowColumn(delta: startToCurrentDelta, color: Color.duoGreen)
                     .padding(.trailing, 6)
 
-                VStack(alignment: .center, spacing: 2) {
-                    weightText(currentWeight, size: 38, color: Color(hex: "#1CB0F6"), kgSize: 9)
-                        .frame(height: 54, alignment: .center)
-                    if let currentBodyFat {
-                        Text(currentBodyFat)
-                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(Color(hex: "#1CB0F6").opacity(0.8))
+                Button {
+                    onWeightTap?()
+                } label: {
+                    VStack(alignment: .center, spacing: 2) {
+                        weightText(currentWeight, size: 38, color: Color(hex: "#1CB0F6"), kgSize: 9)
+                            .frame(height: 54, alignment: .center)
+                        if let currentBodyFat {
+                            Text(currentBodyFat)
+                                .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(Color(hex: "#1CB0F6").opacity(0.8))
+                        }
+                        if onWeightTap != nil {
+                            HStack(spacing: 2) {
+                                Image(systemName: "heart.fill")
+                                    .font(.system(size: 7 * UIScale.font))
+                                    .foregroundColor(Color(hex: "#FF2D55"))
+                                Text("Health")
+                                    .font(.system(size: 7 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#1CB0F6").opacity(0.7))
+                            }
+                        }
                     }
                 }
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 deltaArrowColumn(delta: currentToGoalDelta, color: Color.duoGreen)

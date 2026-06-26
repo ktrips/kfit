@@ -38,7 +38,9 @@ jobs:
       - name: Deploy to Firebase Hosting
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KFITAPP }}' > /tmp/sa.json
-          npx firebase-tools@latest deploy --only hosting --project kfitapp
+          npx firebase-tools@latest deploy --only hosting --project kfitapp 2>&1 \
+            | tee /tmp/deploy_out.txt \
+            || grep -q "is the current active version" /tmp/deploy_out.txt
         working-directory: web
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json

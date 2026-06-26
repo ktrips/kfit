@@ -238,28 +238,28 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 );
               },
               // 見出し
-              h1({ children }) {
+              h1({ children }: { children?: React.ReactNode }) {
                 return <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-8 mb-3 leading-tight">{children}</h1>;
               },
-              h2({ children }) {
+              h2({ children }: { children?: React.ReactNode }) {
                 return <h2 className="text-xl sm:text-2xl font-black text-gray-800 mt-7 mb-3 pt-4 border-t-2 border-green-200">{children}</h2>;
               },
-              h3({ children }) {
+              h3({ children }: { children?: React.ReactNode }) {
                 const id = String(children)
                   .toLowerCase()
                   .replace(/[^\w\u3040-\u30FF\u4E00-\u9FAF]+/g, '-')
                   .replace(/^-|-$/g, '');
                 return <h3 id={id} className="text-lg sm:text-xl font-bold text-gray-800 mt-5 mb-2">{children}</h3>;
               },
-              h4({ children }) {
+              h4({ children }: { children?: React.ReactNode }) {
                 return <h4 className="text-base font-bold text-green-700 mt-4 mb-1">{children}</h4>;
               },
               // 段落
-              p({ children }) {
+              p({ children }: { children?: React.ReactNode }) {
                 return <p className="text-[15px] sm:text-base text-gray-700 leading-[1.85] mb-4">{children}</p>;
               },
               // 引用（ポイントボックス）
-              blockquote({ children }) {
+              blockquote({ children }: { children?: React.ReactNode }) {
                 return (
                   <blockquote className="border-l-4 border-amber-400 bg-amber-50 px-4 py-3 my-4 rounded-r-xl text-amber-900 text-sm font-medium">
                     {children}
@@ -267,8 +267,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 );
               },
               // コードブロック
-              code(props) {
-                const { children, className } = props as { children?: React.ReactNode; className?: string };
+              code({ children, className }: { children?: React.ReactNode; className?: string }) {
                 const isBlock = !!className;
                 if (!isBlock) {
                   return <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-[13px] font-mono">{children}</code>;
@@ -280,27 +279,27 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 );
               },
               // リスト
-              ul({ children }) {
+              ul({ children }: { children?: React.ReactNode }) {
                 return <ul className="list-disc list-outside pl-5 space-y-1.5 mb-4 text-gray-700 text-[15px] sm:text-base">{children}</ul>;
               },
-              ol({ children }) {
+              ol({ children }: { children?: React.ReactNode }) {
                 return <ol className="list-decimal list-outside pl-5 space-y-1.5 mb-4 text-gray-700 text-[15px] sm:text-base">{children}</ol>;
               },
-              li({ children }) {
+              li({ children }: { children?: React.ReactNode }) {
                 return <li className="leading-relaxed pl-1">{children}</li>;
               },
               // テーブル
-              table({ children }) {
+              table({ children }: { children?: React.ReactNode }) {
                 return (
                   <div className="overflow-x-auto my-5 -mx-1">
                     <table className="min-w-full text-xs sm:text-sm border-collapse">{children}</table>
                   </div>
                 );
               },
-              th({ children }) {
+              th({ children }: { children?: React.ReactNode }) {
                 return <th className="bg-gray-100 border border-gray-300 px-2 sm:px-3 py-2 text-left font-bold text-gray-700 whitespace-nowrap">{children}</th>;
               },
-              td({ children }) {
+              td({ children }: { children?: React.ReactNode }) {
                 return <td className="border border-gray-200 px-2 sm:px-3 py-2 text-gray-700">{children}</td>;
               },
               // 水平線
@@ -308,7 +307,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 return <hr className="my-8 border-t-2 border-gray-100" />;
               },
               // リンク
-              a({ href, children }) {
+              a({ href, children }: { href?: string; children?: React.ReactNode }) {
                 return (
                   <a href={href} className="text-blue-600 hover:underline font-medium" target={href?.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer">
                     {children}
@@ -316,7 +315,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 );
               },
               // 太字
-              strong({ children }) {
+              strong({ children }: { children?: React.ReactNode }) {
                 return <strong className="font-bold text-gray-900">{children}</strong>;
               },
           };

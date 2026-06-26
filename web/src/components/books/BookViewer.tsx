@@ -322,6 +322,26 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
 
           return (
             <>
+              {/* ── トップバッジ ── */}
+              {isPlus ? (
+                <div className="flex items-center gap-2 mb-5">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-700 text-xs font-black px-3 py-1.5 rounded-full">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    Full pages
+                  </span>
+                  <span className="text-xs text-gray-400">Fitingo Plus で全文公開中</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-5">
+                  <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-300 text-blue-600 text-xs font-black px-3 py-1.5 rounded-full">
+                    📖 試し読み
+                  </span>
+                  <span className="text-xs text-gray-400">約10ページ分を無料公開中</span>
+                </div>
+              )}
+
               {/* ── 本文 ── */}
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -331,65 +351,82 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 {displayContent}
               </ReactMarkdown>
 
-              {/* ── ペイウォール（非Plusかつコンテンツが制限されている場合のみ） ── */}
+              {/* ── 試し読み終端（Free ユーザー） ── */}
               {needsTruncation && (
                 <div className="mt-8">
-                  {/* フェードアウト境界 */}
+                  {/* フェードアウト */}
                   <div className="relative h-32 -mt-32 pointer-events-none"
                     style={{ background: 'linear-gradient(to bottom, transparent, white)' }} />
 
-                  {/* ペイウォールカード */}
-                  <div className="rounded-2xl border-2 border-green-300 bg-green-50 p-6 text-center shadow-lg">
-                    <div className="text-4xl mb-3">⊕</div>
-                    <h3 className="text-xl font-black text-gray-800 mb-2">
-                      ここまでは試し読みできます
-                    </h3>
-                    <p className="text-base text-gray-700 mb-1 leading-relaxed font-semibold">
-                      全文を読むには Fitingo Plus が必要です
-                    </p>
-                    <p className="text-sm text-gray-500 mb-5 leading-relaxed">
-                      Fitingo Plus に登録すると、全書籍をWebで全文読むことができます。
-                    </p>
+                  {/* 試し読みバッジ + 購入 CTA */}
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+                    <span className="inline-flex items-center gap-1.5 bg-blue-50 border border-blue-300 text-blue-600 text-xs font-black px-3 py-1.5 rounded-full mb-4">
+                      📖 試し読み
+                    </span>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">続きを読む方法</p>
+                    <p className="text-xs text-gray-400 mb-5">Kindleで購入するか、Fitingo Plusに登録すると全文を読めます</p>
 
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <div className="flex flex-col gap-3">
+                      <a
+                        href={KINDLE_URLS[bookId]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 text-white font-black px-5 py-3 rounded-xl text-sm transition-colors shadow-sm"
+                      >
+                        📚 Kindleで購入して続きを読む
+                      </a>
                       <a
                         href={APP_STORE_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-black px-6 py-3 rounded-xl text-base transition-colors shadow-md"
+                        className="inline-flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold px-5 py-3 rounded-xl text-sm transition-colors"
                       >
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                           <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
                         </svg>
-                        iOSを開く → Plusに登録
+                        Fitingo Plus に登録して全文を読む
                       </a>
                       <a
                         href="https://fit.ktrips.net"
-                        className="inline-flex items-center gap-2 bg-white border-2 border-green-400 text-green-700 hover:bg-green-50 font-bold px-6 py-3 rounded-xl text-base transition-colors"
+                        className="text-xs text-gray-400 hover:text-gray-600 underline"
                       >
-                        🌐 WebアプリでPlus登録
+                        🌐 Webアプリで Plus 登録
                       </a>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── Plus ユーザー向けフッター ── */}
+              {/* ── Plus ユーザー向けフッター CTA ── */}
               {isPlus && (
-                <div className="mt-12 rounded-2xl bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 p-6 text-center">
-                  <p className="text-green-700 font-bold text-sm mb-1">⊕ Fitingo Plus で全文公開中</p>
-                  <p className="text-gray-500 text-xs">引き続きFitingoアプリで習慣を記録しましょう</p>
-                  <a
-                    href={APP_STORE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
-                    </svg>
-                    iOSを開く
-                  </a>
+                <div className="mt-12 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 p-6 text-center shadow-xl">
+                  <div className="text-4xl mb-3">💪</div>
+                  <h3 className="text-xl font-black text-white mb-2">
+                    iOSアプリでトレーニングを記録
+                  </h3>
+                  <p className="text-green-100 text-sm mb-5 leading-relaxed">
+                    本書で学んだ内容をFitingoアプリで実践しましょう。<br />
+                    毎日の習慣をトラッキングして目標を達成！
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    <a
+                      href="fitingo://"
+                      className="inline-flex items-center gap-2 bg-white text-green-700 font-black px-6 py-3 rounded-xl text-sm shadow-md hover:bg-green-50 transition-colors"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/>
+                      </svg>
+                      アプリを開いて記録する
+                    </a>
+                    <a
+                      href={APP_STORE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors"
+                    >
+                      App Store でダウンロード
+                    </a>
+                  </div>
                 </div>
               )}
             </>

@@ -6,6 +6,14 @@ target 'kfit' do
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'
   pod 'GoogleSignIn'
+
+  # ── Google AdMob（有効化手順） ─────────────────────────────────────────
+  # 1. 以下の行をコメント解除して `pod install` を実行
+  # 2. Info.plist に GADApplicationIdentifier（AdMob コンソールの App ID）を追加
+  # 3. kfitApp.swift の GADBannerViewRepresentable コメントを解除
+  # 4. RotatingAdBanner の case .admob を uncomment して adUnitID を設定
+  pod 'Google-Mobile-Ads-SDK'
+  # ─────────────────────────────────────────────────────────────────────
 end
 
 post_install do |installer|

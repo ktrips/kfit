@@ -43,6 +43,7 @@
 - [第二章: フリーミアム設計 ─ Free と Plus の線引き](#第二章-フリーミアム設計)
 - [第三章: StoreKit 2 でサブスクリプションを実装する](#第三章-storekit-2-でサブスクリプションを実装する)
 - [第四章: Plus Gating UI ─ 機能制限画面の設計と実装](#第四章-plus-gating-ui)
+  - [4-A. Google AdMob バナー広告で Free ユーザーから副収益を得る](#4-a-google-admob-バナー広告で-free-ユーザーから副収益を得る)
 - [第五章: Markdown から Kindle 本を作る](#第五章-markdown-から-kindle-本を作る)
 - [第六章: KDP（Kindle Direct Publishing）で出版する](#第六章-kdp-で出版する)
 - [第七章: App Store 最適化（ASO）](#第七章-app-store-最適化aso)
@@ -1208,6 +1209,112 @@ iOS アプリの各ページで Plus gating を適用してください。
 - 機能リストは各ページの実際の Plus 機能を列挙する
 PlusManager.shared.isPlus で判定し、@EnvironmentObject を使ってください。
 ```
+
+### 4-A. Google AdMob バナー広告で Free ユーザーから副収益を得る
+
+Plus サブスクリプションだけが収益源だと、転換率が低い時期に収入がゼロになります。AdMob バナー広告を組み合わせることで、**Free ユーザーからも収益を生む**二重構造を作れます。
+
+#### 設計方針：「隠れたスペース」を広告枠にする
+
+タブバーを隠した瞬間に下部へバナーを表示する、Fitingo 独自のアプローチです。
+
+```
+スクロール開始（下スワイプ）
+  → タブバーが 0.6 秒以内に非表示（画面が広がる）
+  → Freeユーザーの場合、バナー広告が下部からスライドイン
+
+スクロール停止
+  → 0.6 秒後にタブバーがバネで「ニュルっ」と復帰
+  → バナーも一緒に退場
+```
+
+UX 上のポイントは「邪魔にならない」設計です。広告はユーザーが画面を広く使いたいタイミング（スクロール中）にのみ表示され、操作中は見えない。
+
+#### 表示ロジック（`kfitApp.swift`）
+
+```swift
+// Free ユーザー & タブバー非表示時のみ表示
+if isTabBarHidden && !plus.isPlus && !promoBannerDismissed {
+    RotatingAdBanner(
+        onUpgrade: { revealTabBar(); showPlusView = true },
+        onDismiss: { promoBannerDismissed = true }
+    )
+    .transition(.move(edge: .bottom).combined(with: .opacity))
+}
+```
+
+#### バナーの表示比率
+
+12 秒ごとに自動切替。3スロットを以下の割合で使用：
+
+| スロット | 内容 | 割合 |
+|---------|------|------|
+| `plus` | Fitingo Plus アップグレード訴求 | **1/3** |
+| `admob1` | Google AdMob バナー広告 | **1/3** |
+| `admob2` | Google AdMob バナー広告 | **1/3** |
+
+Plus への誘導を維持しながら、2/3 の時間で外部広告収益を得る設計です。
+
+#### AdMob セットアップ手順
+
+**1. Podfile に追加**
+
+```ruby
+pod 'Google-Mobile-Ads-SDK'
+```
+
+```bash
+cd ios && pod install --repo-update
+```
+
+**2. Info.plist に App ID を追加**
+
+```xml
+<key>GADApplicationIdentifier</key>
+<string>ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX</string>
+```
+
+**3. `UIViewRepresentable` でバナービューを作成**
+
+```swift
+import GoogleMobileAds
+
+struct GADBannerViewRepresentable: UIViewRepresentable {
+    let adUnitID: String
+
+    func makeUIView(context: Context) -> BannerView {
+        let banner = BannerView(adSize: AdSizeBanner)  // 320×50
+        banner.adUnitID = adUnitID
+        banner.rootViewController = UIApplication.shared
+            .connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first?.rootViewController
+        banner.load(Request())
+        return banner
+    }
+
+    func updateUIView(_ uiView: BannerView, context: Context) {}
+}
+```
+
+> **命名の変化に注意**: Google Mobile Ads SDK v12 以降、`GADBannerView` → `BannerView`、`GADAdSizeBanner` → `AdSizeBanner`、`GADRequest` → `Request` に改称されています。
+
+#### 収益見込み
+
+日本の AdMob バナー eCPM 目安: **¥50〜¥200 / 1,000 表示**
+
+| Free DAU | 月間インプレッション | 推定月収（eCPM ¥100） |
+|---------|-----------------|-------------------|
+| 100人 | 約 15,000 | 約 ¥1,500 |
+| 500人 | 約 75,000 | 約 ¥7,500 |
+| 2,000人 | 約 300,000 | 約 ¥30,000 |
+
+AdMob 単体では大きな収益にはなりませんが、**Plus 転換を後押しする心理的圧力**（「広告なしにしたければ Plus へ」）として機能します。
+
+#### ATT（App Tracking Transparency）について
+
+今回の実装はパーソナライズ広告なし（コンテキスト広告のみ）のため、ATT 許可ダイアログは不要です。将来的に ATT を実装してパーソナライズ広告を有効化すると、eCPM が 1.5〜3 倍改善する可能性があります。
 
 <div style="page-break-after: always;"></div>
 

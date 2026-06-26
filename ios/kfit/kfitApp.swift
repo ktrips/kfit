@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleMobileAds
 import FirebaseCore
 import FirebaseFirestore
 import FirebaseAuth
@@ -272,12 +273,12 @@ struct MainTabView: View {
                             if value.translation.height < -20 && !isTabBarHidden {
                                 hideTabBarNow()
                             }
+                            // スクロール中は毎フレーム自動復元タイマーをリセット。
+                            // 動きが止まった 0.6s 後にタブバーが「ニュルっ」と出る。
                             if isTabBarHidden { scheduleTabBarAutoReveal() }
                         }
-                        .onEnded { _ in
-                            // 指を離した瞬間に即座にタブバーを復元する
-                            if isTabBarHidden { revealTabBar() }
-                        }
+                        // onEnded での即時復元を削除: 指を離した直後でもスクロール慣性が
+                        // 残っている間はバーを隠したままにするため 0.6s タイマーに委ねる
                 )
 
             bottomRevealZone
@@ -291,8 +292,16 @@ struct MainTabView: View {
                 .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
 
             if isTabBarHidden && !plus.isPlus && !promoBannerDismissed {
-                plusPromoBanner
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                RotatingAdBanner(
+                    onUpgrade: { revealTabBar(); showPlusView = true },
+                    onDismiss: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            promoBannerDismissed = true
+                        }
+                    }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
             }
         }
     }
@@ -499,72 +508,8 @@ struct MainTabView: View {
         )
     }
 
-    // MARK: - Plus プロモーションバナー（Freeユーザー・タブバー非表示時）
+    // plusPromoBanner は RotatingAdBanner に統合済み
 
-    private var plusPromoBanner: some View {
-        HStack(spacing: 10) {
-            PlusBadge(size: 32)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Fitingo Plus で全機能を解放")
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundColor(Color(hex: "#FF8C00"))
-                Text("AI解析・Kindle本読み放題・友達無制限")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color(hex: "#994D00"))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 4)
-
-            Button {
-                revealTabBar()
-                showPlusView = true
-            } label: {
-                Text("詳細")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(hex: "#FF8C00"))
-                    .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                    promoBannerDismissed = true
-                }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color(hex: "#994D00").opacity(0.6))
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            LinearGradient(
-                colors: [Color(hex: "#FFF5CC"), Color(hex: "#FFE580")],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(
-            Rectangle()
-                .fill(Color(hex: "#FFD700").opacity(0.4))
-                .frame(height: 1),
-            alignment: .top
-        )
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isTabBarHidden)
-        .onTapGesture {
-            revealTabBar()
-            showPlusView = true
-        }
-    }
 
     private var recordBtn: some View {
         Button {
@@ -646,15 +591,19 @@ struct MainTabView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
     }
 
-    // スクロール停止から1.0秒後に自動表示（onEnded で即時表示できなかった場合のフォールバック）
+    // スクロール停止後の自動復元タイマー。
+    // - Free ユーザー: バナー広告を長めに見せるため 4.0s 待ってからメニューを復帰
+    // - Plus ユーザー: 広告なし → 0.6s で素早く復帰
+    // 下端スワイプ or ハンドルタップによる手動復元は revealTabBar() で即時実行される。
     private func scheduleTabBarAutoReveal() {
         tabBarRevealWorkItem?.cancel()
+        let delay: Double = plus.isPlus ? 0.6 : 4.0
         let workItem = DispatchWorkItem {
             guard isTabBarHidden else { return }
             revealTabBar()
         }
         tabBarRevealWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private func checkEndOfDayCalorieTopUp() {
@@ -1110,6 +1059,129 @@ struct UserStatusSheet: View {
             .buttonStyle(.plain)
         }
     }
+}
+
+// MARK: - RotatingAdBanner
+// Free ユーザーがタブバーを隠している間に表示される回転バナー広告。
+// 表示種別は 6 秒ごとに自動切替。将来的に Google AdMob バナーを挿入できるスロットを確保。
+//
+// ── AdMob 有効化手順 ──────────────────────────────────────────────────
+// 1. Podfile に pod 'Google-Mobile-Ads-SDK' を追加して pod install
+// 2. Info.plist に GADApplicationIdentifier（AdMob App ID）を追加
+// 3. このファイル冒頭に `import GoogleMobileAds` を追加
+// 4. AdSlot.admob の case と GADBannerViewRepresentable のコメントを解除
+// 5. adUnitID を本番 Ad Unit ID（例: ca-app-pub-xxxx/yyyy）に変更
+// ────────────────────────────────────────────────────────────────────
+
+// 表示順: Plus(1/3) → AdMob(1/3) → AdMob(1/3) のサイクル
+private enum AdSlot: CaseIterable {
+    case plus
+    case admob1
+    case admob2
+}
+
+struct RotatingAdBanner: View {
+    var onUpgrade: () -> Void = {}
+    var onDismiss: () -> Void = {}
+
+    @State private var slotIndex = 0
+    private let slots = AdSlot.allCases
+    private let rotateEvery: TimeInterval = 12
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            slotView(slots[slotIndex % slots.count])
+                .id(slotIndex)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal:   .move(edge: .leading).combined(with: .opacity)
+                ))
+                .animation(.easeInOut(duration: 0.35), value: slotIndex)
+
+            // 閉じるボタン
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+        }
+        .onReceive(Timer.publish(every: rotateEvery, on: .main, in: .common).autoconnect()) { _ in
+            withAnimation { slotIndex += 1 }
+        }
+    }
+
+    // MARK: - 各スロットのビュー
+    @ViewBuilder
+    private func slotView(_ slot: AdSlot) -> some View {
+        switch slot {
+        case .plus:
+            plusBanner
+        case .admob1, .admob2:
+            GADBannerViewRepresentable(adUnitID: "ca-app-pub-5882080850213183/5404288349")
+                .frame(height: 50)
+                .background(Color.white)
+        }
+    }
+
+    // ── Plus アップグレードバナー ──
+    private var plusBanner: some View {
+        HStack(spacing: 10) {
+            PlusBadge(size: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Fitingo Plus で全機能を解放")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundColor(Color(hex: "#FF8C00"))
+                Text("AI解析・Kindle本読み放題・広告なし")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(hex: "#994D00"))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button {
+                onUpgrade()
+            } label: {
+                Text("詳細")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color(hex: "#FF8C00"))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#FFF5CC"), Color(hex: "#FFE580")],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(Rectangle().fill(Color(hex: "#FFD700").opacity(0.4)).frame(height: 1), alignment: .top)
+        .onTapGesture { onUpgrade() }
+    }
+
+}
+
+// MARK: - AdMob バナービュー
+
+struct GADBannerViewRepresentable: UIViewRepresentable {
+    let adUnitID: String
+
+    func makeUIView(context: Context) -> BannerView {
+        let banner = BannerView(adSize: AdSizeBanner)
+        banner.adUnitID = adUnitID
+        banner.rootViewController = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first?.rootViewController
+        banner.load(Request())
+        return banner
+    }
+
+    func updateUIView(_ uiView: BannerView, context: Context) {}
 }
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {

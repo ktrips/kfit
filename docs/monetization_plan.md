@@ -187,10 +187,105 @@ Phase 3: 機能拡充（6ヶ月目〜）
 
 | 手段 | 内容 | 推定月収 |
 |-----|------|---------|
+| **Google AdMob バナー広告** | Freeユーザーのタブバー非表示時に表示（後述 §8） | 数百円〜数千円 |
 | **Withingsアフィリエイト** | 体重計ページからリンク（紹介料3〜8%） | 数千円〜 |
 | **Kindle書籍誘導** | HelpView経由（`fit.ktrips.net/books`） | 数百円〜 |
 | **買い切りテーマパック** | ¥250/パック（スパイラルデザイン等） | 変動 |
 | **法人ライセンス** | ジム・企業向け一括契約 | 将来検討 |
+
+---
+
+---
+
+## 8. Google AdMob バナー広告戦略
+
+最終更新: 2026-06-27
+
+### 8-1. 設計方針
+
+Freeユーザーが**タブバーを隠した瞬間に出現する**バナースペースを収益化。  
+Plus ユーザーには一切表示しない（広告なし = Plus の差別化要素）。
+
+```
+タブバー非表示 + Freeユーザー
+  ↓
+RotatingAdBanner が下部に自動表示（春アニメーション）
+
+表示サイクル（12秒ごとに切替）:
+  1. Fitingo Plus プロモ  … 1/3 の時間
+  2. AdMob バナー広告    … 2/3 の時間（admob1 / admob2 の2スロット）
+```
+
+### 8-2. 実装概要
+
+**使用 SDK:** Google Mobile Ads SDK（pod 'Google-Mobile-Ads-SDK'）
+
+**AdMob 設定値:**
+| 項目 | 値 |
+|-----|---|
+| App ID | `ca-app-pub-5882080850213183~2390690731` |
+| Ad Unit ID（バナー） | `ca-app-pub-5882080850213183/5404288349` |
+| バナーサイズ | `AdSizeBanner`（320×50 標準バナー） |
+
+**Info.plist に追加済み:**
+```xml
+<key>GADApplicationIdentifier</key>
+<string>ca-app-pub-5882080850213183~2390690731</string>
+```
+
+**主要コンポーネント（`kfitApp.swift`）:**
+
+```swift
+// 表示スロット定義
+private enum AdSlot: CaseIterable {
+    case plus    // Plus アップグレード訴求（1/3）
+    case admob1  // AdMob バナー（1/3）
+    case admob2  // AdMob バナー（1/3）
+}
+
+// AdMob バナービュー
+struct GADBannerViewRepresentable: UIViewRepresentable {
+    let adUnitID: String
+    func makeUIView(context: Context) -> BannerView {
+        let banner = BannerView(adSize: AdSizeBanner)
+        banner.adUnitID = adUnitID
+        banner.rootViewController = /* rootVC取得 */
+        banner.load(Request())
+        return banner
+    }
+    func updateUIView(_ uiView: BannerView, context: Context) {}
+}
+```
+
+### 8-3. UX 設計のポイント
+
+| 要素 | 設計 |
+|-----|------|
+| **表示タイミング** | スクロール開始で即座に非表示 → 停止 0.6 秒後にバネで再表示 |
+| **バナー出現** | タブバー非表示時に下部からスライドイン（`.move(edge: .bottom)`） |
+| **閉じるボタン** | バナー右上の × で非表示（タブバー再表示まで）|
+| **Plus誘導率** | バナーの 1/3 が Plus アップグレード CTA |
+| **収益最大化** | 残り 2/3 を AdMob に割り当て |
+
+### 8-4. 収益見込み（AdMob）
+
+日本のモバイル広告 eCPM の目安: **¥50〜¥200 / 1,000インプレッション**
+
+| 月間 Free DAU | 表示回数/人/日 | 月間インプレッション | 推定月収（eCPM ¥100） |
+|-------------|------------|-----------------|-------------------|
+| 100 | 5回 | 15,000 | 約 **¥1,500** |
+| 500 | 5回 | 75,000 | 約 **¥7,500** |
+| 2,000 | 5回 | 300,000 | 約 **¥30,000** |
+| 5,000 | 5回 | 750,000 | 約 **¥75,000** |
+
+> AdMob 収益は Plus サブスクより単価が低いため、**Free → Plus 転換の補助収益**として位置づける。
+
+### 8-5. 運用上の注意
+
+- App Store 審査では「広告を含む」旨をメタデータで申告（App Store Connect → App Privacy）
+- IDFA（広告識別子）を使用する場合は `AppTrackingTransparency` の許可ダイアログが必要
+- 今回の実装は ATT 未実装のため、**コンテキスト広告のみ配信**される（パーソナライズなし）
+- 将来的に ATT を実装すると eCPM が 1.5〜3 倍改善する場合がある
 
 ---
 

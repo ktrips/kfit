@@ -1127,6 +1127,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         // Apple Watch → iPhone ブリッジを起動
         _ = iOSWatchBridge.shared
+        // アプリ起動時に現在の Plus 状態を Watch へ即時送信
+        iOSWatchBridge.shared.sendPlusStatusToWatch(isPlus: PlusManager.shared.isPlus)
 
         return true
     }

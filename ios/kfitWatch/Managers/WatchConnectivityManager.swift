@@ -442,7 +442,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
 
             // プロフィール更新（Watch側）
-            if message["streak"] != nil {
+            if message["streak"] != nil || message["isPlus"] != nil {
                 self.handleProfileUpdate(message)
             }
         }
@@ -467,7 +467,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 }
             }
 
-            if applicationContext["streak"] != nil {
+            if applicationContext["streak"] != nil || applicationContext["isPlus"] != nil {
                 self.handleProfileUpdate(applicationContext)
             }
 

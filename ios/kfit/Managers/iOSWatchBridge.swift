@@ -1,3 +1,4 @@
+import Combine
 import WatchConnectivity
 import Foundation
 
@@ -19,9 +20,41 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     private var lastStatsFetchTime: Date?            // 重いフェッチを最後に開始した時刻
     private var pendingStatsTask: Task<Void, Never>? // 末尾集約用の遅延送信タスク
 
+    // Plus 状態変化の監視
+    private var plusCancellable: AnyCancellable?
+
     private override init() {
         super.init()
         activate()
+        observePlusStatus()
+    }
+
+    /// PlusManager.isPlus が変化したとき即座に Watch へ通知
+    private func observePlusStatus() {
+        plusCancellable = PlusManager.shared.$isPlus
+            .dropFirst()            // 初期値は sendStats 経由で送られるのでスキップ
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isPlus in
+                self?.sendPlusStatusToWatch(isPlus: isPlus)
+            }
+    }
+
+    /// Plus 状態だけを Watch へ即時送信（Application Context 経由でオフラインも対応）
+    func sendPlusStatusToWatch(isPlus: Bool) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return }
+        let payload: [String: Any] = ["isPlus": isPlus]
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: { error in
+                dlog("[iOSWatchBridge] sendPlusStatus error: \(error) – falling back to context")
+                try? session.updateApplicationContext(payload)
+            })
+        } else {
+            try? session.updateApplicationContext(payload)
+        }
+        dlog("[iOSWatchBridge] 📤 Plus status sent to Watch: \(isPlus)")
     }
 
     func activate() {

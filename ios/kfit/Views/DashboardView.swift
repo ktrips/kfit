@@ -361,6 +361,26 @@ private final class DashboardDebouncer: ObservableObject {
     var widgetUpdate: DispatchWorkItem?
     var widgetReload: DispatchWorkItem?
     var mandalaRecompute: DispatchWorkItem?
+    var pfcAnalysis: DispatchWorkItem?
+}
+
+/// 動画カルーセルの自動送りタイマー。
+/// `showTrainingVideo == true` のときのみ View ツリーに存在するため、
+/// 動画非表示時にメインスレッドタイマーが常時発火するのを防ぐ。
+private struct VideoCarouselTicker: View {
+    let playlistCount: Int
+    let onTick: (Int) -> Void
+    @State private var index = 0
+
+    var body: some View {
+        Color.clear
+            .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
+                guard playlistCount > 0 else { return }
+                let next = (index + 1) % playlistCount
+                withAnimation(.easeInOut(duration: 0.2)) { onTick(next) }
+                index = next
+            }
+    }
 }
 
 struct DashboardView: View {
@@ -412,6 +432,7 @@ struct DashboardView: View {
     @State private var cachedProgressStats = ProgressStats()
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
+    @State private var cachedMandalaOverallCount: (done: Int, total: Int) = (0, 0)
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -438,6 +459,12 @@ struct DashboardView: View {
     @State private var tempStepsGoal = 10000  // 一時的な歩数目標
     @State private var tempCaloriesGoal = 500  // 一時的な消費カロリー目標
     @State private var todayIntake = TodayIntakeSummary()  // 今日の摂取記録
+    /// 現在時刻を小数時で保持（レンダリングのたびに Date()+Calendar を呼ばないためキャッシュ）
+    @State private var cachedNowDecimal: Double = {
+        let h = Calendar.current.component(.hour,   from: Date())
+        let m = Calendar.current.component(.minute, from: Date())
+        return Double(h) + Double(m) / 60.0
+    }()
     @State private var intakeGoals = IntakeSettings.defaultSettings  // 摂取目標
     @State private var showIntakeGoalEdit = false  // 摂取目標編集モーダル
     @State private var showIntakeConfirm = false  // 摂取記録確認ダイアログ
@@ -492,9 +519,9 @@ struct DashboardView: View {
             .onChange(of: healthKit.sleepSegments.count) { _, _ in
                 sleepScore = healthKit.analyzeSleepScore(targetHours: Double(dailyFixedGoals.sleepHoursGoal))
             }
-            .onChange(of: healthKit.todayIntakeProtein) { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
-            .onChange(of: healthKit.todayIntakeFat)     { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
-            .onChange(of: healthKit.todayIntakeCarbs)   { _, _ in pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals) }
+            .onChange(of: healthKit.todayIntakeProtein) { _, _ in schedulePFCAnalysis() }
+            .onChange(of: healthKit.todayIntakeFat)     { _, _ in schedulePFCAnalysis() }
+            .onChange(of: healthKit.todayIntakeCarbs)   { _, _ in schedulePFCAnalysis() }
         return withHealthKitObservers
             .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }
@@ -506,6 +533,9 @@ struct DashboardView: View {
             }
             .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
                 Task { await periodicWidgetSync() }
+                let h = Calendar.current.component(.hour,   from: Date())
+                let m = Calendar.current.component(.minute, from: Date())
+                cachedNowDecimal = Double(h) + Double(m) / 60.0
             }
             .onAppear(perform: handleOnAppear)
             .onChange(of: scenePhase) { _, newPhase in
@@ -2219,7 +2249,22 @@ struct DashboardView: View {
     // 時間帯カードと同じ実績ソース（countSetsInTimeSlot / HealthKit）を使い、スパイラルの完了を正確に反映する
     /// マンダラノードを再計算してキャッシュに格納する（入力変化時のみ呼ぶ）
     private func recomputeMandalaNodes() {
-        cachedMandalaNodes = computeMandalaNodes()
+        let nodes = computeMandalaNodes()
+        cachedMandalaNodes = nodes
+        // mandalaOverallCount のキャッシュも同時更新（body内での毎回走査を回避）
+        let visibleSlotSet = Set(mandalaVisibleSlots)
+        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
+        cachedMandalaOverallCount = (visible.filter(\.isCompleted).count, visible.count)
+    }
+
+    /// PFC 3プロパティが同時変化しても 0.3s debounce で1回だけ計算
+    private func schedulePFCAnalysis() {
+        debouncer.pfcAnalysis?.cancel()
+        let work = DispatchWorkItem { [self] in
+            pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
+        }
+        debouncer.pfcAnalysis = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     /// HealthKit の各値変化など高頻度トリガー用。連続発火をデバウンスして
@@ -2358,10 +2403,7 @@ struct DashboardView: View {
     }
 
     private var mandalaOverallCount: (done: Int, total: Int) {
-        let visibleSlotSet = Set(mandalaVisibleSlots)
-        let nodes = cachedMandalaNodes
-        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
-        return (visible.filter(\.isCompleted).count, visible.count)
+        cachedMandalaOverallCount
     }
 
     private func mandalaContextString(_ nodes: [MandalaNodeData]) -> String {
@@ -2789,9 +2831,7 @@ struct DashboardView: View {
             + (healthKit.activityStandGoal > 0 ? 1 : 0)
         let activityScore = activeCount > 0
             ? Int((moveP + exerciseP + standP) / Double(activeCount) * 100) : 0
-        let nowHour = Calendar.current.component(.hour, from: Date())
-        let nowMin  = Calendar.current.component(.minute, from: Date())
-        let nowDec  = Double(nowHour) + Double(nowMin) / 60.0
+        let nowDec  = cachedNowDecimal
         let expectedPace: Double = nowDec <= 6 ? 0 : nowDec >= 24 ? 1 : (nowDec - 6) / 18.0
         let paceDiff = activityScore - Int(expectedPace * 100)
         let (paceLabel, paceColor): (String, Color) = {
@@ -6507,12 +6547,11 @@ private struct TrainingVideoButton: View {
 
             if showTrainingVideo {
                 trainingVideoExpanded
-            }
-        }
-        .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
-            guard showTrainingVideo, !playlist.isEmpty else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                trainingVideoIndex = (trainingVideoIndex + 1) % playlist.count
+                // タイマーは展開時のみ View ツリーに存在させ、常時発火を防ぐ
+                VideoCarouselTicker(playlistCount: playlist.count) { next in
+                    trainingVideoIndex = next
+                }
+                .frame(width: 0, height: 0)
             }
         }
     }

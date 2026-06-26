@@ -60,7 +60,7 @@ export const BOOKS: BookMeta[] = [
   },
   {
     id: 'cursor-claude-code-plus',
-    title: 'iPhoneアプリ＋！マーケティングする方法',
+    title: 'iPhoneアプリでプラスを作って収益化！',
     subtitle: '個人開発アプリにPlus機能で収益化！',
     emoji: '🚀',
     color: 'text-purple-600',

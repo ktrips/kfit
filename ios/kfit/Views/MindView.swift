@@ -53,6 +53,7 @@ struct MindView: View {
                             averageStressCard
                             sleepScoreCard
                             suggestionsCard
+                            mindBookSection
                             Spacer(minLength: 40)
                         }
                         .padding(.horizontal, 16)
@@ -891,6 +892,46 @@ struct MindView: View {
                     recommendationRow(item)
                 }
             }
+        }
+    }
+
+    private var mindBookSection: some View {
+        let bookURL = URL(string: "https://amzn.to/4xODH4z")!
+        return Link(destination: bookURL) {
+            HStack(spacing: 12) {
+                Text("🧘")
+                    .font(.system(size: 26 * UIScale.font))
+                    .frame(width: 50, height: 50)
+                    .background(Color(hex: "#CE82FF").opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Smartfulness")
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("AppleWatchで簡単、手軽にマインドフルなライフ&ワーク")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 4) {
+                        Image(systemName: "book.fill")
+                            .font(.system(size: 9 * UIScale.font))
+                            .foregroundColor(Color(hex: "#CE82FF"))
+                        Text("Amazonで見る →")
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color(hex: "#CE82FF"))
+                    }
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color(hex: "#CE82FF").opacity(0.7))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(hex: "#CE82FF").opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                Color(hex: "#CE82FF").opacity(0.25), lineWidth: 1))
         }
     }
 

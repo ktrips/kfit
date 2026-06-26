@@ -52,14 +52,14 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
       </header>
 
       {/* ── ヒーロー ── */}
-      <section className="max-w-4xl mx-auto px-4 pt-16 pb-10 text-center">
-        <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-sm font-bold mb-6">
+      <section className="max-w-2xl mx-auto px-4 pt-8 sm:pt-14 pb-6 sm:pb-10 text-center">
+        <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-sm font-bold mb-5">
           <span>🇯🇵</span> 日本語電子書籍
         </div>
-        <h1 className="text-4xl sm:text-5xl font-black text-gray-900 mb-4 leading-tight">
-          Kenichi Yoshida の<br className="sm:hidden" />技術書コレクション
+        <h1 className="text-3xl sm:text-4xl font-black text-gray-900 mb-3 leading-tight">
+          Kenichi Yoshida の技術書コレクション
         </h1>
-        <p className="text-gray-500 text-lg max-w-xl mx-auto">
+        <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto">
           Apple Watchフィットネス・iOS個人開発の実践知識を凝縮。<br />
           {isPlus
             ? '全文をWebで読めます。'
@@ -90,8 +90,8 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
       </section>
 
       {/* ── 書籍カード ── */}
-      <section className="max-w-4xl mx-auto px-4 pb-20">
-        <div className="grid sm:grid-cols-2 gap-6">
+      <section className="max-w-2xl mx-auto px-4 pb-20">
+        <div className="grid sm:grid-cols-2 gap-5">
           {BOOKS.filter((b) => !b.companionFor).map((book) => {
             // この書籍の続編・コンパニオン本を取得
             const companions = BOOKS.filter((b) => b.companionFor === book.id);
@@ -151,31 +151,33 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
                     key={companion.id}
                     onClick={() => onSelectBook(companion.id)}
                     className={`
-                      group text-left w-full rounded-xl border-2 px-4 py-3.5 shadow-sm
-                      transition-all duration-200 hover:-translate-y-0.5 focus:outline-none
-                      focus:ring-2 focus:ring-offset-1 flex items-center gap-3
+                      group text-left w-full rounded-2xl border-2 p-5 shadow-sm
+                      transition-all duration-200 hover:-translate-y-1 focus:outline-none
+                      focus:ring-2 focus:ring-offset-2
                       ${isPlus
-                        ? 'border-purple-300 bg-gradient-to-r from-purple-50 to-violet-50 hover:shadow-md focus:ring-purple-300'
-                        : 'border-purple-200 bg-purple-50/60 hover:shadow focus:ring-purple-200'}
+                        ? 'border-purple-300 bg-gradient-to-br from-purple-50 to-violet-50 hover:shadow-lg focus:ring-purple-300'
+                        : 'border-purple-200 bg-gradient-to-br from-purple-50/90 to-violet-50/90 hover:shadow-md focus:ring-purple-200'}
                     `}
                   >
-                    <span className={`text-2xl ${!isPlus ? 'opacity-60' : ''}`}>{companion.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded-full leading-none ${isPlus ? 'bg-amber-500' : 'bg-purple-400'}`}>
-                          ⊕ Plus
-                        </span>
-                        <p className={`text-sm font-black leading-snug truncate ${isPlus ? 'text-purple-700' : 'text-purple-500'}`}>
-                          {companion.title}
-                        </p>
-                      </div>
-                      <p className="text-xs text-gray-500">{companion.subtitle}</p>
+                    {/* 上段: 絵文字 + Plusバッジ */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`text-3xl ${!isPlus ? 'opacity-70' : ''}`}>{companion.emoji}</span>
+                      <span className={`text-[11px] font-black text-white px-2 py-0.5 rounded-full leading-none ${isPlus ? 'bg-amber-500' : 'bg-purple-400'}`}>
+                        ⊕ Plus限定
+                      </span>
                     </div>
-                    <div className={`flex items-center gap-1 font-bold text-xs shrink-0 ${isPlus ? 'text-purple-600' : 'text-purple-400'}`}>
+                    {/* タイトル */}
+                    <p className={`text-base font-black leading-snug mb-1 ${isPlus ? 'text-purple-700' : 'text-purple-600'}`}>
+                      {companion.title}
+                    </p>
+                    {/* サブタイトル */}
+                    <p className="text-sm text-gray-500 mb-3 leading-relaxed">{companion.subtitle}</p>
+                    {/* CTA */}
+                    <div className={`flex items-center gap-1 font-bold text-sm group-hover:gap-2 transition-all ${isPlus ? 'text-purple-600' : 'text-purple-400'}`}>
                       {isPlus ? (
-                        <><span>全文読む</span><span>→</span></>
+                        <><span>全文をウェブで読む</span><span>→</span></>
                       ) : (
-                        <><span>試し読み</span><span>→</span></>
+                        <><span>ウェブで試し読み</span><span>→</span></>
                       )}
                     </div>
                   </button>
@@ -186,7 +188,7 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
         </div>
 
         {/* ── iOS アプリを使う CTA ── */}
-        <div className="mt-12 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white p-8 text-center shadow-xl">
+        <div className="mt-10 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 sm:p-8 text-center shadow-xl">
           <div className="text-4xl mb-3">📱</div>
           <h3 className="text-2xl font-black mb-2">Fitingo iOSアプリを使う</h3>
           <p className="text-green-100 mb-6 max-w-md mx-auto">

@@ -1,3 +1,4 @@
+import SafariServices
 import SwiftUI
 import UIKit
 import HealthKit
@@ -83,6 +84,11 @@ private struct TripleRingFitSection: View {
                     ActivityRingView(progress: standP,
                                      color: Color(red: 0.12, green: 0.89, blue: 0.94),
                                      diameter: 34, lineWidth: 9)
+                    let avgP = Int(((moveP + exerciseP + standP) / 3.0) * 100)
+                    Text("\(avgP)%")
+                        .font(.system(size: 7 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                        .minimumScaleFactor(0.5)
                 }
                 .frame(width: 70, height: 70)
                 VStack(spacing: 2) {
@@ -441,6 +447,8 @@ struct DashboardView: View {
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
     @State private var showPlusViewFromDashboard = false
+    @State private var showBooksSheet = false
+    @State private var booksSheetURL: URL = URL(string: "https://fit.ktrips.net/books")!
     @State private var lastWidgetPayloadHash = ""
     @StateObject private var debouncer = DashboardDebouncer()
     @State private var showMandalaDetail = false
@@ -603,6 +611,7 @@ struct DashboardView: View {
             .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
             .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
             .sheet(isPresented: $showPlusViewFromDashboard) { PlusView() }
+            .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
             .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
             .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
             .sheet(isPresented: $showIntakeGoalEdit) {
@@ -6111,11 +6120,15 @@ struct DashboardView: View {
                     .foregroundColor(Color.duoDark)
                 Spacer()
             }
-            // Plus: Webで全文読む / Free: Kindleリンク
-            let booksWebURL = URL(string: plus.isPlus
-                ? "https://fit.ktrips.net/books/apple-watch-diet?plus=1"
-                : "https://amzn.to/4eEsrPg")!
-            Link(destination: booksWebURL) {
+            // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
+            Button {
+                if plus.isPlus {
+                    booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
+                    showBooksSheet = true
+                } else {
+                    UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
+                }
+            } label: {
                 HStack(spacing: 12) {
                     Text("⌚")
                         .font(.system(size: 24 * UIScale.font))

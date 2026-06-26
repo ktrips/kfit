@@ -1,4 +1,16 @@
+import SafariServices
 import SwiftUI
+
+/// SFSafariViewController をSwiftUIシートとして表示するラッパー
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let vc = SFSafariViewController(url: url)
+        vc.preferredControlTintColor = UIColor(Color.duoGreen)
+        return vc
+    }
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
 
 struct MoreView: View {
     @Binding var selectedTab: Int
@@ -7,6 +19,8 @@ struct MoreView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var plus: PlusManager
     @State private var showLogoutConfirm = false
+    @State private var showBooksSheet = false
+    @State private var booksSheetURL: URL = URL(string: "https://fit.ktrips.net/books")!
 
     var body: some View {
         NavigationView {
@@ -60,11 +74,13 @@ struct MoreView: View {
                     }
                     .listRowBackground(Color.white)
 
-                    // Fitingoの本を読んでみる（Plus: Webで全文 / Free: Booksページ）
-                    let booksURL = URL(string: plus.isPlus
-                        ? "https://fit.ktrips.net/books?plus=1"
-                        : "https://fit.ktrips.net/books")!
-                    Link(destination: booksURL) {
+                    // Fitingoの本を読んでみる（Plus: アプリ内WebViewで全文 / Free: アプリ内試し読み）
+                    Button {
+                        booksSheetURL = URL(string: plus.isPlus
+                            ? "https://fit.ktrips.net/books?plus=1"
+                            : "https://fit.ktrips.net/books")!
+                        showBooksSheet = true
+                    } label: {
                         MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの本を読んでみる")
                     }
                     .listRowBackground(Color.white)
@@ -93,6 +109,7 @@ struct MoreView: View {
             }
             .navigationTitle("その他")
             .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
             .alert("ログアウト", isPresented: $showLogoutConfirm) {
                 Button("キャンセル", role: .cancel) { }
                 Button("ログアウト", role: .destructive) {

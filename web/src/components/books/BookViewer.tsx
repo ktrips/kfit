@@ -61,7 +61,7 @@ export const BOOKS: BookMeta[] = [
   {
     id: 'cursor-claude-code-plus',
     title: 'iPhoneアプリ＋！マーケティングする方法',
-    subtitle: 'Kindle出版・Plusマネタイズ・拡散戦略',
+    subtitle: '個人開発アプリにPlus機能で収益化！',
     emoji: '🚀',
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
@@ -139,7 +139,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
         className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm"
         style={{ backdropFilter: 'blur(8px)' }}
       >
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
             onClick={handleBack}
             className="flex items-center gap-1 text-gray-500 hover:text-gray-800 transition-colors text-sm font-semibold"
@@ -195,7 +195,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
       )}
 
       {/* ── 本文 ── */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-2xl mx-auto px-5 py-6 sm:py-8">
         {loading && (
           <div className="flex flex-col items-center justify-center py-32 gap-4">
             <div className="w-12 h-12 border-4 border-green-400 border-t-transparent rounded-full animate-spin" />
@@ -239,24 +239,24 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
               },
               // 見出し
               h1({ children }) {
-                return <h1 className="text-3xl font-black text-gray-900 mt-10 mb-4 leading-tight">{children}</h1>;
+                return <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-8 mb-3 leading-tight">{children}</h1>;
               },
               h2({ children }) {
-                return <h2 className="text-2xl font-black text-gray-800 mt-8 mb-3 pt-4 border-t-2 border-green-200">{children}</h2>;
+                return <h2 className="text-xl sm:text-2xl font-black text-gray-800 mt-7 mb-3 pt-4 border-t-2 border-green-200">{children}</h2>;
               },
               h3({ children }) {
                 const id = String(children)
                   .toLowerCase()
                   .replace(/[^\w\u3040-\u30FF\u4E00-\u9FAF]+/g, '-')
                   .replace(/^-|-$/g, '');
-                return <h3 id={id} className="text-xl font-bold text-gray-800 mt-6 mb-2">{children}</h3>;
+                return <h3 id={id} className="text-lg sm:text-xl font-bold text-gray-800 mt-5 mb-2">{children}</h3>;
               },
               h4({ children }) {
                 return <h4 className="text-base font-bold text-green-700 mt-4 mb-1">{children}</h4>;
               },
               // 段落
               p({ children }) {
-                return <p className="text-gray-700 leading-relaxed mb-4">{children}</p>;
+                return <p className="text-[15px] sm:text-base text-gray-700 leading-[1.85] mb-4">{children}</p>;
               },
               // 引用（ポイントボックス）
               blockquote({ children }) {
@@ -271,37 +271,37 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                 const { children, className } = props as { children?: React.ReactNode; className?: string };
                 const isBlock = !!className;
                 if (!isBlock) {
-                  return <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>;
+                  return <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-[13px] font-mono">{children}</code>;
                 }
                 return (
-                  <pre className="bg-gray-900 text-green-300 rounded-xl p-4 overflow-x-auto my-4 text-sm font-mono leading-relaxed">
+                  <pre className="bg-gray-900 text-green-300 rounded-xl p-4 overflow-x-auto my-4 text-xs sm:text-sm font-mono leading-relaxed">
                     <code>{children}</code>
                   </pre>
                 );
               },
               // リスト
               ul({ children }) {
-                return <ul className="list-disc list-inside space-y-1 mb-4 text-gray-700">{children}</ul>;
+                return <ul className="list-disc list-outside pl-5 space-y-1.5 mb-4 text-gray-700 text-[15px] sm:text-base">{children}</ul>;
               },
               ol({ children }) {
-                return <ol className="list-decimal list-inside space-y-1 mb-4 text-gray-700">{children}</ol>;
+                return <ol className="list-decimal list-outside pl-5 space-y-1.5 mb-4 text-gray-700 text-[15px] sm:text-base">{children}</ol>;
               },
               li({ children }) {
-                return <li className="leading-relaxed">{children}</li>;
+                return <li className="leading-relaxed pl-1">{children}</li>;
               },
               // テーブル
               table({ children }) {
                 return (
-                  <div className="overflow-x-auto my-6">
-                    <table className="min-w-full text-sm border-collapse">{children}</table>
+                  <div className="overflow-x-auto my-5 -mx-1">
+                    <table className="min-w-full text-xs sm:text-sm border-collapse">{children}</table>
                   </div>
                 );
               },
               th({ children }) {
-                return <th className="bg-gray-100 border border-gray-300 px-3 py-2 text-left font-bold text-gray-700">{children}</th>;
+                return <th className="bg-gray-100 border border-gray-300 px-2 sm:px-3 py-2 text-left font-bold text-gray-700 whitespace-nowrap">{children}</th>;
               },
               td({ children }) {
-                return <td className="border border-gray-200 px-3 py-2 text-gray-700">{children}</td>;
+                return <td className="border border-gray-200 px-2 sm:px-3 py-2 text-gray-700">{children}</td>;
               },
               // 水平線
               hr() {
@@ -399,7 +399,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
       </main>
 
       {/* ── フッター ── */}
-      <footer className="max-w-3xl mx-auto px-4 py-12 text-center text-gray-400 text-xs">
+      <footer className="max-w-2xl mx-auto px-5 py-10 text-center text-gray-400 text-xs">
         <p>© 2026 吉田 顕一 · <a href="https://fit.ktrips.net" className="hover:underline">fit.ktrips.net</a></p>
       </footer>
     </div>

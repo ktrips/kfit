@@ -173,7 +173,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks }) => {
           </button>
         </div>
         <p className="text-center text-xs text-gray-400 mt-3 font-semibold">
-          fit.ktrips.net/books にて無料公開中
+          fit.ktrips.net/books にて試し読み無料
         </p>
       </div>
     </div>

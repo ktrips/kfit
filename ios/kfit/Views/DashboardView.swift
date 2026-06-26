@@ -85,9 +85,12 @@ private struct TripleRingFitSection: View {
                                      color: Color(red: 0.12, green: 0.89, blue: 0.94),
                                      diameter: 34, lineWidth: 9)
                     let avgP = Int(((moveP + exerciseP + standP) / 3.0) * 100)
+                    let avgColor: Color = avgP >= 80 ? Color.duoGreen
+                        : avgP >= 60 ? Color(hex: "#FF9600")
+                        : Color(hex: "#FF4B4B")
                     Text("\(avgP)%")
-                        .font(.system(size: 7 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
+                        .font(.system(size: 9 * UIScale.font, weight: .black))
+                        .foregroundColor(avgColor)
                         .minimumScaleFactor(0.5)
                 }
                 .frame(width: 70, height: 70)
@@ -154,8 +157,9 @@ private struct TripleRingFoodSection: View {
                     fatKcal: fatKcal,
                     carbsKcal: carbsKcal,
                     diameter: 70,
-                    lineWidth: 9,
+                    lineWidth: 11,
                     centerText: pfcScore > 0 ? "\(pfcScore)" : "—",
+                    centerSubText: pfcScore > 0 ? "点" : nil,
                     centerTextColor: pfcScore > 0 ? scoreColor : Color.duoSubtitle
                 )
                 VStack(spacing: 2) {
@@ -237,7 +241,8 @@ private struct TripleRingMindSection: View {
                 TripleRingSegmentedView(
                     segments: segments,
                     centerText: displayScore > 0 ? "\(displayScore)" : "—",
-                    centerSubText: displayScore > 0 ? "点" : nil
+                    centerSubText: displayScore > 0 ? "点" : nil,
+                    lineWidth: 11
                 )
                 .frame(width: 70, height: 70)
                 VStack(spacing: 2) {
@@ -7706,6 +7711,7 @@ struct PFCMiniRingView: View {
     let diameter: CGFloat
     let lineWidth: CGFloat
     var centerText: String? = nil
+    var centerSubText: String? = nil
     var centerTextColor: Color = Color.duoDark
 
     var body: some View {
@@ -7725,11 +7731,18 @@ struct PFCMiniRingView: View {
                     .stroke(Color(hex: "#58CC02"), style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
             }
             if let text = centerText {
-                Text(text)
-                    .font(.system(size: diameter * 0.264, weight: .black, design: .rounded))
-                    .foregroundColor(centerTextColor)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+                VStack(spacing: -1) {
+                    Text(text)
+                        .font(.system(size: diameter * 0.264, weight: .black, design: .rounded))
+                        .foregroundColor(centerTextColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    if let sub = centerSubText {
+                        Text(sub)
+                            .font(.system(size: diameter * 0.14, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
             }
         }
         .frame(width: diameter, height: diameter)

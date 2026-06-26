@@ -1265,15 +1265,18 @@ struct DashboardView: View {
                 DailySetsMandalaSectionView(
                     mandalaNodes: mandalaNodes,
                     timeSlotManager: timeSlotManager,
-                    healthKit: healthKit,
                     showTracker: $showTracker,
                     showMindfulnessSession: $showMindfulnessSession,
                     showStretchSession: $showStretchSession,
                     showStandSession: $showStandSession,
                     showMandalaDetail: $showMandalaDetail,
                     selectedMandalaNode: $selectedMandalaNode,
+                    activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal
+                        && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
                     dailyCalorieDone: dailyCalorieDone,
-                    dailyWaterDone: dailyWaterDone
+                    dailyWaterDone: dailyWaterDone,
+                    weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
+                    bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil
                 )
 
                 compactPointsBar
@@ -6599,29 +6602,33 @@ private struct TrainingVideoButton: View {
 private struct DailySetsMandalaSectionView: View {
     let mandalaNodes: [MandalaNodeData]
     @ObservedObject var timeSlotManager: TimeSlotManager
-    @ObservedObject var healthKit: HealthKitManager
     @Binding var showTracker: Bool
     @Binding var showMindfulnessSession: Bool
     @Binding var showStretchSession: Bool
     @Binding var showStandSession: Bool
     @Binding var showMandalaDetail: Bool
     @Binding var selectedMandalaNode: MandalaNodeData?
+    var activityRingsDone: Bool = false
     var dailyCalorieDone: Bool = false
     var dailyWaterDone: Bool = false
+    var weightKg: Double? = nil
+    var bodyFatPercent: Double? = nil
 
     var body: some View {
         MandalaSpiralCard(
             nodes: mandalaNodes,
             timeSlotManager: timeSlotManager,
-            healthKit: healthKit,
             showTracker: $showTracker,
             showMindfulnessSession: $showMindfulnessSession,
             showStretchSession: $showStretchSession,
             showStandSession: $showStandSession,
             showMandalaDetail: $showMandalaDetail,
             selectedMandalaNode: $selectedMandalaNode,
+            activityRingsDone: activityRingsDone,
             dailyCalorieDone: dailyCalorieDone,
-            dailyWaterDone: dailyWaterDone
+            dailyWaterDone: dailyWaterDone,
+            weightKg: weightKg,
+            bodyFatPercent: bodyFatPercent
         )
         .padding(.top, 8)
         .padding(.bottom, 0)
@@ -6633,15 +6640,17 @@ private struct DailySetsMandalaSectionView: View {
 private struct MandalaSpiralCard: View {
     let nodes: [MandalaNodeData]
     @ObservedObject var timeSlotManager: TimeSlotManager
-    @ObservedObject var healthKit: HealthKitManager
     @Binding var showTracker: Bool
     @Binding var showMindfulnessSession: Bool
     @Binding var showStretchSession: Bool
     @Binding var showStandSession: Bool
     @Binding var showMandalaDetail: Bool
     @Binding var selectedMandalaNode: MandalaNodeData?
+    var activityRingsDone: Bool = false
     var dailyCalorieDone: Bool = false
     var dailyWaterDone: Bool = false
+    var weightKg: Double? = nil
+    var bodyFatPercent: Double? = nil
     @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
 
     // 体重計測ノード: 記録方法の選択 / 写真記録シート
@@ -6656,11 +6665,6 @@ private struct MandalaSpiralCard: View {
         else if h < 14 { return [.morning, .noon] }
         else if h < 18 { return [.morning, .noon, .afternoon] }
         else { return [.morning, .noon, .afternoon, .evening] }
-    }
-
-    private var activityRingsDone: Bool {
-        healthKit.activityMoveCalories >= healthKit.activityMoveGoal &&
-            healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
     }
 
     var body: some View {
@@ -6705,8 +6709,8 @@ private struct MandalaSpiralCard: View {
                                 comment: comment,
                                 image: image,
                                 isPublic: isPublic,
-                                weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
-                                bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil
+                                weightKg: weightKg,
+                                bodyFatPercent: bodyFatPercent
                             )
                         }
                     }
@@ -6785,55 +6789,73 @@ private struct MandalaSpiralCard: View {
             .padding(.horizontal, 6)
     }
 
-    private var visibleCount: (done: Int, total: Int) {
+    // ノード配列を1回だけスキャンして今日/スロット別/全体の完了数を収集する。
+    // body 評価ごとに nodes.filter を 10〜12 回呼ぶ代わりに O(n) 1パスで済む。
+    private var nodeStats: (todayDone: Int, todayTotal: Int,
+                            slotCounts: [TimeSlot: (done: Int, total: Int)],
+                            visibleDone: Int, visibleTotal: Int) {
+        var todayDone = 0, todayTotal = 0
+        var slotCounts: [TimeSlot: (done: Int, total: Int)] = [:]
+        var visibleDone = 0, visibleTotal = 0
         let visibleSlotSet = Set(visibleSlots)
-        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
-        return (visible.filter(\.isCompleted).count, visible.count)
+        for node in nodes {
+            if let slot = node.slot {
+                var c = slotCounts[slot, default: (0, 0)]
+                c.1 += 1
+                if node.isCompleted { c.0 += 1 }
+                slotCounts[slot] = c
+                if visibleSlotSet.contains(slot) {
+                    visibleTotal += 1
+                    if node.isCompleted { visibleDone += 1 }
+                }
+            } else {
+                todayTotal += 1
+                if node.isCompleted { todayDone += 1 }
+                visibleTotal += 1
+                if node.isCompleted { visibleDone += 1 }
+            }
+        }
+        return (todayDone, todayTotal, slotCounts, visibleDone, visibleTotal)
     }
 
     private var legendRow: some View {
-        let todayNodes = nodes.filter { $0.slot == nil }
-        let vc = visibleCount
-        let pct = vc.total > 0 ? Double(vc.done) / Double(vc.total) : 0.0
-        let abColor: Color = pct >= 1.0   ? Color(hex: "#4CAF50")
-                           : pct >= 0.7   ? Color(hex: "#A5D63B")
-                           : pct >= 0.4   ? Color(hex: "#FFD700")
-                           : pct >= 0.01  ? Color(hex: "#FF9500")
+        let stats = nodeStats
+        let pct = stats.visibleTotal > 0 ? Double(stats.visibleDone) / Double(stats.visibleTotal) : 0.0
+        let abColor: Color = pct >= 1.0  ? Color(hex: "#4CAF50")
+                           : pct >= 0.7  ? Color(hex: "#A5D63B")
+                           : pct >= 0.4  ? Color(hex: "#FFD700")
+                           : pct >= 0.01 ? Color(hex: "#FF9500")
                            : Color(.systemGray3)
         return HStack(spacing: 2) {
             legendCell(label: "今日", color: Color(hex: "CE82FF"),
-                       done: todayNodes.filter(\.isCompleted).count, total: todayNodes.count)
+                       done: stats.todayDone, total: stats.todayTotal)
             ForEach(visibleSlots, id: \.self) { slot in
-                slotLegend(slot: slot)
+                let sc = stats.slotCounts[slot] ?? (0, 0)
+                legendCell(label: slot.displayName, color: slot.mandalaColor,
+                           done: sc.done, total: sc.total)
             }
             Spacer()
-            if vc.total > 0 {
-                Text("\(vc.done)/\(vc.total)")
-                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+            if stats.visibleTotal > 0 {
+                Text("\(stats.visibleDone)/\(stats.visibleTotal)")
+                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(abColor)
-                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(abColor.opacity(0.1))
                     .cornerRadius(4)
             }
         }
     }
 
-    private func slotLegend(slot: TimeSlot) -> some View {
-        let sn = nodes.filter { $0.slot == slot }
-        return legendCell(label: slot.displayName, color: slot.mandalaColor,
-                          done: sn.filter(\.isCompleted).count, total: sn.count)
-    }
-
     private func legendCell(label: String, color: Color, done: Int, total: Int) -> some View {
         let achieved = total > 0 && done == total
-        return HStack(spacing: 2) {
-            Circle().fill(color).frame(width: 5, height: 5)
+        return HStack(spacing: 3) {
+            Circle().fill(color).frame(width: 6, height: 6)
             Text(total > 0 ? "\(label) \(done)/\(total)" : label)
-                .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                .font(.system(size: 10 * UIScale.font, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(achieved ? color : Color.duoSubtitle)
         }
-        .padding(.horizontal, 3).padding(.vertical, 1)
+        .padding(.horizontal, 4).padding(.vertical, 2)
         .background(achieved ? color.opacity(0.12) : Color.clear)
         .cornerRadius(3)
     }
@@ -8691,9 +8713,12 @@ private struct DailySetsExpandableSection: View {
             if showTodayRecords {
                 VStack(spacing: 0) {
                     Divider().padding(.horizontal, 16)
+                    // マップを1回計算して各行へ渡す（スロットごとの filter+reduce を排除）
+                    let calMap = slotCaloriesMap
+                    let watMap = slotWaterMap
                     VStack(spacing: 10) {
                         ForEach(visibleSlots, id: \.rawValue) { slot in
-                            timeSlotRow(for: slot)
+                            timeSlotRow(for: slot, calMap: calMap, watMap: watMap)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -8725,21 +8750,40 @@ private struct DailySetsExpandableSection: View {
         slotSetCounts[slot.rawValue] ?? 0
     }
 
-    /// その時間帯に記録された食事カロリーの合計（kcal）
-    private func caloriesInSlot(_ slot: TimeSlot) -> Double {
+    // スロット別食事カロリーを1回のスキャンで集計（4スロット×filter+reduce を O(n) 1パスに削減）
+    private var slotCaloriesMap: [String: Double] {
         let cal = Calendar.current
-        return healthKit.todayMealSamples
-            .filter { let h = cal.component(.hour, from: $0.startDate); return h >= slot.startHour && h < slot.endHour }
-            .reduce(0.0) { $0 + $1.value }
+        var result: [String: Double] = [:]
+        for sample in healthKit.todayMealSamples {
+            let h = cal.component(.hour, from: sample.startDate)
+            let key: String = h < 6 ? TimeSlot.midnight.rawValue
+                            : h < 10 ? TimeSlot.morning.rawValue
+                            : h < 14 ? TimeSlot.noon.rawValue
+                            : h < 18 ? TimeSlot.afternoon.rawValue
+                            : TimeSlot.evening.rawValue
+            result[key, default: 0] += sample.value
+        }
+        return result
     }
 
-    /// その時間帯に記録された水分量の合計（ml）
-    private func waterInSlot(_ slot: TimeSlot) -> Double {
+    // スロット別水分量を1回のスキャンで集計
+    private var slotWaterMap: [String: Double] {
         let cal = Calendar.current
-        return healthKit.todayWaterSamples
-            .filter { let h = cal.component(.hour, from: $0.startDate); return h >= slot.startHour && h < slot.endHour }
-            .reduce(0.0) { $0 + $1.value }
+        var result: [String: Double] = [:]
+        for sample in healthKit.todayWaterSamples {
+            let h = cal.component(.hour, from: sample.startDate)
+            let key: String = h < 6 ? TimeSlot.midnight.rawValue
+                            : h < 10 ? TimeSlot.morning.rawValue
+                            : h < 14 ? TimeSlot.noon.rawValue
+                            : h < 18 ? TimeSlot.afternoon.rawValue
+                            : TimeSlot.evening.rawValue
+            result[key, default: 0] += sample.value
+        }
+        return result
     }
+
+    private func caloriesInSlot(_ slot: TimeSlot) -> Double { slotCaloriesMap[slot.rawValue] ?? 0 }
+    private func waterInSlot(_ slot: TimeSlot) -> Double    { slotWaterMap[slot.rawValue] ?? 0 }
 
     private var totalMindfulGoalMinutes: Int {
         // 表示用: HealthKit の mindfulness セッションで追跡される瞑想+スタンドの合計目標
@@ -8826,7 +8870,9 @@ private struct DailySetsExpandableSection: View {
         }
     }
 
-    private func timeSlotRow(for slot: TimeSlot) -> some View {
+    private func timeSlotRow(for slot: TimeSlot,
+                              calMap: [String: Double],
+                              watMap: [String: Double]) -> some View {
         let goal = timeSlotManager.settings.goalFor(slot)
         let progress = timeSlotManager.progress.progressFor(slot)
         let gp = timeSlotManager.progress.globalProgress
@@ -8874,21 +8920,16 @@ private struct DailySetsExpandableSection: View {
             if slot != .midnight, let goal = goal {
                 HStack(spacing: 4) {
                     if goal.logGoal.mealGoal > 0 {
-                        // 1日の目標の1/4をその時間帯の完了閾値とし、
-                        // 1日合計が目標に達したら全スロット完了扱い
-                        // 集計済みプロパティを使用（body内でのreduce()を排除）
                         let totalCalories = healthKit.todayIntakeCalories
-                        let slotCalories  = caloriesInSlot(slot)
+                        let slotCalories  = calMap[slot.rawValue] ?? 0
                         let mealDone = totalCalories >= Double(dailyCalorieGoal)
                             || slotCalories >= Double(dailyCalorieGoal) / 4.0
                         Image(systemName: mealDone ? "fork.knife.circle.fill" : "fork.knife.circle")
                             .font(.title3).foregroundColor(mealDone ? Color.duoGreen : Color(.systemGray4))
                     }
                     if goal.logGoal.drinkGoal > 0 {
-                        // 水分も同様に1日の目標の1/4をその時間帯の完了閾値とする
-                        // 集計済みプロパティを使用（body内でのreduce()を排除）
                         let totalWater = healthKit.todayIntakeWater
-                        let slotWater  = waterInSlot(slot)
+                        let slotWater  = watMap[slot.rawValue] ?? 0
                         let drinkDone = totalWater >= Double(dailyWaterGoal)
                             || slotWater >= Double(dailyWaterGoal) / 4.0
                         Image(systemName: drinkDone ? "drop.circle.fill" : "drop.circle")
@@ -8927,7 +8968,11 @@ private struct TodayHistorySection: View {
         let exercises: [CompletedExercise]
     }
 
-    private var exerciseSets: [ExerciseSetGroup] {
+    // expandedSetIds の変化（タップ）のたびに再計算されないよう @State でキャッシュ。
+    // todayExercises.count が変化したときだけ再ビルドする。
+    @State private var cachedExerciseSets: [ExerciseSetGroup] = []
+
+    private func buildExerciseSets() -> [ExerciseSetGroup] {
         let sorted = todayExercises.sorted { $0.timestamp < $1.timestamp }
         var rawGroups: [(slotLabel: String, exercises: [CompletedExercise])] = []
         let gap: TimeInterval = 30 * 60
@@ -8961,13 +9006,14 @@ private struct TodayHistorySection: View {
 
     var body: some View {
         let timeFmt = Self.timeFmt
-        let sets = exerciseSets
+        let sets = cachedExerciseSets
         let toothColor = Color(hex: "#4DB6AC")
 
         let hasAny = !todayExercises.isEmpty || !mindfulSessions.isEmpty
             || bodyMassRecord != nil || !mealSamples.isEmpty
             || !waterSamples.isEmpty || !toothbrushingSamples.isEmpty
 
+        return Group {
         if hasAny {
             VStack(spacing: 0) {
                 Divider().padding(.horizontal, 16)
@@ -9098,6 +9144,15 @@ private struct TodayHistorySection: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+        }
+        } // Group
+        .onAppear {
+            if cachedExerciseSets.isEmpty && !todayExercises.isEmpty {
+                cachedExerciseSets = buildExerciseSets()
+            }
+        }
+        .onChange(of: todayExercises.count) { _, _ in
+            cachedExerciseSets = buildExerciseSets()
         }
     }
 

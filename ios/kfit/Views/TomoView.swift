@@ -1316,40 +1316,38 @@ struct TomoView: View {
             // ── アクションボタン行（代表アイテム基準） ───────────────────
             HStack(spacing: 0) {
                 Button { toggleLikeFeed(pg.latestItem) } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: pg.latestItem.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 24 * UIScale.font, weight: .regular))
-                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
-                        if pg.latestItem.likeCount > 0 {
-                            Text("\(pg.latestItem.likeCount)")
-                                .font(.system(size: 13 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                        }
+                            .font(.system(size: 17 * UIScale.font, weight: .regular))
+                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoSubtitle)
+                        Text("\(pg.latestItem.likeCount)")
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoSubtitle)
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
 
                 Button { commentTargetItem = pg.latestItem } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: 22 * UIScale.font, weight: .regular))
-                            .foregroundColor(Color.duoDark)
+                            .font(.system(size: 17 * UIScale.font, weight: .regular))
+                            .foregroundColor(Color.duoSubtitle)
                         if !pg.latestItem.feedComments.isEmpty {
                             Text("\(pg.latestItem.feedComments.count)")
-                                .font(.system(size: 13 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoDark)
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoSubtitle)
                         }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
 
                 Button { shareTargetItem = pg.latestItem } label: {
                     Image(systemName: "paperplane")
-                        .font(.system(size: 22 * UIScale.font, weight: .regular))
-                        .foregroundColor(Color.duoDark)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .font(.system(size: 17 * UIScale.font, weight: .regular))
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
 

@@ -274,6 +274,10 @@ struct MainTabView: View {
                             }
                             if isTabBarHidden { scheduleTabBarAutoReveal() }
                         }
+                        .onEnded { _ in
+                            // 指を離した瞬間に即座にタブバーを復元する
+                            if isTabBarHidden { revealTabBar() }
+                        }
                 )
 
             bottomRevealZone
@@ -642,7 +646,7 @@ struct MainTabView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: workItem)
     }
 
-    // スクロール停止から3.5秒後に自動表示
+    // スクロール停止から1.0秒後に自動表示（onEnded で即時表示できなかった場合のフォールバック）
     private func scheduleTabBarAutoReveal() {
         tabBarRevealWorkItem?.cancel()
         let workItem = DispatchWorkItem {
@@ -650,7 +654,7 @@ struct MainTabView: View {
             revealTabBar()
         }
         tabBarRevealWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
     }
 
     private func checkEndOfDayCalorieTopUp() {

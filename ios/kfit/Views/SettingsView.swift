@@ -10,22 +10,7 @@ private struct ReminderMeta: Identifiable {
     let description: String
 }
 
-// MARK: - 毎日の設定モデル（曜日に関係なく毎日適用）
-
-struct DailyCustomGoal: Codable, Identifiable, Equatable {
-    let id: UUID
-    var name: String
-    var emoji: String
-    init(name: String, emoji: String) { self.id = UUID(); self.name = name; self.emoji = emoji }
-}
-
-struct DailyFixedGoals: Codable, Equatable {
-    var foodEnabled: Bool = false    // 🍽️ 食事2000kcal以上（Apple Health自動）
-    var weightEnabled: Bool = false  // ⚖️ 体重計測（Apple Health自動）
-    var sleepEnabled: Bool = false   // 😴 睡眠計測（Apple Health自動）
-    var sleepHoursGoal: Int = 7      // 😴 目標睡眠時間（時間）
-    var customGoals: [DailyCustomGoal] = []  // 📱 カスタム項目（スクショで完了）
-}
+// MARK: - 毎日の設定モデル → Models/DailyFixedGoals.swift に移動
 
 // MARK: - 曜日毎の目標モデル
 

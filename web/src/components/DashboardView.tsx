@@ -636,6 +636,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
               <span className="text-duo-gray shrink-0">›</span>
             </a>
 
+            {/* 収益化本 */}
+            <a
+              href="https://amzn.to/4aTY6LA"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-4 bg-white rounded-2xl p-4 hover:shadow-md active:scale-[0.98] transition-all"
+              style={{ border: '2px solid #FFE4C8', boxShadow: '0 3px 0 #F0C898' }}
+            >
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-3xl"
+                style={{ background: '#FFF5EB' }}>
+                💰
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm" style={{ color: '#C05800' }}>個人開発アプリを収益化する方法</p>
+                <p className="text-xs text-duo-gray font-semibold mt-0.5">Kindle出版・Plus課金・SNS拡散戦略を解説</p>
+                <p className="text-[10px] font-bold mt-0.5" style={{ color: '#E8A020' }}>📖 Kindle で読む</p>
+              </div>
+              <span className="text-duo-gray shrink-0">›</span>
+            </a>
+
           </div>
         </div>
 

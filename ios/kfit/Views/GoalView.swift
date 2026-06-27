@@ -119,17 +119,24 @@ struct GoalView: View {
                     .padding(.bottom, 20)
                 }
                 .refreshable {
+                    // async let で並列フェッチ（従来の直列 await から改善）
                     loadTodayWeekdayGoal()
-                    await timeSlotManager.loadTodaySettings()
-                    await healthKit.fetchBodyMassHistory(days: 30)
-                    await healthKit.fetchBodyFatHistory(days: 30)
-                    await healthKit.fetchGoalHealth()
-                    await healthKit.fetchWeeklyBurnData()
-                    await healthKit.fetchWeeklyDietarySamples()
-                    todayExercises = await authManager.getTodayExercises()
-                    todayWorkoutSessions = await healthKit.fetchTodayWorkoutSessions()
-                    weeklySetCounts = await authManager.fetchWeeklySetCounts()
-                    weeklyIntakeData = await authManager.fetchWeeklyIntakeData()
+                    async let s0: Void = timeSlotManager.loadTodaySettings()
+                    async let s1: Void = healthKit.fetchBodyMassHistory(days: 30)
+                    async let s2: Void = healthKit.fetchBodyFatHistory(days: 30)
+                    async let s3: Void = healthKit.fetchGoalHealth()
+                    async let s4: Void = healthKit.fetchWeeklyBurnData()
+                    async let s5: Void = healthKit.fetchWeeklyDietarySamples()
+                    async let ex   = authManager.getTodayExercises()
+                    async let ws   = healthKit.fetchTodayWorkoutSessions()
+                    async let wsc  = authManager.fetchWeeklySetCounts()
+                    async let wid  = authManager.fetchWeeklyIntakeData()
+                    let (exercises, sessions, setCounts, intakeData, _, _, _, _, _, _) =
+                        await (ex, ws, wsc, wid, s0, s1, s2, s3, s4, s5)
+                    todayExercises       = exercises
+                    todayWorkoutSessions = sessions
+                    weeklySetCounts      = setCounts
+                    weeklyIntakeData     = intakeData
                 }
             }
             .navigationBarHidden(true)

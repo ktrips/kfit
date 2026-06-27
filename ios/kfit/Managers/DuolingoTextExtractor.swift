@@ -121,6 +121,11 @@ final class DuolingoTextExtractor {
         return recognizer.dominantLanguage?.rawValue
     }
 
+    /// 外部から言語表示名を取得するための public ラッパー
+    func languageDisplayNamePublic(_ code: String) -> String {
+        languageDisplayName(code)
+    }
+
     private func languageDisplayName(_ code: String) -> String {
         switch code {
         case "zh", "zh-Hans", "cmn-Hans":  return "中国語"
@@ -184,6 +189,150 @@ final class DuolingoTextExtractor {
         case "ar":                        return "ar-SA"
         default:                          return "en-US"
         }
+    }
+
+    // MARK: - LLM テキスト生成（文法解説 / 例文）
+
+    /// コメントに「文法」が含まれていた場合に呼ぶ。
+    /// 短い文法解説を日本語で返す。
+    func generateGrammarNote(phrase: String, languageName: String,
+                              settings: LLMSettings) async -> String? {
+        let prompt = """
+あなたは語学学習アシスタントです。
+次の\(languageName)フレーズの文法を、日本語で3〜5文以内で簡潔に解説してください。
+専門用語は使わず、学習者にわかりやすい表現で。
+
+フレーズ:「\(phrase)」
+"""
+        return await callLLMText(prompt: prompt, settings: settings)
+    }
+
+    /// コメントに「ダメな理由」が含まれていた場合に呼ぶ。
+    /// Duolingo の問題でよくある間違いの理由を日本語で解説する。
+    func generateMistakeExplanation(phrase: String, languageName: String,
+                                    settings: LLMSettings) async -> String? {
+        let prompt = """
+あなたは語学学習アシスタントです。
+Duolingo で次の\(languageName)フレーズを学習している日本語話者が、よく間違えやすい理由を3〜5文で解説してください。
+どのような勘違い・混乱が起きやすいか、日本語との違いや注意点を中心に、具体的にわかりやすく説明してください。
+
+フレーズ:「\(phrase)」
+"""
+        return await callLLMText(prompt: prompt, settings: settings)
+    }
+
+    /// コメントに「例文」が含まれていた場合に呼ぶ。
+    /// 同じ文法パターンを使った類似例文を 2 件返す。
+    func generateExampleSentences(phrase: String, languageName: String,
+                                   languageCode: String,
+                                   settings: LLMSettings) async -> [ExampleSentence]? {
+        let prompt = """
+あなたは語学学習アシスタントです。
+次の\(languageName)フレーズと似た文法・表現パターンを使った例文を2つ作成してください。
+回答は必ず以下のJSON配列形式のみで返してください（説明文は不要）:
+[
+  {"text": "<\(languageName)の例文1>", "translationJA": "<日本語訳1>"},
+  {"text": "<\(languageName)の例文2>", "translationJA": "<日本語訳2>"}
+]
+
+フレーズ:「\(phrase)」
+"""
+        guard let raw = await callLLMText(prompt: prompt, settings: settings) else { return nil }
+        // JSONをパース
+        let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let jsonStr = extractJSON(from: cleaned)
+        guard let data = jsonStr.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: data)
+        else { return nil }
+        return decoded.isEmpty ? nil : decoded
+    }
+
+    // MARK: - LLM テキスト呼び出し共通
+
+    private func callLLMText(prompt: String, settings: LLMSettings) async -> String? {
+        guard !settings.apiKey.isEmpty else { return nil }
+        do {
+            switch settings.provider {
+            case .openAI:
+                return try await textOpenAI(prompt: prompt, settings: settings)
+            case .anthropic:
+                return try await textAnthropic(prompt: prompt, settings: settings)
+            case .google:
+                return try await textGoogle(prompt: prompt, settings: settings)
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    private func textOpenAI(prompt: String, settings: LLMSettings) async throws -> String? {
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "model": settings.effectiveModel,
+            "max_tokens": 512,
+            "messages": [["role": "user", "content": prompt]]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let msg = choices.first?["message"] as? [String: Any],
+              let content = msg["content"] as? String else { return nil }
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func textAnthropic(prompt: String, settings: LLMSettings) async throws -> String? {
+        let url = URL(string: "https://api.anthropic.com/v1/messages")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(settings.apiKey, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "model": settings.effectiveModel,
+            "max_tokens": 512,
+            "messages": [["role": "user", "content": prompt]]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? [[String: Any]],
+              let text = content.first?["text"] as? String else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func textGoogle(prompt: String, settings: LLMSettings) async throws -> String? {
+        let model = settings.effectiveModel
+        let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(settings.apiKey)"
+        let url = URL(string: urlStr)!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "contents": [["parts": [["text": prompt]]]],
+            "generationConfig": ["maxOutputTokens": 512]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let candidates = json["candidates"] as? [[String: Any]],
+              let content = candidates.first?["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]],
+              let text = parts.first?["text"] as? String else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// レスポンスから最初の JSON 配列部分を抽出する
+    private func extractJSON(from text: String) -> String {
+        if let start = text.firstIndex(of: "["),
+           let end = text.lastIndex(of: "]") {
+            return String(text[start...end])
+        }
+        return text
     }
 
     // MARK: - 発音記号（ルビ）生成

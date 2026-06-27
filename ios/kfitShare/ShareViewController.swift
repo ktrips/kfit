@@ -2,8 +2,6 @@
 //  ShareViewController.swift
 //  kfitShare
 //
-//  Created by Kenichi Yoshida on 2026/06/22.
-//
 
 import UIKit
 import Social
@@ -14,9 +12,19 @@ private let pendingSharesKey = "pendingDuolingoShares"
 
 class ShareViewController: SLComposeServiceViewController {
 
-    override func isContentValid() -> Bool {
-        return true
+    // MARK: - 共有元アプリ名を取得
+
+    private var sourceAppName: String {
+        // NSExtensionItem の userInfo → sourceApplication (iOS 13+)
+        if let src = extensionContext?.inputItems.first as? NSExtensionItem,
+           let name = src.userInfo?["sourceApplication"] as? String {
+            return name
+        }
+        // Bundle identifier から最後のコンポーネントを表示名として使う
+        return Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String ?? ""
     }
+
+    override func isContentValid() -> Bool { true }
 
     override func didSelectPost() {
         guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
@@ -25,10 +33,13 @@ class ShareViewController: SLComposeServiceViewController {
             return
         }
 
+        // ユーザーが入力したコメント（なければ空文字）
+        let userComment = contentText ?? ""
+        let sourceApp   = sourceAppName
+
         let group = DispatchGroup()
 
         for provider in attachments {
-            // PNG / JPEG どちらも対応
             let typeID: String
             if provider.hasItemConformingToTypeIdentifier(UTType.png.identifier) {
                 typeID = UTType.png.identifier
@@ -39,9 +50,8 @@ class ShareViewController: SLComposeServiceViewController {
             }
 
             group.enter()
-            provider.loadItem(forTypeIdentifier: typeID, options: nil) { [weak self] data, _ in
+            provider.loadItem(forTypeIdentifier: typeID, options: nil) { data, _ in
                 defer { group.leave() }
-                guard let self else { return }
 
                 var imageData: Data?
                 if let url = data as? URL {
@@ -56,15 +66,18 @@ class ShareViewController: SLComposeServiceViewController {
                       let containerURL = FileManager.default
                         .containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else { return }
 
-                // ファイルを共有コンテナに保存
-                let filename = "duolingo_\(Date().timeIntervalSince1970).jpg"
+                let filename = "share_\(Date().timeIntervalSince1970).jpg"
                 let fileURL  = containerURL.appendingPathComponent(filename)
                 try? imageData.write(to: fileURL)
 
-                // UserDefaults にメタデータを登録
                 let defaults = UserDefaults(suiteName: appGroupID)
                 var pending  = defaults?.array(forKey: pendingSharesKey) as? [[String: Any]] ?? []
-                pending.append(["filename": filename, "timestamp": Date().timeIntervalSince1970])
+                pending.append([
+                    "filename":   filename,
+                    "timestamp":  Date().timeIntervalSince1970,
+                    "comment":    userComment,    // ユーザーのコメント（キーワード含む）
+                    "sourceApp":  sourceApp       // 共有元アプリ名
+                ])
                 defaults?.set(pending, forKey: pendingSharesKey)
                 defaults?.synchronize()
             }
@@ -75,7 +88,5 @@ class ShareViewController: SLComposeServiceViewController {
         }
     }
 
-    override func configurationItems() -> [Any]! {
-        return []
-    }
+    override func configurationItems() -> [Any]! { [] }
 }

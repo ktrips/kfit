@@ -369,6 +369,12 @@ struct FeedComment: Codable, Identifiable {
     }
 }
 
+/// 例文1件（外国語テキスト + 日本語訳）
+struct ExampleSentence: Codable {
+    var text: String           // 外国語の例文
+    var translationJA: String? // 日本語訳
+}
+
 struct EduLogHistoryItem: Codable, Identifiable {
     var id: String = UUID().uuidString
     var timestamp: Date = Date()
@@ -384,10 +390,13 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var isPublic: Bool = true
 
     // Duolingo 外国語フレーズ情報（OCR・翻訳・TTS 用）
-    var extractedPhrase: String?       // OCR で抽出した外国語テキスト
-    var extractedLanguageCode: String? // 検出言語コード (zh-Hans, en, fr, es …)
-    var translationJA: String?         // 日本語訳
-    var pronunciation: String?         // 発音記号 / ピンイン等
+    var extractedPhrase: String?         // OCR で抽出した外国語テキスト
+    var extractedLanguageCode: String?   // 検出言語コード (zh-Hans, en, fr, es …)
+    var translationJA: String?           // 日本語訳
+    var pronunciation: String?           // 発音記号 / ピンイン等
+    var grammarNote: String?             // 文法解説（コメントに「文法」と入れた場合に LLM 生成）
+    var exampleSentences: [ExampleSentence]? // 例文 2 件（コメントに「例文」と入れた場合に LLM 生成）
+    var mistakeNote: String?             // 間違えた理由解説（コメントに「ダメな理由」と入れた場合に LLM 生成）
 
     // 体重ログ用：記録時点の Apple Health 計測値
     var weightKg: Double?              // 体重（kg）
@@ -411,13 +420,16 @@ struct EduLogHistoryItem: Codable, Identifiable {
         isLiked               = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)               ?? false
         feedComments          = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)          ?? []
         isPublic              = try c.decodeIfPresent(Bool.self,           forKey: .isPublic)              ?? true
-        extractedPhrase       = try c.decodeIfPresent(String.self,         forKey: .extractedPhrase)
-        extractedLanguageCode = try c.decodeIfPresent(String.self,         forKey: .extractedLanguageCode)
-        translationJA         = try c.decodeIfPresent(String.self,         forKey: .translationJA)
-        pronunciation         = try c.decodeIfPresent(String.self,         forKey: .pronunciation)
-        weightKg              = try c.decodeIfPresent(Double.self,         forKey: .weightKg)
-        bodyFatPercent        = try c.decodeIfPresent(Double.self,         forKey: .bodyFatPercent)
-        calories              = try c.decodeIfPresent(Int.self,            forKey: .calories)
+        extractedPhrase       = try c.decodeIfPresent(String.self,              forKey: .extractedPhrase)
+        extractedLanguageCode = try c.decodeIfPresent(String.self,              forKey: .extractedLanguageCode)
+        translationJA         = try c.decodeIfPresent(String.self,              forKey: .translationJA)
+        pronunciation         = try c.decodeIfPresent(String.self,              forKey: .pronunciation)
+        grammarNote           = try c.decodeIfPresent(String.self,              forKey: .grammarNote)
+        exampleSentences      = try c.decodeIfPresent([ExampleSentence].self,   forKey: .exampleSentences)
+        mistakeNote           = try c.decodeIfPresent(String.self,              forKey: .mistakeNote)
+        weightKg              = try c.decodeIfPresent(Double.self,              forKey: .weightKg)
+        bodyFatPercent        = try c.decodeIfPresent(Double.self,              forKey: .bodyFatPercent)
+        calories              = try c.decodeIfPresent(Int.self,                 forKey: .calories)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

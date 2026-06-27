@@ -65,6 +65,9 @@ struct FriendPostData: Sendable {
     let translationJA: String?
     let pronunciation: String?
     let calories: Int?
+    let grammarNote: String?
+    let mistakeNote: String?
+    let exampleSentences: [ExampleSentence]?
 }
 
 @MainActor
@@ -203,7 +206,16 @@ final class TomoManager: ObservableObject {
                                     extractedLanguageCode: data["extractedLanguageCode"] as? String,
                                     translationJA: data["translationJA"] as? String,
                                     pronunciation: data["pronunciation"] as? String,
-                                    calories: data["calories"] as? Int
+                                    calories: data["calories"] as? Int,
+                                    grammarNote: data["grammarNote"] as? String,
+                                    mistakeNote: data["mistakeNote"] as? String,
+                                    exampleSentences: {
+                                        guard let raw = data["exampleSentences"] as? [[String: Any]],
+                                              let d = try? JSONSerialization.data(withJSONObject: raw),
+                                              let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
+                                        else { return nil }
+                                        return decoded
+                                    }()
                                 )
                             }
                         }) ?? []
@@ -261,6 +273,9 @@ final class TomoManager: ObservableObject {
         item.translationJA = p.translationJA
         item.pronunciation = p.pronunciation
         item.calories = p.calories
+        item.grammarNote = p.grammarNote
+        item.mistakeNote = p.mistakeNote
+        item.exampleSentences = p.exampleSentences
         return item
     }
 
@@ -389,7 +404,9 @@ struct TomoView: View {
     @State private var emailInput = ""
     @State private var showShareSheet = false
     @State private var shareText = ""
-    @StateObject private var photoLogManager = PhotoLogManager.shared
+    // PhotoLogManager は kfitApp から EnvironmentObject で配布済みのため
+    // @StateObject による二重購読を解消（不要な View 再レンダリングを防ぐ）
+    @EnvironmentObject private var photoLogManager: PhotoLogManager
     @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var selectedFoodItem: PhotoLogHistoryItem? = nil   // FOOD投稿の詳細
     @State private var commentTargetItem: EduLogHistoryItem? = nil
@@ -398,7 +415,8 @@ struct TomoView: View {
     @State private var showOlderFeed = false
     @State private var showInviteSheet = false
     @State private var deleteConfirmItem: EduLogHistoryItem? = nil
-    @State private var speakingItemID: String? = nil   // TTS 再生中のアイテム ID
+    @State private var speakingItemID: String? = nil       // TTS 再生中のアイテム ID
+    @State private var speakingExampleKey: String? = nil   // 例文 TTS 再生中のキー（"itemID-index"）
     @State private var showFoodLog = false             // FOOD → フォトログ
     @State private var eduRecordTarget: TomoQuickRecord? = nil  // 写真記録シート対象
     @State private var selectedCategory: String? = nil  // カテゴリー絞り込み（nil=すべて）
@@ -1170,17 +1188,17 @@ struct TomoView: View {
                 Button {
                     toggleLikeFeed(item)
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 24 * UIScale.font, weight: .regular))
+                            .font(.system(size: 18 * UIScale.font, weight: .regular))
                             .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
                         if item.likeCount > 0 {
                             Text("\(item.likeCount)")
-                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoDark)
                         }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
                 }
                 .buttonStyle(.plain)
 
@@ -1188,17 +1206,17 @@ struct TomoView: View {
                 Button {
                     commentTargetItem = item
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "bubble.right")
-                            .font(.system(size: 22 * UIScale.font, weight: .regular))
+                            .font(.system(size: 17 * UIScale.font, weight: .regular))
                             .foregroundColor(Color.duoDark)
                         if !item.feedComments.isEmpty {
                             Text("\(item.feedComments.count)")
-                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
                                 .foregroundColor(Color.duoDark)
                         }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
                 }
                 .buttonStyle(.plain)
 
@@ -1207,9 +1225,9 @@ struct TomoView: View {
                     shareTargetItem = item
                 } label: {
                     Image(systemName: "paperplane")
-                        .font(.system(size: 22 * UIScale.font, weight: .regular))
+                        .font(.system(size: 17 * UIScale.font, weight: .regular))
                         .foregroundColor(Color.duoDark)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .padding(.horizontal, 12).padding(.vertical, 9)
                 }
                 .buttonStyle(.plain)
 
@@ -1481,6 +1499,102 @@ struct TomoView: View {
                     .font(.system(size: 13 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // ── 間違えた理由解説 ──────────────────────────────────────────
+            if let note = item.mistakeNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("ダメな理由", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF3B30"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF3B30").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 4)
+            }
+
+            // ── 文法解説 ──────────────────────────────────────────────────
+            if let note = item.grammarNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("文法メモ", systemImage: "text.book.closed")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF9500"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF9500").opacity(0.08))
+                .cornerRadius(8)
+                .padding(.top, 4)
+            }
+
+            // ── 例文 2 件 ─────────────────────────────────────────────────
+            if let examples = item.exampleSentences, !examples.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("例文", systemImage: "quote.bubble")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                    ForEach(Array(examples.enumerated()), id: \.offset) { idx, ex in
+                        let exKey       = "\(item.id)-ex\(idx)"
+                        let isExSpeaking = speakingExampleKey == exKey
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .top, spacing: 6) {
+                                Text("\(idx + 1).")
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#58CC02"))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(ex.text)
+                                        .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                        .foregroundColor(Color.duoDark)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    if let tr = ex.translationJA, !tr.isEmpty {
+                                        Text(tr)
+                                            .font(.system(size: 12 * UIScale.font))
+                                            .foregroundColor(Color.duoSubtitle)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                Spacer()
+                                // 例文 TTS ボタン
+                                Button {
+                                    if isExSpeaking {
+                                        DuolingoTextExtractor.shared.stopSpeaking()
+                                        speakingExampleKey = nil
+                                    } else {
+                                        speakingExampleKey = exKey
+                                        speakingItemID = nil
+                                        DuolingoTextExtractor.shared.speak(
+                                            phrase: ex.text, languageCode: langCode)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                                            if speakingExampleKey == exKey {
+                                                speakingExampleKey = nil
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: isExSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(isExSpeaking ? .red : Color(hex: "#58CC02"))
+                                        .frame(width: 28, height: 28)
+                                        .background((isExSpeaking ? Color.red : Color(hex: "#58CC02")).opacity(0.12))
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(hex: "#58CC02").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 4)
             }
         }
         .padding(.horizontal, 14)

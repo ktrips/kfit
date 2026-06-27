@@ -2160,6 +2160,14 @@ struct EduFeedDetailSheet: View {
     @State private var showDeleteConfirm = false
     @State private var isSpeaking = false
     @State private var isPublicInTomo: Bool = false
+    @State private var showCommentSheet = false
+    @State private var showShareSheet = false
+    @State private var speakingExKey: String? = nil   // 例文 TTS
+
+    // いいね・コメント数はライブ値を優先
+    private var liveItem: EduLogHistoryItem {
+        eduLogManager.history.first(where: { $0.id == item.id }) ?? item
+    }
 
     /// 友達の投稿は ID が "friend_" プレフィックス
     private var isOwnPost: Bool { !item.id.hasPrefix("friend_") }
@@ -2244,20 +2252,60 @@ struct EduFeedDetailSheet: View {
                     }
 
                     // アクション行
-                    HStack(spacing: 18) {
-                        Image(systemName: "heart")
-                            .font(.system(size: 24 * UIScale.font, weight: .semibold))
-                            .foregroundColor(Color.duoDark.opacity(0.7))
-                        Image(systemName: "bubble.right")
-                            .font(.system(size: 22 * UIScale.font, weight: .semibold))
-                            .foregroundColor(Color.duoDark.opacity(0.7))
+                    HStack(spacing: 4) {
+                        // いいね
+                        Button {
+                            if isOwnPost {
+                                eduLogManager.toggleLike(id: item.id)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: liveItem.isLiked ? "heart.fill" : "heart")
+                                    .font(.system(size: 20 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(liveItem.isLiked ? Color(hex: "#ED4956") : Color.duoDark.opacity(0.75))
+                                if liveItem.likeCount > 0 {
+                                    Text("\(liveItem.likeCount)")
+                                        .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoDark.opacity(0.75))
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+
+                        // コメント
+                        Button {
+                            showCommentSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bubble.right")
+                                    .font(.system(size: 19 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoDark.opacity(0.75))
+                                if !liveItem.feedComments.isEmpty {
+                                    Text("\(liveItem.feedComments.count)")
+                                        .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoDark.opacity(0.75))
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+
                         Spacer()
-                        Image(systemName: "paperplane")
-                            .font(.system(size: 21 * UIScale.font, weight: .semibold))
-                            .foregroundColor(Color.duoDark.opacity(0.7))
+
+                        // シェア
+                        Button {
+                            showShareSheet = true
+                        } label: {
+                            Image(systemName: "paperplane")
+                                .font(.system(size: 19 * UIScale.font, weight: .semibold))
+                                .foregroundColor(Color.duoDark.opacity(0.75))
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
 
                     // キャプション
                     if !item.comment.isEmpty {
@@ -2337,6 +2385,13 @@ struct EduFeedDetailSheet: View {
                 dismiss()
             }
             Button("キャンセル", role: .cancel) {}
+        }
+        .sheet(isPresented: $showCommentSheet) {
+            FeedCommentsSheet(item: liveItem, eduLogManager: eduLogManager,
+                              photoLogManager: PhotoLogManager.shared)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            SocialShareSheet(item: liveItem)
         }
         .onAppear { isPublicInTomo = item.isPublic }
         .onDisappear {
@@ -2467,6 +2522,97 @@ struct EduFeedDetailSheet: View {
                     .font(.system(size: 14 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // ── 間違えた理由解説 ─────────────────────────────────────────
+            if let note = item.mistakeNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("ダメな理由", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF3B30"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF3B30").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 4)
+            }
+
+            // ── 文法解説 ─────────────────────────────────────────────────
+            if let note = item.grammarNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("文法メモ", systemImage: "text.book.closed")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF9500"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF9500").opacity(0.08))
+                .cornerRadius(8)
+                .padding(.top, 4)
+            }
+
+            // ── 例文 2 件 ─────────────────────────────────────────────────
+            if let examples = item.exampleSentences, !examples.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("例文", systemImage: "quote.bubble")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                    ForEach(Array(examples.enumerated()), id: \.offset) { idx, ex in
+                        let exKey       = "detail-ex\(idx)"
+                        let isExSpeaking = speakingExKey == exKey
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("\(idx + 1).")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color(hex: "#58CC02"))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(ex.text)
+                                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoDark)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let tr = ex.translationJA, !tr.isEmpty {
+                                    Text(tr)
+                                        .font(.system(size: 12 * UIScale.font))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                if isExSpeaking {
+                                    DuolingoTextExtractor.shared.stopSpeaking()
+                                    speakingExKey = nil
+                                } else {
+                                    speakingExKey = exKey
+                                    isSpeaking = false
+                                    DuolingoTextExtractor.shared.speak(
+                                        phrase: ex.text, languageCode: langCode)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                                        if speakingExKey == exKey { speakingExKey = nil }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isExSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isExSpeaking ? .red : Color(hex: "#58CC02"))
+                                    .frame(width: 28, height: 28)
+                                    .background((isExSpeaking ? Color.red : Color(hex: "#58CC02")).opacity(0.12))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(hex: "#58CC02").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 4)
             }
         }
         .padding(14)

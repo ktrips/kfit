@@ -196,6 +196,8 @@ struct MainTabView: View {
     @State private var tabBarHideWorkItem: DispatchWorkItem?
     @State private var tabBarRevealWorkItem: DispatchWorkItem?
     @State private var promoBannerDismissed = false
+    // DragGesture.onChanged は 60fps で呼ばれるため、タイマーリセットを間引くフラグ
+    @State private var revealSchedulePending = false
     @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
     @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = true
     @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
@@ -273,12 +275,16 @@ struct MainTabView: View {
                             if value.translation.height < -20 && !isTabBarHidden {
                                 hideTabBarNow()
                             }
-                            // スクロール中は毎フレーム自動復元タイマーをリセット。
-                            // 動きが止まった 0.6s 後にタブバーが「ニュルっ」と出る。
-                            if isTabBarHidden { scheduleTabBarAutoReveal() }
+                            // タイマーリセットを間引く: 既にスケジュール済みなら再作成しない。
+                            // スクロールが止まると revealSchedulePending が false になり
+                            // 次の onChanged でタイマーが再スケジュールされる仕組み。
+                            if isTabBarHidden && !revealSchedulePending {
+                                revealSchedulePending = true
+                                scheduleTabBarAutoReveal()
+                            }
                         }
-                        // onEnded での即時復元を削除: 指を離した直後でもスクロール慣性が
-                        // 残っている間はバーを隠したままにするため 0.6s タイマーに委ねる
+                        // onEnded での即時復元を削除: スクロール慣性が残っている間は
+                        // バーを隠したままにするため自動復元タイマーに委ねる
                 )
 
             bottomRevealZone
@@ -564,11 +570,12 @@ struct MainTabView: View {
 
     private func revealTabBar() {
         tabBarHideWorkItem?.cancel()
+        tabBarRevealWorkItem?.cancel()
+        revealSchedulePending = false
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
             isTabBarHidden = false
             promoBannerDismissed = false  // タブバー再表示時にバナーを次回も出せるようリセット
         }
-        // スクロール開始まで出っ放し — オートハイドは行わない
     }
 
     private func hideTabBarNow() {
@@ -597,9 +604,10 @@ struct MainTabView: View {
     // 下端スワイプ or ハンドルタップによる手動復元は revealTabBar() で即時実行される。
     private func scheduleTabBarAutoReveal() {
         tabBarRevealWorkItem?.cancel()
-        let delay: Double = plus.isPlus ? 0.6 : 5.0
-        let workItem = DispatchWorkItem {
-            guard isTabBarHidden else { return }
+        let delay: Double = plus.isPlus ? 2.0 : 5.0
+        let workItem = DispatchWorkItem { [self] in
+            guard isTabBarHidden else { revealSchedulePending = false; return }
+            revealSchedulePending = false
             revealTabBar()
         }
         tabBarRevealWorkItem = workItem
@@ -1074,7 +1082,7 @@ struct UserStatusSheet: View {
 // ────────────────────────────────────────────────────────────────────
 
 // 表示順: Plus(1/3) → AdMob(1/3) → AdMob(1/3) のサイクル
-private enum AdSlot: CaseIterable {
+private enum AdSlot: CaseIterable, Hashable {
     case plus
     case admob1
     case admob2
@@ -1090,8 +1098,10 @@ struct RotatingAdBanner: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            // .id() を外して View の再生成（=GADBannerView.makeUIView + banner.load）を防ぐ。
+            // スロット種別が同じ場合（admob1→admob2）は同一インスタンスを使い回す。
             slotView(slots[slotIndex % slots.count])
-                .id(slotIndex)
+                .id(slots[slotIndex % slots.count])   // slotIndex ではなく slot の種別で id 管理
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal:   .move(edge: .leading).combined(with: .opacity)

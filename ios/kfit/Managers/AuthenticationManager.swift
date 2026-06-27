@@ -2325,6 +2325,13 @@ enum PublicFeedPublisher {
         if let v = item.translationJA { data["translationJA"] = v }
         if let v = item.pronunciation { data["pronunciation"] = v }
         if let v = item.calories { data["calories"] = v }
+        if let v = item.grammarNote  { data["grammarNote"]  = v }
+        if let v = item.mistakeNote  { data["mistakeNote"]  = v }
+        if let ex = item.exampleSentences,
+           let encoded = try? JSONEncoder().encode(ex),
+           let arr = try? JSONSerialization.jsonObject(with: encoded) as? [[String: Any]] {
+            data["exampleSentences"] = arr
+        }
         write(uid: uid, postId: item.id, data: data)
     }
 
@@ -2548,9 +2555,11 @@ class PhotoLogManager: ObservableObject {
         return thumb.jpegData(compressionQuality: 0.6)
     }
 
-    /// 高画質サムネイル（アスペクト比を保持して最大1200px・Retina対応）
+    /// 高画質サムネイル（アスペクト比を保持して最大1200px・Retina対応 + 写真補正）
     private func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
-        let size = image.size
+        // アップロード前に明るさ・コントラスト・彩度を自動補正
+        let enhanced = image.enhancedForUpload()
+        let size = enhanced.size
         let maxSide = max(size.width, size.height)
         let target: UIImage
         if maxSide > maxDimension {
@@ -2559,9 +2568,9 @@ class PhotoLogManager: ObservableObject {
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
             let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+            target = renderer.image { _ in enhanced.draw(in: CGRect(origin: .zero, size: newSize)) }
         } else {
-            target = image
+            target = enhanced
         }
         return target.jpegData(compressionQuality: 0.88)
     }
@@ -2928,24 +2937,78 @@ class EduLogManager: ObservableObject {
         persistHistory()
         PublicFeedPublisher.publishEdu(item)
 
-        // OCR 結果未提供かつ Duolingo 画像の場合は自動抽出
+        // OCR 結果未提供かつ Duolingo 画像の場合は自動抽出、続けて文法/例文 LLM を呼ぶ
         let isDuolingo = activityName.localizedCaseInsensitiveContains("Duolingo")
                       || activityEmoji == "🦉"
         let needsOCR = isDuolingo && extractedPhrase == nil
-        if needsOCR, let image {
-            let itemID = item.id
+        let wantsGrammar  = comment.contains("文法")
+        let wantsExamples = comment.contains("例文")
+
+        if isDuolingo {
+            let itemID   = item.id
+            let capturedComment = comment
             Task { @MainActor in
-                guard let result = await DuolingoTextExtractor.shared.extract(from: image) else { return }
-                let pinyin = DuolingoTextExtractor.shared.generatePronunciation(
-                    phrase: result.phrase, languageCode: result.languageCode
-                )
+                // OCR フェーズ
+                var phrase   = extractedPhrase
+                var langCode = extractedLanguageCode ?? "en"
+                var langName = "英語"
+
+                if needsOCR, let image {
+                    guard let result = await DuolingoTextExtractor.shared.extract(from: image) else { return }
+                    let pinyin = DuolingoTextExtractor.shared.generatePronunciation(
+                        phrase: result.phrase, languageCode: result.languageCode
+                    )
+                    phrase   = result.phrase
+                    langCode = result.languageCode
+                    langName = result.languageName
+                    if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
+                        self.history[idx].extractedPhrase       = result.phrase
+                        self.history[idx].extractedLanguageCode = result.languageCode
+                        self.history[idx].translationJA         = result.translationJA
+                        self.history[idx].pronunciation         = pinyin
+                    }
+                } else if let p = phrase {
+                    // 呼び出し元から phrase 済み → 言語名を解決
+                    langName = DuolingoTextExtractor.shared.languageDisplayNamePublic(langCode)
+                    let _ = p
+                }
+
+                // LLM フェーズ（文法 / 例文）
+                guard let finalPhrase = phrase, !finalPhrase.isEmpty else {
+                    if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
+                        self.persistHistory()
+                        PublicFeedPublisher.publishEdu(self.history[idx])
+                    }
+                    return
+                }
+
+                let llmSettings = await AuthenticationManager.shared.getLLMSettings()
+                let needsLLM = (capturedComment.contains("文法")
+                             || capturedComment.contains("例文")
+                             || capturedComment.contains("ダメな理由"))
+                              && !llmSettings.apiKey.isEmpty
+
+                async let grammarTask: String? = needsLLM && capturedComment.contains("文法")
+                    ? DuolingoTextExtractor.shared.generateGrammarNote(
+                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
+                    : nil
+                async let examplesTask: [ExampleSentence]? = needsLLM && capturedComment.contains("例文")
+                    ? DuolingoTextExtractor.shared.generateExampleSentences(
+                        phrase: finalPhrase, languageName: langName,
+                        languageCode: langCode, settings: llmSettings)
+                    : nil
+                async let mistakeTask: String? = needsLLM && capturedComment.contains("ダメな理由")
+                    ? DuolingoTextExtractor.shared.generateMistakeExplanation(
+                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
+                    : nil
+
+                let (grammarNote, examples, mistakeNote) = await (grammarTask, examplesTask, mistakeTask)
+
                 if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
-                    self.history[idx].extractedPhrase       = result.phrase
-                    self.history[idx].extractedLanguageCode = result.languageCode
-                    self.history[idx].translationJA         = result.translationJA
-                    self.history[idx].pronunciation         = pinyin
+                    if let g = grammarNote  { self.history[idx].grammarNote      = g }
+                    if let e = examples     { self.history[idx].exampleSentences = e }
+                    if let m = mistakeNote  { self.history[idx].mistakeNote      = m }
                     self.persistHistory()
-                    // OCR結果反映後に共有投稿も更新
                     PublicFeedPublisher.publishEdu(self.history[idx])
                 }
             }
@@ -2953,7 +3016,9 @@ class EduLogManager: ObservableObject {
     }
 
     static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
-        let size = image.size
+        // アップロード前に明るさ・コントラスト・彩度を自動補正
+        let enhanced = image.enhancedForUpload()
+        let size = enhanced.size
         let maxSide = max(size.width, size.height)
         let target: UIImage
         if maxSide > maxDimension {
@@ -2962,9 +3027,9 @@ class EduLogManager: ObservableObject {
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
             let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+            target = renderer.image { _ in enhanced.draw(in: CGRect(origin: .zero, size: newSize)) }
         } else {
-            target = image
+            target = enhanced
         }
         return target.jpegData(compressionQuality: 0.88)
     }

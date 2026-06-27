@@ -40,13 +40,13 @@ MARGIN_BOTTOM = Mm(19)
 MARGIN_INNER  = Mm(19)
 MARGIN_OUTER  = Mm(13)
 
-# ── 配色パレット（Fitingo Plus テーマ）────────────────────────
-GREEN      = "58CC02"   # Fitingo グリーン（H1・章タイトル）
-GREEN_DK   = "3E8F00"
-GREEN_LT   = "EDFAD4"
-ORANGE     = "FF8C00"   # Fitingo オレンジ（Plus カラー・H2）
-ORANGE_DK  = "CC6F00"
-ORANGE_LT  = "FFF4E0"
+# ── 配色パレット（Fitingo Plus テーマ／明るいオレンジ基調）────────────
+GREEN      = "FF6600"   # ビビッドオレンジ（H1・章タイトル・罫線）
+GREEN_DK   = "E55000"   # ディープオレンジ（H1/H2 テキスト・テーブルヘッダー）
+GREEN_LT   = "FFF0E6"   # ライトオレンジ（ブロック背景・引用）
+ORANGE     = "FF8C00"   # アンバーオレンジ（H2・アクセント）
+ORANGE_DK  = "CC5500"   # バーントオレンジ（H3・小見出し）
+ORANGE_LT  = "FFF5EC"   # 薄いクリーム（コードブロック背景）
 PURPLE     = "9747E8"   # Plus パープル（H3）
 PURPLE_DK  = "7228C0"
 PURPLE_LT  = "F3EBFE"
@@ -237,11 +237,12 @@ def add_image(doc, rel_path, alt=""):
     else:
         kwargs = {"height": Inches(max_h)}
     shape = doc.add_picture(path, **kwargs)
-    if alt:
-        docPr = shape._inline.find(qn("wp:docPr"))
-        if docPr is not None:
-            docPr.set("descr", alt)
-            docPr.set("title", alt)
+    # alt が空の場合はファイル名をフォールバックとして使用
+    effective_alt = alt if alt else os.path.splitext(os.path.basename(rel_path))[0]
+    docPr = shape._inline.find(qn("wp:docPr"))
+    if docPr is not None:
+        docPr.set("descr", effective_alt)
+        docPr.set("title", effective_alt)
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.paragraphs[-1].paragraph_format.space_before = Pt(4)
     doc.paragraphs[-1].paragraph_format.space_after = Pt(8)
@@ -463,7 +464,7 @@ def add_heading(doc, level, text, pending_anchor, page_break=False, toc_bookmark
         p = doc.add_paragraph(style="Normal")
         if page_break:
             p.paragraph_format.page_break_before = True
-        p.paragraph_format.space_before = Pt(18)
+        p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after  = Pt(8)
         add_inline(p, text, base_color=GREEN_DK)
         for r in p.runs:
@@ -491,6 +492,9 @@ def add_heading(doc, level, text, pending_anchor, page_break=False, toc_bookmark
     p = doc.add_paragraph(style=style_map[effective_level])
     if page_break:
         p.paragraph_format.page_break_before = True
+    # 章・節タイトル上の余白を削除
+    if level == 2:
+        p.paragraph_format.space_before = Pt(0)
     color_map = {1: GREEN_DK, 2: GREEN_DK, 3: ORANGE_DK, 4: PURPLE_DK}
     add_inline(p, text, base_color=color_map[level])
     if level == 2:
@@ -722,7 +726,7 @@ def add_cover_page(doc):
     sp2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sp2.paragraph_format.space_before = Pt(8)
     sp2.paragraph_format.space_after  = Pt(20)
-    sr2 = sp2.add_run("Kindle電子書籍出版 & Plusサブスクリプション実装\n— AI個人開発 完全ガイド —")
+    sr2 = sp2.add_run("AI時代のアプリを作る・届ける・稼ぐ完全ガイド")
     sr2.font.name = JP_FONT
     sr2.font.size = Pt(13)
     sr2.font.bold = False
@@ -804,6 +808,9 @@ def build():
             set_style_font(doc.styles[sname], name=JP_FONT, size=10.5, color=INK)
         except KeyError:
             pass
+    # 章・節タイトル上の余白をスタイルレベルで削除
+    for hname in ("Heading 1", "Heading 2", "Heading 3"):
+        doc.styles[hname].paragraph_format.space_before = Pt(0)
     # Kindle NCX: スタイルの pPr に outlineLvl を明示設定
     # Heading 1=0, Heading 2=1, Heading 3=2（Word/KDP の規約）
     ensure_style_outline_level(doc.styles["Heading 1"], 0)
@@ -917,7 +924,8 @@ def build():
                 continue
             # すべての ## 見出し（level 2）は改ページ
             # 目次・はじめに・終わりに・付録・各章 すべて新しいページから開始
-            is_page_break = (level == 2)
+            # 免責事項・著作権表示は本文に続けて表示（改ページなし）
+            is_page_break = (level == 2 and text != "免責事項・著作権表示")
             # level 2/3/4 すべてにブックマーク割り当て（Kindle NCX リンク用）
             toc_bm = None
             if level in (2, 3, 4) and text != "目次":

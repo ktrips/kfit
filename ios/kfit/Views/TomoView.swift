@@ -409,6 +409,9 @@ struct TomoView: View {
     @EnvironmentObject private var photoLogManager: PhotoLogManager
     @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var selectedFoodItem: PhotoLogHistoryItem? = nil   // FOOD投稿の詳細
+    @State private var swipeDetailItems: [EduLogHistoryItem] = []     // スワイプ詳細グループ
+    @State private var swipeDetailStart: Int = 0
+    @State private var showSwipeDetail = false
     @State private var commentTargetItem: EduLogHistoryItem? = nil
     @State private var shareTargetItem: EduLogHistoryItem? = nil
     @State private var categoryGroupTarget: TomoView.FeedCategoryGroup? = nil
@@ -486,6 +489,14 @@ struct TomoView: View {
         }
         .sheet(item: $selectedFoodItem) { item in
             PhotoFeedDetailSheet(item: item)
+        }
+        .sheet(isPresented: $showSwipeDetail) {
+            SwipeableTomoDetailSheet(
+                items: swipeDetailItems,
+                startIndex: swipeDetailStart,
+                photoLogManager: photoLogManager,
+                onComment: { commentTargetItem = $0 }
+            )
         }
         .sheet(item: $commentTargetItem) { item in
             FeedCommentsSheet(item: item, eduLogManager: eduLogManager,
@@ -664,6 +675,18 @@ struct TomoView: View {
         } else {
             selectedEduItem = item
         }
+    }
+
+    /// 同一グループ（同日×同カテゴリ）の複数アイテムをスワイプ詳細で開く
+    private func openDetailInGroup(_ item: EduLogHistoryItem, siblings: [EduLogHistoryItem]) {
+        guard siblings.count > 1 else {
+            openDetail(item)
+            return
+        }
+        let idx = siblings.firstIndex(where: { $0.id == item.id }) ?? 0
+        swipeDetailItems = siblings
+        swipeDetailStart = idx
+        showSwipeDetail = true
     }
 
     /// いいね：food_ プレフィックスで PhotoLogManager か EduLogManager に振り分け
@@ -1047,45 +1070,35 @@ struct TomoView: View {
     private func instaPostCard(_ item: EduLogHistoryItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // ── ポストヘッダー ────────────────────────────────────────────
-            HStack(spacing: 10) {
+            HStack(spacing: 7) {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(
                             colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 32, height: 32)
                     Circle()
                         .fill(Color(.systemBackground))
-                        .frame(width: 37, height: 37)
+                        .frame(width: 28, height: 28)
                     UserAvatarView(
                         name: item.authorFirstName,
                         photoURL: item.authorPhotoURL.isEmpty
                             ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
                             : item.authorPhotoURL,
-                        size: 33
+                        size: 25
                     )
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
                     let displayName = isOwnPost(item) ? "YOU" : item.authorFirstName
                     let isYou = isOwnPost(item)
-                    // FOOD投稿は食品名を写真上に表示するため、ヘッダーには名前のみ
-                    let showComment = !item.comment.isEmpty && !item.id.hasPrefix("food_")
-                    if showComment {
-                        (Text(displayName + "  ")
-                            .font(.system(size: 13 * UIScale.font, weight: .black))
-                         + Text(item.comment)
-                            .font(.system(size: 13 * UIScale.font)))
-                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
-                            .lineLimit(1)
-                    } else {
-                        Text(displayName)
-                            .font(.system(size: 13 * UIScale.font, weight: .black))
-                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
-                    }
+                    // 説明は写真上に表示するため、ヘッダーには名前のみ
+                    Text(displayName)
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                     Text(relativeTimeString(item.timestamp))
-                        .font(.system(size: 11 * UIScale.font))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -1100,9 +1113,9 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Text(categoryEmoji(for: item))
-                            .font(.system(size: 12 * UIScale.font))
+                            .font(.system(size: 11 * UIScale.font))
                         Text(categoryKey(for: item))
-                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .font(.system(size: 9 * UIScale.font, weight: .semibold))
                             .foregroundColor(selectedCategory == categoryKey(for: item) ? .white : Color.duoSubtitle)
                             .lineLimit(1)
                     }
@@ -1133,8 +1146,8 @@ struct TomoView: View {
                         .padding(.leading, 4)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
 
             // ── Instagram風 正方形写真 or グラデーション＋絵文字 ──────────────
             Button { openDetail(item) } label: {
@@ -1176,9 +1189,20 @@ struct TomoView: View {
                             .padding(8)
                     }
                 }
-                // 下部: FOOD投稿に栄養情報オーバーレイ
+                // 右上: Day◯ バッジ
+                .overlay(alignment: .topTrailing) {
+                    Text(dayLabel(for: item.timestamp))
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.black.opacity(0.52))
+                        .clipShape(Capsule())
+                        .padding(8)
+                }
+                // 下部: FOOD → 栄養情報、非FOOD → コメント（あれば）
                 .overlay(alignment: .bottom) {
                     if let food = foodItem {
+                        // FOOD: 食品名 + 栄養情報
                         VStack(alignment: .leading, spacing: 2) {
                             Text(food.displayName)
                                 .font(.system(size: 11 * UIScale.font, weight: .black))
@@ -1208,6 +1232,21 @@ struct TomoView: View {
                                 startPoint: .top, endPoint: .bottom
                             )
                         )
+                    } else if !item.comment.isEmpty {
+                        // 非FOOD: コメント・説明テキスト
+                        Text(item.comment)
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .shadow(color: .black.opacity(0.6), radius: 2)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                LinearGradient(
+                                    colors: [.clear, Color.black.opacity(0.65)],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            )
                     }
                 }
             }
@@ -1361,7 +1400,7 @@ struct TomoView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 3) {
                     ForEach(Array(pg.items.enumerated()), id: \.element.id) { idx, item in
-                        carouselSlide(item: item, index: idx, total: pg.items.count)
+                        carouselSlide(item: item, index: idx, total: pg.items.count, siblings: pg.items)
                     }
                 }
             }
@@ -1414,12 +1453,15 @@ struct TomoView: View {
     }
 
     /// カルーセル内の1スライド（タップで詳細表示）
-    private func carouselSlide(item: EduLogHistoryItem, index: Int, total: Int) -> some View {
+    private func carouselSlide(item: EduLogHistoryItem, index: Int, total: Int, siblings: [EduLogHistoryItem] = []) -> some View {
         let screenWidth = UIScreen.main.bounds.width
         let slideWidth: CGFloat = total == 1 ? screenWidth : screenWidth * 0.72
+        let isFood = item.id.hasPrefix("food_")
+        let foodItem = isFood ? originalFoodItem(for: item) : nil
+        let mealInfo = mealTimeInfo(for: item.timestamp)
 
-        return Button { openDetail(item) } label: {
-            ZStack(alignment: .bottomLeading) {
+        return Button { openDetailInGroup(item, siblings: siblings.isEmpty ? [item] : siblings) } label: {
+            ZStack {
                 Group {
                     if let thumb = item.thumbnail {
                         Image(uiImage: thumb)
@@ -1438,32 +1480,78 @@ struct TomoView: View {
                 .clipped()
                 .contentShape(Rectangle())
 
-                // 番号バッジ
-                if total > 1 {
-                    Text("\(index + 1)/\(total)")
-                        .font(.system(size: 11 * UIScale.font, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.black.opacity(0.55))
-                        .clipShape(Capsule())
-                        .padding(8)
+                // 上部オーバーレイ（左: meal バッジ(FOOD), 右: Day + 番号バッジ）
+                VStack {
+                    HStack(alignment: .top) {
+                        // 左: FOOD のみ meal バッジ
+                        if isFood {
+                            Text(mealInfo.label)
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(mealInfo.color)
+                                .clipShape(Capsule())
+                        }
+                        Spacer()
+                        // 右: Day バッジ + 番号バッジ（複数枚時）
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(dayLabel(for: item.timestamp))
+                                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.black.opacity(0.52))
+                                .clipShape(Capsule())
+                            if total > 1 {
+                                Text("\(index + 1)/\(total)")
+                                    .font(.system(size: 10 * UIScale.font, weight: .black))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background(Color.black.opacity(0.55))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    .padding(8)
+                    Spacer()
                 }
 
-                // カロリーバッジ（FOOD）
-                if let kcal = foodCalories(for: item) {
-                    HStack(spacing: 3) {
-                        Text("🔥").font(.system(size: 10 * UIScale.font))
-                        Text("\(kcal) kcal")
-                            .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
+                // 下部: FOOD の名称 + 栄養情報オーバーレイ
+                if let food = foodItem {
+                    VStack {
+                        Spacer()
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(food.displayName)
+                                .font(.system(size: 11 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            HStack(spacing: 5) {
+                                Text("🔥 \(food.calories)kcal")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("P \(Int(food.analyzedNutrition.protein))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#FF9F43"))
+                                Text("F \(Int(food.analyzedNutrition.fat))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#A29BFE"))
+                                Text("C \(Int(food.analyzedNutrition.carbs))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#74B9FF"))
+                            }
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            LinearGradient(
+                                colors: [.clear, Color.black.opacity(0.7)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.black.opacity(0.55))
-                    .clipShape(Capsule())
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .bottomTrailing)
                 }
             }
+            .frame(width: slideWidth, height: slideWidth)
         }
         .buttonStyle(.plain)
     }
@@ -2128,5 +2216,224 @@ struct TomoView: View {
         case 18..<24: return ("Dinner",    Color(hex: "#0A84FF"))
         default:      return ("Late Night",Color(hex: "#5E5CE6"))
         }
+    }
+
+    /// スタート日（joinDate）から投稿日までの日数を "Day N" 文字列で返す
+    private func dayLabel(for date: Date) -> String {
+        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: joinDate)
+        let post  = cal.startOfDay(for: date)
+        let days  = cal.dateComponents([.day], from: start, to: post).day ?? 0
+        return "Day \(days + 1)"
+    }
+}
+
+// MARK: - スワイプ詳細シート（同一グループ複数投稿を左右スワイプで閲覧）
+
+struct SwipeableTomoDetailSheet: View {
+    let items: [EduLogHistoryItem]
+    let startIndex: Int
+    let photoLogManager: PhotoLogManager
+    var onComment: ((EduLogHistoryItem) -> Void)? = nil
+
+    @State private var selection: Int
+    @Environment(\.dismiss) private var dismiss
+
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.dateFormat = "M月d日 HH:mm"; return f
+    }()
+
+    init(items: [EduLogHistoryItem], startIndex: Int, photoLogManager: PhotoLogManager,
+         onComment: ((EduLogHistoryItem) -> Void)? = nil) {
+        self.items = items
+        self.startIndex = startIndex
+        self.photoLogManager = photoLogManager
+        self.onComment = onComment
+        _selection = State(initialValue: startIndex)
+    }
+
+    var body: some View {
+        NavigationView {
+            TabView(selection: $selection) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    slidePage(item: item)
+                        .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
+            .background(Color.black.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("\(selection + 1) / \(items.count)")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                        .fontWeight(.bold)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func slidePage(item: EduLogHistoryItem) -> some View {
+        let isFood = item.id.hasPrefix("food_")
+        let food: PhotoLogHistoryItem? = isFood
+            ? photoLogManager.history.first(where: { $0.id == String(item.id.dropFirst("food_".count)) })
+            : nil
+        let hour = Calendar.current.component(.hour, from: item.timestamp)
+        let mealColor: Color = {
+            switch hour {
+            case 5..<11:  return Color(hex: "#FF9500")
+            case 11..<14: return Color(hex: "#34C759")
+            case 14..<18: return Color(hex: "#AF52DE")
+            case 18..<24: return Color(hex: "#0A84FF")
+            default:      return Color(hex: "#5E5CE6")
+            }
+        }()
+        let mealLabel: String = {
+            switch hour {
+            case 5..<11:  return "Breakfast"
+            case 11..<14: return "Lunch"
+            case 14..<18: return "Snack"
+            case 18..<24: return "Dinner"
+            default:      return "Late Night"
+            }
+        }()
+
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                // ── 写真 or グラデーション ──────────────────────────────────
+                ZStack(alignment: .bottom) {
+                    Group {
+                        if let thumb = food?.thumbnail ?? item.thumbnail {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            ZStack {
+                                LinearGradient(
+                                    colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
+                                Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                                    .font(.system(size: 80 * UIScale.font))
+                            }
+                            .frame(maxWidth: .infinity).frame(height: 300)
+                        }
+                    }
+                    .clipped()
+
+                    // 下部グラデーションと情報
+                    VStack(alignment: .leading, spacing: 4) {
+                        if isFood, let food = food {
+                            Text(food.displayName)
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            HStack(spacing: 8) {
+                                Text("🔥 \(food.calories)kcal")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("P \(Int(food.analyzedNutrition.protein))g")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#FF9F43"))
+                                Text("F \(Int(food.analyzedNutrition.fat))g")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#A29BFE"))
+                                Text("C \(Int(food.analyzedNutrition.carbs))g")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#74B9FF"))
+                            }
+                        } else if !item.activityName.isEmpty {
+                            Text(item.activityEmoji + " " + item.activityName)
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                        }
+                        Text(SwipeableTomoDetailSheet.hhmm.string(from: item.timestamp))
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        LinearGradient(colors: [.clear, Color.black.opacity(0.72)],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+                }
+                // 左上: 食事タイムバッジ（FOOD のみ）
+                .overlay(alignment: .topLeading) {
+                    if isFood {
+                        Text(mealLabel)
+                            .font(.system(size: 11 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(mealColor)
+                            .clipShape(Capsule())
+                            .padding(10)
+                    }
+                }
+                // 右上: Day◯ バッジ
+                .overlay(alignment: .topTrailing) {
+                    let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? item.timestamp
+                    let cal = Calendar.current
+                    let days = cal.dateComponents([.day],
+                                                  from: cal.startOfDay(for: joinDate),
+                                                  to: cal.startOfDay(for: item.timestamp)).day ?? 0
+                    Text("Day \(days + 1)")
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.black.opacity(0.52))
+                        .clipShape(Capsule())
+                        .padding(10)
+                }
+
+                // ── コメント ────────────────────────────────────────────────
+                let caption = food?.comment ?? (item.comment.isEmpty ? nil : item.comment)
+                if let caption, !caption.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "quote.opening")
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoGreen.opacity(0.7))
+                            .padding(.top, 2)
+                        Text(caption)
+                            .font(.system(size: 14 * UIScale.font))
+                            .foregroundColor(Color.duoDark.opacity(0.9))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemGray6))
+                    .padding(.horizontal, 16).padding(.top, 12)
+                }
+
+                // ── コメントボタン ───────────────────────────────────────────
+                HStack {
+                    Button {
+                        onComment?(item)
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bubble.right")
+                                .font(.system(size: 17 * UIScale.font, weight: .semibold))
+                            if !item.feedComments.isEmpty {
+                                Text("\(item.feedComments.count)")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            }
+                            Text("コメントを見る・書く")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                        }
+                        .foregroundColor(Color.duoSubtitle)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+        }
+        .background(Color.duoBg.ignoresSafeArea())
     }
 }

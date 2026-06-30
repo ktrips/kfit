@@ -7,9 +7,10 @@ const APP_STORE_URL = 'https://apps.apple.com/app/fitingo/id000000000';
 
 interface LoginViewProps {
   onOpenBooks?: () => void;
+  onStartWorkout?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks, onStartWorkout }) => {
   const setUser = useAppStore((state) => state.setUser);
   const setError = useAppStore((state) => state.setError);
 
@@ -82,9 +83,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks 
         </p>
       </div>
 
-      {/* Workout GIF preview */}
-      <div
-        className="w-full max-w-sm mt-6 overflow-hidden rounded-3xl"
+      {/* Workout GIF preview（タップでトレーニング開始） */}
+      <button
+        onClick={onStartWorkout}
+        className="w-full max-w-sm mt-6 overflow-hidden rounded-3xl relative active:scale-[0.98] transition-transform"
         style={{ border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}
       >
         <img
@@ -93,7 +95,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks 
           className="w-full object-cover block"
           style={{ maxHeight: '280px', objectPosition: 'center' }}
         />
-      </div>
+        {/* オーバーレイ：タップ促進 */}
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.55), transparent)' }}>
+          <span className="text-white font-black text-base drop-shadow">💪 タップしてトレーニング開始</span>
+        </div>
+      </button>
 
       {/* ── iOS アプリ QRコード ── */}
       <div className="w-full max-w-sm mt-8">

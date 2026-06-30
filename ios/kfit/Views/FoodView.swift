@@ -1935,21 +1935,13 @@ struct PhotoFeedDetailSheet: View {
     }
 
     private var photoTomoPublicToggle: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
-                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .semibold))
                 .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
-                .frame(width: 32, height: 32)
-                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TOMOフィードに公開")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のFOODページにのみ表示")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-            }
+            Text("TOMOフィードに公開")
+                .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoDark)
             Spacer()
             Toggle("", isOn: Binding(
                 get: { isPublicInTomo },
@@ -1960,10 +1952,11 @@ struct PhotoFeedDetailSheet: View {
             ))
             .labelsHidden()
             .tint(Color.duoBlue)
+            .scaleEffect(0.85)
         }
-        .padding(12)
+        .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color(.systemGray6))
-        .cornerRadius(14)
+        .cornerRadius(10)
     }
 }
 
@@ -2289,6 +2282,27 @@ struct EduFeedDetailSheet: View {
                         }
                     }
 
+                    // キャプション（コメント）— 画像直下に目立つ形で表示
+                    if !item.comment.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "quote.opening")
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoGreen.opacity(0.7))
+                                .padding(.top, 2)
+                            Text(item.comment)
+                                .font(.system(size: 14 * UIScale.font))
+                                .foregroundColor(Color.duoDark.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 4)
+                    }
+
                     // アクション行
                     HStack(spacing: 4) {
                         // いいね
@@ -2344,21 +2358,6 @@ struct EduFeedDetailSheet: View {
                     }
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
-
-                    // キャプション
-                    if !item.comment.isEmpty {
-                        HStack(alignment: .top, spacing: 6) {
-                            Text(item.authorFirstName)
-                                .font(.system(size: 14 * UIScale.font, weight: .black))
-                                .foregroundColor(Color.duoDark)
-                            Text(item.comment)
-                                .font(.system(size: 14 * UIScale.font))
-                                .foregroundColor(Color.duoDark.opacity(0.9))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                    }
 
                     // Duolingo: 発音情報＋再生
                     if let phrase = item.extractedPhrase, !phrase.isEmpty {
@@ -2438,21 +2437,13 @@ struct EduFeedDetailSheet: View {
     }
 
     private var tomoPublicToggle: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
-                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .semibold))
                 .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
-                .frame(width: 32, height: 32)
-                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TOMOフィードに公開")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のページにのみ表示")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-            }
+            Text("TOMOフィードに公開")
+                .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoDark)
             Spacer()
             Toggle("", isOn: Binding(
                 get: { isPublicInTomo },
@@ -2463,10 +2454,11 @@ struct EduFeedDetailSheet: View {
             ))
             .labelsHidden()
             .tint(Color.duoBlue)
+            .scaleEffect(0.85)
         }
-        .padding(12)
+        .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color(.systemGray6))
-        .cornerRadius(14)
+        .cornerRadius(10)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
     }
@@ -3258,24 +3250,46 @@ struct CategoryGroupListSheet: View {
                 size: 36
             )
 
-            // サムネイル
-            Group {
-                if let thumb = item.smallThumbnail {
-                    Image(uiImage: thumb).resizable().scaledToFill()
-                } else {
-                    LinearGradient(
-                        colors: [Color.duoBlue.opacity(0.6), Color.duoPurple.opacity(0.6)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                    .overlay(Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji).font(.system(size: 20 * UIScale.font)))
+            // サムネイル（FOOD は食事タイムバッジをオーバーレイ）
+            let isFood = item.id.hasPrefix("food_")
+            let mealInfo = mealTimeInfo(for: item.timestamp)
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let thumb = item.smallThumbnail {
+                        Image(uiImage: thumb).resizable().scaledToFill()
+                    } else {
+                        LinearGradient(
+                            colors: [Color.duoBlue.opacity(0.6), Color.duoPurple.opacity(0.6)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                        .overlay(Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji).font(.system(size: 20 * UIScale.font)))
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .clipped()
+
+                if isFood {
+                    Text(mealInfo.label)
+                        .font(.system(size: 7 * UIScale.font, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(mealInfo.color)
+                        .clipShape(Capsule())
+                        .padding(3)
                 }
             }
-            .frame(width: 48, height: 48).cornerRadius(10).clipped()
+            .cornerRadius(10)
 
-            // テキスト
+            // テキスト（FOOD は食事名を色付きで強調）
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.authorFirstName)
-                    .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
+                if isFood {
+                    Text(mealInfo.label)
+                        .font(.system(size: 10 * UIScale.font, weight: .black))
+                        .foregroundColor(mealInfo.color)
+                } else {
+                    Text(item.authorFirstName)
+                        .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(Color.duoSubtitle)
+                }
                 Text(item.comment.isEmpty ? item.activityName : item.comment)
                     .font(.system(size: 13 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoDark).lineLimit(2)
                 HStack(spacing: 10) {

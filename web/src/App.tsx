@@ -296,7 +296,12 @@ function App() {
           />
         )}
 
-        {currentView === 'login' && <LoginView onOpenBooks={() => navigate('books')} />}
+        {currentView === 'login' && (
+          <LoginView
+            onOpenBooks={() => navigate('books')}
+            onStartWorkout={() => navigate('workout')}
+          />
+        )}
         {currentView === 'dashboard' && user && (
           <DashboardView
             onStartWorkout={() => navigate('workout')}
@@ -306,8 +311,8 @@ function App() {
             onDietGoal={() => navigate('dietGoal')}
           />
         )}
-        {currentView === 'workout' && user && (
-          <DailyWorkoutFlow onFinish={() => navigate('dashboard')} />
+        {currentView === 'workout' && (
+          <DailyWorkoutFlow onFinish={() => navigate(user ? 'dashboard' : 'login')} />
         )}
         {currentView === 'tracker' && user && (
           <ExerciseTrackerView

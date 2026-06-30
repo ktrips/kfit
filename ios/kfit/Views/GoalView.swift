@@ -3250,21 +3250,13 @@ struct WeightFeedDetailSheet: View {
     }
 
     private var weightTomoPublicToggle: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: isPublicInTomo ? "person.2.fill" : "person.2")
-                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                .font(.system(size: 13 * UIScale.font, weight: .semibold))
                 .foregroundColor(isPublicInTomo ? Color.duoBlue : Color(.systemGray3))
-                .frame(width: 32, height: 32)
-                .background((isPublicInTomo ? Color.duoBlue : Color(.systemGray5)).opacity(0.15))
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TOMOフィードに公開")
-                    .font(.system(size: 13 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Text(isPublicInTomo ? "TOMOの友達に表示されます" : "自分のFITページにのみ表示")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-            }
+            Text("TOMOフィードに公開")
+                .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoDark)
             Spacer()
             Toggle("", isOn: Binding(
                 get: { isPublicInTomo },
@@ -3275,10 +3267,11 @@ struct WeightFeedDetailSheet: View {
             ))
             .labelsHidden()
             .tint(Color.duoBlue)
+            .scaleEffect(0.85)
         }
-        .padding(12)
+        .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color(.systemGray6))
-        .cornerRadius(14)
+        .cornerRadius(10)
     }
 
     private func metric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {

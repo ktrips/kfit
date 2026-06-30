@@ -2537,6 +2537,9 @@ class PhotoLogManager: ObservableObject {
         history.insert(item, at: 0)
         persistHistory()
         PublicFeedPublisher.publishFood(item)
+
+        // 写真アップロードボーナス: +10 XP
+        Task { await AuthenticationManager.shared.awardPoints(10) }
     }
 
     /// description の最初の文（句読点または改行まで）を料理名として抽出

@@ -796,10 +796,15 @@ class TimeSlotManager: ObservableObject {
 
     // MARK: - ヘルパー
 
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     private func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        Self.dateFmt.string(from: date)
     }
 }
 

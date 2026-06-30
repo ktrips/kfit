@@ -2,6 +2,46 @@ import Foundation
 import UIKit
 import ImageIO
 
+// MARK: - ThumbnailFileStore
+/// サムネイル画像をファイルシステムの Documents/thumbnails/ に保存・読み込みするユーティリティ。
+///
+/// UserDefaults に画像バイナリを直接保存すると起動時に全データをメモリに展開し、
+/// 書き込みごとに数MB のシリアライズが走る問題を解消するために導入。
+/// 各アイテムの `thumbnailData: Data?` は廃止し `thumbnailPath: String?` で置き換える。
+enum ThumbnailFileStore {
+
+    static let directory: URL = {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir  = docs.appendingPathComponent("thumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// `data` をファイルに書き込み、パスを返す。失敗時は nil。
+    @discardableResult
+    static func save(_ data: Data, id: String) -> String? {
+        let url = directory.appendingPathComponent("\(id).jpg")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// パスから Data を読み込む（失敗時は nil）。
+    static func load(path: String) -> Data? {
+        try? Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// ファイルを削除する。
+    static func delete(id: String) {
+        let url = directory.appendingPathComponent("\(id).jpg")
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+// MARK: - ThumbnailCache
 /// サムネイル画像のデコード結果をキャッシュし、表示サイズに合わせてダウンサンプリングするユーティリティ。
 ///
 /// 保存画像は最大1200px のフルサイズJPEG。これを `UIImage(data:)` で毎描画デコードすると
@@ -286,7 +326,10 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
     var foodName: String = ""
     var comment: String = ""
     var analyzedNutrition: AnalyzedNutrition
+    /// 旧形式（UserDefaults 直接保存）。新規保存は thumbnailPath に移行。migration 後は nil になる。
     var thumbnailData: Data?
+    /// 新形式: Documents/thumbnails/{id}.jpg へのパス
+    var thumbnailPath: String?
     var isFavorite: Bool = false
     var isPublic: Bool = true   // TOMOのDailyフィードに公開するか（旧データ=全て公開）
     var isLiked: Bool = false
@@ -302,6 +345,7 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         comment            = try c.decodeIfPresent(String.self,             forKey: .comment)            ?? ""
         analyzedNutrition  = try c.decode(AnalyzedNutrition.self,          forKey: .analyzedNutrition)
         thumbnailData      = try c.decodeIfPresent(Data.self,               forKey: .thumbnailData)
+        thumbnailPath      = try c.decodeIfPresent(String.self,             forKey: .thumbnailPath)
         isFavorite         = try c.decodeIfPresent(Bool.self,               forKey: .isFavorite)         ?? false
         isPublic           = try c.decodeIfPresent(Bool.self,               forKey: .isPublic)           ?? true
         isLiked            = try c.decodeIfPresent(Bool.self,               forKey: .isLiked)            ?? false
@@ -319,16 +363,22 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         self.isPublic          = isPublic
     }
 
-    /// フィード等の大きめ表示用（デコード結果はキャッシュされる）
+    /// フィード等の大きめ表示用（ファイルキャッシュ優先、旧データは thumbnailData フォールバック）
     var thumbnail: UIImage? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
+            return ThumbnailCache.shared.image(for: "photo_\(id)", data: data, maxPixel: 1024)
+        }
         guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 1024)
+        return ThumbnailCache.shared.image(for: "photo_\(id)", data: data, maxPixel: 1024)
     }
 
     /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
     var smallThumbnail: UIImage? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
+            return ThumbnailCache.shared.image(for: "photo_sm_\(id)", data: data, maxPixel: 240)
+        }
         guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 240)
+        return ThumbnailCache.shared.image(for: "photo_sm_\(id)", data: data, maxPixel: 240)
     }
 
     var displayName: String {
@@ -383,7 +433,10 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var comment: String = ""
     var authorName: String = ""
     var authorPhotoURL: String = ""
+    /// 旧形式（UserDefaults 直接保存）。新規保存は thumbnailPath に移行。migration 後は nil になる。
     var thumbnailData: Data?
+    /// 新形式: Documents/thumbnails/{id}.jpg へのパス
+    var thumbnailPath: String?
     var likeCount: Int = 0
     var isLiked: Bool = false
     var feedComments: [FeedComment] = []
@@ -416,6 +469,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
         authorName            = try c.decodeIfPresent(String.self,         forKey: .authorName)            ?? ""
         authorPhotoURL        = try c.decodeIfPresent(String.self,         forKey: .authorPhotoURL)        ?? ""
         thumbnailData         = try c.decodeIfPresent(Data.self,           forKey: .thumbnailData)
+        thumbnailPath         = try c.decodeIfPresent(String.self,         forKey: .thumbnailPath)
         likeCount             = try c.decodeIfPresent(Int.self,            forKey: .likeCount)             ?? 0
         isLiked               = try c.decodeIfPresent(Bool.self,           forKey: .isLiked)               ?? false
         feedComments          = try c.decodeIfPresent([FeedComment].self,  forKey: .feedComments)          ?? []
@@ -444,16 +498,22 @@ struct EduLogHistoryItem: Codable, Identifiable {
         self.isPublic       = isPublic
     }
 
-    /// フィード等の大きめ表示用（デコード結果はキャッシュされる）
+    /// フィード等の大きめ表示用（ファイルキャッシュ優先、旧データは thumbnailData フォールバック）
     var thumbnail: UIImage? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
+            return ThumbnailCache.shared.image(for: "edu_\(id)", data: data, maxPixel: 1024)
+        }
         guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 1024)
+        return ThumbnailCache.shared.image(for: "edu_\(id)", data: data, maxPixel: 1024)
     }
 
     /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
     var smallThumbnail: UIImage? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
+            return ThumbnailCache.shared.image(for: "edu_sm_\(id)", data: data, maxPixel: 240)
+        }
         guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: id, data: data, maxPixel: 240)
+        return ThumbnailCache.shared.image(for: "edu_sm_\(id)", data: data, maxPixel: 240)
     }
 
     /// authorNameが空（旧データ）の場合はUserDefaultsキャッシュのユーザー名でフォールバック

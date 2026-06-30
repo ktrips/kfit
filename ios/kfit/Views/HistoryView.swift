@@ -43,7 +43,7 @@ struct HistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(spacing: 14) {
+                        LazyVStack(spacing: 14) {
                             ForEach(history) { day in
                                 dayCard(day)
                             }
@@ -193,10 +193,12 @@ struct HistoryView: View {
         }
     }
 
+    private static let hhmmFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
     private func timeString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        Self.hhmmFmt.string(from: date)
     }
 
     // MARK: - ヘルパー

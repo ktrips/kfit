@@ -3221,6 +3221,15 @@ struct WeightFeedDetailSheet: View {
         f.dateFormat = "yyyy年M月d日 (E) HH:mm"; return f
     }()
 
+    private func dayLabel(for date: Date) -> String {
+        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day],
+                                      from: cal.startOfDay(for: joinDate),
+                                      to: cal.startOfDay(for: date)).day ?? 0
+        return "Day \(days + 1)"
+    }
+
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
@@ -3231,6 +3240,15 @@ struct WeightFeedDetailSheet: View {
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
                             .cornerRadius(16)
+                            .overlay(alignment: .topTrailing) {
+                                Text(dayLabel(for: item.timestamp))
+                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(Color.black.opacity(0.50))
+                                    .clipShape(Capsule())
+                                    .padding(10)
+                            }
                     }
 
                     HStack(spacing: 12) {

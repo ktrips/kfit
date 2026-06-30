@@ -149,10 +149,25 @@ class AuthenticationManager: ObservableObject {
                     UserDefaults.standard.set(photoURL, forKey: "cachedCurrentUserPhotoURL")
                 }
                 // TOMO の友達検索・ランキング用に公開プロフィールを同期
+                // ポイント加算ごとに毎回書き込まないよう 5 分 debounce
                 if let profile = self.userProfile {
-                    Task { await self.syncPublicProfile(profile) }
+                    self.scheduleSyncPublicProfile(profile)
                 }
             }
+    }
+
+    /// publicProfile 同期の debounce キャンセルトークン
+    private var publicProfileDebounceWork: DispatchWorkItem?
+
+    /// profileListener が変化するたびに呼ばれるが、実際の Firestore 書き込みは
+    /// 最後の呼び出しから 5 分後に1回だけ実行する（書き込み嵐を防止）
+    private func scheduleSyncPublicProfile(_ profile: UserProfile) {
+        publicProfileDebounceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { await self?.syncPublicProfile(profile) }
+        }
+        publicProfileDebounceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 300, execute: work)
     }
 
     /// 友達検索（メール）・ランキング表示のための公開プロフィールを publicProfiles/{uid} に同期する。
@@ -1025,6 +1040,7 @@ class AuthenticationManager: ObservableObject {
             .collection("completed-sets")
             .whereField("timestamp", isGreaterThanOrEqualTo: start)
             .whereField("timestamp", isLessThan: end)
+            .limit(to: 200)
             .getDocuments() else { return [] }
 
         // Group set entries by day (each entry is a timestamp + parsed exercises)
@@ -1878,11 +1894,7 @@ class AuthenticationManager: ObservableObject {
             || ((todayComponents.hour ?? 0) == 23 && (todayComponents.minute ?? 0) >= 59)
         guard isEndOfToday else { return }
 
-        let keyFormatter = DateFormatter()
-        keyFormatter.calendar = calendar
-        keyFormatter.locale = Locale(identifier: "en_US_POSIX")
-        keyFormatter.dateFormat = "yyyy-MM-dd"
-        let dayKey = keyFormatter.string(from: startOfToday)
+        let dayKey = Self.yyyyMMddFmt.string(from: startOfToday)
         let defaultsKey = "healthKit.endOfDayCalorieTopUp.\(dayKey)"
         guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
 
@@ -2150,7 +2162,7 @@ extension AuthenticationManager {
 
         // 今日すでにボーナスを付与済みかチェック
         let bonusDoc = db.collection("users").document(userId)
-            .collection("log-complete-bonuses").document(dateFormatter.string(from: dateKey))
+            .collection("log-complete-bonuses").document(Self.yyyyMMddFmt.string(from: dateKey))
 
         if let doc = try? await bonusDoc.getDocument(), doc.exists {
             // すでに付与済み
@@ -2180,11 +2192,7 @@ extension AuthenticationManager {
         dlog("[LogComplete] ✅ ログコンプリートボーナス付与: +\(bonusXP) XP")
     }
 
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }
+    // dateFormatter は Self.yyyyMMddFmt に統一（computed var による毎回生成を廃止）
 
     // MARK: - ウィジェット同期（データを書いてからリロード）
 
@@ -2317,7 +2325,8 @@ enum PublicFeedPublisher {
             "authorName": item.authorName.isEmpty ? authorName : item.authorName,
             "authorPhotoURL": item.authorPhotoURL.isEmpty ? authorPhotoURL : item.authorPhotoURL
         ]
-        if let t = sharedThumbnailBase64(from: item.thumbnailData) { data["thumbnail"] = t }
+        let thumbRawEdu: Data? = item.thumbnailPath.flatMap { ThumbnailFileStore.load(path: $0) } ?? item.thumbnailData
+        if let t = sharedThumbnailBase64(from: thumbRawEdu) { data["thumbnail"] = t }
         if let v = item.weightKg { data["weightKg"] = v }
         if let v = item.bodyFatPercent { data["bodyFatPercent"] = v }
         if let v = item.extractedPhrase { data["extractedPhrase"] = v }
@@ -2352,7 +2361,8 @@ enum PublicFeedPublisher {
             "authorName": authorName,
             "authorPhotoURL": authorPhotoURL
         ]
-        if let t = sharedThumbnailBase64(from: item.thumbnailData) { data["thumbnail"] = t }
+        let thumbRawFood: Data? = item.thumbnailPath.flatMap { ThumbnailFileStore.load(path: $0) } ?? item.thumbnailData
+        if let t = sharedThumbnailBase64(from: thumbRawFood) { data["thumbnail"] = t }
         write(uid: uid, postId: postId, data: data)
     }
 
@@ -2397,17 +2407,40 @@ class PhotoLogManager: ObservableObject {
 
     // MARK: - History
 
-    /// 履歴をUserDefaultsから読み込む
+    /// 履歴をUserDefaultsから読み込む。旧データの thumbnailData はファイルに移行する。
     private func loadHistory() {
-        guard let data = UserDefaults.standard.data(forKey: historyKey),
-              let items = try? JSONDecoder().decode([PhotoLogHistoryItem].self, from: data) else { return }
-        history = items
+        guard let raw = UserDefaults.standard.data(forKey: historyKey),
+              let items = try? JSONDecoder().decode([PhotoLogHistoryItem].self, from: raw) else { return }
+
+        var needsMigration = false
+        history = items.map { item in
+            // 旧データ移行: thumbnailData があり thumbnailPath がない場合
+            guard let thumbData = item.thumbnailData, item.thumbnailPath == nil else { return item }
+            var copy = item
+            if let path = ThumbnailFileStore.save(thumbData, id: "photo_\(item.id)") {
+                copy.thumbnailPath = path
+                copy.thumbnailData = nil
+                needsMigration = true
+            }
+            return copy
+        }
+        // 移行があった場合は新形式（thumbnailData なし）で保存し直す
+        if needsMigration { persistHistory() }
     }
 
-    /// 履歴をUserDefaultsに保存
+    /// 履歴をUserDefaultsに保存。thumbnailData は含めない（ファイルシステムに保存済み）。
     private func persistHistory() {
-        if let data = try? JSONEncoder().encode(history) {
-            UserDefaults.standard.set(data, forKey: historyKey)
+        // バックグラウンドでエンコード → メインスレッドをブロックしない
+        let snapshot = history
+        Task.detached(priority: .utility) {
+            let stripped = snapshot.map { item -> PhotoLogHistoryItem in
+                var copy = item
+                copy.thumbnailData = nil   // ファイル保存済みなので除外（UserDefaultsに画像バイナリを含めない）
+                return copy
+            }
+            if let data = try? JSONEncoder().encode(stripped) {
+                UserDefaults.standard.set(data, forKey: self.historyKey)
+            }
         }
     }
 
@@ -2423,6 +2456,7 @@ class PhotoLogManager: ObservableObject {
         history.removeAll { $0.id == id }
         persistHistory()
         PublicFeedPublisher.deleteFood(id: id)
+        ThumbnailFileStore.delete(id: "photo_\(id)")
     }
 
     /// TOMOフィードへの公開フラグを切り替える
@@ -2530,9 +2564,9 @@ class PhotoLogManager: ObservableObject {
             isFavorite: entry.isFavorite,
             isPublic: entry.isPublic
         )
-        // サムネイル（最大600px・高画質）を生成
-        if let image = entry.image {
-            item.thumbnailData = makeThumbnailHQ(from: image)
+        // サムネイルをファイルシステムに保存（UserDefaultsに画像バイナリを含めない）
+        if let image = entry.image, let thumbData = makeThumbnailHQ(from: image) {
+            item.thumbnailPath = ThumbnailFileStore.save(thumbData, id: "photo_\(item.id)")
         }
         history.insert(item, at: 0)
         persistHistory()
@@ -2923,8 +2957,8 @@ class EduLogManager: ObservableObject {
             authorPhotoURL: authorPhotoURL,
             isPublic: isPublic
         )
-        if let image {
-            item.thumbnailData = EduLogManager.makeThumbnailHQ(from: image)
+        if let image, let thumbData = EduLogManager.makeThumbnailHQ(from: image) {
+            item.thumbnailPath = ThumbnailFileStore.save(thumbData, id: "edu_\(item.id)")
         }
 
         // 呼び出し元から OCR 結果を直接渡された場合はセット
@@ -3048,6 +3082,7 @@ class EduLogManager: ObservableObject {
         history.removeAll { $0.id == id }
         persistHistory()
         PublicFeedPublisher.deleteEdu(id: id)
+        ThumbnailFileStore.delete(id: "edu_\(id)")
     }
 
     /// TOMOフィードへの公開フラグを切り替える
@@ -3085,15 +3120,37 @@ class EduLogManager: ObservableObject {
         persistHistory()
     }
 
+    /// 履歴をUserDefaultsから読み込む。旧データの thumbnailData はファイルに移行する。
     private func loadHistory() {
-        guard let data = UserDefaults.standard.data(forKey: historyKey),
-              let items = try? JSONDecoder().decode([EduLogHistoryItem].self, from: data) else { return }
-        history = items
+        guard let raw = UserDefaults.standard.data(forKey: historyKey),
+              let items = try? JSONDecoder().decode([EduLogHistoryItem].self, from: raw) else { return }
+
+        var needsMigration = false
+        history = items.map { item in
+            guard let thumbData = item.thumbnailData, item.thumbnailPath == nil else { return item }
+            var copy = item
+            if let path = ThumbnailFileStore.save(thumbData, id: "edu_\(item.id)") {
+                copy.thumbnailPath = path
+                copy.thumbnailData = nil
+                needsMigration = true
+            }
+            return copy
+        }
+        if needsMigration { persistHistory() }
     }
 
+    /// 履歴をUserDefaultsに保存。thumbnailData は含めない（ファイルシステムに保存済み）。
     private func persistHistory() {
-        if let data = try? JSONEncoder().encode(history) {
-            UserDefaults.standard.set(data, forKey: historyKey)
+        let snapshot = history
+        Task.detached(priority: .utility) {
+            let stripped = snapshot.map { item -> EduLogHistoryItem in
+                var copy = item
+                copy.thumbnailData = nil
+                return copy
+            }
+            if let data = try? JSONEncoder().encode(stripped) {
+                UserDefaults.standard.set(data, forKey: self.historyKey)
+            }
         }
     }
 

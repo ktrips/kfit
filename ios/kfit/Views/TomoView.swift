@@ -98,11 +98,21 @@ final class TomoManager: ObservableObject {
     @Published var addResult: AddResult = .idle
     /// 友達の公開投稿（TOMOフィードにマージ）
     @Published var friendFeedItems: [EduLogHistoryItem] = []
+    /// 「過去の投稿を見る」追加ロード中フラグ
+    @Published var isLoadingOlderPosts = false
+    /// 1週間より古い投稿が存在する可能性（友達がいれば true）
+    @Published var hasOlderPosts = false
 
     private let db = Firestore.firestore()
     private static var didBackfillPublicPosts = false
     /// 初回ロード完了フラグ — .task からの重複ロードを防止
     private var isLoaded = false
+    /// 古い投稿ロード済みフラグ — 重複ロードを防止
+    private var isOlderLoaded = false
+    /// 直近1週間の開始日を返す
+    private static func oneWeekAgo() -> Date {
+        Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    }
 
     /// 2人のuidから決定的な friendship ドキュメントIDを生成
     private func friendshipId(_ a: String, _ b: String) -> String {
@@ -185,10 +195,11 @@ final class TomoManager: ObservableObject {
 
                     async let postsTask = { () -> [FriendPostData] in
                         (try? await withAsyncTimeout(seconds: 12) {
-                            // 表示に必要な最新15件のみ取得（旧50件→大幅削減）
+                            // 直近1週間の投稿のみ取得（古い投稿は「過去の投稿を見る」ボタンで遅延ロード）
                             let snap = try await Firestore.firestore()
                                 .collection("publicProfiles").document(fid)
                                 .collection("posts")
+                                .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: TomoManager.oneWeekAgo()))
                                 .order(by: "timestamp", descending: true)
                                 .limit(to: 15)
                                 .getDocuments()
@@ -254,6 +265,99 @@ final class TomoManager: ObservableObject {
         for i in all.indices { all[i].rank = i + 1 }
         entries = all
         friendFeedItems = feedItems
+        // 友達がいれば1週間より古い投稿が存在する可能性がある
+        hasOlderPosts = !friendIds.isEmpty
+    }
+
+    /// 友達の古い投稿（1週間より前）を遅延ロードする。「過去の投稿を見る」ボタン押下時に呼ぶ。
+    func loadOlderPosts() async {
+        guard !isOlderLoaded else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingOlderPosts = true
+        defer { isLoadingOlderPosts = false; isOlderLoaded = true }
+
+        let friendIds: [String] = (try? await withAsyncTimeout(seconds: 12) {
+            let snap = try await Firestore.firestore().collection("friendships")
+                .whereField("members", arrayContains: uid)
+                .getDocuments()
+            var ids: [String] = []
+            for doc in snap.documents {
+                let members = doc.data()["members"] as? [String] ?? []
+                if let other = members.first(where: { $0 != uid }) { ids.append(other) }
+            }
+            return ids
+        }) ?? []
+
+        guard !friendIds.isEmpty else { return }
+
+        let cutoff = TomoManager.oneWeekAgo()
+        let existingIds = Set(friendFeedItems.map { $0.id })
+
+        struct OlderPostResult: Sendable {
+            let posts: [FriendPostData]
+        }
+
+        let results: [OlderPostResult] = await withTaskGroup(of: OlderPostResult.self) { group in
+            for fid in friendIds {
+                group.addTask {
+                    let posts: [FriendPostData] = (try? await withAsyncTimeout(seconds: 12) {
+                        // 1週間以前のデータを30件まで取得
+                        let snap = try await Firestore.firestore()
+                            .collection("publicProfiles").document(fid)
+                            .collection("posts")
+                            .whereField("timestamp", isLessThan: Timestamp(date: cutoff))
+                            .order(by: "timestamp", descending: true)
+                            .limit(to: 30)
+                            .getDocuments()
+                        return snap.documents.map { doc -> FriendPostData in
+                            let data = doc.data()
+                            return FriendPostData(
+                                id: "friend_\(fid)_\(doc.documentID)",
+                                timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
+                                activityName: data["activityName"] as? String ?? "",
+                                activityEmoji: data["activityEmoji"] as? String ?? "",
+                                comment: data["comment"] as? String ?? "",
+                                authorName: data["authorName"] as? String ?? "TOMO",
+                                authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
+                                likeCount: data["likeCount"] as? Int ?? 0,
+                                thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
+                                weightKg: data["weightKg"] as? Double,
+                                bodyFatPercent: data["bodyFatPercent"] as? Double,
+                                extractedPhrase: data["extractedPhrase"] as? String,
+                                extractedLanguageCode: data["extractedLanguageCode"] as? String,
+                                translationJA: data["translationJA"] as? String,
+                                pronunciation: data["pronunciation"] as? String,
+                                calories: data["calories"] as? Int,
+                                grammarNote: data["grammarNote"] as? String,
+                                mistakeNote: data["mistakeNote"] as? String,
+                                exampleSentences: {
+                                    guard let raw = data["exampleSentences"] as? [[String: Any]],
+                                          let d = try? JSONSerialization.data(withJSONObject: raw),
+                                          let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
+                                    else { return nil }
+                                    return decoded
+                                }()
+                            )
+                        }
+                    }) ?? []
+                    return OlderPostResult(posts: posts)
+                }
+            }
+            var results: [OlderPostResult] = []
+            for await r in group { results.append(r) }
+            return results
+        }
+
+        // 既存に含まれていない投稿だけ追加
+        var newItems: [EduLogHistoryItem] = []
+        for result in results {
+            for p in result.posts where !existingIds.contains(p.id) {
+                newItems.append(makeFriendItem(from: p))
+            }
+        }
+        if !newItems.isEmpty {
+            friendFeedItems.append(contentsOf: newItems)
+        }
     }
 
     /// Sendable な素データからフィード用 EduLogHistoryItem を構築
@@ -483,6 +587,10 @@ struct TomoView: View {
         .onReceive(eduLogManager.$history) { _ in scheduleFeedRebuild() }
         .onReceive(photoLogManager.$history) { _ in scheduleFeedRebuild() }
         .onReceive(manager.$friendFeedItems) { _ in scheduleFeedRebuild() }
+        .onReceive(manager.$isLoadingOlderPosts) { loading in
+            // 古い投稿のロード完了時にフィードを再ビルド
+            if !loading { scheduleFeedRebuild() }
+        }
         .onChange(of: selectedCategory) { _, _ in rebuildFeedCache() }
         .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
@@ -499,7 +607,9 @@ struct TomoView: View {
                 items: swipeDetailItems,
                 startIndex: swipeDetailStart,
                 photoLogManager: photoLogManager,
-                onComment: { commentTargetItem = $0 }
+                onComment: { commentTargetItem = $0 },
+                onLike: { toggleLikeFeed($0) },
+                onShare: { shareTargetItem = $0 }
             )
         }
         .sheet(item: $commentTargetItem) { item in
@@ -635,8 +745,8 @@ struct TomoView: View {
         return f
     }()
 
-    private var twoWeeksAgo: Date {
-        Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+    private var oneWeekAgo: Date {
+        Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     }
 
     /// PhotoLogHistoryItem → EduLogHistoryItem（表示用）変換
@@ -650,7 +760,8 @@ struct TomoView: View {
         )
         item.id = "food_\(food.id)"
         item.timestamp = food.timestamp
-        item.thumbnailData = food.thumbnailData
+        item.thumbnailPath = food.thumbnailPath   // 新形式（ファイルパス）
+        item.thumbnailData = food.thumbnailData   // 旧データ互換
         item.isLiked = food.isLiked
         item.likeCount = food.likeCount
         item.feedComments = food.feedComments
@@ -844,8 +955,8 @@ struct TomoView: View {
         }
         cachedFeedCategories = cats
 
-        // 表示対象（直近2週間 or 全件 ＋ カテゴリー絞り込み）
-        var items = showOlderFeed ? all : all.filter { $0.timestamp >= twoWeeksAgo }
+        // 表示対象（直近1週間 or 全件 ＋ カテゴリー絞り込み）
+        var items = showOlderFeed ? all : all.filter { $0.timestamp >= oneWeekAgo }
         if let cat = selectedCategory {
             items = items.filter { categoryKey(for: $0) == cat }
         }
@@ -886,12 +997,13 @@ struct TomoView: View {
             return FeedDayGroup(label: label, postGroups: postGroups)
         }
 
-        // 過去フィードの有無
+        // 過去フィードの有無（ローカルに古い投稿がある、またはFirestoreに未ロードの古い投稿がある）
         if showOlderFeed {
             cachedHasOlderFeed = false
         } else {
             let base = selectedCategory.map { cat in all.filter { categoryKey(for: $0) == cat } } ?? all
-            cachedHasOlderFeed = base.count > base.filter { $0.timestamp >= twoWeeksAgo }.count
+            let hasLocalOlder = base.count > base.filter { $0.timestamp >= oneWeekAgo }.count
+            cachedHasOlderFeed = hasLocalOlder || manager.hasOlderPosts
         }
     }
 
@@ -1031,15 +1143,25 @@ struct TomoView: View {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         showOlderFeed = true
                     }
+                    // 友達の古い投稿が未ロードの場合は Firestore から取得
+                    Task { await manager.loadOlderPosts() }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 14 * UIScale.font, weight: .semibold))
-                        Text("過去の投稿を見る")
+                        if manager.isLoadingOlderPosts {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(Color.duoBlue)
+                        } else {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                        }
+                        Text(manager.isLoadingOlderPosts ? "読み込み中…" : "過去の投稿を見る")
                             .font(.system(size: 13 * UIScale.font, weight: .bold))
                         Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        if !manager.isLoadingOlderPosts {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        }
                     }
                     .foregroundColor(Color.duoBlue)
                     .padding(.vertical, 14)
@@ -1047,6 +1169,7 @@ struct TomoView: View {
                     .background(Color(.systemBackground))
                 }
                 .buttonStyle(.plain)
+                .disabled(manager.isLoadingOlderPosts)
             } else if showOlderFeed {
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -1263,60 +1386,7 @@ struct TomoView: View {
                 duolingoPhrasePanel(item: item, phrase: phrase)
             }
 
-            // ── アクションボタン行 ────────────────────────────────────────
-            HStack(spacing: 0) {
-                // いいね
-                Button {
-                    toggleLikeFeed(item)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 18 * UIScale.font, weight: .regular))
-                            .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
-                        if item.likeCount > 0 {
-                            Text("\(item.likeCount)")
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                }
-                .buttonStyle(.plain)
-
-                // コメント
-                Button {
-                    commentTargetItem = item
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.right")
-                            .font(.system(size: 17 * UIScale.font, weight: .regular))
-                            .foregroundColor(Color.duoDark)
-                        if !item.feedComments.isEmpty {
-                            Text("\(item.feedComments.count)")
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                }
-                .buttonStyle(.plain)
-
-                // シェア
-                Button {
-                    shareTargetItem = item
-                } label: {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: 17 * UIScale.font, weight: .regular))
-                        .foregroundColor(Color.duoDark)
-                        .padding(.horizontal, 12).padding(.vertical, 9)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-            .padding(.horizontal, 4)
-
-            Spacer().frame(height: 4)
+            Spacer().frame(height: 8)
         }
         .background(Color(.systemBackground))
     }
@@ -1412,48 +1482,7 @@ struct TomoView: View {
             }
             .frame(maxWidth: .infinity)
 
-            // ── アクションボタン行（代表アイテム基準） ───────────────────
-            HStack(spacing: 0) {
-                Button { toggleLikeFeed(pg.latestItem) } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: pg.latestItem.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 17 * UIScale.font, weight: .regular))
-                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoSubtitle)
-                        Text("\(pg.latestItem.likeCount)")
-                            .font(.system(size: 12 * UIScale.font, weight: .bold))
-                            .foregroundColor(pg.latestItem.isLiked ? Color(hex: "#ED4956") : Color.duoSubtitle)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-
-                Button { commentTargetItem = pg.latestItem } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bubble.right")
-                            .font(.system(size: 17 * UIScale.font, weight: .regular))
-                            .foregroundColor(Color.duoSubtitle)
-                        if !pg.latestItem.feedComments.isEmpty {
-                            Text("\(pg.latestItem.feedComments.count)")
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-
-                Button { shareTargetItem = pg.latestItem } label: {
-                    Image(systemName: "paperplane")
-                        .font(.system(size: 17 * UIScale.font, weight: .regular))
-                        .foregroundColor(Color.duoSubtitle)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-            .padding(.horizontal, 4)
-            Spacer().frame(height: 4)
+            Spacer().frame(height: 8)
         }
         .background(Color(.systemBackground))
     }
@@ -2244,8 +2273,12 @@ struct SwipeableTomoDetailSheet: View {
     let startIndex: Int
     let photoLogManager: PhotoLogManager
     var onComment: ((EduLogHistoryItem) -> Void)? = nil
+    var onLike: ((EduLogHistoryItem) -> Void)? = nil
+    var onShare: ((EduLogHistoryItem) -> Void)? = nil
 
     @State private var selection: Int
+    @State private var speakingItemID: String? = nil
+    @State private var speakingExampleKey: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     private static let hhmm: DateFormatter = {
@@ -2253,11 +2286,15 @@ struct SwipeableTomoDetailSheet: View {
     }()
 
     init(items: [EduLogHistoryItem], startIndex: Int, photoLogManager: PhotoLogManager,
-         onComment: ((EduLogHistoryItem) -> Void)? = nil) {
+         onComment: ((EduLogHistoryItem) -> Void)? = nil,
+         onLike: ((EduLogHistoryItem) -> Void)? = nil,
+         onShare: ((EduLogHistoryItem) -> Void)? = nil) {
         self.items = items
         self.startIndex = startIndex
         self.photoLogManager = photoLogManager
         self.onComment = onComment
+        self.onLike = onLike
+        self.onShare = onShare
         _selection = State(initialValue: startIndex)
     }
 
@@ -2420,30 +2457,314 @@ struct SwipeableTomoDetailSheet: View {
                     .padding(.horizontal, 16).padding(.top, 12)
                 }
 
-                // ── コメントボタン ───────────────────────────────────────────
-                HStack {
+                // ── Duolingo フレーズパネル（Duolingo投稿のみ）─────────────
+                if let phrase = item.extractedPhrase, !phrase.isEmpty {
+                    duolingoPhrasePanel(item: item, phrase: phrase)
+                        .padding(.top, 4)
+                }
+
+                // ── アクションボタン行（いいね・コメント・シェア）──────────
+                HStack(spacing: 0) {
+                    // いいね
+                    Button {
+                        onLike?(item)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
+                                .font(.system(size: 20 * UIScale.font, weight: .regular))
+                                .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
+                            if item.likeCount > 0 {
+                                Text("\(item.likeCount)")
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                    .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
+                            }
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+
+                    // コメント
                     Button {
                         onComment?(item)
                         dismiss()
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: "bubble.right")
-                                .font(.system(size: 17 * UIScale.font, weight: .semibold))
+                                .font(.system(size: 19 * UIScale.font, weight: .regular))
+                                .foregroundColor(Color.duoDark)
                             if !item.feedComments.isEmpty {
                                 Text("\(item.feedComments.count)")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color.duoDark)
                             }
-                            Text("コメントを見る・書く")
-                                .font(.system(size: 13 * UIScale.font, weight: .bold))
                         }
-                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.horizontal, 14).padding(.vertical, 12)
                     }
                     .buttonStyle(.plain)
+
+                    // シェア
+                    Button {
+                        onShare?(item)
+                        dismiss()
+                    } label: {
+                        Image(systemName: "paperplane")
+                            .font(.system(size: 19 * UIScale.font, weight: .regular))
+                            .foregroundColor(Color.duoDark)
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+
                     Spacer()
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+                .padding(.horizontal, 8)
+
+                // ── 投稿コメント一覧 ──────────────────────────────────────
+                if !item.feedComments.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Divider().padding(.horizontal, 16)
+                        ForEach(item.feedComments) { fc in
+                            HStack(alignment: .top, spacing: 10) {
+                                ZStack {
+                                    Circle().fill(Color.duoGreen.opacity(0.15))
+                                        .frame(width: 28, height: 28)
+                                    Text(String((fc.authorName.first ?? "?").uppercased()))
+                                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                                        .foregroundColor(Color.duoGreen)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(fc.authorName)
+                                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                                        .foregroundColor(Color.duoDark)
+                                    Text(fc.text)
+                                        .font(.system(size: 13 * UIScale.font))
+                                        .foregroundColor(Color.duoDark.opacity(0.85))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            if fc.id != item.feedComments.last?.id {
+                                Divider().padding(.leading, 54)
+                            }
+                        }
+                        // コメントを書くボタン
+                        Button {
+                            onComment?(item)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.bubble")
+                                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                Text("コメントを書く")
+                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
+                            }
+                            .foregroundColor(Color.duoBlue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                }
+
+                Spacer().frame(height: 20)
             }
         }
         .background(Color.duoBg.ignoresSafeArea())
+    }
+
+    // MARK: - Duolingo フレーズパネル
+    @ViewBuilder
+    private func duolingoPhrasePanel(item: EduLogHistoryItem, phrase: String) -> some View {
+        let isSpeaking   = speakingItemID == item.id
+        let langCode     = item.extractedLanguageCode ?? "en"
+        let langLabel    = duoLangLabel(langCode)
+
+        VStack(alignment: .leading, spacing: 6) {
+            // 言語バッジ + 再生ボタン
+            HStack(spacing: 6) {
+                Text(duoLangFlag(langCode)).font(.system(size: 16))
+                Text(langLabel)
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Button {
+                    if isSpeaking {
+                        DuolingoTextExtractor.shared.stopSpeaking()
+                        speakingItemID = nil
+                    } else {
+                        speakingItemID = item.id
+                        DuolingoTextExtractor.shared.speak(phrase: phrase, languageCode: langCode)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                            if speakingItemID == item.id { speakingItemID = nil }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 14))
+                        Text(isSpeaking ? "停止" : "再生")
+                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    }
+                    .foregroundColor(isSpeaking ? .red : Color(hex: "#1CB0F6"))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background((isSpeaking ? Color.red : Color(hex: "#1CB0F6")).opacity(0.12))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // フレーズ本文（大）
+            Text(phrase)
+                .font(.system(size: 18 * UIScale.font, weight: .bold))
+                .foregroundColor(Color.duoDark)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // 発音記号
+            if let pron = item.pronunciation, !pron.isEmpty {
+                Text(pron)
+                    .font(.system(size: 13 * UIScale.font))
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // 日本語訳
+            if let tja = item.translationJA, !tja.isEmpty {
+                Text(tja)
+                    .font(.system(size: 13 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // ダメな理由
+            if let note = item.mistakeNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("ダメな理由", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF3B30"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF3B30").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 2)
+            }
+
+            // 文法メモ
+            if let note = item.grammarNote, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("文法メモ", systemImage: "text.book.closed")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF9500"))
+                    Text(note)
+                        .font(.system(size: 13 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color(hex: "#FF9500").opacity(0.08))
+                .cornerRadius(8)
+                .padding(.top, 2)
+            }
+
+            // 例文
+            if let examples = item.exampleSentences, !examples.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("例文", systemImage: "quote.bubble")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                    ForEach(Array(examples.enumerated()), id: \.offset) { idx, ex in
+                        let exKey        = "\(item.id)-ex\(idx)"
+                        let isExSpeaking = speakingExampleKey == exKey
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("\(idx + 1).")
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color(hex: "#58CC02"))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(ex.text)
+                                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoDark)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let tr = ex.translationJA, !tr.isEmpty {
+                                    Text(tr)
+                                        .font(.system(size: 12 * UIScale.font))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                if isExSpeaking {
+                                    DuolingoTextExtractor.shared.stopSpeaking()
+                                    speakingExampleKey = nil
+                                } else {
+                                    speakingExampleKey = exKey
+                                    speakingItemID     = nil
+                                    DuolingoTextExtractor.shared.speak(
+                                        phrase: ex.text, languageCode: langCode)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                                        if speakingExampleKey == exKey { speakingExampleKey = nil }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isExSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isExSpeaking ? .red : Color(hex: "#58CC02"))
+                                    .frame(width: 28, height: 28)
+                                    .background((isExSpeaking ? Color.red : Color(hex: "#58CC02")).opacity(0.12))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(hex: "#58CC02").opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(.systemGray6).opacity(0.6))
+    }
+
+    // MARK: - Language helpers
+    private func duoLangFlag(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "🇨🇳"
+        case "zh-Hant":                   return "🇹🇼"
+        case "ko":                        return "🇰🇷"
+        case "fr":                        return "🇫🇷"
+        case "es":                        return "🇪🇸"
+        case "de":                        return "🇩🇪"
+        case "it":                        return "🇮🇹"
+        case "pt":                        return "🇵🇹"
+        case "ru":                        return "🇷🇺"
+        case "ar":                        return "🇸🇦"
+        default:                          return "🇬🇧"
+        }
+    }
+
+    private func duoLangLabel(_ code: String) -> String {
+        switch code {
+        case "zh", "zh-Hans", "cmn-Hans": return "中国語（簡体字）"
+        case "zh-Hant":                   return "中国語（繁体字）"
+        case "ko":                        return "韓国語"
+        case "fr":                        return "フランス語"
+        case "es":                        return "スペイン語"
+        case "de":                        return "ドイツ語"
+        case "it":                        return "イタリア語"
+        case "pt":                        return "ポルトガル語"
+        case "ru":                        return "ロシア語"
+        case "ar":                        return "アラビア語"
+        default:                          return "英語"
+        }
     }
 }

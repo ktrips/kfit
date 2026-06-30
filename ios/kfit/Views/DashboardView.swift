@@ -1256,7 +1256,8 @@ struct DashboardView: View {
             ZStack(alignment: .bottom) {
                 DailySetsMandalaSectionView(
                     mandalaNodes: mandalaNodes,
-                    timeSlotManager: timeSlotManager,
+                    settings: timeSlotManager.settings,
+                    progress: timeSlotManager.progress,
                     showTracker: $showTracker,
                     showMindfulnessSession: $showMindfulnessSession,
                     showStretchSession: $showStretchSession,
@@ -6612,7 +6613,9 @@ private struct TrainingVideoButton: View {
 
 private struct DailySetsMandalaSectionView: View {
     let mandalaNodes: [MandalaNodeData]
-    @ObservedObject var timeSlotManager: TimeSlotManager
+    // @ObservedObject をやめ、必要な値だけ let で受け取る（TimeSlotManager 全変更で再レンダリングしない）
+    let settings: DailyTimeSlotSettings
+    let progress: DailyTimeSlotProgress
     @Binding var showTracker: Bool
     @Binding var showMindfulnessSession: Bool
     @Binding var showStretchSession: Bool
@@ -6628,7 +6631,8 @@ private struct DailySetsMandalaSectionView: View {
     var body: some View {
         MandalaSpiralCard(
             nodes: mandalaNodes,
-            timeSlotManager: timeSlotManager,
+            settings: settings,
+            progress: progress,
             showTracker: $showTracker,
             showMindfulnessSession: $showMindfulnessSession,
             showStretchSession: $showStretchSession,
@@ -6650,7 +6654,9 @@ private struct DailySetsMandalaSectionView: View {
 
 private struct MandalaSpiralCard: View {
     let nodes: [MandalaNodeData]
-    @ObservedObject var timeSlotManager: TimeSlotManager
+    // @ObservedObject をやめ、settings/progress を値として受け取る
+    let settings: DailyTimeSlotSettings
+    let progress: DailyTimeSlotProgress
     @Binding var showTracker: Bool
     @Binding var showMindfulnessSession: Bool
     @Binding var showStretchSession: Bool
@@ -6746,8 +6752,8 @@ private struct MandalaSpiralCard: View {
 
     private var chart: some View {
         MandalaChartView(
-            settings: timeSlotManager.settings,
-            progress: timeSlotManager.progress,
+            settings: settings,
+            progress: progress,
             activityRingsDone: activityRingsDone,
             dailyCalorieDone: dailyCalorieDone,
             dailyWaterDone: dailyWaterDone,

@@ -10,10 +10,19 @@ final class HabitStackManager: ObservableObject {
     static let shared = HabitStackManager()
 
     @Published var habits: [HabitStack] = [] {
-        didSet { save() }
+        didSet { scheduleSave() }
     }
 
     private let key = "fitingo.habitStacks"
+    /// 連続更新をまとめて 0.5 秒後に1回だけ UserDefaults へ書き込む
+    private var saveWork: DispatchWorkItem?
+
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.save() }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
 
     private init() {
         load()

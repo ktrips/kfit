@@ -4047,27 +4047,46 @@ struct DashboardView: View {
         return NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    // サマリーカード
+                    // サマリーカード（今日 / 今週 / 累計）
                     HStack(spacing: 0) {
                         VStack(spacing: 4) {
-                            Text("今日のXP")
+                            Text("今日")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalXP)")
-                                .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
+                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoGreen)
+                                .minimumScaleFactor(0.6)
+                                .lineLimit(1)
                             Text("XP")
                                 .font(.caption2).foregroundColor(Color.duoSubtitle)
                         }
                         .frame(maxWidth: .infinity)
 
-                        Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 60)
+                        Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
 
                         VStack(spacing: 4) {
-                            Text("累計XP")
+                            Text("今週")
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                            Text("\(weeklyXP)")
+                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoBlue)
+                                .minimumScaleFactor(0.6)
+                                .lineLimit(1)
+                            Text("XP")
+                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
+
+                        VStack(spacing: 4) {
+                            Text("累計")
                                 .font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalPoints)")
-                                .font(.system(size: 36 * UIScale.font, weight: .black, design: .rounded))
+                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color.duoOrange)
+                                .minimumScaleFactor(0.6)
+                                .lineLimit(1)
                             Text("XP")
                                 .font(.caption2).foregroundColor(Color.duoSubtitle)
                         }

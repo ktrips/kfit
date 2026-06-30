@@ -1070,17 +1070,19 @@ struct TomoView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     let displayName = isOwnPost(item) ? "YOU" : item.authorFirstName
                     let isYou = isOwnPost(item)
-                    if item.comment.isEmpty {
-                        Text(displayName)
-                            .font(.system(size: 13 * UIScale.font, weight: .black))
-                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
-                    } else {
+                    // FOOD投稿は食品名を写真上に表示するため、ヘッダーには名前のみ
+                    let showComment = !item.comment.isEmpty && !item.id.hasPrefix("food_")
+                    if showComment {
                         (Text(displayName + "  ")
                             .font(.system(size: 13 * UIScale.font, weight: .black))
                          + Text(item.comment)
                             .font(.system(size: 13 * UIScale.font)))
                             .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                             .lineLimit(1)
+                    } else {
+                        Text(displayName)
+                            .font(.system(size: 13 * UIScale.font, weight: .black))
+                            .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                     }
                     Text(relativeTimeString(item.timestamp))
                         .font(.system(size: 11 * UIScale.font))
@@ -1136,6 +1138,9 @@ struct TomoView: View {
 
             // ── Instagram風 正方形写真 or グラデーション＋絵文字 ──────────────
             Button { openDetail(item) } label: {
+                let isFood = item.id.hasPrefix("food_")
+                let foodItem = isFood ? originalFoodItem(for: item) : nil
+                let mealInfo = mealTimeInfo(for: item.timestamp)
                 Group {
                     if let thumb = item.thumbnail {
                         // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
@@ -1159,19 +1164,50 @@ struct TomoView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                // FOOD投稿はカロリーバッジを表示
-                .overlay(alignment: .bottomLeading) {
-                    if let kcal = foodCalories(for: item) {
-                        HStack(spacing: 3) {
-                            Text("🔥").font(.system(size: 11 * UIScale.font))
-                            Text("\(kcal) kcal")
-                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                // 左上: FOOD投稿に食事タイムバッジ
+                .overlay(alignment: .topLeading) {
+                    if isFood {
+                        Text(mealInfo.label)
+                            .font(.system(size: 11 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(mealInfo.color)
+                            .clipShape(Capsule())
+                            .padding(8)
+                    }
+                }
+                // 下部: FOOD投稿に栄養情報オーバーレイ
+                .overlay(alignment: .bottom) {
+                    if let food = foodItem {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(food.displayName)
+                                .font(.system(size: 11 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
+                                .lineLimit(1)
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            HStack(spacing: 6) {
+                                Text("🔥 \(food.calories)kcal")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("P \(Int(food.analyzedNutrition.protein))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#FF9F43"))
+                                Text("F \(Int(food.analyzedNutrition.fat))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#A29BFE"))
+                                Text("C \(Int(food.analyzedNutrition.carbs))g")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color(hex: "#74B9FF"))
+                            }
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color.black.opacity(0.55))
-                        .clipShape(Capsule())
-                        .padding(10)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            LinearGradient(
+                                colors: [.clear, Color.black.opacity(0.7)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
                     }
                 }
             }
@@ -2080,6 +2116,17 @@ struct TomoView: View {
         case 2: return Color(hex: "#90A4AE")
         case 3: return Color(hex: "#CD7F32")
         default: return Color.duoBlue.opacity(0.6)
+        }
+    }
+
+    private func mealTimeInfo(for date: Date) -> (label: String, color: Color) {
+        let hour = Calendar.current.component(.hour, from: date)
+        switch hour {
+        case 5..<11:  return ("Breakfast", Color(hex: "#FF9500"))
+        case 11..<14: return ("Lunch",     Color(hex: "#34C759"))
+        case 14..<18: return ("Snack",     Color(hex: "#AF52DE"))
+        case 18..<24: return ("Dinner",    Color(hex: "#0A84FF"))
+        default:      return ("Late Night",Color(hex: "#5E5CE6"))
         }
     }
 }

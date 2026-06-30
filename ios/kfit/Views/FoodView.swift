@@ -1542,7 +1542,7 @@ private struct PhotoFeedCard: View {
             .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
             .clipped()
 
-            // 下部グラデーションオーバーレイ
+            // 下部グラデーションオーバーレイ（星なし）
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
                     .font(.system(size: 11 * UIScale.font, weight: .black))
@@ -1557,11 +1557,6 @@ private struct PhotoFeedCard: View {
                         .foregroundColor(.white)
                         .shadow(color: .black.opacity(0.5), radius: 2)
                     Spacer()
-                    if item.isFavorite {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10 * UIScale.font))
-                            .foregroundColor(Color(hex: "#FDCB6E"))
-                    }
                 }
             }
             .padding(8)
@@ -1572,6 +1567,17 @@ private struct PhotoFeedCard: View {
                     startPoint: .top, endPoint: .bottom
                 )
             )
+        }
+        // 左上: 食事タイムバッジ
+        .overlay(alignment: .topLeading) {
+            let info = mealTimeInfo(for: item.timestamp)
+            Text(info.label)
+                .font(.system(size: 10 * UIScale.font, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(info.color)
+                .clipShape(Capsule())
+                .padding(7)
         }
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.14), radius: 6, x: 0, y: 3)
@@ -1590,6 +1596,19 @@ private struct PhotoFeedCard: View {
         if n.contains("フルーツ") || n.contains("果物") { return "🍎" }
         if n.contains("コーヒー") || n.contains("ティー") { return "☕" }
         return "🍽️"
+    }
+}
+
+// MARK: - 食事時間ラベルヘルパー（FoodView / TomoView 共通）
+
+private func mealTimeInfo(for date: Date) -> (label: String, color: Color) {
+    let hour = Calendar.current.component(.hour, from: date)
+    switch hour {
+    case 5..<11:  return ("Breakfast", Color(hex: "#FF9500"))
+    case 11..<14: return ("Lunch",     Color(hex: "#34C759"))
+    case 14..<18: return ("Snack",     Color(hex: "#AF52DE"))
+    case 18..<24: return ("Dinner",    Color(hex: "#0A84FF"))
+    default:      return ("Late Night",Color(hex: "#5E5CE6"))
     }
 }
 
@@ -1626,6 +1645,21 @@ struct PhotoFeedDetailSheet: View {
                     headerImage
                     VStack(alignment: .leading, spacing: 16) {
                         calorieBanner
+                        if !item.comment.isEmpty {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "quote.opening")
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color.duoGreen.opacity(0.7))
+                                Text(item.comment)
+                                    .font(.system(size: 14 * UIScale.font))
+                                    .foregroundColor(Color.duoDark.opacity(0.85))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                        }
                         if !item.analyzedNutrition.description.isEmpty {
                             descriptionCard
                         }
@@ -1663,7 +1697,8 @@ struct PhotoFeedDetailSheet: View {
     }
 
     private var headerImage: some View {
-        ZStack(alignment: .bottom) {
+        let mealInfo = mealTimeInfo(for: item.timestamp)
+        return ZStack(alignment: .bottom) {
             Group {
                 if let thumb = item.thumbnail {
                     Image(uiImage: thumb)
@@ -1682,7 +1717,7 @@ struct PhotoFeedDetailSheet: View {
             .frame(height: 240)
             .clipped()
 
-            // 日時バッジ
+            // 下部: 日時テキスト（星なし）
             HStack {
                 Text(timeLabel(item.timestamp))
                     .font(.system(size: 11 * UIScale.font, weight: .bold))
@@ -1691,20 +1726,23 @@ struct PhotoFeedDetailSheet: View {
                     .background(Color.black.opacity(0.45))
                     .cornerRadius(10)
                 Spacer()
-                if item.isFavorite {
-                    Image(systemName: "star.fill")
-                        .foregroundColor(Color(hex: "#FDCB6E"))
-                        .font(.system(size: 16 * UIScale.font))
-                        .padding(8)
-                        .background(Color.black.opacity(0.35))
-                        .clipShape(Circle())
-                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
             )
+        }
+        // 左上: 食事タイムバッジ（Breakfast / Lunch / Snack / Dinner）
+        .overlay(alignment: .topLeading) {
+            Text(mealInfo.label)
+                .font(.system(size: 12 * UIScale.font, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(mealInfo.color)
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.2), radius: 4)
+                .padding(12)
         }
     }
 

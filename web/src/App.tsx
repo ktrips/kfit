@@ -134,21 +134,21 @@ function App() {
     <div className="min-h-screen bg-duo-gray-light">
       {user && (
         <nav className="bg-white sticky top-0 z-50" style={{ borderBottom: '2px solid #e5e5e5' }}>
-          <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="max-w-4xl mx-auto px-3 py-2 flex justify-between items-center gap-2">
             {/* Logo */}
             <button
               onClick={() => navigate('dashboard')}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              className="flex items-center gap-1.5 hover:opacity-80 transition-opacity shrink-0"
             >
-              <img src="/mascot.png" alt="Fitingo" className="w-9 h-9 rounded-full object-cover" />
-              <span className="text-2xl font-black text-duo-green tracking-tight">Fitingo</span>
+              <img src="/mascot.png" alt="Fitingo" className="w-7 h-7 rounded-full object-cover" />
+              <span className="text-lg font-black text-duo-green tracking-tight">Fitingo</span>
             </button>
 
             {/* Right side: Home + Plan + Log + hamburger */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-nowrap">
               <button
                 onClick={() => navigate('dashboard')}
-                className={`px-3 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                className={`px-2 py-1.5 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap ${
                   currentView === 'dashboard'
                     ? 'bg-duo-green-light text-duo-green-dark'
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
@@ -159,7 +159,7 @@ function App() {
               </button>
               <button
                 onClick={() => navigate('plan')}
-                className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap ${
                   currentView === 'plan'
                     ? 'bg-duo-green-light text-duo-green-dark'
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
@@ -169,7 +169,7 @@ function App() {
               </button>
               <button
                 onClick={() => navigate('tracker')}
-                className={`px-4 py-2 rounded-xl font-extrabold text-sm transition-all ${
+                className={`px-2.5 py-1.5 rounded-xl font-extrabold text-xs transition-all whitespace-nowrap ${
                   currentView === 'tracker'
                     ? 'bg-duo-green-light text-duo-green-dark'
                     : 'text-duo-gray hover:text-duo-dark hover:bg-duo-gray-light'
@@ -182,7 +182,7 @@ function App() {
               <div className="relative">
                 <button
                   onClick={() => setMenuOpen((o) => !o)}
-                  className="w-9 h-9 flex flex-col items-center justify-center gap-1 rounded-xl hover:bg-duo-gray-light transition-all"
+                  className="w-8 h-8 flex flex-col items-center justify-center gap-1 rounded-xl hover:bg-duo-gray-light transition-all"
                   aria-label="メニュー"
                 >
                   <span className="block w-4 h-0.5 bg-duo-dark rounded-full transition-all" />

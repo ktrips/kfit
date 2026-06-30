@@ -783,13 +783,11 @@ struct TomoView: View {
         return item.calories
     }
 
-    /// 投稿タップ時のルーティング：FOODはFOOD詳細、それ以外はEduFeed詳細
+    /// 投稿タップ時のルーティング：全種別を SwipeableTomoDetailSheet で統一表示
     private func openDetail(_ item: EduLogHistoryItem) {
-        if let food = originalFoodItem(for: item) {
-            selectedFoodItem = food
-        } else {
-            selectedEduItem = item
-        }
+        swipeDetailItems = [item]
+        swipeDetailStart = 0
+        showSwipeDetail = true
     }
 
     /// 同一グループ（同日×同カテゴリ）の複数アイテムをスワイプ詳細で開く
@@ -1282,7 +1280,7 @@ struct TomoView: View {
                 let foodItem = isFood ? originalFoodItem(for: item) : nil
                 let mealInfo = mealTimeInfo(for: item.timestamp)
                 Group {
-                    if let thumb = item.thumbnail {
+                    if let thumb = foodItem?.thumbnail ?? item.thumbnail {
                         // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
                         Color.clear
                             .aspectRatio(1, contentMode: .fit)
@@ -1498,7 +1496,7 @@ struct TomoView: View {
         return Button { openDetailInGroup(item, siblings: siblings.isEmpty ? [item] : siblings) } label: {
             ZStack {
                 Group {
-                    if let thumb = item.thumbnail {
+                    if let thumb = foodItem?.thumbnail ?? item.thumbnail {
                         Image(uiImage: thumb)
                             .resizable()
                             .scaledToFill()
@@ -2457,6 +2455,24 @@ struct SwipeableTomoDetailSheet: View {
                     .padding(.horizontal, 16).padding(.top, 12)
                 }
 
+                // ── FOOD 栄養詳細（FOOD投稿のみ）──────────────────────────
+                if isFood, let food = food {
+                    foodNutritionSection(food: food)
+                        .padding(.top, 4)
+                } else if isFood {
+                    // 友達のFOOD投稿（calories のみ）
+                    if let cal = item.calories, cal > 0 {
+                        HStack(spacing: 6) {
+                            Text("🔥")
+                            Text("\(cal) kcal")
+                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                    }
+                }
+
                 // ── Duolingo フレーズパネル（Duolingo投稿のみ）─────────────
                 if let phrase = item.extractedPhrase, !phrase.isEmpty {
                     duolingoPhrasePanel(item: item, phrase: phrase)
@@ -2574,6 +2590,138 @@ struct SwipeableTomoDetailSheet: View {
             }
         }
         .background(Color.duoBg.ignoresSafeArea())
+    }
+
+    // MARK: - FOOD 栄養詳細パネル
+    @ViewBuilder
+    private func foodNutritionSection(food: PhotoLogHistoryItem) -> some View {
+        let n = food.analyzedNutrition
+        let totalMacro = n.protein * 4 + n.fat * 9 + n.carbs * 4
+        let pPct = totalMacro > 0 ? n.protein * 4 / totalMacro * 100 : 0
+        let fPct = totalMacro > 0 ? n.fat * 9 / totalMacro * 100 : 0
+        let cPct = totalMacro > 0 ? n.carbs * 4 / totalMacro * 100 : 0
+
+        VStack(alignment: .leading, spacing: 10) {
+            // カロリーバナー
+            HStack(spacing: 14) {
+                VStack(spacing: 2) {
+                    Text("\(food.calories)")
+                        .font(.system(size: 32 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.0))
+                    Text("kcal")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Divider().frame(height: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    pfcBar(label: "P", percent: pPct, color: Color.duoOrange)
+                    pfcBar(label: "F", percent: fPct, color: Color.duoPurple)
+                    pfcBar(label: "C", percent: cPct, color: Color.duoBlue)
+                }
+                Spacer()
+                if n.confidence < 1.0 {
+                    Text(String(format: "確度\n%.0f%%", n.confidence * 100))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(12)
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
+            // 説明文
+            if !n.description.isEmpty {
+                Text(n.description)
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoDark.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
+            }
+
+            // 栄養グリッド
+            VStack(alignment: .leading, spacing: 8) {
+                Text("栄養素")
+                    .font(.system(size: 12 * UIScale.font, weight: .black))
+                    .foregroundColor(Color.duoDark)
+                LazyVGrid(
+                    columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+                    spacing: 8
+                ) {
+                    nutritionTile(icon: "💪", label: "たんぱく質", value: String(format: "%.1fg", n.protein), color: Color.duoOrange)
+                    nutritionTile(icon: "🛢️", label: "脂質",     value: String(format: "%.1fg", n.fat),     color: Color.duoPurple)
+                    nutritionTile(icon: "🍚", label: "炭水化物", value: String(format: "%.1fg", n.carbs),   color: Color.duoBlue)
+                    if n.sugar > 0 {
+                        nutritionTile(icon: "🍬", label: "糖質",   value: String(format: "%.1fg", n.sugar),  color: Color(hex: "#FDCB6E"))
+                    }
+                    if n.fiber > 0 {
+                        nutritionTile(icon: "🌾", label: "食物繊維", value: String(format: "%.1fg", n.fiber), color: Color(hex: "#00B894"))
+                    }
+                    if n.sodium > 0 {
+                        nutritionTile(icon: "🧂", label: "塩分",   value: String(format: "%.1fg", n.sodium), color: Color(hex: "#B2BEC3"))
+                    }
+                    if n.water > 0 {
+                        nutritionTile(icon: "💧", label: "水分",   value: "\(n.water)ml",                    color: Color(hex: "#1CB0F6"))
+                    }
+                    if n.caffeine > 0 {
+                        nutritionTile(icon: "☕", label: "カフェイン", value: "\(n.caffeine)mg",               color: Color(hex: "#8B5E3C"))
+                    }
+                    if n.alcohol > 0 {
+                        nutritionTile(icon: "🍷", label: "アルコール", value: String(format: "%.1fg", n.alcohol), color: Color.duoPurple)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func pfcBar(label: String, percent: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 10 * UIScale.font, weight: .black))
+                .foregroundColor(color)
+                .frame(width: 12)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(color.opacity(0.15)).frame(height: 8)
+                    Capsule().fill(color)
+                        .frame(width: max(4, geo.size.width * CGFloat(min(percent / 100, 1))), height: 8)
+                }
+            }
+            .frame(height: 8)
+            Text(String(format: "%.0f%%", percent))
+                .font(.system(size: 9 * UIScale.font, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 30, alignment: .trailing)
+        }
+    }
+
+    private func nutritionTile(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(icon).font(.system(size: 20 * UIScale.font))
+            Text(value)
+                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(color)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Text(label)
+                .font(.system(size: 8 * UIScale.font, weight: .bold))
+                .foregroundColor(Color.duoSubtitle)
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.10))
+        .cornerRadius(12)
     }
 
     // MARK: - Duolingo フレーズパネル

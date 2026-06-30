@@ -1193,15 +1193,17 @@ struct TomoView: View {
                             .padding(8)
                     }
                 }
-                // 右上: Day◯ バッジ
+                // 右上: Weight 投稿のみ Day◯ バッジ
                 .overlay(alignment: .topTrailing) {
-                    Text(dayLabel(for: item.timestamp))
-                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.black.opacity(0.52))
-                        .clipShape(Capsule())
-                        .padding(8)
+                    if item.weightKg != nil {
+                        Text(dayLabel(for: item.timestamp))
+                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.black.opacity(0.52))
+                            .clipShape(Capsule())
+                            .padding(8)
+                    }
                 }
                 // 下部: FOOD → 栄養情報、非FOOD → コメント（あれば）
                 .overlay(alignment: .bottom) {
@@ -1484,7 +1486,7 @@ struct TomoView: View {
                 .clipped()
                 .contentShape(Rectangle())
 
-                // 上部オーバーレイ（左: meal バッジ(FOOD), 右: Day + 番号バッジ）
+                // 上部オーバーレイ（左: meal バッジ(FOOD), 右: Weight のみ Day◯ + 番号バッジ）
                 VStack {
                     HStack(alignment: .top) {
                         // 左: FOOD のみ meal バッジ
@@ -1497,14 +1499,16 @@ struct TomoView: View {
                                 .clipShape(Capsule())
                         }
                         Spacer()
-                        // 右: Day バッジ + 番号バッジ（複数枚時）
+                        // 右: Weight 投稿のみ Day◯ バッジ + 番号バッジ（複数枚時）
                         VStack(alignment: .trailing, spacing: 4) {
-                            Text(dayLabel(for: item.timestamp))
-                                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.black.opacity(0.52))
-                                .clipShape(Capsule())
+                            if item.weightKg != nil {
+                                Text(dayLabel(for: item.timestamp))
+                                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.black.opacity(0.52))
+                                    .clipShape(Capsule())
+                            }
                             if total > 1 {
                                 Text("\(index + 1)/\(total)")
                                     .font(.system(size: 10 * UIScale.font, weight: .black))
@@ -2379,20 +2383,22 @@ struct SwipeableTomoDetailSheet: View {
                             .padding(10)
                     }
                 }
-                // 右上: Day◯ バッジ
+                // 右上: Weight 投稿のみ Day◯ バッジ
                 .overlay(alignment: .topTrailing) {
-                    let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? item.timestamp
-                    let cal = Calendar.current
-                    let days = cal.dateComponents([.day],
-                                                  from: cal.startOfDay(for: joinDate),
-                                                  to: cal.startOfDay(for: item.timestamp)).day ?? 0
-                    Text("Day \(days + 1)")
-                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.black.opacity(0.52))
-                        .clipShape(Capsule())
-                        .padding(10)
+                    if item.weightKg != nil {
+                        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? item.timestamp
+                        let cal = Calendar.current
+                        let days = cal.dateComponents([.day],
+                                                      from: cal.startOfDay(for: joinDate),
+                                                      to: cal.startOfDay(for: item.timestamp)).day ?? 0
+                        Text("Day \(days + 1)")
+                            .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.black.opacity(0.52))
+                            .clipShape(Capsule())
+                            .padding(10)
+                    }
                 }
 
                 // ── コメント ────────────────────────────────────────────────

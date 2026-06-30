@@ -3132,6 +3132,16 @@ private struct WeightFeedCard: View {
         f.dateFormat = "M/d (E)"; return f
     }()
 
+    /// joinDate からの日数を "Day N" 形式で返す
+    private func dayLabel(for date: Date) -> String {
+        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day],
+                                      from: cal.startOfDay(for: joinDate),
+                                      to: cal.startOfDay(for: date)).day ?? 0
+        return "Day \(days + 1)"
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             Group {
@@ -3149,10 +3159,18 @@ private struct WeightFeedCard: View {
             .clipped()
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(WeightFeedCard.mdFmt.string(from: item.timestamp))
-                    .font(.system(size: 10 * UIScale.font, weight: .bold))
-                    .foregroundColor(.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.5), radius: 2)
+                HStack(spacing: 5) {
+                    Text(WeightFeedCard.mdFmt.string(from: item.timestamp))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text(dayLabel(for: item.timestamp))
+                        .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                }
+                .shadow(color: .black.opacity(0.5), radius: 2)
                 HStack(spacing: 6) {
                     HStack(spacing: 2) {
                         Text("⚖️").font(.system(size: 10 * UIScale.font))

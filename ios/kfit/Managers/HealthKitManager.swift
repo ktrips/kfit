@@ -339,6 +339,10 @@ final class HealthKitManager: ObservableObject {
     @Published var activityStandHours: Int = 0         // スタンドリング（時間）
     @Published var activityStandGoal: Int = 12         // スタンド目標（時間）
 
+    /// fetch 系メソッドが完了するたびに更新するタイムスタンプ。
+    /// DashboardView の onChange を単一のトリガーに集約するために使用する。
+    @Published var lastFetchedAt: Date = .distantPast
+
     // 日光露出時間（todayDaylightMinutes の別名）
     var todaySunlightExposure: Double { todayDaylightMinutes }
 
@@ -688,6 +692,7 @@ final class HealthKitManager: ObservableObject {
         todayWaterSamples = await waterSamples
         todayMealSamples = await mealSamples
         todayToothbrushingSamples = await toothbrushing
+        lastFetchedAt = Date()
     }
 
     func fetchMindHealth(force: Bool = false) async {
@@ -723,6 +728,7 @@ final class HealthKitManager: ObservableObject {
         applyMindfulnessResult(await mindfulness)
         todayDaylightMinutes = await daylight
         todayWorkoutMinutes = await exerciseMinutes
+        lastFetchedAt = Date()
     }
 
     func fetchGoalHealth(force: Bool = false) async {
@@ -762,6 +768,7 @@ final class HealthKitManager: ObservableObject {
         activityStandHours = rings.standHours
         activityStandGoal = rings.standGoal
         weeklyCalorieData = await weeklyCalories
+        lastFetchedAt = Date()
     }
 
     func fetchIntakeHealth(force: Bool = false) async {
@@ -787,6 +794,7 @@ final class HealthKitManager: ObservableObject {
         todayIntakeCarbs = await intakeCarbs
         todayWaterSamples = await waterSamples
         todayMealSamples = await mealSamples
+        lastFetchedAt = Date()
     }
 
     func fetchWatchSnapshotHealth(force: Bool = false) async {
@@ -970,7 +978,7 @@ final class HealthKitManager: ObservableObject {
             let q = HKSampleQuery(
                 sampleType: type,
                 predicate: pred,
-                limit: HKObjectQueryNoLimit,
+                limit: 200,  // グラフ表示に必要な上限。Apple Watchでも1日200件を超えない
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
             ) { _, samples, _ in
                 let list = (samples as? [HKQuantitySample] ?? []).map {
@@ -1037,7 +1045,7 @@ final class HealthKitManager: ObservableObject {
         return await withCheckedContinuation { cont in
             let q = HKSampleQuery(
                 sampleType: type, predicate: pred,
-                limit: HKObjectQueryNoLimit,
+                limit: 400,  // 睡眠ステージはApple Watch最大でも400件を超えない
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
             ) { _, samples, _ in
                 // 無効サンプル（開始 >= 終了）を除外
@@ -1227,7 +1235,7 @@ final class HealthKitManager: ObservableObject {
             let query = HKSampleQuery(
                 sampleType: type,
                 predicate: predicate,
-                limit: HKObjectQueryNoLimit,
+                limit: 500,  // 最小値を求めるが実用上500件で十分
                 sortDescriptors: nil
             ) { _, samples, _ in
                 let values = (samples as? [HKQuantitySample])?.map { $0.quantity.doubleValue(for: unit) } ?? []
@@ -1339,7 +1347,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: endOfDay, options: .strictStartDate)
 
         return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 50, sortDescriptors: nil) { _, samples, _ in
                 continuation.resume(returning: samples?.count ?? 0)
             }
             store.execute(query)
@@ -1382,7 +1390,8 @@ final class HealthKitManager: ObservableObject {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
 
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { [weak self] _, samples, _ in
+            // 90日 × 2回/日 = 180件で十分
+            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: 180, sortDescriptors: [sort]) { [weak self] _, samples, _ in
                 guard let self, let samples = samples as? [HKQuantitySample] else {
                     cont.resume(); return
                 }
@@ -1430,7 +1439,8 @@ final class HealthKitManager: ObservableObject {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
 
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { [weak self] _, samples, _ in
+            // 90日 × 2回/日 = 180件で十分
+            let q = HKSampleQuery(sampleType: type, predicate: pred, limit: 180, sortDescriptors: [sort]) { [weak self] _, samples, _ in
                 guard let self, let samples = samples as? [HKQuantitySample] else {
                     cont.resume(); return
                 }
@@ -1462,7 +1472,8 @@ final class HealthKitManager: ObservableObject {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
 
         return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            // 週の最初と最後の値を比較するため50件で十分
+            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
                 guard let samples = samples as? [HKQuantitySample], samples.count >= 2 else {
                     continuation.resume(returning: nil)
                     return
@@ -1483,7 +1494,8 @@ final class HealthKitManager: ObservableObject {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
 
         return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            // 週の最初と最後の値を比較するため50件で十分
+            let query = HKSampleQuery(sampleType: type, predicate: pred, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
                 guard let samples = samples as? [HKQuantitySample], samples.count >= 2 else {
                     continuation.resume(returning: nil)
                     return
@@ -1513,7 +1525,54 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    // MARK: - 週次集計クエリ共通ヘルパー
+
+    /// 日別キー用フォーマッタ（yyyy-MM-dd）
+    private static let weeklyDayKeyFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// HKStatisticsCollectionQuery で週間の日別集計値を1クエリで取得し
+    /// [yyyy-MM-dd: value] の辞書で返す。
+    /// 42本の逐次クエリを1本に削減し、並列呼び出し側でさらに並列化する。
+    private func fetchWeeklyCollection(
+        type: HKQuantityType,
+        weekStart: Date,
+        weekEnd: Date,
+        unit: HKUnit,
+        options: HKStatisticsOptions
+    ) async -> [String: Double] {
+        await withCheckedContinuation { cont in
+            let pred = HKQuery.predicateForSamples(
+                withStart: weekStart, end: weekEnd, options: .strictStartDate)
+            let q = HKStatisticsCollectionQuery(
+                quantityType: type,
+                quantitySamplePredicate: pred,
+                options: options,
+                anchorDate: weekStart,
+                intervalComponents: DateComponents(day: 1)
+            )
+            q.initialResultsHandler = { _, collection, _ in
+                var dict: [String: Double] = [:]
+                collection?.enumerateStatistics(from: weekStart, to: weekEnd) { stats, _ in
+                    let key = Self.weeklyDayKeyFmt.string(from: stats.startDate)
+                    if options.contains(.cumulativeSum) {
+                        dict[key] = stats.sumQuantity()?.doubleValue(for: unit) ?? 0
+                    } else {
+                        dict[key] = stats.averageQuantity()?.doubleValue(for: unit)
+                    }
+                }
+                cont.resume(returning: dict)
+            }
+            store.execute(q)
+        }
+    }
+
     /// 今週（月〜日）の日別カロリー収支・体重・体脂肪を取得
+    /// 改善: 直列42クエリ → 6クエリを並列実行（HKStatisticsCollectionQuery）
     private func fetchWeeklyCalories() async -> [DailyCalorieBalance] {
         guard let activeType  = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned),
               let restingType = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned),
@@ -1524,37 +1583,41 @@ final class HealthKitManager: ObservableObject {
         else { return [] }
 
         var cal = Calendar.current
-        cal.firstWeekday = 2  // 月曜始まり
+        cal.firstWeekday = 2
         let today = Date()
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
+
+        // 6クエリを並列実行
+        async let activeMap  = fetchWeeklyCollection(type: activeType,  weekStart: weekStart, weekEnd: weekEnd, unit: .kilocalorie(), options: .cumulativeSum)
+        async let restingMap = fetchWeeklyCollection(type: restingType, weekStart: weekStart, weekEnd: weekEnd, unit: .kilocalorie(), options: .cumulativeSum)
+        async let intakeMap  = fetchWeeklyCollection(type: intakeType,  weekStart: weekStart, weekEnd: weekEnd, unit: .kilocalorie(), options: .cumulativeSum)
+        async let stepMap    = fetchWeeklyCollection(type: stepType,    weekStart: weekStart, weekEnd: weekEnd, unit: .count(), options: .cumulativeSum)
+        async let massMap    = fetchWeeklyCollection(type: massType,    weekStart: weekStart, weekEnd: weekEnd, unit: .gramUnit(with: .kilo), options: .discreteAverage)
+        async let fatMap     = fetchWeeklyCollection(type: fatType,     weekStart: weekStart, weekEnd: weekEnd, unit: .percent(), options: .discreteAverage)
+
+        let (active, resting, intake, steps, mass, fat) =
+            await (activeMap, restingMap, intakeMap, stepMap, massMap, fatMap)
 
         var results: [DailyCalorieBalance] = []
         for i in 0..<7 {
             guard let dayStart = cal.date(byAdding: .day, value: i, to: weekStart) else { continue }
-            guard dayStart <= today else {
-                results.append(DailyCalorieBalance(date: dayStart, burned: 0, consumed: 0))
-                continue
-            }
-            let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
-            let pred = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
-
-            let active  = await fetchCumulativeSum(type: activeType,  predicate: pred, unit: .kilocalorie())
-            let resting = await fetchCumulativeSum(type: restingType, predicate: pred, unit: .kilocalorie())
-            let intake  = await fetchCumulativeSum(type: intakeType,  predicate: pred, unit: .kilocalorie())
-            let mass    = await fetchLatestSampleInRange(type: massType, predicate: pred, unit: .gramUnit(with: .kilo))
-            let fat     = await fetchLatestSampleInRange(type: fatType,  predicate: pred, unit: .percent())
-            let stepSum = await fetchCumulativeSum(type: stepType, predicate: pred, unit: .count())
-
-            var entry = DailyCalorieBalance(date: dayStart, burned: active + resting, consumed: intake)
-            entry.bodyMass = mass
-            entry.bodyFatPercentage = fat.map { $0 * 100 }
-            entry.steps = Int(stepSum)
+            let key = Self.weeklyDayKeyFmt.string(from: dayStart)
+            var entry = DailyCalorieBalance(
+                date: dayStart,
+                burned: (active[key] ?? 0) + (resting[key] ?? 0),
+                consumed: intake[key] ?? 0
+            )
+            entry.steps = Int(steps[key] ?? 0)
+            if let m = mass[key], m > 0 { entry.bodyMass = m }
+            if let f = fat[key],  f > 0 { entry.bodyFatPercentage = f * 100 }
             results.append(entry)
         }
         return results
     }
 
     /// 今週（月〜日）の日別消費カロリー内訳（安静時・活動・運動時間）を取得
+    /// 改善: 直列28クエリ → 4クエリを並列実行（HKStatisticsCollectionQuery）
     func fetchWeeklyBurnData() async {
         guard let activeType   = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned),
               let restingType  = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned),
@@ -1566,28 +1629,27 @@ final class HealthKitManager: ObservableObject {
         cal.firstWeekday = 2
         let today = Date()
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let weekEnd   = cal.date(byAdding: .day, value: 7, to: weekStart) ?? today
+
+        // 4クエリを並列実行
+        async let activeMap   = fetchWeeklyCollection(type: activeType,   weekStart: weekStart, weekEnd: weekEnd, unit: .kilocalorie(), options: .cumulativeSum)
+        async let restingMap  = fetchWeeklyCollection(type: restingType,  weekStart: weekStart, weekEnd: weekEnd, unit: .kilocalorie(), options: .cumulativeSum)
+        async let exerciseMap = fetchWeeklyCollection(type: exerciseType, weekStart: weekStart, weekEnd: weekEnd, unit: .minute(), options: .cumulativeSum)
+        async let stepMap     = fetchWeeklyCollection(type: stepType,     weekStart: weekStart, weekEnd: weekEnd, unit: .count(), options: .cumulativeSum)
+
+        let (active, resting, exercise, steps) =
+            await (activeMap, restingMap, exerciseMap, stepMap)
 
         var results: [DailyBurnSummary] = []
         for i in 0..<7 {
             guard let dayStart = cal.date(byAdding: .day, value: i, to: weekStart) else { continue }
-            guard dayStart <= today else {
-                results.append(DailyBurnSummary(date: dayStart))
-                continue
-            }
-            let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
-            let pred = HKQuery.predicateForSamples(withStart: dayStart, end: dayEnd)
-
-            let active   = await fetchCumulativeSum(type: activeType,   predicate: pred, unit: .kilocalorie())
-            let resting  = await fetchCumulativeSum(type: restingType,  predicate: pred, unit: .kilocalorie())
-            let exercise = await fetchCumulativeSum(type: exerciseType, predicate: pred, unit: .minute())
-            let stepSum  = await fetchCumulativeSum(type: stepType,     predicate: pred, unit: .count())
-
+            let key = Self.weeklyDayKeyFmt.string(from: dayStart)
             results.append(DailyBurnSummary(
                 date: dayStart,
-                activeCalories: active,
-                restingCalories: resting,
-                exerciseMinutes: exercise,
-                steps: Int(stepSum)
+                activeCalories:  active[key]   ?? 0,
+                restingCalories: resting[key]  ?? 0,
+                exerciseMinutes: exercise[key] ?? 0,
+                steps: Int(steps[key] ?? 0)
             ))
         }
         weeklyBurnData = results
@@ -1603,7 +1665,8 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: weekStart, end: weekEnd, options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         let samples: [DietarySample] = await withCheckedContinuation { continuation in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, raw, _ in
+            // 週7日 × 複数食/日 = 300件で十分
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 300, sortDescriptors: [sort]) { _, raw, _ in
                 let result = (raw as? [HKQuantitySample])?.compactMap { s -> DietarySample? in
                     let kcal = s.quantity.doubleValue(for: .kilocalorie())
                     guard kcal > 0 else { return nil }
@@ -1799,7 +1862,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         return await withCheckedContinuation { continuation in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
                 let result = (samples as? [HKQuantitySample])?.map {
                     DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .literUnit(with: .milli)))
                 } ?? []
@@ -1816,7 +1879,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         return await withCheckedContinuation { continuation in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
                 let result = (samples as? [HKQuantitySample])?.map {
                     DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .kilocalorie()))
                 } ?? []
@@ -1833,7 +1896,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         return await withCheckedContinuation { continuation in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 10, sortDescriptors: [sort]) { _, samples, _ in
                 let dates = (samples as? [HKCategorySample])?.map { $0.endDate } ?? []
                 continuation.resume(returning: dates)
             }
@@ -1872,7 +1935,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
 
         return await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 100, sortDescriptors: nil) { _, samples, error in
                 guard let samples = samples as? [HKQuantitySample] else {
                     continuation.resume(returning: 0)
                     return
@@ -1977,7 +2040,7 @@ final class HealthKitManager: ObservableObject {
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
         let rawSamples: [HKCategorySample] = await withCheckedContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
                 continuation.resume(returning: (samples as? [HKCategorySample]) ?? [])
             }
             store.execute(query)
@@ -2087,7 +2150,7 @@ final class HealthKitManager: ObservableObject {
             let query = HKSampleQuery(
                 sampleType: HKWorkoutType.workoutType(),
                 predicate: predicate,
-                limit: HKObjectQueryNoLimit,
+                limit: 20,  // 1日20ワークアウトを超えることはない
                 sortDescriptors: nil
             ) { _, samples, error in
                 guard let workouts = samples as? [HKWorkout] else {
@@ -2118,7 +2181,7 @@ final class HealthKitManager: ObservableObject {
             let query = HKSampleQuery(
                 sampleType: HKWorkoutType.workoutType(),
                 predicate: predicate,
-                limit: HKObjectQueryNoLimit,
+                limit: 20,  // 1日20ワークアウトを超えることはない
                 sortDescriptors: [sort]
             ) { _, samples, _ in
                 guard let workouts = samples as? [HKWorkout] else {
@@ -2177,7 +2240,7 @@ final class HealthKitManager: ObservableObject {
             let query = HKSampleQuery(
                 sampleType: type,
                 predicate: predicate,
-                limit: HKObjectQueryNoLimit,
+                limit: 24,  // 1日 = 最大24時間分
                 sortDescriptors: nil
             ) { _, samples, error in
                 guard let samples = samples as? [HKCategorySample] else {
@@ -2219,7 +2282,7 @@ final class HealthKitManager: ObservableObject {
             let query = HKSampleQuery(
                 sampleType: HKWorkoutType.workoutType(),
                 predicate: pred,
-                limit: HKObjectQueryNoLimit,
+                limit: 20,  // 1日20ワークアウトを超えることはない
                 sortDescriptors: nil
             ) { _, samples, _ in
                 continuation.resume(returning: samples?.count ?? 0)

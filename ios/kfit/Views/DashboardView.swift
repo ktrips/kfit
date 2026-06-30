@@ -499,29 +499,21 @@ struct DashboardView: View {
         // コンパイラの型推論タイムアウトを防ぐため、let で式を2段階に分割
         // （computed property への分離はSwiftUI描画ツリー深度を増やし
         //   スタックオーバーフローを引き起こすためこの方法を採用）
+        // HealthKit fetch 完了を単一の lastFetchedAt で検知し、
+        // 13個の個別 onChange を2個に集約（連鎖的な再処理バーストを防止）。
         let withHealthKitObservers = coreView
+            // マインドフルネスのみ old/new 比較が必要なため個別維持
             .onChange(of: healthKit.todayMindfulnessSessions) { oldValue, newValue in
                 handleMindfulnessChange(old: oldValue, new: newValue)
+            }
+            // fetch 完了後に1回だけ全副作用を実行
+            .onChange(of: healthKit.lastFetchedAt) { _, _ in
                 scheduleMandalaRecompute()
                 scheduleWidgetDataUpdate()
+                schedulePFCAnalysis()
+                sleepScore = healthKit.analyzeSleepScore(
+                    targetHours: Double(dailyFixedGoals.sleepHoursGoal))
             }
-            .onChange(of: healthKit.todayActiveCalories) { _, _ in scheduleMandalaRecompute(); scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayRestingCalories) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayWorkoutMinutes) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayStandHours) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayIntakeWater) { _, _ in scheduleMandalaRecompute(); scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.todayIntakeCalories) { _, _ in scheduleMandalaRecompute() }
-            .onChange(of: healthKit.todayBodyMassMeasurements) { _, _ in scheduleWidgetDataUpdate() }
-            .onChange(of: healthKit.lastNightTotalHours) { _, _ in
-                scheduleWidgetDataUpdate()
-                sleepScore = healthKit.analyzeSleepScore(targetHours: Double(dailyFixedGoals.sleepHoursGoal))
-            }
-            .onChange(of: healthKit.sleepSegments.count) { _, _ in
-                sleepScore = healthKit.analyzeSleepScore(targetHours: Double(dailyFixedGoals.sleepHoursGoal))
-            }
-            .onChange(of: healthKit.todayIntakeProtein) { _, _ in schedulePFCAnalysis() }
-            .onChange(of: healthKit.todayIntakeFat)     { _, _ in schedulePFCAnalysis() }
-            .onChange(of: healthKit.todayIntakeCarbs)   { _, _ in schedulePFCAnalysis() }
         return withHealthKitObservers
             .onChange(of: todayIntake.totalCalories) { _, _ in scheduleWidgetDataUpdate() }
             .onChange(of: todaySetCount) { _, _ in scheduleWidgetDataUpdate() }

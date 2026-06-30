@@ -1,6 +1,10 @@
 import CoreMotion
 import Combine
 
+/// センサーコールバックを専用バックグラウンドキューで受信し、
+/// UIスレッド（MainActor）をブロックしない設計。
+/// 50Hzのコールバック内では加速度の大きさのみ計算し、
+/// 状態更新（@Published 書き込み）だけ DispatchQueue.main で行う。
 @MainActor
 class MotionDetectionManager: NSObject, ObservableObject {
     @Published var repCount: Int = 0
@@ -11,11 +15,23 @@ class MotionDetectionManager: NSObject, ObservableObject {
     private let motionManager = CMMotionManager()
     private var baselineAcceleration: Double = 0.0
     private var accelerationPeaks: [Double] = []
-    private let peakThreshold: Double = 1.15  // 1.5から大幅に下げて高感度化
-    private let repThreshold: Double = 0.3    // 0.5から下げて小さな動きも検出
+    private let peakThreshold: Double = 1.15
+    private let repThreshold: Double = 0.3
+
+    /// センサーコールバック専用キュー（UIスレッドをブロックしない）
+    private let sensorQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "com.kfit.motionSensor"
+        q.maxConcurrentOperationCount = 1
+        q.qualityOfService = .userInteractive
+        return q
+    }()
 
     func startDetection(for exerciseType: ExerciseType) {
         guard motionManager.isAccelerometerAvailable else { return }
+
+        // 二重起動防止
+        motionManager.stopAccelerometerUpdates()
 
         isDetecting = true
         repCount = 0
@@ -23,41 +39,44 @@ class MotionDetectionManager: NSObject, ObservableObject {
         accelerationPeaks = []
 
         motionManager.accelerometerUpdateInterval = 0.02 // 50 Hz
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, error in
-            guard let self = self, let data = data else { return }
-
-            let acceleration = sqrt(
+        // コールバックをバックグラウンドキューで受信（UIスレッド非ブロック）
+        motionManager.startAccelerometerUpdates(to: sensorQueue) { [weak self] data, _ in
+            guard let data else { return }
+            // 加速度の大きさをバックグラウンドで計算
+            let accel = sqrt(
                 data.acceleration.x * data.acceleration.x +
                 data.acceleration.y * data.acceleration.y +
                 data.acceleration.z * data.acceleration.z
             )
-
-            self.detectRep(acceleration: acceleration, exerciseType: exerciseType)
+            // 状態更新はメインスレッドで（@Published の要件）
+            DispatchQueue.main.async { [weak self] in
+                self?.detectRep(acceleration: accel, exerciseType: exerciseType)
+            }
         }
     }
 
     func calibrate() {
         guard motionManager.isAccelerometerAvailable else { return }
 
-        // 既存のアクセロメータリスナーを停止してから開始（重複コールバック防止）
         motionManager.stopAccelerometerUpdates()
         motionManager.accelerometerUpdateInterval = 0.1
         var readings: [Double] = []
 
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let self = self, let data = data else { return }
-
-            let acceleration = sqrt(
+        motionManager.startAccelerometerUpdates(to: sensorQueue) { [weak self] data, _ in
+            guard let data else { return }
+            let accel = sqrt(
                 data.acceleration.x * data.acceleration.x +
                 data.acceleration.y * data.acceleration.y +
                 data.acceleration.z * data.acceleration.z
             )
-
-            readings.append(acceleration)
+            readings.append(accel)
 
             if readings.count > 20 {
-                self.baselineAcceleration = readings.reduce(0, +) / Double(readings.count)
-                self.motionManager.stopAccelerometerUpdates()
+                let baseline = readings.reduce(0, +) / Double(readings.count)
+                DispatchQueue.main.async { [weak self] in
+                    self?.baselineAcceleration = baseline
+                    self?.motionManager.stopAccelerometerUpdates()
+                }
             }
         }
     }
@@ -71,13 +90,11 @@ class MotionDetectionManager: NSObject, ObservableObject {
     private func detectRep(acceleration: Double, exerciseType: ExerciseType) {
         currentAcceleration = acceleration
 
-        // Detect if acceleration exceeds threshold（より低い閾値で検出）
-        let threshold = baselineAcceleration + (peakThreshold * 0.35)  // 0.5から0.35に下げる
+        let threshold = baselineAcceleration + (peakThreshold * 0.35)
 
         if acceleration > threshold {
             accelerationPeaks.append(acceleration)
-        } else if !accelerationPeaks.isEmpty && acceleration < baselineAcceleration + 0.2 {  // 0.3から0.2に
-            // Peak detected and acceleration returned to baseline
+        } else if !accelerationPeaks.isEmpty && acceleration < baselineAcceleration + 0.2 {
             detectRepCompletion()
         }
     }
@@ -88,15 +105,11 @@ class MotionDetectionManager: NSObject, ObservableObject {
         let peak = accelerationPeaks.max() ?? 0
         let consistency = calculateConsistency()
 
-        // より低い閾値でもカウント
-        if peak > peakThreshold * 0.8 {  // 完全な閾値でなく80%でもOK
+        if peak > peakThreshold * 0.8 {
             repCount += 1
-
-            // Calculate form score based on consistency（緩めに評価）
             formScore = max(70.0, min(100.0, consistency * 100))
         }
 
-        // 閾値未達でも必ずリセット（蓄積による誤検知・メモリ増大を防止）
         accelerationPeaks = []
     }
 
@@ -107,7 +120,6 @@ class MotionDetectionManager: NSObject, ObservableObject {
         let variance = accelerationPeaks.map { pow($0 - mean, 2) }.reduce(0, +) / Double(accelerationPeaks.count)
         let stdDev = sqrt(variance)
 
-        // Lower std dev = better consistency
         return max(0.5, 1.0 - (stdDev / mean * 0.5))
     }
 }

@@ -101,16 +101,19 @@ final class TomoManager: ObservableObject {
 
     private let db = Firestore.firestore()
     private static var didBackfillPublicPosts = false
+    /// 初回ロード完了フラグ — .task からの重複ロードを防止
+    private var isLoaded = false
 
     /// 2人のuidから決定的な friendship ドキュメントIDを生成
     private func friendshipId(_ a: String, _ b: String) -> String {
         [a, b].sorted().joined(separator: "_")
     }
 
-    func load() async {
+    func load(force: Bool = false) async {
+        guard !isLoaded || force else { return }   // 初回以外はスキップ
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer { isLoading = false; isLoaded = true }
 
         // 自分の既存公開投稿を一度だけバックフィル（機能導入前の投稿を友達に見せるため）
         if !Self.didBackfillPublicPosts {
@@ -182,11 +185,12 @@ final class TomoManager: ObservableObject {
 
                     async let postsTask = { () -> [FriendPostData] in
                         (try? await withAsyncTimeout(seconds: 12) {
+                            // 表示に必要な最新15件のみ取得（旧50件→大幅削減）
                             let snap = try await Firestore.firestore()
                                 .collection("publicProfiles").document(fid)
                                 .collection("posts")
                                 .order(by: "timestamp", descending: true)
-                                .limit(to: 50)
+                                .limit(to: 15)
                                 .getDocuments()
                             return snap.documents.map { doc -> FriendPostData in
                                 let data = doc.data()
@@ -469,12 +473,12 @@ struct TomoView: View {
                     }
                     .padding(.bottom, 20)
                 }
-                .refreshable { await manager.load() }
+                .refreshable { await manager.load(force: true) }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { tomoHeader }
         }
-        .task { await manager.load() }
+        .task { await manager.load() }   // isLoaded で重複ロードを自動防止
         .onAppear { rebuildFeedCache() }
         .onReceive(eduLogManager.$history) { _ in scheduleFeedRebuild() }
         .onReceive(photoLogManager.$history) { _ in scheduleFeedRebuild() }

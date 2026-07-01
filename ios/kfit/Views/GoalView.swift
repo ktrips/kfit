@@ -24,7 +24,8 @@ struct GoalView: View {
     // 体重ログ（写真）フィード・記録用
     @ObservedObject private var eduLog = EduLogManager.shared
     @State private var showWeightPhotoLog = false
-    @State private var selectedWeightFeedItem: EduLogHistoryItem? = nil
+    @State private var swipeWeightItems: [EduLogHistoryItem] = []
+    @State private var swipeWeightStart: Int = 0
     @State private var showOlderWeightFeed = false
 
     // MARK: - Static formatters（毎呼び出しで DateFormatter を生成しないよう共有）
@@ -168,8 +169,11 @@ struct GoalView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(item: $selectedWeightFeedItem) { item in
-                WeightFeedDetailSheet(item: item)
+            .sheet(isPresented: Binding(
+                get: { !swipeWeightItems.isEmpty },
+                set: { if !$0 { swipeWeightItems = [] } }
+            )) {
+                SwipeableWeightFeedSheet(items: swipeWeightItems, startIndex: swipeWeightStart)
             }
             .task {
                 // V25: 相互依存のない非同期タスクを async let で並列実行
@@ -1523,7 +1527,7 @@ struct GoalView: View {
 
     private var weightFeedSection: some View {
         let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let allLogs   = eduLog.history.filter { $0.activityName == "体重ログ" && $0.thumbnailData != nil }
+        let allLogs   = eduLog.history.filter { $0.activityName == "体重ログ" && ($0.thumbnailPath != nil || $0.thumbnailData != nil) }
         let recent    = allLogs.filter { $0.timestamp >= twoWeeksAgo }
         let older     = allLogs.filter { $0.timestamp < twoWeeksAgo }
         let displayed = showOlderWeightFeed ? allLogs : recent
@@ -1605,9 +1609,12 @@ struct GoalView: View {
                     columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
                     spacing: 8
                 ) {
-                    ForEach(displayed) { item in
+                    ForEach(Array(displayed.enumerated()), id: \.element.id) { idx, item in
                         WeightFeedCard(item: item)
-                            .onTapGesture { selectedWeightFeedItem = item }
+                            .onTapGesture {
+                                swipeWeightItems = displayed
+                                swipeWeightStart = idx
+                            }
                     }
                 }
 
@@ -3212,6 +3219,7 @@ private struct WeightFeedCard: View {
 
 struct WeightFeedDetailSheet: View {
     let item: EduLogHistoryItem
+    var embedded: Bool = false
     @StateObject private var eduLogManager = EduLogManager.shared
     @Environment(\.dismiss) private var dismiss
     @State private var isPublicInTomo: Bool = false
@@ -3231,58 +3239,73 @@ struct WeightFeedDetailSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    if let thumb = item.thumbnail {
-                        Image(uiImage: thumb)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .cornerRadius(16)
-                            .overlay(alignment: .topTrailing) {
+        if embedded {
+            scrollContent
+        } else {
+            NavigationView {
+                scrollContent
+                    .navigationTitle("体重ログ")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("閉じる") { dismiss() }
+                        }
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var scrollContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .cornerRadius(16)
+                        .overlay(alignment: .bottom) {
+                            HStack {
+                                Text(WeightFeedDetailSheet.fullFmt.string(from: item.timestamp))
+                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(Color.black.opacity(0.50))
+                                    .clipShape(Capsule())
+                                Spacer()
                                 Text(dayLabel(for: item.timestamp))
                                     .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 10).padding(.vertical, 5)
                                     .background(Color.black.opacity(0.50))
                                     .clipShape(Capsule())
-                                    .padding(10)
                             }
-                    }
-
-                    HStack(spacing: 12) {
-                        metric(emoji: "⚖️", label: "体重",
-                               value: item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—",
-                               unit: "kg", color: Color(hex: "#1CB0F6"))
-                        metric(emoji: "📉", label: "体脂肪率",
-                               value: item.bodyFatPercent != nil ? String(format: "%.1f", item.bodyFatPercent!) : "—",
-                               unit: "%", color: Color(hex: "#CE82FF"))
-                    }
-
-                    if !item.comment.isEmpty {
-                        Text(item.comment)
-                            .font(.system(size: 15 * UIScale.font))
-                            .foregroundColor(Color.duoDark)
-                    }
-
-                    Text(WeightFeedDetailSheet.fullFmt.string(from: item.timestamp))
-                        .font(.system(size: 12 * UIScale.font))
-                        .foregroundColor(Color.duoSubtitle)
-
-                    weightTomoPublicToggle
+                            .padding(10)
+                        }
                 }
-                .padding(16)
-            }
-            .navigationTitle("体重ログ")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("閉じる") { dismiss() }
+
+                HStack(spacing: 12) {
+                    metric(emoji: "⚖️", label: "体重",
+                           value: item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—",
+                           unit: "kg", color: Color(hex: "#1CB0F6"))
+                    metric(emoji: "📉", label: "体脂肪率",
+                           value: item.bodyFatPercent != nil ? String(format: "%.1f", item.bodyFatPercent!) : "—",
+                           unit: "%", color: Color(hex: "#CE82FF"))
                 }
+
+                if !item.comment.isEmpty {
+                    Text(item.comment)
+                        .font(.system(size: 15 * UIScale.font))
+                        .foregroundColor(Color.duoDark)
+                }
+
+                weightTomoPublicToggle
             }
-            .onAppear { isPublicInTomo = item.isPublic }
+            .padding(16)
         }
+        .onAppear { isPublicInTomo = item.isPublic }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var weightTomoPublicToggle: some View {
@@ -3329,6 +3352,44 @@ struct WeightFeedDetailSheet: View {
         .padding(.vertical, 14)
         .background(color.opacity(0.08))
         .cornerRadius(14)
+    }
+}
+
+// MARK: - Swipeable FIT feed sheet
+
+struct SwipeableWeightFeedSheet: View {
+    let items: [EduLogHistoryItem]
+    let startIndex: Int
+    @State private var page: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(items: [EduLogHistoryItem], startIndex: Int) {
+        self.items = items
+        self.startIndex = startIndex
+        _page = State(initialValue: startIndex)
+    }
+
+    var body: some View {
+        NavigationView {
+            TabView(selection: $page) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    WeightFeedDetailSheet(item: item, embedded: true)
+                        .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
+            .navigationTitle(items.count > 1 ? "\(page + 1) / \(items.count)" : "体重ログ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+            .onAppear {
+                let target = startIndex
+                DispatchQueue.main.async { page = target }
+            }
+        }
     }
 }
 

@@ -10,6 +10,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
 
     // Watch側でリアルタイム表示するデータ（統一指標）
     @Published var isPlus: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.bool(forKey: "watch_isPlus") ?? false
+    /// iPhone からデータを一度でも受信したかどうか（未受信時はゲートを表示しない）
+    @Published var hasReceivedFromiPhone: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.object(forKey: "watch_isPlus") != nil
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
@@ -252,6 +254,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let plus = message["isPlus"] as? Bool {
             self.isPlus = plus
             UserDefaults(suiteName: "group.com.kfit.app")?.set(plus, forKey: "watch_isPlus")
+            self.hasReceivedFromiPhone = true
         }
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }
@@ -390,10 +393,12 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         // W2: デバウンス — 5秒以内の連続呼び出しを1回に集約
         widgetReloadTask?.cancel()
         widgetReloadTask = Task {
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                WidgetCenter.shared.reloadAllTimelines()
+                if #available(watchOS 9.0, *) {
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
             }
         }
     }
@@ -492,7 +497,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         if let v = userInfo["watch_totalMealGoal"]        as? Int { ud.set(v, forKey: "watch_totalMealGoal") }
 
         DispatchQueue.main.async {
-            WidgetCenter.shared.reloadAllTimelines()
+            if #available(watchOS 9.0, *) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
             print("📥 Watch: Received complication user info and reloaded timelines")
         }
     }

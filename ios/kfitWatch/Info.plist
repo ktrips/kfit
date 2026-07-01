@@ -34,7 +34,7 @@
 	<string>kfit uses motion sensors to automatically count your exercise reps and track workout form.</string>
 	<key>WKBackgroundModes</key>
 	<array>
-		<string>self-care</string>
+		<string>workout-processing</string>
 	</array>
 </dict>
 </plist>

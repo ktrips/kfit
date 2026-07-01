@@ -59,7 +59,8 @@ private struct FoodViewSheets: ViewModifier {
     @Binding var showDetailLog: Bool
     var authManager: AuthenticationManager
     @Binding var showIntakeSettings: Bool
-    @Binding var selectedFeedItem: PhotoLogHistoryItem?
+    @Binding var swipeFoodItems: [PhotoLogHistoryItem]
+    @Binding var swipeFoodStart: Int
     @Binding var showPlusView: Bool
     var confirmMessage: String
     @Binding var showIntakeConfirm: Bool
@@ -73,7 +74,12 @@ private struct FoodViewSheets: ViewModifier {
                 DailyIntakeView().environmentObject(authManager)
             }
             .sheet(isPresented: $showIntakeSettings) { IntakeSettingsView() }
-            .sheet(item: $selectedFeedItem) { item in PhotoFeedDetailSheet(item: item) }
+            .sheet(isPresented: Binding(
+                get: { !swipeFoodItems.isEmpty },
+                set: { if !$0 { swipeFoodItems = [] } }
+            )) {
+                SwipeableFoodFeedSheet(items: swipeFoodItems, startIndex: swipeFoodStart)
+            }
             .sheet(isPresented: $showPlusView) { PlusView() }
             .alert(confirmMessage, isPresented: $showIntakeConfirm) {
                 Button("記録する", role: .none, action: onConfirm)
@@ -112,7 +118,8 @@ struct FoodView: View {
     @State private var confirmMessage    = ""
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
-    @State private var selectedFeedItem: PhotoLogHistoryItem? = nil
+    @State private var swipeFoodItems: [PhotoLogHistoryItem] = []
+    @State private var swipeFoodStart: Int = 0
     @State private var showFoodHistory = false
     @State private var showIntakeSettings = false
     @State private var showOlderFoodFeed = false
@@ -182,7 +189,8 @@ struct FoodView: View {
             showDetailLog: $showDetailLog,
             authManager: authManager,
             showIntakeSettings: $showIntakeSettings,
-            selectedFeedItem: $selectedFeedItem,
+            swipeFoodItems: $swipeFoodItems,
+            swipeFoodStart: $swipeFoodStart,
             showPlusView: $showPlusViewFromFood,
             confirmMessage: confirmMessage,
             showIntakeConfirm: $showIntakeConfirm,
@@ -1277,7 +1285,10 @@ struct FoodView: View {
                 ) {
                     ForEach(Array(displayed.enumerated()), id: \.element.id) { index, item in
                         PhotoFeedCard(item: item, gradientIndex: index)
-                            .onTapGesture { selectedFeedItem = item }
+                            .onTapGesture {
+                                swipeFoodStart = index
+                                swipeFoodItems = displayed
+                            }
                     }
                 }
             }
@@ -1623,6 +1634,7 @@ struct PhotoFeedDetailSheet: View {
     }()
 
     let item: PhotoLogHistoryItem
+    var embedded: Bool = false
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var photoLogManager = PhotoLogManager.shared
     @Environment(\.dismiss) private var dismiss
@@ -1639,60 +1651,70 @@ struct PhotoFeedDetailSheet: View {
     ]
 
     var body: some View {
-        NavigationView {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    headerImage
-                    VStack(alignment: .leading, spacing: 16) {
-                        calorieBanner
-                        if !item.comment.isEmpty {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "quote.opening")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                    .foregroundColor(Color.duoGreen.opacity(0.7))
-                                Text(item.comment)
-                                    .font(.system(size: 14 * UIScale.font))
-                                    .foregroundColor(Color.duoDark.opacity(0.85))
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
+        if embedded {
+            mainContent
+        } else {
+            NavigationView {
+                mainContent
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle(item.displayName)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("閉じる") { dismiss() }
+                                .foregroundColor(Color.duoGreen)
                         }
-                        if !item.analyzedNutrition.description.isEmpty {
-                            descriptionCard
+                    }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                headerImage
+                VStack(alignment: .leading, spacing: 16) {
+                    calorieBanner
+                    if !item.comment.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "quote.opening")
+                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoGreen.opacity(0.7))
+                            Text(item.comment)
+                                .font(.system(size: 14 * UIScale.font))
+                                .foregroundColor(Color.duoDark.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        nutritionGrid
-                        recordButton
-                        photoTomoPublicToggle
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
                     }
-                    .padding(16)
-                }
-            }
-            .background(Color.duoBg.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationTitle(item.displayName)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") { dismiss() }
-                        .foregroundColor(Color.duoGreen)
-                }
-            }
-            .onAppear { isPublicInTomo = item.isPublic }
-            .alert("食事を記録しますか？", isPresented: $showSaveConfirm) {
-                Button("記録する") {
-                    Task {
-                        isSaving = true
-                        await saveToHealth()
-                        isSaving = false
-                        savedOK = true
+                    if !item.analyzedNutrition.description.isEmpty {
+                        descriptionCard
                     }
+                    nutritionGrid
+                    recordButton
+                    photoTomoPublicToggle
                 }
-                Button("キャンセル", role: .cancel) {}
-            } message: {
-                Text("\(item.displayName)（\(item.calories)kcal）を今日の食事としてHealthKitに保存します")
+                .padding(16)
             }
+        }
+        .background(Color.duoBg.ignoresSafeArea())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { isPublicInTomo = item.isPublic }
+        .alert("食事を記録しますか？", isPresented: $showSaveConfirm) {
+            Button("記録する") {
+                Task {
+                    isSaving = true
+                    await saveToHealth()
+                    isSaving = false
+                    savedOK = true
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("\(item.displayName)（\(item.calories)kcal）を今日の食事としてHealthKitに保存します")
         }
     }
 
@@ -1714,23 +1736,24 @@ struct PhotoFeedDetailSheet: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 240)
+            .frame(height: UIScreen.main.bounds.width * 0.85)
             .clipped()
 
-            // 下部: 日時テキスト（星なし）
-            HStack {
+            // 下部: 写真名称 + 日時
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.displayName)
+                    .font(.system(size: 15 * UIScale.font, weight: .black))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(timeLabel(item.timestamp))
                     .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.black.opacity(0.45))
-                    .cornerRadius(10)
-                Spacer()
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(12)
+            .padding(.horizontal, 14).padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [.clear, Color.black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
             )
         }
         // 左上: 食事タイムバッジ（Breakfast / Lunch / Snack / Dinner）
@@ -1960,6 +1983,45 @@ struct PhotoFeedDetailSheet: View {
     }
 }
 
+// MARK: - Swipeable FOOD feed sheet
+
+struct SwipeableFoodFeedSheet: View {
+    let items: [PhotoLogHistoryItem]
+    let startIndex: Int
+    @State private var page: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(items: [PhotoLogHistoryItem], startIndex: Int) {
+        self.items = items
+        self.startIndex = startIndex
+        _page = State(initialValue: startIndex)
+    }
+
+    var body: some View {
+        NavigationView {
+            TabView(selection: $page) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    PhotoFeedDetailSheet(item: item, embedded: true)
+                        .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
+            .navigationTitle(items.count > 1 ? "\(page + 1) / \(items.count)" : (items.first?.displayName ?? "FOOD"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .foregroundColor(Color.duoGreen)
+                }
+            }
+            .onAppear {
+                let target = startIndex
+                DispatchQueue.main.async { page = target }
+            }
+        }
+    }
+}
+
 // MARK: - Daily Feed Card (Instagram style)
 
 struct EduFeedCard: View {
@@ -2068,7 +2130,7 @@ struct EduFeedCard: View {
                         }
                     }
 
-                    if item.thumbnailData != nil {
+                    if item.thumbnail != nil {
                         LinearGradient(
                             colors: [.clear, Color.black.opacity(0.55)],
                             startPoint: .center, endPoint: .bottom
@@ -2089,7 +2151,7 @@ struct EduFeedCard: View {
                     }
                 }
             }
-            .frame(height: item.thumbnailData != nil ? 240 : 180)
+            .frame(height: item.thumbnail != nil ? 240 : 180)
             .clipped()
 
             // ── コメント ───────────────────────────────────────────────────

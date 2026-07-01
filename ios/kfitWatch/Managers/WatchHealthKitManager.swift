@@ -365,11 +365,19 @@ class WatchHealthKitManager: ObservableObject {
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
         let hours: Double = await withCheckedContinuation { cont in
             let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sortDescriptor]) { _, samples, _ in
-                let totalSeconds = (samples as? [HKCategorySample] ?? [])
-                    .filter { $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
-                              $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
-                              $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue }
-                    .reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                let sleepSamples = samples as? [HKCategorySample] ?? []
+                let totalSeconds: Double
+                if #available(watchOS 9.0, *) {
+                    totalSeconds = sleepSamples
+                        .filter { $0.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
+                                  $0.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
+                                  $0.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue }
+                        .reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                } else {
+                    totalSeconds = sleepSamples
+                        .filter { $0.value == HKCategoryValueSleepAnalysis.asleep.rawValue }
+                        .reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                }
                 cont.resume(returning: totalSeconds / 3600.0)
             }
             healthStore.execute(query)

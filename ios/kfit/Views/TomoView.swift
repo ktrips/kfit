@@ -2282,6 +2282,10 @@ struct SwipeableTomoDetailSheet: View {
     private static let hhmm: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.dateFormat = "M月d日 HH:mm"; return f
     }()
+    private static let fullFmt: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 (E) HH:mm"; return f
+    }()
 
     init(items: [EduLogHistoryItem], startIndex: Int, photoLogManager: PhotoLogManager,
          onComment: ((EduLogHistoryItem) -> Void)? = nil,
@@ -2305,15 +2309,20 @@ struct SwipeableTomoDetailSheet: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
-            .background(Color.black.ignoresSafeArea())
+            .background(Color.duoBg.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .navigationTitle("\(selection + 1) / \(items.count)")
+            .navigationTitle(items.count > 1 ? "\(selection + 1) / \(items.count)" : "")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("閉じる") { dismiss() }
                         .foregroundColor(Color.duoGreen)
                         .fontWeight(.bold)
                 }
+            }
+            .onAppear {
+                // TabView(.page) が初期 selection を反映しないことがある SwiftUI バグの workaround
+                let target = startIndex
+                DispatchQueue.main.async { selection = target }
             }
         }
     }
@@ -2344,96 +2353,156 @@ struct SwipeableTomoDetailSheet: View {
             }
         }()
 
+        let isFit = item.weightKg != nil
+        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? item.timestamp
+        let fitDays  = Calendar.current.dateComponents([.day],
+                           from: Calendar.current.startOfDay(for: joinDate),
+                           to:   Calendar.current.startOfDay(for: item.timestamp)).day ?? 0
+
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
-                // ── 写真 or グラデーション ──────────────────────────────────
-                ZStack(alignment: .bottom) {
-                    Group {
-                        if let thumb = food?.thumbnail ?? item.thumbnail {
+                // ── 写真セクション（FIT / FOOD / その他で表示を統一） ───────
+                let thumb = food?.thumbnail ?? item.thumbnail
+
+                Group {
+                    if isFit {
+                        // ── FIT: WeightFeedDetailSheet と同じ表示 ──────────
+                        if let thumb = thumb {
                             Image(uiImage: thumb)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(maxWidth: .infinity)
+                                .overlay(alignment: .bottom) {
+                                    HStack {
+                                        Text(SwipeableTomoDetailSheet.fullFmt.string(from: item.timestamp))
+                                            .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 10).padding(.vertical, 5)
+                                            .background(Color.black.opacity(0.50))
+                                            .clipShape(Capsule())
+                                        Spacer()
+                                        Text("Day \(fitDays + 1)")
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 10).padding(.vertical, 5)
+                                            .background(Color.black.opacity(0.50))
+                                            .clipShape(Capsule())
+                                    }
+                                    .padding(10)
+                                }
                         } else {
                             ZStack {
-                                LinearGradient(
-                                    colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                                Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
-                                    .font(.system(size: 80 * UIScale.font))
+                                LinearGradient(colors: [Color(hex: "#1CB0F6"), Color(hex: "#0080C0")],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                                Text("⚖️").font(.system(size: 80 * UIScale.font))
                             }
-                            .frame(maxWidth: .infinity).frame(height: 300)
+                            .frame(maxWidth: .infinity).frame(height: 280)
                         }
-                    }
-                    .clipped()
+                    } else if isFood {
+                        // ── FOOD: PhotoFeedDetailSheet と同じ表示 ──────────
+                        ZStack(alignment: .bottom) {
+                            Group {
+                                if let thumb = thumb {
+                                    Image(uiImage: thumb)
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    LinearGradient(
+                                        colors: [Color(hex: "#FF6B6B"), Color(hex: "#FF8E53")],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                    .overlay(Text("🍽️").font(.system(size: 72 * UIScale.font)))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: UIScreen.main.bounds.width * 0.85)
+                            .clipped()
 
-                    // 下部グラデーションと情報
-                    VStack(alignment: .leading, spacing: 4) {
-                        if isFood, let food = food {
-                            Text(food.displayName)
-                                .font(.system(size: 15 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .shadow(color: .black.opacity(0.6), radius: 2)
-                            HStack(spacing: 8) {
-                                Text("🔥 \(food.calories)kcal")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text("P \(Int(food.analyzedNutrition.protein))g")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                    .foregroundColor(Color(hex: "#FF9F43"))
-                                Text("F \(Int(food.analyzedNutrition.fat))g")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                    .foregroundColor(Color(hex: "#A29BFE"))
-                                Text("C \(Int(food.analyzedNutrition.carbs))g")
-                                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                                    .foregroundColor(Color(hex: "#74B9FF"))
+                            // 下部: 料理名 ＋ 時間
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let food = food {
+                                    Text(food.displayName)
+                                        .font(.system(size: 15 * UIScale.font, weight: .black))
+                                        .foregroundColor(.white)
+                                        .lineLimit(2)
+                                }
+                                Text(SwipeableTomoDetailSheet.hhmm.string(from: item.timestamp))
+                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.85))
                             }
-                        } else if !item.activityName.isEmpty {
-                            Text(item.activityEmoji + " " + item.activityName)
-                                .font(.system(size: 15 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                LinearGradient(colors: [.clear, Color.black.opacity(0.60)],
+                                               startPoint: .top, endPoint: .bottom)
+                            )
                         }
-                        Text(SwipeableTomoDetailSheet.hhmm.string(from: item.timestamp))
-                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
+                        // 左上: 食事タイムバッジ
+                        .overlay(alignment: .topLeading) {
+                            Text(mealLabel)
+                                .font(.system(size: 12 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(mealColor)
+                                .clipShape(Capsule())
+                                .shadow(color: .black.opacity(0.2), radius: 4)
+                                .padding(12)
+                        }
+                    } else {
+                        // ── その他（Duolingo等）: 既存グラデーション表示 ────
+                        ZStack(alignment: .bottom) {
+                            Group {
+                                if let thumb = thumb {
+                                    Image(uiImage: thumb)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    ZStack {
+                                        LinearGradient(
+                                            colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
+                                            startPoint: .topLeading, endPoint: .bottomTrailing
+                                        )
+                                        Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
+                                            .font(.system(size: 80 * UIScale.font))
+                                    }
+                                    .frame(maxWidth: .infinity).frame(height: 300)
+                                }
+                            }
+                            .clipped()
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                if !item.activityName.isEmpty {
+                                    Text(item.activityEmoji + " " + item.activityName)
+                                        .font(.system(size: 15 * UIScale.font, weight: .black))
+                                        .foregroundColor(.white)
+                                        .shadow(color: .black.opacity(0.6), radius: 2)
+                                }
+                                Text(SwipeableTomoDetailSheet.hhmm.string(from: item.timestamp))
+                                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                LinearGradient(colors: [.clear, Color.black.opacity(0.72)],
+                                               startPoint: .top, endPoint: .bottom)
+                            )
+                        }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        LinearGradient(colors: [.clear, Color.black.opacity(0.72)],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
                 }
-                // 左上: 食事タイムバッジ（FOOD のみ）
-                .overlay(alignment: .topLeading) {
-                    if isFood {
-                        Text(mealLabel)
-                            .font(.system(size: 11 * UIScale.font, weight: .black))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(mealColor)
-                            .clipShape(Capsule())
-                            .padding(10)
+
+                // ── FIT: 体重・体脂肪メトリクス（WeightFeedDetailSheet と同じ）
+                if isFit {
+                    HStack(spacing: 12) {
+                        tomoMetric(emoji: "⚖️", label: "体重",
+                                   value: item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—",
+                                   unit: "kg", color: Color(hex: "#1CB0F6"))
+                        tomoMetric(emoji: "📉", label: "体脂肪率",
+                                   value: item.bodyFatPercent != nil ? String(format: "%.1f", item.bodyFatPercent!) : "—",
+                                   unit: "%", color: Color(hex: "#CE82FF"))
                     }
-                }
-                // 右上: Weight 投稿のみ Day◯ バッジ
-                .overlay(alignment: .topTrailing) {
-                    if item.weightKg != nil {
-                        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? item.timestamp
-                        let cal = Calendar.current
-                        let days = cal.dateComponents([.day],
-                                                      from: cal.startOfDay(for: joinDate),
-                                                      to: cal.startOfDay(for: item.timestamp)).day ?? 0
-                        Text("Day \(days + 1)")
-                            .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(Color.black.opacity(0.52))
-                            .clipShape(Capsule())
-                            .padding(10)
-                    }
+                    .padding(.horizontal, 16).padding(.top, 12)
                 }
 
                 // ── コメント ────────────────────────────────────────────────
@@ -2590,6 +2659,29 @@ struct SwipeableTomoDetailSheet: View {
             }
         }
         .background(Color.duoBg.ignoresSafeArea())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - FIT メトリクスタイル（WeightFeedDetailSheet と同一デザイン）
+    private func tomoMetric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(emoji).font(.system(size: 22 * UIScale.font))
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 24 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(color)
+                Text(unit)
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Text(label)
+                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(color.opacity(0.08))
+        .cornerRadius(14)
     }
 
     // MARK: - FOOD 栄養詳細パネル

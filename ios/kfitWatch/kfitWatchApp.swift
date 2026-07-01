@@ -7,11 +7,13 @@ struct kfitWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if connectivity.isPlus {
-                WatchDashboardView()
+            // iPhone から Plus 状態を受信済みかつ非 Plus の場合のみゲートを表示。
+            // 未受信（初回起動など）はダッシュボードを表示して iPhone 同期を待つ。
+            if connectivity.hasReceivedFromiPhone && !connectivity.isPlus {
+                WatchPlusGateView()
                     .environmentObject(connectivity)
             } else {
-                WatchPlusGateView()
+                WatchDashboardView()
                     .environmentObject(connectivity)
             }
         }

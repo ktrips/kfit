@@ -61,7 +61,7 @@ struct WatchDashboardView: View {
     @State private var lastHealthRefreshByScope: [String: Date] = [:]
     // ノード位置キャッシュ（毎 body 評価で再構築しない）
     @State private var cachedNodePositions: [(WatchFaceTaskNode, Double, Double)] = []
-    @State private var cachedSpiralMetrics: (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) = (-140, 402, 28, 70)
+    @State private var cachedSpiralMetrics: (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) = (-140, 402, 32, 80)
     // タブスワイプのデバウンス用タスク
     @State private var tabRefreshTask: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
@@ -132,7 +132,7 @@ struct WatchDashboardView: View {
         .onChange(of: selectedTab) { tab in
             tabRefreshTask?.cancel()
             tabRefreshTask = Task {
-                try? await Task.sleep(for: .milliseconds(300))
+                try? await Task.sleep(nanoseconds: 300_000_000)
                 guard !Task.isCancelled else { return }
                 refreshForSelectedTab(tab)
             }
@@ -453,7 +453,7 @@ struct WatchDashboardView: View {
                         .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
-                    .handGestureShortcut(.primaryAction)
+                    .modifier(HandGesturePrimaryActionModifier())
 
                     // ── マインドフルネスボタン ────────────────────
                     Button {
@@ -1287,7 +1287,7 @@ struct WatchDashboardView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .handGestureShortcut(.primaryAction)
+                    .modifier(HandGesturePrimaryActionModifier())
                 }
                 .overlay(alignment: .bottom) {
                     Text(totalCount > 0 ? "\(Int(Double(doneCount) / Double(totalCount) * 100))%" : "--")
@@ -1474,32 +1474,6 @@ struct WatchDashboardView: View {
             }
         }
 
-        if !connectivity.watchFaceTasks.isEmpty {
-            let count = max(connectivity.watchFaceTasks.count, 1)
-            let metrics = watchFaceSpiralMetrics(for: count)
-            let nodes = connectivity.watchFaceTasks.enumerated().map { index, config -> (WatchFaceTaskNode, Double, Double) in
-                let t = count == 1 ? 0.0 : Double(index) / Double(count - 1)
-                let angle = metrics.startAngle + (metrics.totalAngle * t)
-                let radius = metrics.startRadius + ((metrics.endRadius - metrics.startRadius) * t)
-                return (
-                    WatchFaceTaskNode(
-                        id: config.id,
-                        emoji: config.emoji,
-                        accentColor: color(for: config.color),
-                        isDone: config.isDone,
-                        actionType: config.actionType,
-                        mealSubtype: config.mealSubtype,
-                        intakeMessage: config.intakeMessage
-                    ),
-                    angle,
-                    radius
-                )
-            }
-            cachedNodePositions = nodes
-            cachedSpiralMetrics = metrics
-            return
-        }
-
         // Apple Health を正源とし、Firestoreの同期ラグを補完する
         let tDone = max(connectivity.totalTraining, healthKit.todayHKWorkoutCount)
         let hkMindfulSessions = healthKit.todayMindfulnessSessions
@@ -1511,65 +1485,65 @@ struct WatchDashboardView: View {
         let mealG = max(connectivity.totalMealGoal, 1)
 
         let nodes: [(WatchFaceTaskNode, Double, Double)] = [
-            // 朝（内側 r=28、上から時計回りへ）
+            // 朝（内側 r=32、上から時計回りへ）
             (WatchFaceTaskNode(id:"t0", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 1, actionType:"training"), -140, 28),
+                isDone: tDone >= 1, actionType:"training"), -140, 32),
             (WatchFaceTaskNode(id:"bf", emoji:"🍳", accentColor:mealColor,
                 isDone: cals >= mealG / 3, actionType:"meal", mealSubtype:"breakfast",
-                intakeMessage:"朝食\(connectivity.breakfastCalories)kcalを追加しますか？"), -90, 28),
+                intakeMessage:"朝食\(connectivity.breakfastCalories)kcalを追加しますか？"), -90, 32),
             (WatchFaceTaskNode(id:"w0", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal / 4, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), -40, 28),
-            // 昼（中 r=44）
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), -40, 32),
+            // 昼（中 r=50）
             (WatchFaceTaskNode(id:"t1", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 2, actionType:"training"), -15, 44),
+                isDone: tDone >= 2, actionType:"training"), -15, 50),
             (WatchFaceTaskNode(id:"ln", emoji:"🍱", accentColor:mealColor,
                 isDone: cals >= mealG * 2 / 3, actionType:"meal", mealSubtype:"lunch",
-                intakeMessage:"昼食\(connectivity.lunchCalories)kcalを追加しますか？"), 20, 44),
+                intakeMessage:"昼食\(connectivity.lunchCalories)kcalを追加しますか？"), 20, 50),
             (WatchFaceTaskNode(id:"w1", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal / 2, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 55, 44),
-            // 午後（中外 r=57）
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 55, 50),
+            // 午後（中外 r=64）
             (WatchFaceTaskNode(id:"t2", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 3, actionType:"training"), 82, 57),
+                isDone: tDone >= 3, actionType:"training"), 82, 64),
             (WatchFaceTaskNode(id:"sn", emoji:"🍃", accentColor:mealColor,
                 isDone: false, actionType:"meal", mealSubtype:"snack",
-                intakeMessage:"間食を追加しますか？"), 110, 57),
+                intakeMessage:"間食を追加しますか？"), 110, 64),
             (WatchFaceTaskNode(id:"st", emoji:"🤸", accentColor:stretchColor,
-                isDone: false, actionType:"stretch"), 138, 57),
+                isDone: false, actionType:"stretch"), 138, 64),
             (WatchFaceTaskNode(id:"w2", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal * 3 / 4, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 165, 57),
-            // 夜（外側 r=70）
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 165, 64),
+            // 夜（外側 r=80）
             (WatchFaceTaskNode(id:"t3", emoji:"💪", accentColor:trainColor,
-                isDone: tDone >= 4, actionType:"training"), 192, 70),
+                isDone: tDone >= 4, actionType:"training"), 192, 80),
             (WatchFaceTaskNode(id:"dn", emoji:"🍽️", accentColor:mealColor,
                 isDone: cals >= mealG, actionType:"meal", mealSubtype:"dinner",
-                intakeMessage:"夕食\(connectivity.dinnerCalories)kcalを追加しますか？"), 215, 70),
+                intakeMessage:"夕食\(connectivity.dinnerCalories)kcalを追加しますか？"), 215, 80),
             (WatchFaceTaskNode(id:"w3", emoji:"💧", accentColor:waterColor,
                 isDone: water >= dGoal, actionType:"water",
-                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 70),
+                intakeMessage:"水\(connectivity.waterPerCup)mlを追加しますか？"), 238, 80),
             (WatchFaceTaskNode(id:"md", emoji:"🧘", accentColor:mindColor,
-                isDone: mDone >= 1, actionType:"mindfulness"), 262, 70),
+                isDone: mDone >= 1, actionType:"mindfulness"), 262, 80),
             (WatchFaceTaskNode(id:"sd", emoji:"🧍", accentColor:standColor,
                 isDone: connectivity.totalStand >= 1 && connectivity.totalStandGoal > 0,
-                actionType:"stand"), 286, 70),
+                actionType:"stand"), 286, 80),
         ]
         cachedNodePositions = nodes
         cachedSpiralMetrics = watchFaceSpiralMetrics(for: nodes.count)
     }
 
     private func watchFaceSpiralMetrics(for count: Int) -> (startAngle: Double, totalAngle: Double, startRadius: Double, endRadius: Double) {
-        // ノードサイズ32ptに合わせ、内外半径を広げて余裕ある渦巻きに
+        // ノードサイズ38ptに合わせ、間隔を広げた渦巻き
         switch count {
         case 0...12:
-            return (-140, 402, 28, 70)
+            return (-140, 402, 32, 80)
         case 13...18:
-            return (-150, 500, 24, 76)
+            return (-150, 500, 28, 86)
         case 19...24:
-            return (-160, 610, 20, 80)
+            return (-160, 610, 24, 90)
         default:
-            return (-170, 730, 18, 84)
+            return (-170, 730, 22, 96)
         }
     }
 
@@ -1594,16 +1568,16 @@ struct WatchDashboardView: View {
                 if node.isDone {
                     ZStack {
                         Circle().fill(node.accentColor)
-                            .frame(width: 32, height: 32)
-                        Text(node.emoji).font(.system(size: 19))
+                            .frame(width: 38, height: 38)
+                        Text(node.emoji).font(.system(size: 22))
                     }
                 } else {
                     ZStack {
                         Circle().fill(Color.black.opacity(0.40))
-                            .frame(width: 32, height: 32)
+                            .frame(width: 38, height: 38)
                         Circle().stroke(node.accentColor.opacity(0.72), lineWidth: 1.5)
-                            .frame(width: 32, height: 32)
-                        Text(node.emoji).font(.system(size: 19))
+                            .frame(width: 38, height: 38)
+                        Text(node.emoji).font(.system(size: 22))
                             .opacity(0.55)
                     }
                 }
@@ -2488,4 +2462,16 @@ private func watchLargeHealthItem(
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.white.opacity(0.08))
     .cornerRadius(10)
+}
+
+// MARK: - Availability helpers
+
+private struct HandGesturePrimaryActionModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(watchOS 11.0, *) {
+            content.handGestureShortcut(.primaryAction)
+        } else {
+            content
+        }
+    }
 }

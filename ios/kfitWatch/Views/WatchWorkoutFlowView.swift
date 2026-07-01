@@ -51,7 +51,7 @@ struct WatchWorkoutFlowView: View {
                 }
             }
             .focusScope(focusNamespace)
-            .interactiveDismissDisabled(true)
+            .modifier(InteractiveDismissDisabledModifier())
             // fullScreenCover のシステム閉じるボタン（左上の ✕ 丸）を
             // onTapGesture ベースのビューに差し替えてフォーカス対象から外す。
             // これにより Double Tap（フィスト）は .primaryAction の「次へ」ボタンのみに当たる。
@@ -126,7 +126,7 @@ struct WatchWorkoutFlowView: View {
                         .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
-                .handGestureShortcut(.primaryAction)
+                .modifier(HandGesturePrimaryActionModifier())
                 .prefersDefaultFocus(true, in: focusNamespace)
                 .padding(.top, 4)
                 .scaleEffect(showGoalReached ? 1.0 : 0.8)
@@ -329,7 +329,7 @@ struct WatchWorkoutFlowView: View {
                         .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
-                .handGestureShortcut(.primaryAction)
+                .modifier(HandGesturePrimaryActionModifier())
                 .prefersDefaultFocus(true, in: focusNamespace)
             }
             .padding(.horizontal, 8)
@@ -417,7 +417,7 @@ struct WatchWorkoutFlowView: View {
                     .cornerRadius(10)
             }
             .buttonStyle(.plain)
-            .handGestureShortcut(.primaryAction)
+            .modifier(HandGesturePrimaryActionModifier())
         }
         .padding(10)
         .onAppear {
@@ -550,6 +550,28 @@ struct WatchWorkoutFlowView: View {
             if useMotionSensor && !isPlank {
                 startMotionDetection()
             }
+        }
+    }
+}
+
+// MARK: - Availability helpers
+
+private struct HandGesturePrimaryActionModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(watchOS 11.0, *) {
+            content.handGestureShortcut(.primaryAction)
+        } else {
+            content
+        }
+    }
+}
+
+private struct InteractiveDismissDisabledModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(watchOS 8.0, *) {
+            content.interactiveDismissDisabled(true)
+        } else {
+            content
         }
     }
 }

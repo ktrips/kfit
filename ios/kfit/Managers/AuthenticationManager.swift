@@ -2428,14 +2428,14 @@ class PhotoLogManager: ObservableObject {
         if needsMigration { persistHistory() }
     }
 
-    /// 履歴をUserDefaultsに保存。thumbnailData は含めない（ファイルシステムに保存済み）。
+    /// 履歴をUserDefaultsに保存。ファイル保存済みの場合のみ thumbnailData を除外する。
     private func persistHistory() {
-        // バックグラウンドでエンコード → メインスレッドをブロックしない
         let snapshot = history
         Task.detached(priority: .utility) {
             let stripped = snapshot.map { item -> PhotoLogHistoryItem in
+                guard item.thumbnailPath != nil else { return item }  // ファイル未保存はそのまま保持
                 var copy = item
-                copy.thumbnailData = nil   // ファイル保存済みなので除外（UserDefaultsに画像バイナリを含めない）
+                copy.thumbnailData = nil   // ファイル保存済みなので UserDefaults からは除外
                 return copy
             }
             if let data = try? JSONEncoder().encode(stripped) {
@@ -3139,11 +3139,12 @@ class EduLogManager: ObservableObject {
         if needsMigration { persistHistory() }
     }
 
-    /// 履歴をUserDefaultsに保存。thumbnailData は含めない（ファイルシステムに保存済み）。
+    /// 履歴をUserDefaultsに保存。ファイル保存済みの場合のみ thumbnailData を除外する。
     private func persistHistory() {
         let snapshot = history
         Task.detached(priority: .utility) {
             let stripped = snapshot.map { item -> EduLogHistoryItem in
+                guard item.thumbnailPath != nil else { return item }  // ファイル未保存はそのまま保持
                 var copy = item
                 copy.thumbnailData = nil
                 return copy

@@ -17,21 +17,33 @@ enum ThumbnailFileStore {
         return dir
     }()
 
-    /// `data` をファイルに書き込み、パスを返す。失敗時は nil。
+    /// `data` をファイルに書き込み、**ファイル名のみ**（相対パス）を返す。失敗時は nil。
+    ///
+    /// 絶対パスではなくファイル名を返すことで、シミュレーターのビルド間や
+    /// アプリコンテナUUIDが変わった場合でも読み込みが壊れない。
     @discardableResult
     static func save(_ data: Data, id: String) -> String? {
-        let url = directory.appendingPathComponent("\(id).jpg")
+        let filename = "\(id).jpg"
+        let url = directory.appendingPathComponent(filename)
         do {
             try data.write(to: url, options: .atomic)
-            return url.path
+            return filename          // ファイル名のみ保存
         } catch {
             return nil
         }
     }
 
-    /// パスから Data を読み込む（失敗時は nil）。
+    /// ファイル名（相対）または旧形式の絶対パスから Data を読み込む。
     static func load(path: String) -> Data? {
-        try? Data(contentsOf: URL(fileURLWithPath: path))
+        if path.hasPrefix("/") {
+            // 旧形式: 絶対パス → まず直接試し、失敗ならファイル名で再試行
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: path)) { return data }
+            let filename = URL(fileURLWithPath: path).lastPathComponent
+            return try? Data(contentsOf: directory.appendingPathComponent(filename))
+        } else {
+            // 新形式: ファイル名のみ
+            return try? Data(contentsOf: directory.appendingPathComponent(path))
+        }
     }
 
     /// ファイルを削除する。

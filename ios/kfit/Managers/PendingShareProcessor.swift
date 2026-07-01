@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Combine
 
 // MARK: - App 本体側: 起動時に共有コンテナを処理してフィードに投稿する
 

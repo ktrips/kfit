@@ -17,14 +17,17 @@ struct MindView: View {
 
     @EnvironmentObject private var healthKit: HealthKitManager
     @EnvironmentObject private var plus: PlusManager
+    @EnvironmentObject private var auth: AuthenticationManager
 
     @AppStorage(AppStorageKey.sleepHoursGoal) private var sleepHoursGoal = 7
 
     @State private var showMindfulnessSession = false
     @State private var showStretchSession = false
+    @State private var showPomodoro = false
     @State private var showMindfulHistory = false
     @State private var showHRVHelp = false
     @State private var showPlusView = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationView {
@@ -71,11 +74,10 @@ struct MindView: View {
             .sheet(isPresented: $showHRVHelp) {
                 HRVStressHelpView()
             }
-            .sheet(isPresented: $showMindfulnessSession) {
-                TimedMeditationView(
+            .fullScreenCover(isPresented: $showMindfulnessSession) {
+                MindfulnessSessionView(
                     durationSeconds: 60,
-                    title: "1分瞑想",
-                    sessionType: "Breathe"
+                    title: "1分瞑想"
                 ) { start, end in
                     Task {
                         let ok = await healthKit.saveMindfulnessSession(
@@ -85,11 +87,11 @@ struct MindView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showStretchSession) {
-                TimedMeditationView(
+            .fullScreenCover(isPresented: $showStretchSession) {
+                MindfulnessSessionView(
                     durationSeconds: 180,
                     title: "3分ストレッチ",
-                    sessionType: "Reflect"
+                    sessionVideos: StretchSessionVideo.defaultStretchVideos
                 ) { start, end in
                     Task {
                         let ok = await healthKit.saveMindfulnessSession(
@@ -98,6 +100,17 @@ struct MindView: View {
                         if ok { await healthKit.refreshMindfulness() }
                     }
                 }
+            }
+            .fullScreenCover(isPresented: $showPomodoro) {
+                StandPomodoroView(durationSeconds: 20 * 60) {
+                    // ポモドーロ完了後の処理（必要に応じて追記）
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                kmindSettingsView()
+                    .environmentObject(plus)
+                    .environmentObject(healthKit)
+                    .environmentObject(auth)
             }
         }
         .task {
@@ -149,6 +162,14 @@ struct MindView: View {
                     Image(systemName: healthKit.isLoading ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
                         .foregroundColor(.white)
                         .font(.system(size: 16 * UIScale.font, weight: .bold))
+                }
+                .padding(.trailing, 6)
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundColor(.white)
+                        .font(.system(size: 18 * UIScale.font, weight: .semibold))
                 }
             }
             .padding(.horizontal, 14)
@@ -281,6 +302,11 @@ struct MindView: View {
                               subtitle: "肩・首・背中をゆるめる3分セッションをHealthKitへ保存",
                               color: Color.duoGreen) {
                 showStretchSession = true
+            }
+            largeActionButton(icon: "🍅", title: "20分ポモドーロ",
+                              subtitle: "スマホを置いて20分集中。スライスが増えるほどOK！",
+                              color: Color(red: 0.86, green: 0.17, blue: 0.09)) {
+                showPomodoro = true
             }
 
             WeeklyHRVAverageChart(days: healthKit.weeklyHRVAverages).frame(height: 132)
@@ -840,6 +866,7 @@ struct MindView: View {
                     switch action {
                     case "mindfulness": showMindfulnessSession = true
                     case "stretch":     showStretchSession = true
+                    case "stand":       showPomodoro = true
                     default: break
                     }
                 } label: { content }
@@ -1407,104 +1434,6 @@ private struct HRVStressHelpView: View {
     }
 }
 
-// MARK: - 瞑想タイマー（フルスクリーン）
-
-private struct TimedMeditationView: View {
-    let durationSeconds: Int
-    let title: String
-    let sessionType: String
-    let onComplete: (Date, Date) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var timeLeft: Int
-    @State private var startDate: Date? = nil
-    @State private var timer: Timer? = nil
-    @State private var isRunning = false
-    @State private var isFinished = false
-
-    init(durationSeconds: Int, title: String, sessionType: String, onComplete: @escaping (Date, Date) -> Void) {
-        self.durationSeconds = durationSeconds
-        self.title = title
-        self.sessionType = sessionType
-        self.onComplete = onComplete
-        _timeLeft = State(initialValue: durationSeconds)
-    }
-
-    var body: some View {
-        ZStack {
-            LinearGradient(colors: [Color(hex: "#6D5DF6"), Color(hex: "#1CB0F6")],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-            VStack(spacing: 32) {
-                Text(title).font(.largeTitle.bold()).foregroundStyle(.white)
-
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 12)
-                        .frame(width: 200, height: 200)
-                    Circle()
-                        .trim(from: 0, to: isFinished ? 1 : CGFloat(durationSeconds - timeLeft) / CGFloat(durationSeconds))
-                        .stroke(Color.white, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                        .frame(width: 200, height: 200)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.linear(duration: 1), value: timeLeft)
-                    Text(timeString)
-                        .font(.system(size: 48, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-
-                if isFinished {
-                    Label("完了！HealthKitに保存しました", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
-                        .font(.headline)
-                } else {
-                    Button {
-                        if isRunning { stopTimer() } else { startTimer() }
-                    } label: {
-                        Text(isRunning ? "一時停止" : (startDate == nil ? "開始" : "再開"))
-                            .font(.headline)
-                            .foregroundStyle(Color(hex: "#6D5DF6"))
-                            .padding(.horizontal, 40).padding(.vertical, 14)
-                            .background(Color.white, in: Capsule())
-                    }
-                }
-
-                Button { dismiss() } label: {
-                    Text("閉じる").foregroundStyle(.white.opacity(0.8))
-                }
-            }
-        }
-        .onDisappear { timer?.invalidate() }
-    }
-
-    private var timeString: String {
-        let m = timeLeft / 60, s = timeLeft % 60
-        return String(format: "%d:%02d", m, s)
-    }
-
-    private func startTimer() {
-        if startDate == nil { startDate = Date() }
-        isRunning = true
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            if timeLeft > 0 {
-                timeLeft -= 1
-            } else {
-                stopTimer()
-                isFinished = true
-                if let start = startDate {
-                    onComplete(start, Date())
-                }
-            }
-        }
-    }
-
-    private func stopTimer() {
-        isRunning = false
-        timer?.invalidate()
-        timer = nil
-    }
-}
-
 // MARK: - Private Models
 
 private struct MindStressInfo {
@@ -1526,4 +1455,5 @@ private struct MindRecommendation: Identifiable {
     MindView(selectedTab: .constant(0), showRecordMenu: .constant(false))
         .environmentObject(HealthKitManager.shared)
         .environmentObject(PlusManager.shared)
+        .environmentObject(AuthenticationManager.shared)
 }

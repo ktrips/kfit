@@ -2,6 +2,7 @@ import Foundation
 import Vision
 import NaturalLanguage
 import AVFoundation
+import Combine
 import UIKit
 
 // MARK: - 抽出結果

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // MARK: - 時間帯の定義
 

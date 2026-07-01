@@ -1,5 +1,6 @@
 import HealthKit
 import Foundation
+import Combine
 
 // MARK: - Data Models
 

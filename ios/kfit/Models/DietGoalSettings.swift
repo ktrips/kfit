@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct DietGoalSettings: Codable {
     var targetWeight: Double = 65.0

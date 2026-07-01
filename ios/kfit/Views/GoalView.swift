@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 struct GoalView: View {
     @Binding var selectedTab: Int
@@ -3062,6 +3063,7 @@ private struct GoalCalorieBalanceBarCard: View {
         }
         .frame(width: width, height: 36)
         .cornerRadius(6, corners: [.topLeft, .bottomLeft])
+
     }
 
     private func intakeBar(intake: Double, width: CGFloat) -> some View {

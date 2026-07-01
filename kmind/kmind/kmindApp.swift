@@ -64,29 +64,13 @@ struct kmindApp: App {
     }
 }
 
-// MARK: - コンテンツルート
+// MARK: - コンテンツルート（タブバーなし）
 struct kmindContentView: View {
     @EnvironmentObject private var plus: PlusManager
     @EnvironmentObject private var auth: AuthenticationManager
-    @State private var selectedTab = 0
-    @State private var showRecordMenu = false   // MindView の Binding 要件
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // MIND メイン（kfit の MindView をそのまま使用）
-            MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-                .tabItem {
-                    Label("MIND", systemImage: "brain.head.profile")
-                }
-                .tag(0)
-
-            // 設定（kmind 専用簡易版）
-            kmindSettingsView()
-                .tabItem {
-                    Label("設定", systemImage: "gearshape")
-                }
-                .tag(1)
-        }
+        MindView(selectedTab: .constant(0), showRecordMenu: .constant(false))
     }
 }
 

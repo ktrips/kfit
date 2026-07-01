@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - MindfulnessSessionView + StretchSessionVideo
 // DashboardView.swift から抽出。kfit・kmind 両方から参照されます。

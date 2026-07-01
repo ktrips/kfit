@@ -233,7 +233,7 @@ struct FoodView: View {
                     diameter: 26,
                     lineWidth: 4.5,
                     centerText: pfcAnalysis.map { "\($0.score)" },
-                    centerTextColor: .white
+                    centerTextColor: Color.white
                 )
                 .fixedSize()
                 Spacer(minLength: 6)

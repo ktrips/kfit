@@ -12,6 +12,8 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     @Published var isPlus: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.bool(forKey: "watch_isPlus") ?? false
     /// iPhone からデータを一度でも受信したかどうか（未受信時はゲートを表示しない）
     @Published var hasReceivedFromiPhone: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.object(forKey: "watch_isPlus") != nil
+    /// iOS 側で一度でも Plus ユーザーとして紐づいたことがあるか（永続フラグ）
+    @Published var hasEverBeenPlus: Bool = UserDefaults(suiteName: "group.com.kfit.app")?.bool(forKey: "watch_hasEverBeenPlus") ?? false
     @Published var streak: Int = 0
     @Published var todayXP: Int = 0
     @Published var todayReps: Int = 0
@@ -255,6 +257,11 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             self.isPlus = plus
             UserDefaults(suiteName: "group.com.kfit.app")?.set(plus, forKey: "watch_isPlus")
             self.hasReceivedFromiPhone = true
+            // 一度でも Plus になったことがあれば永続フラグをセット（リセットしない）
+            if plus {
+                self.hasEverBeenPlus = true
+                UserDefaults(suiteName: "group.com.kfit.app")?.set(true, forKey: "watch_hasEverBeenPlus")
+            }
         }
         if let streak = message["streak"] as? Int { self.streak = streak }
         if let xp    = message["todayXP"] as? Int { self.todayXP = xp }

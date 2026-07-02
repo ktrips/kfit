@@ -167,7 +167,7 @@ struct IntakeSettings: Codable {
     var dailyCalorieGoal: Int = 1800     // kcal
     var dailyWaterGoal: Int = 1000       // ml
     var dailyCaffeineLimit: Int = 400    // mg
-    var dailyAlcoholLimit: Double = 20.0 // g
+    var dailyAlcoholLimit: Double = 40.0 // g（WHO基準：1日40g）
 
     // PFCバランスの目標比率（%）
     var targetProteinPercent: Double = 15.0  // たんぱく質 15%

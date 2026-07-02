@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import FirebaseAuth
+import FirebaseFirestore
 
 // MARK: - EdulingoView
 // kedu アプリのメインビュー。Duolingo / 読書 / 勉強 / 語学 の投稿のみを表示する。
@@ -50,6 +51,10 @@ struct EdulingoView: View {
     // ハンバーガーメニュー
     @State private var showHamburgerMenu = false
 
+    // 自分の投稿（Firestore publicProfiles/{uid}/posts からフェッチ）
+    @State private var myOwnPosts: [EduLogHistoryItem] = []
+    @State private var isLoadingMyPosts = false
+
     // Edulingo 専用クイックレコード（教育 4 種）
     private let eduQuickRecords: [TomoQuickRecord] = [
         TomoQuickRecord(id: "duolingo", label: "Duolingo", emoji: "🦉", color: Color(hex: "#58CC02"), isFood: false),
@@ -84,6 +89,7 @@ struct EdulingoView: View {
 
     private func isOwnPost(_ item: EduLogHistoryItem) -> Bool {
         if item.id.hasPrefix("friend_") { return false }
+        if item.id.hasPrefix("own_") { return true }
         let myName = AuthenticationManager.shared.userProfile?.username
             ?? UserDefaults.standard.string(forKey: "cachedCurrentUserName")
             ?? ""
@@ -92,8 +98,13 @@ struct EdulingoView: View {
 
     // MARK: - フィルター済みフィードアイテム
 
+    /// 自分の投稿 + 友達の投稿を合わせた教育コンテンツ一覧
     private var allEduItems: [EduLogHistoryItem] {
-        var items = manager.friendFeedItems.filter { isEduItem($0) }
+        // 自分の投稿（Firestore からフェッチ済み）＋ 友達の投稿
+        let friendsEdu = manager.friendFeedItems.filter { isEduItem($0) }
+        let existingIds = Set(friendsEdu.map { $0.id })
+        let ownEdu = myOwnPosts.filter { !existingIds.contains($0.id) }
+        var items = ownEdu + friendsEdu
 
         // カテゴリフィルター
         if let cat = selectedCategory {
@@ -119,7 +130,8 @@ struct EdulingoView: View {
 
     // 投稿に含まれる言語コードの一覧（Duolingo 投稿のみ）
     private var availableLanguages: [(code: String, label: String)] {
-        let codes = Set(manager.friendFeedItems
+        let allSources = manager.friendFeedItems + myOwnPosts
+        let codes = Set(allSources
             .filter { isEduItem($0) }
             .compactMap { $0.extractedLanguageCode?.prefix(2).description })
         return codes.sorted().map { code in
@@ -140,6 +152,64 @@ struct EdulingoView: View {
     }
 
     private var hasOlderFeed: Bool { manager.hasOlderPosts }
+
+    // MARK: - 自分の投稿フェッチ（Firestore publicProfiles/{uid}/posts）
+
+    @MainActor
+    private func fetchMyOwnPosts() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingMyPosts = true
+        defer { isLoadingMyPosts = false }
+
+        let db = Firestore.firestore()
+        guard let snap = try? await db
+            .collection("publicProfiles").document(uid)
+            .collection("posts")
+            .order(by: "timestamp", descending: true)
+            .limit(to: 100)
+            .getDocuments() else { return }
+
+        let fetched: [EduLogHistoryItem] = snap.documents.compactMap { doc in
+            let data = doc.data()
+            let activityName  = data["activityName"]  as? String ?? ""
+            let activityEmoji = data["activityEmoji"] as? String ?? ""
+
+            // 教育コンテンツのみ
+            let nameL = activityName.trimmingCharacters(in: .whitespaces)
+            let isEdu = nameL.localizedCaseInsensitiveContains("Duolingo")
+                     || nameL == "読書" || nameL == "勉強" || nameL == "語学"
+                     || nameL.contains("語学")
+            guard isEdu else { return nil }
+
+            var item = EduLogHistoryItem(
+                activityName: activityName,
+                activityEmoji: activityEmoji,
+                comment: data["comment"] as? String ?? "",
+                authorName: data["authorName"] as? String ?? "",
+                authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
+                isPublic: true
+            )
+            item.id = "own_\(doc.documentID)"
+            item.timestamp = (data["timestamp"] as? Timestamp)?.dateValue() ?? Date()
+            item.likeCount = data["likeCount"] as? Int ?? 0
+            item.thumbnailData = (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) }
+            item.extractedPhrase = data["extractedPhrase"] as? String
+            item.extractedLanguageCode = data["extractedLanguageCode"] as? String
+            item.translationJA = data["translationJA"] as? String
+            item.pronunciation = data["pronunciation"] as? String
+            item.grammarNote = data["grammarNote"] as? String
+            item.mistakeNote = data["mistakeNote"] as? String
+            item.exampleSentences = {
+                guard let raw = data["exampleSentences"] as? [[String: Any]],
+                      let d = try? JSONSerialization.data(withJSONObject: raw),
+                      let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
+                else { return nil }
+                return decoded
+            }()
+            return item
+        }
+        myOwnPosts = fetched
+    }
 
     // MARK: - カテゴリーチップ一覧
 
@@ -210,12 +280,20 @@ struct EdulingoView: View {
                     }
                     .padding(.bottom, 20)
                 }
-                .refreshable { await manager.load(force: true) }
+                .refreshable {
+                    async let a: () = manager.load(force: true)
+                    async let b: () = fetchMyOwnPosts()
+                    _ = await (a, b)
+                }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { edulingoHeader }
         }
-        .task { await manager.load() }
+        .task {
+            async let a: () = manager.load()
+            async let b: () = fetchMyOwnPosts()
+            _ = await (a, b)
+        }
 
         // 詳細シート
         .fullScreenCover(isPresented: $showSwipeDetail) {
@@ -528,7 +606,7 @@ struct EdulingoView: View {
 
     private var feedSection: some View {
         LazyVStack(spacing: 0) {
-            if manager.isLoading && allEduItems.isEmpty {
+            if (manager.isLoading || isLoadingMyPosts) && allEduItems.isEmpty {
                 VStack(spacing: 10) {
                     ProgressView()
                     Text("読み込み中...").font(.caption).foregroundColor(Color.duoSubtitle)

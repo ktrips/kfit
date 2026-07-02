@@ -1303,7 +1303,7 @@ struct TomoView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                // 左上: FOOD投稿に食事タイムバッジ
+                // 左上: FOOD投稿に食事タイムバッジ / Duolingo投稿に言語バッジ
                 .overlay(alignment: .topLeading) {
                     if isFood {
                         Text(mealInfo.label)
@@ -1313,6 +1313,20 @@ struct TomoView: View {
                             .background(mealInfo.color)
                             .clipShape(Capsule())
                             .padding(8)
+                    } else if (item.activityEmoji == "🦉"
+                               || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
+                              let langCode = item.extractedLanguageCode, !langCode.isEmpty {
+                        HStack(spacing: 3) {
+                            Text(languageFlag(langCode))
+                                .font(.system(size: 12 * UIScale.font))
+                            Text(languageLabel(langCode))
+                                .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Color.black.opacity(0.58))
+                        .clipShape(Capsule())
+                        .padding(8)
                     }
                 }
                 // 右上: Weight 投稿のみ Day◯ バッジ
@@ -1514,10 +1528,10 @@ struct TomoView: View {
                 .clipped()
                 .contentShape(Rectangle())
 
-                // 上部オーバーレイ（左: meal バッジ(FOOD), 右: Weight のみ Day◯ + 番号バッジ）
+                // 上部オーバーレイ（左: meal/言語バッジ, 右: Weight Day◯ + 番号バッジ）
                 VStack {
                     HStack(alignment: .top) {
-                        // 左: FOOD のみ meal バッジ
+                        // 左: FOOD → meal バッジ / Duolingo → 言語バッジ
                         if isFood {
                             Text(mealInfo.label)
                                 .font(.system(size: 10 * UIScale.font, weight: .black))
@@ -1525,6 +1539,19 @@ struct TomoView: View {
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(mealInfo.color)
                                 .clipShape(Capsule())
+                        } else if (item.activityEmoji == "🦉"
+                                   || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
+                                  let langCode = item.extractedLanguageCode, !langCode.isEmpty {
+                            HStack(spacing: 3) {
+                                Text(languageFlag(langCode))
+                                    .font(.system(size: 11 * UIScale.font))
+                                Text(languageLabel(langCode))
+                                    .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Color.black.opacity(0.58))
+                            .clipShape(Capsule())
                         }
                         Spacer()
                         // 右: Weight 投稿のみ Day◯ バッジ + 番号バッジ（複数枚時）
@@ -2489,6 +2516,25 @@ struct SwipeableTomoDetailSheet: View {
                                 LinearGradient(colors: [.clear, Color.black.opacity(0.72)],
                                                startPoint: .top, endPoint: .bottom)
                             )
+                        }
+                        // 左上: Duolingo言語バッジ（言語が検知されていれば）
+                        .overlay(alignment: .topLeading) {
+                            if (item.activityEmoji == "🦉"
+                                || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
+                               let langCode = item.extractedLanguageCode, !langCode.isEmpty {
+                                HStack(spacing: 4) {
+                                    Text(duoLangFlag(langCode))
+                                        .font(.system(size: 15 * UIScale.font))
+                                    Text(duoLangLabel(langCode))
+                                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Color.black.opacity(0.55))
+                                .clipShape(Capsule())
+                                .shadow(color: .black.opacity(0.3), radius: 4)
+                                .padding(12)
+                            }
                         }
                     }
                 }

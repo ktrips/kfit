@@ -32,10 +32,13 @@ struct EdulingoLoginView: View {
                 Spacer(minLength: 60)
 
                 // ロゴ
-                VStack(spacing: 8) {
-                    Text("🦉")
-                        .font(.system(size: 72))
-                        .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+                VStack(spacing: 12) {
+                    Image("kedu_icon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 110, height: 110)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
 
                     HStack(spacing: 0) {
                         Text("Edu")

@@ -28,6 +28,7 @@ struct MindView: View {
     @State private var showHRVHelp = false
     @State private var showPlusView = false
     @State private var showSettings = false
+    @State private var showLogoutConfirm = false
 
     var body: some View {
         NavigationView {
@@ -139,6 +140,18 @@ struct MindView: View {
                     .background(Color.white.opacity(0.9))
                     .cornerRadius(4)
                 Spacer(minLength: 8)
+                // 睡眠時間
+                HStack(spacing: 2) {
+                    Text("🌙").font(.system(size: 15 * UIScale.font))
+                    Text(healthKit.lastNightTotalHours > 0
+                         ? String(format: "%.1fh", healthKit.lastNightTotalHours) : "—")
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
+                        .foregroundColor(healthKit.lastNightTotalHours >= 6
+                                         ? Color(red: 0.72, green: 0.90, blue: 1.0) : Color(red: 1.0, green: 0.65, blue: 0.4))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                // マインドフルネス回数
                 HStack(spacing: 2) {
                     Text("🧘").font(.system(size: 15 * UIScale.font))
                     Text("\(healthKit.todayMindfulnessSessions)")
@@ -147,6 +160,7 @@ struct MindView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 6)
+                // 日光浴時間
                 HStack(spacing: 2) {
                     Text("☀️").font(.system(size: 15 * UIScale.font))
                     Text(healthKit.todayDaylightMinutes > 0 ? "\(Int(healthKit.todayDaylightMinutes))分" : "—")
@@ -156,6 +170,7 @@ struct MindView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                // 更新ボタン
                 Button {
                     Task { await healthKit.fetchMindHealth(force: true) }
                 } label: {
@@ -163,19 +178,75 @@ struct MindView: View {
                         .foregroundColor(.white)
                         .font(.system(size: 16 * UIScale.font, weight: .bold))
                 }
-                .padding(.trailing, 6)
-                Button {
-                    showSettings = true
+                .padding(.trailing, 8)
+                // アバター付きドロップダウンメニュー（kfit MIND ヘッダーと同等）
+                Menu {
+                    Section(header: Text(auth.email)) {
+                        Label(
+                            "\(auth.displayName)  \(plus.isPlus ? "✦ Plus" : "Free")",
+                            systemImage: plus.isPlus ? "star.circle.fill" : "person.circle"
+                        )
+                        if !plus.isPlus {
+                            Button { showPlusView = true } label: {
+                                Label("Plus にアップグレード", systemImage: "plus.circle.fill")
+                            }
+                        }
+                        Button { showSettings = true } label: {
+                            Label("設定", systemImage: "gearshape")
+                        }
+                        Button(role: .destructive) {
+                            showLogoutConfirm = true
+                        } label: {
+                            Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
                 } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .foregroundColor(.white)
-                        .font(.system(size: 18 * UIScale.font, weight: .semibold))
+                    ZStack(alignment: .bottomTrailing) {
+                        if let url = auth.profileImageURL {
+                            AsyncImage(url: url) { phase in
+                                if case .success(let img) = phase {
+                                    img.resizable().scaledToFill()
+                                        .frame(width: 28, height: 28).clipShape(Circle())
+                                } else {
+                                    kmindAvatarInitials
+                                }
+                            }
+                        } else {
+                            kmindAvatarInitials
+                        }
+                        if plus.isPlus {
+                            Circle().fill(Color.duoGold)
+                                .frame(width: 10, height: 10)
+                                .overlay(
+                                    Text("✦").font(.system(size: 5, weight: .black)).foregroundColor(.white)
+                                )
+                                .offset(x: 4, y: 4)
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .confirmationDialog("ログアウトしますか？", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
+                    Button("ログアウト", role: .destructive) { auth.signOut() }
+                    Button("キャンセル", role: .cancel) {}
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
         .frame(height: 50)
+    }
+
+    // ログインユーザーのイニシャル円アイコン（Google 写真がない場合）
+    private var kmindAvatarInitials: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.22))
+                .frame(width: 28, height: 28)
+            Text(String((auth.displayName.first ?? "U")).uppercased())
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+        }
     }
 
     // MARK: - 現在のストレスレベルカード
@@ -1047,23 +1118,7 @@ struct MindView: View {
     // MARK: - Helper Functions
 
     private func stressInfo(_ hrv: Double) -> MindStressInfo {
-        guard hrv > 0 else {
-            return MindStressInfo(score: -1, label: "不明", englishLabel: "Unknown", color: Color.duoSubtitle)
-        }
-        let score: Int = {
-            if hrv >= 100 { return 5 }
-            if hrv >= 80  { return Int(5  + (100 - hrv) / 20 * 10) }
-            if hrv >= 60  { return Int(15 + (80  - hrv) / 20 * 20) }
-            if hrv >= 40  { return Int(35 + (60  - hrv) / 20 * 25) }
-            if hrv >= 20  { return Int(60 + (40  - hrv) / 20 * 20) }
-            return Int(min(95, 80 + (20 - hrv) / 20 * 15))
-        }()
-        switch score {
-        case ..<30: return MindStressInfo(score: score, label: "低い",   englishLabel: "Low",      color: Color.duoGreen)
-        case ..<55: return MindStressInfo(score: score, label: "普通",   englishLabel: "Normal",   color: Color(red: 0.4, green: 0.75, blue: 0.1))
-        case ..<75: return MindStressInfo(score: score, label: "やや高", englishLabel: "Elevated", color: Color.duoOrange)
-        default:    return MindStressInfo(score: score, label: "高い",   englishLabel: "High",     color: Color(hex: "#FF4B4B"))
-        }
+        stressInfoFromHRV(hrv)
     }
 
     private func holisticMessage(_ stress: MindStressInfo) -> String {
@@ -1133,11 +1188,6 @@ struct MindView: View {
         return .duoGreen
     }
 
-    private func formatMindfulMinutes(_ minutes: Double) -> String {
-        if minutes < 1 { return "\(Int(minutes * 60))秒" }
-        if abs(minutes.rounded() - minutes) < 0.05 { return "\(Int(minutes.rounded()))分" }
-        return String(format: "%.1f分", minutes)
-    }
     private func formatMinutes(_ minutes: Int) -> String {
         if minutes <= 0 { return "—" }
         if minutes < 60 { return "\(minutes)分" }
@@ -1435,13 +1485,7 @@ private struct HRVStressHelpView: View {
 }
 
 // MARK: - Private Models
-
-private struct MindStressInfo {
-    let score: Int
-    let label: String
-    let englishLabel: String
-    let color: Color
-}
+// MindStressInfo は Extensions/HealthUtils.swift で定義（kfit と共通）
 
 private struct MindRecommendation: Identifiable {
     let id = UUID()

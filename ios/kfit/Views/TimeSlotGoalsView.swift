@@ -107,6 +107,18 @@ struct TimeSlotGoalsView: View {
         let activityRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
             && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
 
+        // 今日の Duolingo / 語学 / 勉強 / 読書 履歴
+        let eduStart = Calendar.current.startOfDay(for: Date())
+        let todayEduItems = EduLogManager.shared.history.filter { item in
+            guard item.timestamp >= eduStart else { return false }
+            let name = item.activityName
+            return name.localizedCaseInsensitiveContains("Duolingo")
+                || name == "語学" || name.contains("語学")
+                || name == "勉強" || name == "読書"
+        }
+        let todayEduCount = todayEduItems.count
+        let todayEduActivityNames = Set(todayEduItems.map { $0.activityName })
+
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
@@ -122,7 +134,9 @@ struct TimeSlotGoalsView: View {
             dailyTrainingDone: dailyTrainingDone,
             dailyMindfulnessDone: dailyMindfulnessDone,
             dailyMindfulAndStandDone: dailyMindfulAndStandDone,
-            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds
+            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
+            todayEduItemCount: todayEduCount,
+            todayEduActivityNames: todayEduActivityNames
         )
     }
 
@@ -704,6 +718,22 @@ struct MandalaChartView: View {
     static func nodeSpacing(nodeSize: CGFloat) -> Double { Double(nodeSize) + 14 }
 
     /// - slotTrainingCounts: 各スロットの実際のセット数（countSetsInTimeSlot結果）。
+    /// EduLog の activityName とスパイラルのカスタム活動名が対応するか判定する。
+    /// 完全一致・部分一致・Duolingo↔語学 などのクロスマッチに対応。
+    static func eduActivityNameMatchesSpiral(edu: String, spiral: String) -> Bool {
+        let e = edu.lowercased().trimmingCharacters(in: .whitespaces)
+        let s = spiral.lowercased().trimmingCharacters(in: .whitespaces)
+        if e == s { return true }
+        if e.contains(s) || s.contains(e) { return true }
+        // Duolingo ↔ 語学 / 英語 / 中国語 など
+        let isDuolingoEdu = e.contains("duolingo") || e.contains("デュオリンゴ")
+        let isSpiralLang  = s == "語学" || s.contains("語学") || s.contains("duolingo")
+            || s.contains("英語") || s.contains("中国語") || s.contains("韓国語")
+            || s.contains("フランス語") || s.contains("スペイン語")
+        if isDuolingoEdu && isSpiralLang { return true }
+        return false
+    }
+
     ///   nilの場合は prog.trainingCompleted にフォールバック。
     /// - slotMindfulMinutes: 各スロットの実際のマインドフルネス分数（HealthKit+stretch合算）。
     ///   nilの場合は prog.mindfulnessCompleted にフォールバック。
@@ -723,7 +753,9 @@ struct MandalaChartView: View {
         dailyMindfulnessDone: Bool = false,
         dailyMindfulAndStandDone: Bool = false,  // 瞑想+ストレッチ+スタンドの統合日次達成
         loggedCompletionIds: Set<String> = [],   // MandalaCompletionLogger からの確定済み完了ID
-        fixedGoals fixedGoalsOverride: DailyFixedGoals? = nil  // 呼び出し側がキャッシュ済みなら渡す（UserDefaults/JSONデコード回避）
+        fixedGoals fixedGoalsOverride: DailyFixedGoals? = nil,  // 呼び出し側がキャッシュ済みなら渡す（UserDefaults/JSONデコード回避）
+        todayEduItemCount: Int = 0,               // 今日の Duolingo / 語学履歴件数
+        todayEduActivityNames: Set<String> = []   // 今日の Edu 履歴 activityName 一覧（カスタム活動と照合）
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -807,13 +839,13 @@ struct MandalaChartView: View {
                 let mealLabel = "\(mealBaseName) \(goal.logGoal.mealGoal)kcal"
                 // 時間帯別の実際のカロリー摂取量（HealthKit優先、なければ Firestore）
                 let slotActualMealKcal = slotMealKcal?[slot.rawValue] ?? prog.logProgress.mealLogged
-                // 1日合計目標の 1/4 以上摂取していれば、その時間帯は達成
-                let mealQuarterGoal = totalDailyCalorieGoal > 0 ? totalDailyCalorieGoal / 4 : goal.logGoal.mealGoal
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-meal",
                     emoji: mealEmoji,
                     label: mealLabel,
-                    isCompleted: dailyCalorieDone || slotActualMealKcal >= mealQuarterGoal,
+                    // その時間帯に食事記録が1件でもあれば完了。
+                    // 1日全体のカロリー目標達成済みならすべて完了。
+                    isCompleted: dailyCalorieDone || slotActualMealKcal > 0,
                     slot: slot,
                     type: .meal
                 ))
@@ -833,11 +865,17 @@ struct MandalaChartView: View {
                 ))
             }
             for activity in goal.customActivities.filter({ $0.isEnabled }) {
+                // EduLog 履歴との名前照合（Duolingo/語学/勉強/読書 などを自動完了）
+                let eduDone = todayEduActivityNames.contains { eduName in
+                    eduActivityNameMatchesSpiral(edu: eduName, spiral: activity.name)
+                }
                 result.append(MandalaNodeData(
                     id: "\(slot.rawValue)-\(activity.id)",
                     emoji: activity.emoji,
                     label: activity.name,
-                    isCompleted: completedActivityNames.contains(activity.name) || prog.completedActivityIds.contains(activity.id),
+                    isCompleted: eduDone
+                        || completedActivityNames.contains(activity.name)
+                        || prog.completedActivityIds.contains(activity.id),
                     slot: slot,
                     type: .custom
                 ))
@@ -889,11 +927,14 @@ struct MandalaChartView: View {
                 ))
             }
             if wg.studyEnabled {
+                // completedCustomGoalIds に登録済み、または今日の Edu 履歴が1件以上あれば完了
+                let studyDone = gp.completedCustomGoalIds.contains("wd_study_\(weekdayNum)")
+                    || todayEduItemCount > 0
                 result.append(MandalaNodeData(
                     id: "wd-study",
                     emoji: "📚",
                     label: "勉強",
-                    isCompleted: gp.completedCustomGoalIds.contains("wd_study_\(weekdayNum)"),
+                    isCompleted: studyDone,
                     slot: nil,
                     type: .custom
                 ))

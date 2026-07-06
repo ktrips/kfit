@@ -1,5 +1,6 @@
 import HealthKit
 import Foundation
+import Combine
 
 struct WatchMindfulnessSession: Identifiable {
     let id = UUID()
@@ -741,7 +742,8 @@ class WatchHealthKitManager: ObservableObject {
 
     // MARK: - Workout 書き込み
 
-    /// iOS 版 HealthKitManager.caloriesPerRep と揃える（消費カロリー推定用）
+    // NOTE: iOS 側の HealthKitManager.caloriesPerRep と値を必ず揃えること。
+    // 将来は Swift Package の SharedExerciseConstants に移して両ターゲットから参照する。
     static let caloriesPerRep: [String: Double] = [
         "pushup": 0.32, "squat": 0.32, "situp": 0.15,
         "lunge": 0.40,  "burpee": 1.00, "plank": 0.08,

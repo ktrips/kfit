@@ -452,6 +452,8 @@ struct DashboardView: View {
     @State private var expandedSetId: String? = nil  // 展開中のセットID
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
     @State private var showPointsDetail   = false  // ポイント詳細シート
+    @State private var weeklyDailyStats: [(date: Date, exerciseXP: Int)] = []
+    @State private var isLoadingWeeklyStats = false
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
     @State private var showMenu = false  // ハンバーガーメニューの表示状態
     @State private var showHealthGoalEdit = false  // 健康目標編集モーダル
@@ -523,6 +525,14 @@ struct DashboardView: View {
                 recomputeMandalaNodes()
                 updateWidgetData()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .duolingoShareProcessed)) { _ in
+                // 共有された Duolingo 記録を受け取ったらスパイラルを完了化してから再計算
+                Task { await autoCompleteDuolingoIfNeeded() }
+            }
+            .onReceive(EduLogManager.shared.$history) { newHistory in
+                // kedu/共有からの新規Edu投稿でスパイラルも即時更新
+                Task { await autoCompleteDuolingoIfNeeded(using: newHistory) }
+            }
             .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
                 Task { await periodicWidgetSync() }
                 let h = Calendar.current.component(.hour,   from: Date())
@@ -554,7 +564,8 @@ struct DashboardView: View {
             }
             await timeSlotManager.loadTodaySettings()
             await timeSlotManager.loadTodayProgress()
-            recomputeMandalaNodes()
+            // 今日の Edu 記録があればスパイラルを自動完了
+            await autoCompleteDuolingoIfNeeded()
         }
     }
 
@@ -637,6 +648,11 @@ struct DashboardView: View {
             .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
             .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
             .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
+            .onChange(of: showPointsDetail) { isShown in
+                if isShown {
+                    weeklyDailyStats = []  // 開くたびに再取得
+                }
+            }
             .sheet(isPresented: $showPlusViewFromDashboard) { PlusView() }
             .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
             .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
@@ -2253,6 +2269,75 @@ struct DashboardView: View {
         cachedMandalaOverallCount = (visible.filter(\.isCompleted).count, visible.count)
     }
 
+    /// 今日の Edu 記録（Duolingo・語学・勉強・読書）が history にあれば
+    /// ① 曜日別 wd_study ゴールを自動完了
+    /// ② スパイラルの各時間帯カスタム活動（名前が一致するもの）も自動完了
+    /// - Parameter passedHistory: 呼び出し元から渡す history。nil の場合は内部で参照する。
+    private func autoCompleteDuolingoIfNeeded(
+        using passedHistory: [EduLogHistoryItem]? = nil  // nil = 内部で EduLogManager.shared.history を参照
+    ) async {
+        let history = passedHistory ?? EduLogManager.shared.history
+        let cal   = Calendar.current
+        let today = cal.startOfDay(for: Date())
+
+        // 今日投稿されたEduアイテムのactivityName一覧を収集
+        let todayEduNames: Set<String> = Set(
+            history
+                .filter { $0.timestamp >= today && Self.isEduItem($0) }
+                .map { $0.activityName }
+        )
+
+        guard !todayEduNames.isEmpty else {
+            recomputeMandalaNodes()
+            return
+        }
+
+        // ① 曜日別 wd_study ゴールを完了
+        let wd = cal.component(.weekday, from: Date())
+        let weekdayNum = wd == 1 ? 7 : wd - 1
+        await timeSlotManager.completeCustomGoalIfNeeded(id: "wd_study_\(weekdayNum)")
+
+        // ② スパイラル各時間帯のカスタム活動（読書・Duolingo・勉強等）を名前照合で自動完了
+        let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+        for slot in activeSlots {
+            guard let goal = timeSlotManager.settings.goalFor(slot),
+                  let prog = timeSlotManager.progress.progressFor(slot) else { continue }
+            for activity in goal.customActivities where activity.isEnabled {
+                guard !prog.completedActivityIds.contains(activity.id) else { continue }
+                let actName = activity.name
+                let matches = todayEduNames.contains { shared in
+                    Self.eduActivityNameMatches(shared: shared, spiralName: actName)
+                }
+                if matches {
+                    await timeSlotManager.toggleCustomActivity(id: activity.id, at: slot)
+                }
+            }
+        }
+
+        recomputeMandalaNodes()
+    }
+
+    /// 共有されたactivityNameとスパイラルのカスタム活動名が対応するか判定
+    private static func eduActivityNameMatches(shared: String, spiralName: String) -> Bool {
+        let s = shared.lowercased()
+        let t = spiralName.lowercased()
+        // 完全一致 or 片方が他方を含む
+        if s == t || s.contains(t) || t.contains(s) { return true }
+        // Duolingo 系（"duolingo", "デュオリンゴ" 等）
+        if s.contains("duolingo") && (t.contains("duolingo") || t == "語学" || t.contains("語学")) { return true }
+        return false
+    }
+
+    /// Duolingo / 語学 / 勉強 / 読書 カテゴリの Edu アイテム判定
+    private static func isEduItem(_ item: EduLogHistoryItem) -> Bool {
+        let name = item.activityName
+        return name.localizedCaseInsensitiveContains("Duolingo")
+            || name == "語学"
+            || name.contains("語学")
+            || name == "勉強"
+            || name == "読書"
+    }
+
     /// PFC 3プロパティが同時変化しても 0.3s debounce で1回だけ計算
     private func schedulePFCAnalysis() {
         debouncer.pfcAnalysis?.cancel()
@@ -2367,6 +2452,15 @@ struct DashboardView: View {
         let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
             && totalMindfulStandActual >= totalMindfulStandGoal
 
+        // 今日の Duolingo / 語学 / 勉強 / 読書 履歴
+        let eduStart = Calendar.current.startOfDay(for: Date())
+        let todayEduItems = EduLogManager.shared.history.filter {
+            $0.timestamp >= eduStart && Self.isEduItem($0)
+        }
+        let todayEduCount = todayEduItems.count
+        // カスタム活動との照合用: activityName の一覧（例: "Duolingo", "読書", "勉強"）
+        let todayEduActivityNames = Set(todayEduItems.map { $0.activityName })
+
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,
             progress: timeSlotManager.progress,
@@ -2384,7 +2478,9 @@ struct DashboardView: View {
             dailyMindfulnessDone: dailyMindfulnessDone,
             dailyMindfulAndStandDone: dailyMindfulAndStandDone,
             loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
-            fixedGoals: dailyFixedGoals
+            fixedGoals: dailyFixedGoals,
+            todayEduItemCount: todayEduCount,
+            todayEduActivityNames: todayEduActivityNames
         )
     }
 
@@ -4003,15 +4099,13 @@ struct DashboardView: View {
     // MARK: - ポイント詳細シート
     private var pointsDetailSheet: some View {
         let totalPoints = authManager.userProfile?.totalPoints ?? 0
+        let cal = Calendar.current
 
-        // 種目別に集計
+        // 種目別に集計（今日）
         struct ExerciseSummary: Identifiable {
             let id = UUID()
-            let name: String
-            let emoji: String
-            let totalReps: Int
-            let totalPoints: Int
-            let count: Int
+            let name: String; let emoji: String
+            let totalReps: Int; let totalPoints: Int; let count: Int
         }
         var summaryMap: [String: (emoji: String, reps: Int, pts: Int, count: Int)] = [:]
         for ex in todayExercises {
@@ -4031,183 +4125,288 @@ struct DashboardView: View {
             ExerciseSummary(name: name, emoji: v.emoji, totalReps: v.reps, totalPoints: v.pts, count: v.count)
         }.sorted { $0.totalPoints > $1.totalPoints }
 
-        // マインドフルネスXP集計
         let mindfulSamples = healthKit.todayMindfulnessSamples
-        let mindfulXP = mindfulSamples.reduce(0) { total, s in
-            total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
+
+        // 今日の写真アップロード数（フォトログ + Eduログ）
+        let todayPhotos = photoLogManager.history.filter { cal.isDateInToday($0.timestamp) }.count
+            + EduLogManager.shared.history.filter { cal.isDateInToday($0.timestamp) && $0.thumbnailPath != nil }.count
+
+        // 週間データに写真XPを合算する helper
+        func photoXP(for date: Date) -> Int {
+            let foodCount = photoLogManager.history.filter { cal.isDate($0.timestamp, inSameDayAs: date) }.count
+            let eduCount  = EduLogManager.shared.history.filter {
+                cal.isDate($0.timestamp, inSameDayAs: date) && $0.thumbnailPath != nil
+            }.count
+            return (foodCount + eduCount) * 10
         }
+
+        // 日付フォーマッター
+        let dayFmt: DateFormatter = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ja_JP")
+            f.dateFormat = "M/d (E)"
+            return f
+        }()
 
         return NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    // サマリーカード（今日 / 今週 / 累計）
+
+                    // ── サマリーカード（今日 / 今週 / 累計）──
                     HStack(spacing: 0) {
                         VStack(spacing: 4) {
-                            Text("今日")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                            Text("今日").font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalXP)")
                                 .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoGreen)
-                                .minimumScaleFactor(0.6)
-                                .lineLimit(1)
-                            Text("XP")
-                                .font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }
-                        .frame(maxWidth: .infinity)
-
+                                .foregroundColor(Color.duoGreen).minimumScaleFactor(0.6).lineLimit(1)
+                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }.frame(maxWidth: .infinity)
                         Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
-
                         VStack(spacing: 4) {
-                            Text("今週")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                            Text("今週").font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(weeklyXP)")
                                 .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoBlue)
-                                .minimumScaleFactor(0.6)
-                                .lineLimit(1)
-                            Text("XP")
-                                .font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }
-                        .frame(maxWidth: .infinity)
-
+                                .foregroundColor(Color.duoBlue).minimumScaleFactor(0.6).lineLimit(1)
+                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }.frame(maxWidth: .infinity)
                         Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
-
                         VStack(spacing: 4) {
-                            Text("累計")
-                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                            Text("累計").font(.caption).foregroundColor(Color.duoSubtitle)
                             Text("\(totalPoints)")
                                 .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoOrange)
-                                .minimumScaleFactor(0.6)
-                                .lineLimit(1)
-                            Text("XP")
-                                .font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }
-                        .frame(maxWidth: .infinity)
+                                .foregroundColor(Color.duoOrange).minimumScaleFactor(0.6).lineLimit(1)
+                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }.frame(maxWidth: .infinity)
                     }
                     .padding(.vertical, 16)
                     .background(Color(.systemBackground))
                     .cornerRadius(16)
                     .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
 
-                    if summaries.isEmpty && mindfulSamples.isEmpty {
+                    // ── 1週間ポイント内訳（日付別）──
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("📅 1週間のポイント内訳")
+                            .font(.caption).fontWeight(.bold)
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.horizontal, 4)
+
+                        if isLoadingWeeklyStats {
+                            HStack { Spacer(); ProgressView().tint(Color.duoGreen); Spacer() }
+                                .padding(.vertical, 24)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(16)
+                        } else {
+                            VStack(spacing: 0) {
+                                // ヘッダー行
+                                HStack(spacing: 0) {
+                                    Text("日付")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("運動")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 48, alignment: .trailing)
+                                    Text("写真")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 48, alignment: .trailing)
+                                    Text("合計")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 56, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGroupedBackground))
+
+                                // 7日分の行
+                                let days7: [Date] = (0..<7).compactMap {
+                                    cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: Date()))
+                                }
+                                ForEach(Array(days7.enumerated()), id: \.offset) { idx, date in
+                                    let isToday = cal.isDateInToday(date)
+                                    let exXP = weeklyDailyStats.first(where: {
+                                        cal.isDate($0.date, inSameDayAs: date)
+                                    })?.exerciseXP ?? (isToday ? summaries.reduce(0) { $0 + $1.totalPoints } : 0)
+                                    let pXP = photoXP(for: date)
+                                    let dayTotal = exXP + pXP
+                                    HStack(spacing: 0) {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(dayFmt.string(from: date))
+                                                .font(.system(size: 13 * UIScale.font, weight: isToday ? .bold : .regular))
+                                                .foregroundColor(isToday ? Color.duoGreen : Color.duoDark)
+                                            if isToday {
+                                                Text("今日")
+                                                    .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                                    .background(Color.duoGreen)
+                                                    .clipShape(Capsule())
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                        Text(exXP > 0 ? "+\(exXP)" : "—")
+                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                            .foregroundColor(exXP > 0 ? Color.duoGreen : Color.duoSubtitle)
+                                            .frame(width: 48, alignment: .trailing)
+
+                                        Text(pXP > 0 ? "+\(pXP)" : "—")
+                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                            .foregroundColor(pXP > 0 ? Color.duoBlue : Color.duoSubtitle)
+                                            .frame(width: 48, alignment: .trailing)
+
+                                        Text(dayTotal > 0 ? "\(dayTotal) XP" : "—")
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(dayTotal > 0 ? Color.duoGold : Color.duoSubtitle)
+                                            .frame(width: 56, alignment: .trailing)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(isToday ? Color.duoGreen.opacity(0.04) : Color(.systemBackground))
+
+                                    if idx < days7.count - 1 { Divider().padding(.leading, 16) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+                    }
+
+                    // ── 今日の写真アップロード内訳 ──
+                    if todayPhotos > 0 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("📸 今日の写真投稿")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.horizontal, 4)
+
+                            HStack(spacing: 12) {
+                                Text("📷")
+                                    .font(.title3)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.duoBlue.opacity(0.1))
+                                    .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("写真アップロード")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                        .foregroundColor(Color.duoDark)
+                                    Text("\(todayPhotos)枚 × 10 XP")
+                                        .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                }
+                                Spacer()
+                                Text("+\(todayPhotos * 10) XP")
+                                    .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(Color.duoBlue)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(Color.duoBlue.opacity(0.12))
+                                    .cornerRadius(8)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+                    }
+
+                    // ── 今日のトレーニング内訳 ──
+                    if !summaries.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("💪 今日のトレーニング内訳")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.horizontal, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
+                                    HStack(spacing: 12) {
+                                        Text(s.emoji)
+                                            .font(.title3)
+                                            .frame(width: 36, height: 36)
+                                            .background(Color.duoGreen.opacity(0.1))
+                                            .clipShape(Circle())
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(s.name)
+                                                .font(.subheadline).fontWeight(.semibold)
+                                                .foregroundColor(Color.duoDark)
+                                            Text("\(s.count)セット · \(s.totalReps) rep")
+                                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                        }
+                                        Spacer()
+                                        Text("+\(s.totalPoints) XP")
+                                            .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(Color.duoGold)
+                                            .padding(.horizontal, 8).padding(.vertical, 4)
+                                            .background(Color.duoYellow.opacity(0.2))
+                                            .cornerRadius(8)
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 10)
+                                    if idx < summaries.count - 1 { Divider().padding(.leading, 64) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+                    }
+
+                    // ── 今日のマインドフルネス内訳 ──
+                    if !mindfulSamples.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("🧘 今日のマインドフルネス内訳")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.horizontal, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
+                                    let isReflect = s.sessionTypeLabel == "Reflect"
+                                    let xp = isReflect ? 30 : 10
+                                    HStack(spacing: 12) {
+                                        Text(s.sessionEmoji)
+                                            .font(.title3)
+                                            .frame(width: 36, height: 36)
+                                            .background(Color.duoPurple.opacity(0.1))
+                                            .clipShape(Circle())
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(isReflect ? "3分ストレッチ" : "1分瞑想")
+                                                .font(.subheadline).fontWeight(.semibold)
+                                                .foregroundColor(Color.duoDark)
+                                            HStack(spacing: 6) {
+                                                Text(String(format: "%.0f分", s.durationMinutes))
+                                                    .font(.caption2).foregroundColor(Color.duoPurple)
+                                                if s.averageHeartRate > 0 {
+                                                    Text("❤️ \(Int(s.averageHeartRate))")
+                                                        .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                                }
+                                            }
+                                        }
+                                        Spacer()
+                                        Text("+\(xp) XP")
+                                            .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(Color(hex: "#FDCB6E"))
+                                            .padding(.horizontal, 8).padding(.vertical, 4)
+                                            .background(Color(hex: "#FDCB6E").opacity(0.15))
+                                            .cornerRadius(8)
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 10)
+                                    if idx < mindfulSamples.count - 1 { Divider().padding(.leading, 64) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+                    }
+
+                    if summaries.isEmpty && mindfulSamples.isEmpty && todayPhotos == 0 {
                         VStack(spacing: 12) {
                             Text("💪").font(.system(size: 48 * UIScale.font))
-                            Text("今日はまだトレーニングを記録していません")
+                            Text("今日はまだアクティビティを記録していません")
                                 .font(.subheadline).foregroundColor(Color.duoSubtitle)
                                 .multilineTextAlignment(.center)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(32)
-                    } else {
-                        // 種目別内訳
-                        if !summaries.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("💪 トレーニング内訳")
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(Color.duoSubtitle)
-                                    .padding(.horizontal, 4)
-
-                                VStack(spacing: 0) {
-                                    ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
-                                        HStack(spacing: 12) {
-                                            Text(s.emoji)
-                                                .font(.title3)
-                                                .frame(width: 36, height: 36)
-                                                .background(Color.duoGreen.opacity(0.1))
-                                                .clipShape(Circle())
-
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(s.name)
-                                                    .font(.subheadline).fontWeight(.semibold)
-                                                    .foregroundColor(Color.duoDark)
-                                                Text("\(s.count)セット · \(s.totalReps) rep")
-                                                    .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                            }
-
-                                            Spacer()
-
-                                            Text("+\(s.totalPoints) XP")
-                                                .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
-                                                .foregroundColor(Color.duoGold)
-                                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                                .background(Color.duoYellow.opacity(0.2))
-                                                .cornerRadius(8)
-                                        }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-
-                                        if idx < summaries.count - 1 {
-                                            Divider().padding(.leading, 64)
-                                        }
-                                    }
-                                }
-                                .background(Color(.systemBackground))
-                                .cornerRadius(16)
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
-                            }
-                        }
-
-                        // マインドフルネス内訳
-                        if !mindfulSamples.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("🧘 マインドフルネス内訳")
-                                    .font(.caption).fontWeight(.bold)
-                                    .foregroundColor(Color.duoSubtitle)
-                                    .padding(.horizontal, 4)
-
-                                VStack(spacing: 0) {
-                                    ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
-                                        let isReflect = s.sessionTypeLabel == "Reflect"
-                                        let xp = isReflect ? 30 : 10
-                                        let label = isReflect ? "3分ストレッチ" : "1分瞑想"
-                                        HStack(spacing: 12) {
-                                            Text(s.sessionEmoji)
-                                                .font(.title3)
-                                                .frame(width: 36, height: 36)
-                                                .background(Color.duoPurple.opacity(0.1))
-                                                .clipShape(Circle())
-
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(label)
-                                                    .font(.subheadline).fontWeight(.semibold)
-                                                    .foregroundColor(Color.duoDark)
-                                                HStack(spacing: 6) {
-                                                    Text(String(format: "%.0f分", s.durationMinutes))
-                                                        .font(.caption2).foregroundColor(Color.duoPurple)
-                                                    if s.averageHeartRate > 0 {
-                                                        Text("❤️ \(Int(s.averageHeartRate))")
-                                                            .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                                    }
-                                                    if s.averageHRV > 0 {
-                                                        Text("💙 \(Int(s.averageHRV))")
-                                                            .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                                    }
-                                                }
-                                            }
-
-                                            Spacer()
-
-                                            Text("+\(xp) XP")
-                                                .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
-                                                .foregroundColor(Color(hex: "#FDCB6E"))
-                                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                                .background(Color(hex: "#FDCB6E").opacity(0.15))
-                                                .cornerRadius(8)
-                                        }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-
-                                        if idx < mindfulSamples.count - 1 {
-                                            Divider().padding(.leading, 64)
-                                        }
-                                    }
-                                }
-                                .background(Color(.systemBackground))
-                                .cornerRadius(16)
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
-                            }
-                        }
+                        .frame(maxWidth: .infinity).padding(32)
                     }
 
                     Spacer(minLength: 20)
@@ -4222,6 +4421,12 @@ struct DashboardView: View {
                     Button("閉じる") { showPointsDetail = false }
                         .foregroundColor(Color.duoGreen).fontWeight(.bold)
                 }
+            }
+            .task {
+                guard weeklyDailyStats.isEmpty else { return }
+                isLoadingWeeklyStats = true
+                weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
+                isLoadingWeeklyStats = false
             }
         }
     }
@@ -6004,7 +6209,10 @@ struct DashboardView: View {
         let mindfulXP = healthKit.todayMindfulnessSamples.reduce(0) { total, s in
             total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
         }
-        totalXP       = todayExercises.reduce(0) { $0 + $1.points } + mindfulXP
+        let cal = Calendar.current
+        let todayPhotoCount = photoLogManager.history.filter { cal.isDateInToday($0.timestamp) }.count
+            + EduLogManager.shared.history.filter { cal.isDateInToday($0.timestamp) && $0.thumbnailPath != nil }.count
+        totalXP       = todayExercises.reduce(0) { $0 + $1.points } + mindfulXP + todayPhotoCount * 10
         weeklyXP      = weeklyBaseXP + totalXP
         totalCalories = Int(todayExercises.reduce(0.0) { acc, ex in
             let rate = Self.kcalPerRep[ex.exerciseId.lowercased()] ?? 0.4
@@ -6608,6 +6816,135 @@ private struct TrainingVideoButton: View {
 }
 
 // MARK: - マンダラセクション（dailySetsCard からの分離によるスタック分割）
+// MARK: - Edu投稿履歴セクション（スパイラル下）
+
+/// 今日の Edu 投稿（Duolingo・語学・勉強・読書）をスパイラル完了と連動して一覧表示する。
+private struct EduPostHistorySection: View {
+    @ObservedObject private var eduLog = EduLogManager.shared
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    /// 今日の Edu 投稿だけを抽出（新しい順）
+    private var todayEduItems: [EduLogHistoryItem] {
+        let start = Calendar.current.startOfDay(for: Date())
+        return eduLog.history
+            .filter { $0.timestamp >= start && isEduActivity($0.activityName) }
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    private func isEduActivity(_ name: String) -> Bool {
+        name.localizedCaseInsensitiveContains("Duolingo")
+            || name == "語学" || name == "勉強" || name == "読書"
+            || name.contains("語学")
+    }
+
+    var body: some View {
+        let items = todayEduItems
+        guard !items.isEmpty else { return AnyView(EmptyView()) }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 0) {
+                // ── ヘッダー ───────────────────────────────────────────────
+                HStack(spacing: 6) {
+                    Text("📚").font(.system(size: 13))
+                    Text("今日のEDU記録")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Text("\(items.count)件")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.duoGreen)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
+
+                // ── 投稿リスト ─────────────────────────────────────────────
+                ForEach(items) { item in
+                    HStack(spacing: 10) {
+                        // 時刻
+                        Text(Self.timeFmt.string(from: item.timestamp))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.duoSubtitle)
+                            .frame(width: 38, alignment: .leading)
+
+                        // サムネイル（あれば）
+                        if let path = item.thumbnailPath,
+                           let data = ThumbnailFileStore.load(path: path),
+                           let img = UIImage(data: data) {
+                            Image(uiImage: img)
+                                .resizable().scaledToFill()
+                                .frame(width: 32, height: 32)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        } else {
+                            Text(item.activityEmoji)
+                                .font(.system(size: 20))
+                                .frame(width: 32, height: 32)
+                        }
+
+                        // 内容
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text(item.activityName)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.duoDark)
+                                if let lang = item.extractedLanguageCode, !lang.isEmpty {
+                                    Text(languageFlagForDashboard(lang))
+                                        .font(.system(size: 12))
+                                }
+                            }
+                            if let phrase = item.extractedPhrase, !phrase.isEmpty {
+                                Text(phrase)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.duoBlue)
+                                    .lineLimit(1)
+                            } else if !item.comment.isEmpty {
+                                Text(item.comment)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer()
+
+                        // 完了バッジ
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.duoGreen)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(
+                        Color(UIColor.secondarySystemBackground)
+                            .cornerRadius(10)
+                            .padding(.horizontal, 12)
+                    )
+                    .padding(.vertical, 2)
+                }
+                .padding(.bottom, 8)
+            }
+            .background(Color(.systemBackground))
+        )
+    }
+
+    private func languageFlagForDashboard(_ code: String) -> String {
+        switch code.prefix(2) {
+        case "es": return "🇪🇸"
+        case "zh": return "🇨🇳"
+        case "en": return "🇺🇸"
+        case "fr": return "🇫🇷"
+        case "de": return "🇩🇪"
+        case "ko": return "🇰🇷"
+        case "pt": return "🇧🇷"
+        case "it": return "🇮🇹"
+        case "ja": return "🇯🇵"
+        default: return "🌍"
+        }
+    }
+}
+
 // dailySetsCard.getter 内で直接 MandalaSpiralCard を構築すると
 // SwiftUI レンダリングスタックが溢れるため、独立した View struct で境界を作る。
 
@@ -7008,23 +7345,8 @@ private struct HeartRateHRVItem: View {
         .cornerRadius(10)
     }
 
-    // 平均HRV → ストレス指数（0–100）+ ラベル + 色
-    private func stressInfo(_ hrv: Double) -> (score: Int, label: String, color: Color) {
-        guard hrv > 0 else { return (-1, "—", Color.duoSubtitle) }
-        let score: Int = {
-            if hrv >= 100 { return 5 }
-            if hrv >= 80  { return Int(5  + (100 - hrv) / 20 * 10) }
-            if hrv >= 60  { return Int(15 + (80  - hrv) / 20 * 20) }
-            if hrv >= 40  { return Int(35 + (60  - hrv) / 20 * 25) }
-            if hrv >= 20  { return Int(60 + (40  - hrv) / 20 * 20) }
-            return Int(min(95, 80 + (20 - hrv) / 20 * 15))
-        }()
-        switch score {
-        case ..<30: return (score, "低い",   Color.duoGreen)
-        case ..<55: return (score, "普通",   Color(red: 0.4, green: 0.75, blue: 0.1))
-        case ..<75: return (score, "やや高", Color.duoOrange)
-        default:    return (score, "高い",   Color(hex: "#FF4B4B"))
-        }
+    private func stressInfo(_ hrv: Double) -> MindStressInfo {
+        stressInfoFromHRV(hrv)
     }
 }
 
@@ -7844,6 +8166,7 @@ private struct GoalCompletionSheet: View {
 private struct DailySetsExpandableSection: View {
     @ObservedObject var timeSlotManager: TimeSlotManager
     @ObservedObject var healthKit: HealthKitManager
+    @ObservedObject private var eduLog = EduLogManager.shared
     let todayExercises: [CompletedExercise]
     let slotSetCounts: [String: Int]
     let mandalaContextLabel: String
@@ -7852,6 +8175,25 @@ private struct DailySetsExpandableSection: View {
 
     @State private var showTodayRecords = false
     @State private var expandedSetIds: Set<Int> = []
+
+    private static let histTimeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    /// 今日の Edu 投稿（古い順：上が古く、下が新しい）
+    private var todayEduItems: [EduLogHistoryItem] {
+        let start = Calendar.current.startOfDay(for: Date())
+        return eduLog.history
+            .filter {
+                $0.timestamp >= start
+                    && ($0.activityName.localizedCaseInsensitiveContains("Duolingo")
+                        || $0.activityName == "語学"
+                        || $0.activityName == "勉強"
+                        || $0.activityName == "読書"
+                        || $0.activityName.contains("語学"))
+            }
+            .sorted { $0.timestamp < $1.timestamp }
+    }
 
     private var visibleSlots: [TimeSlot] {
         let h = Calendar.current.component(.hour, from: Date())
@@ -8132,9 +8474,29 @@ private struct TodayHistorySection: View {
     var dailyCalorieGoal: Int = 0
     var dailyWaterGoal: Int = 0
 
+    @ObservedObject private var eduLog = EduLogManager.shared
+
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
+
+    private static let histTimeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    private var todayEduItems: [EduLogHistoryItem] {
+        let start = Calendar.current.startOfDay(for: Date())
+        return eduLog.history
+            .filter {
+                $0.timestamp >= start
+                    && ($0.activityName.localizedCaseInsensitiveContains("Duolingo")
+                        || $0.activityName == "語学"
+                        || $0.activityName == "勉強"
+                        || $0.activityName == "読書"
+                        || $0.activityName.contains("語学"))
+            }
+            .sorted { $0.timestamp < $1.timestamp }  // 古い順（上が古く、下が新しい）
+    }
 
     struct ExerciseSetGroup: Identifiable {
         let id: Int
@@ -8288,6 +8650,49 @@ private struct TodayHistorySection: View {
                                     }
                                     .padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(Color.duoBlue.opacity(0.06))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Edu 履歴（Duolingo / 語学）─────────────────────────────
+                    let eduItems = todayEduItems
+                    if !eduItems.isEmpty {
+                        sectionGroup(icon: "🦉", label: "Duolingo",
+                                     progress: "\(eduItems.count)件",
+                                     progressDone: true) {
+                            VStack(spacing: 4) {
+                                ForEach(eduItems) { item in
+                                    HStack(spacing: 6) {
+                                        // 時刻
+                                        Text(Self.histTimeFmt.string(from: item.timestamp))
+                                            .font(.system(size: 11 * UIScale.font, design: .monospaced))
+                                            .foregroundColor(Color.duoSubtitle)
+                                            .frame(width: 44, alignment: .leading)
+
+                                        // 言語フラグ + ラベル
+                                        if let langCode = item.extractedLanguageCode, !langCode.isEmpty {
+                                            Text(languageFlag(langCode))
+                                                .font(.system(size: 13))
+                                            Text(languageLabel(langCode))
+                                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                                .foregroundColor(languageBadgeColor(langCode))
+                                        } else {
+                                            Text(item.activityEmoji.isEmpty ? "📖" : item.activityEmoji)
+                                                .font(.system(size: 13))
+                                            Text(item.activityName)
+                                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                                .foregroundColor(Color.duoGreen)
+                                        }
+
+                                        Spacer()
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 12 * UIScale.font))
+                                            .foregroundColor(Color.duoGreen)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.duoGreen.opacity(0.06))
                                     .cornerRadius(6)
                                 }
                             }

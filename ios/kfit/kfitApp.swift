@@ -64,6 +64,8 @@ struct kfitApp: App {
                 Task {
                     await authManager.performEndOfDayCalorieTopUpIfNeeded()
                     await plusMgr.setup()
+                    // Duolingo等からの共有をフォアグラウンド復帰時にも処理する
+                    await PendingShareProcessor.shared.processPendingShares()
                 }
             } else if scenePhase == .background {
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
@@ -91,12 +93,13 @@ struct MainTabView: View {
     @State private var promoBannerDismissed = false
     // DragGesture.onChanged は 60fps で呼ばれるため、タイマーリセットを間引くフラグ
     @State private var revealSchedulePending = false
-    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitVisible = true
-    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalVisible = true
-    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindVisible = false
-    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodVisible = false
-    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoVisible = false
-    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logVisible = true
+    @AppStorage(MainMenuTabPreferences.fitVisibleKey)      private var fitVisible      = true
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey)     private var goalVisible     = true
+    @AppStorage(MainMenuTabPreferences.mindVisibleKey)     private var mindVisible     = false
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey)     private var foodVisible     = false
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey)     private var tomoVisible     = false
+    @AppStorage(MainMenuTabPreferences.goalingoVisibleKey) private var goalingoVisible = false
+    @AppStorage(MainMenuTabPreferences.logVisibleKey)      private var logVisible      = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
@@ -110,30 +113,34 @@ struct MainTabView: View {
             .onReceive(NotificationCenter.default.publisher(for: .requestStartMindfulness)) { _ in
                 showMindfulnessWidget = true
             }
+            .onReceive(NotificationCenter.default.publisher(for: .duolingoShareProcessed)) { _ in
+                // Duolingo 共有完了 → Tomo タブが有効ならそこへ切り替えて投稿を即表示
+                if tomoVisible {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        selectedTab = MainMenuTab.tomo.rawValue
+                    }
+                }
+            }
             .onOpenURL { url in handleDeepLink(url) }
             .onAppear {
                 selectedTab = defaultVisibleTab.rawValue
                 normalizeSelection()
                 checkEndOfDayCalorieTopUp()
-                if let uid = Auth.auth().currentUser?.uid,
-                   let name = authManager.userProfile?.username ?? Auth.auth().currentUser?.displayName {
-                    Task {
-                        await PendingShareProcessor.shared.processPendingShares(
-                            userID: uid, userName: name
-                        )
-                    }
+                Task {
+                    await PendingShareProcessor.shared.processPendingShares()
                 }
             }
             .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
                 checkEndOfDayCalorieTopUp()
             }
-            .onChange(of: fitVisible)    { _, _ in normalizeSelection() }
-            .onChange(of: goalVisible)   { _, _ in normalizeSelection() }
-            .onChange(of: mindVisible)   { _, _ in normalizeSelection() }
-            .onChange(of: foodVisible)   { _, _ in normalizeSelection() }
-            .onChange(of: tomoVisible)   { _, _ in normalizeSelection() }
-            .onChange(of: defaultTabRaw) { _, _ in normalizeSelection() }
-            .onChange(of: tabOrderRaw)   { _, _ in normalizeSelection() }
+            .onChange(of: fitVisible)      { _, _ in normalizeSelection() }
+            .onChange(of: goalVisible)     { _, _ in normalizeSelection() }
+            .onChange(of: mindVisible)     { _, _ in normalizeSelection() }
+            .onChange(of: foodVisible)     { _, _ in normalizeSelection() }
+            .onChange(of: tomoVisible)     { _, _ in normalizeSelection() }
+            .onChange(of: goalingoVisible) { _, _ in normalizeSelection() }
+            .onChange(of: defaultTabRaw)   { _, _ in normalizeSelection() }
+            .onChange(of: tabOrderRaw)     { _, _ in normalizeSelection() }
     }
 
     // body を分割してコンパイラの型推論タイムアウトを回避
@@ -235,6 +242,7 @@ struct MainTabView: View {
         case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
         case 5:  MoreView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu, overflowTabs: overflowPrimaryTabs)
         case 6:  TomoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+        case 7:  GoalingoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
         default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
         }
     }
@@ -269,11 +277,12 @@ struct MainTabView: View {
 
     private func isVisible(_ tab: MainMenuTab) -> Bool {
         switch tab {
-        case .fit: return fitVisible
-        case .goal: return goalVisible
-        case .mind: return mindVisible
-        case .food: return foodVisible
-        case .tomo: return tomoVisible
+        case .fit:      return fitVisible
+        case .goal:     return goalVisible
+        case .mind:     return mindVisible
+        case .food:     return foodVisible
+        case .tomo:     return tomoVisible
+        case .goalingo: return goalingoVisible
         }
     }
 

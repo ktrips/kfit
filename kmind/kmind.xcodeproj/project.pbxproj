@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FA68E9A02FF3100000BB5E12 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = FA68E9A12FF3100000BB5E12 /* GoogleSignIn */; };
 		AABB0011000000000000AA03 /* MindfulnessSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB0011000000000000AA02 /* MindfulnessSessionView.swift */; };
 		AABB0011000000000000AA05 /* StandPomodoroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AABB0011000000000000AA04 /* StandPomodoroView.swift */; };
+		CC001002CC001002CC001002 /* WatchHealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001001CC001001CC001001 /* WatchHealthKitManager.swift */; };
+		CC001004CC001004CC001004 /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001003CC001003CC001003 /* WatchConnectivityManager.swift */; };
+		CC001006CC001006CC001006 /* WatchFlowViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC001005CC001005CC001005 /* WatchFlowViews.swift */; };
+		FA68E9A02FF3100000BB5E12 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = FA68E9A12FF3100000BB5E12 /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +49,10 @@
 /* Begin PBXFileReference section */
 		AABB0011000000000000AA02 /* MindfulnessSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MindfulnessSessionView.swift; path = ../ios/kfit/Views/MindfulnessSessionView.swift; sourceTree = SOURCE_ROOT; };
 		AABB0011000000000000AA04 /* StandPomodoroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StandPomodoroView.swift; path = ../ios/kfit/Views/StandPomodoroView.swift; sourceTree = SOURCE_ROOT; };
+		CC001001CC001001CC001001 /* WatchHealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchHealthKitManager.swift; path = ../ios/kfitWatch/Managers/WatchHealthKitManager.swift; sourceTree = SOURCE_ROOT; };
+		CC002001CC002001CC002001 /* kmindWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "kmindWatch.entitlements"; sourceTree = "<group>"; };
+		CC001003CC001003CC001003 /* WatchConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchConnectivityManager.swift; path = ../ios/kfitWatch/Managers/WatchConnectivityManager.swift; sourceTree = SOURCE_ROOT; };
+		CC001005CC001005CC001005 /* WatchFlowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WatchFlowViews.swift; path = ../ios/kfitWatch/Views/WatchFlowViews.swift; sourceTree = SOURCE_ROOT; };
 		FA68E8332FF0043600BB5E12 /* kmind.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = kmind.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA68E8422FF0043800BB5E12 /* kmindTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kmindTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FA68E84C2FF0043800BB5E12 /* kmindUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kmindUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -55,11 +62,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		FA68E9C02FF3300000BB5E12 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		FA68E9C02FF3300000BB5E12 /* Exceptions for "kmind" folder in "kmind" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"GoogleService-Info.plist",
 				Info.plist,
-				GoogleService-Info.plist,
 			);
 			target = FA68E8322FF0043600BB5E12 /* kmind */;
 		};
@@ -69,7 +76,7 @@
 		FA68E8352FF0043600BB5E12 /* kmind */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				FA68E9C02FF3300000BB5E12 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+				FA68E9C02FF3300000BB5E12 /* Exceptions for "kmind" folder in "kmind" target */,
 			);
 			path = kmind;
 			sourceTree = "<group>";
@@ -148,6 +155,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AABB0011000000000000AA01 /* kfit Shared Views */ = {
+			isa = PBXGroup;
+			children = (
+				AABB0011000000000000AA02 /* MindfulnessSessionView.swift */,
+				AABB0011000000000000AA04 /* StandPomodoroView.swift */,
+				CC001001CC001001CC001001 /* WatchHealthKitManager.swift */,
+				CC001003CC001003CC001003 /* WatchConnectivityManager.swift */,
+				CC001005CC001005CC001005 /* WatchFlowViews.swift */,
+			);
+			name = "kfit Shared Views";
+			sourceTree = "<group>";
+		};
 		FA68E82A2FF0043600BB5E12 = {
 			isa = PBXGroup;
 			children = (
@@ -160,15 +179,6 @@
 				FA68E8342FF0043600BB5E12 /* Products */,
 				AABB0011000000000000AA01 /* kfit Shared Views */,
 			);
-			sourceTree = "<group>";
-		};
-		AABB0011000000000000AA01 /* kfit Shared Views */ = {
-			isa = PBXGroup;
-			children = (
-				AABB0011000000000000AA02 /* MindfulnessSessionView.swift */,
-				AABB0011000000000000AA04 /* StandPomodoroView.swift */,
-			);
-			name = "kfit Shared Views";
 			sourceTree = "<group>";
 		};
 		FA68E8342FF0043600BB5E12 /* Products */ = {
@@ -458,6 +468,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC001002CC001002CC001002 /* WatchHealthKitManager.swift in Sources */,
+				CC001004CC001004CC001004 /* WatchConnectivityManager.swift in Sources */,
+				CC001006CC001006CC001006 /* WatchFlowViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -769,20 +782,23 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "kmindWatch Watch App/kmindWatch.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = N5H836M425;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = kmindWatch;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "睡眠・HRV・マインドフルネスデータを読み取り、kmind Watchに表示します。";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "マインドフルネスセッションをAppleヘルスケアに保存します。";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.ktrips.kmind;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.ktrips.kmind.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ktrips.kmind.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -802,20 +818,23 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "kmindWatch Watch App/kmindWatch.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = N5H836M425;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = kmindWatch;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "睡眠・HRV・マインドフルネスデータを読み取り、kmind Watchに表示します。";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "マインドフルネスセッションをAppleヘルスケアに保存します。";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.ktrips.kmind;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.ktrips.kmind.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ktrips.kmind.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;

@@ -1,5 +1,6 @@
 import WatchConnectivity
 import Foundation
+import Combine
 import WidgetKit
 
 @MainActor
@@ -92,6 +93,10 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     /// データロード済みフラグ（初回データ取得成功）
     @Published var hasLoadedData: Bool = false
 
+    // フィード投稿
+    @Published var feedItems: [WatchFeedItem] = []
+    @Published var isSyncingFeed: Bool = false
+
     // W2: WidgetCenter.reloadAllTimelines デバウンス用
     private var widgetReloadTask: Task<Void, Never>?
     // W2: 差分比較用（前回送信値）
@@ -182,6 +187,27 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
         } else {
             try? session.updateApplicationContext(message)
+        }
+    }
+
+    // MARK: - Watch → iOS: フィードリクエスト
+    func requestFeedFromiOS() {
+        guard let session = session else {
+            isSyncingFeed = false
+            return
+        }
+        isSyncingFeed = true
+        guard session.isReachable else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                self?.isSyncingFeed = false
+            }
+            return
+        }
+        session.sendMessage(["action": "request_feed"], replyHandler: nil) { [weak self] _ in
+            Task { @MainActor in self?.isSyncingFeed = false }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) { [weak self] in
+            self?.isSyncingFeed = false
         }
     }
 
@@ -457,6 +483,13 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             if message["streak"] != nil || message["isPlus"] != nil {
                 self.handleProfileUpdate(message)
             }
+
+            // フィード受信
+            if let data = message["feedItems"] as? Data,
+               let items = try? JSONDecoder().decode([WatchFeedItem].self, from: data) {
+                self.feedItems = items
+                self.isSyncingFeed = false
+            }
         }
     }
 
@@ -479,13 +512,12 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 }
             }
 
-            if applicationContext["streak"] != nil || applicationContext["isPlus"] != nil {
-                self.handleProfileUpdate(applicationContext)
-            }
-
-            // プロフィール更新（通常のstatsデータ）
-            if applicationContext["intakeCalories"] != nil {
-                print("📥 Watch: Received application context with intake data")
+            // handleProfileUpdate は1回だけ呼ぶ（streak/isPlus/intakeCalories が同一ペイロードに
+            // 含まれていても二重発火しないよう OR でまとめる）
+            let hasStats  = applicationContext["streak"] != nil || applicationContext["isPlus"] != nil
+            let hasIntake = applicationContext["intakeCalories"] != nil
+            if hasStats || hasIntake {
+                if hasIntake { print("📥 Watch: Received application context with intake data") }
                 self.handleProfileUpdate(applicationContext)
             }
         }
@@ -541,7 +573,7 @@ struct WatchSetExercise: Codable {
 }
 
 struct WatchSetData: Codable {
-    let setId: String
+    let setId: String?   // iOS側 iOSWatchBridge と型を統一（String? → クラッシュ防止）
     let exercises: [WatchSetExercise]
     let totalXP: Int
     let totalReps: Int
@@ -568,4 +600,17 @@ struct CompletedExerciseWatch: Codable, Identifiable, Hashable {
     let reps: Int
     let points: Int
     let timestamp: Date
+}
+
+// MARK: - Watch用フィード投稿アイテム
+struct WatchFeedItem: Codable, Identifiable {
+    let id: String
+    let timestamp: Date
+    let activityName: String
+    let activityEmoji: String
+    let comment: String
+    let authorName: String
+    let likeCount: Int
+    let calories: Int?
+    let isOwn: Bool
 }

@@ -75,71 +75,76 @@ struct GoalView: View {
             ZStack {
                 Color.duoBg.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 16) {
-                        goalHeroCard
-                        if showCharts {
-                            weightChartCard
-                                .transition(.opacity)
-                            bodyFatChartCard
-                                .transition(.opacity)
-                        }
-                        fitingoTrainingButton
-                        if plus.isPlus {
-                            todayActivityWithHistoryCard
-                            progressCard
-                            HStack(spacing: 6) {
-                                Image(systemName: "chart.bar.doc.horizontal.fill")
-                                    .font(.system(size: 14 * UIScale.font, weight: .bold))
-                                    .foregroundColor(Color.duoGreen)
-                                Text("週間実績")
-                                    .font(.system(size: 15 * UIScale.font, weight: .black))
-                                    .foregroundColor(Color.duoDark)
-                                Spacer()
+                        LazyVStack(spacing: 16) {
+                            goalHeroCard
+                            if showCharts {
+                                weightChartCard
+                                    .transition(.opacity)
+                                bodyFatChartCard
+                                    .transition(.opacity)
                             }
-                            .padding(.horizontal, 4)
-                            .padding(.bottom, -4)
-                            weeklyBurnCard
-                            intakeTrendCard
-                            weeklyCalorieCard
-                        } else {
-                            PlusLockedSection(
-                                features: [
-                                    "今日のアクティビティ",
-                                    "目標プランレポート",
-                                    "週間実績（燃焼カロリー）",
-                                    "摂取カロリー推移",
-                                    "週間カロリー分析"
-                                ],
-                                onUpgrade: { showPlusViewFromFit = true }
-                            )
+                            fitingoTrainingButton
+                            // 今日のアクティビティ（履歴は週間カロリーカードと統合）
+                            todayActivityCard
+                                .background(Color(.systemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            if plus.isPlus {
+                                progressCard
+                                HStack(spacing: 6) {
+                                    Image(systemName: "chart.bar.doc.horizontal.fill")
+                                        .font(.system(size: 14 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoGreen)
+                                    Text("週間実績")
+                                        .font(.system(size: 15 * UIScale.font, weight: .black))
+                                        .foregroundColor(Color.duoDark)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, -4)
+                                weeklyBurnCard
+                                intakeTrendCard
+                                // 週間カロリーカード ＋ アクティビティ履歴を一体化
+                                weeklyCalorieWithHistoryCard
+                                // 体重カードを週間カロリー+アクティビティ履歴の下へ
+                                weightFeedSection
+                            } else {
+                                PlusLockedSection(
+                                    features: [
+                                        "週間カロリー目標・週間実績",
+                                        "アクティビティ履歴・消費カロリー推移",
+                                        "食事摂取トレンド・PFC週次レポート",
+                                        "体重ログ・フィード"
+                                    ],
+                                    onUpgrade: { showPlusViewFromFit = true }
+                                )
+                            }
+                            Spacer(minLength: 40)
                         }
-                        weightFeedSection
-                        Spacer(minLength: 40)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 20)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 20)
-                }
-                .refreshable {
-                    // async let で並列フェッチ（従来の直列 await から改善）
-                    loadTodayWeekdayGoal()
-                    async let s0: Void = timeSlotManager.loadTodaySettings()
-                    async let s1: Void = healthKit.fetchBodyMassHistory(days: 30)
-                    async let s2: Void = healthKit.fetchBodyFatHistory(days: 30)
-                    async let s3: Void = healthKit.fetchGoalHealth()
-                    async let s4: Void = healthKit.fetchWeeklyBurnData()
-                    async let s5: Void = healthKit.fetchWeeklyDietarySamples()
-                    async let ex   = authManager.getTodayExercises()
-                    async let ws   = healthKit.fetchTodayWorkoutSessions()
-                    async let wsc  = authManager.fetchWeeklySetCounts()
-                    async let wid  = authManager.fetchWeeklyIntakeData()
-                    let (exercises, sessions, setCounts, intakeData, _, _, _, _, _, _) =
-                        await (ex, ws, wsc, wid, s0, s1, s2, s3, s4, s5)
-                    todayExercises       = exercises
-                    todayWorkoutSessions = sessions
-                    weeklySetCounts      = setCounts
-                    weeklyIntakeData     = intakeData
-                }
+                    .refreshable {
+                        // async let で並列フェッチ（従来の直列 await から改善）
+                        loadTodayWeekdayGoal()
+                        async let s0: Void = timeSlotManager.loadTodaySettings()
+                        async let s1: Void = healthKit.fetchBodyMassHistory(days: 30)
+                        async let s2: Void = healthKit.fetchBodyFatHistory(days: 30)
+                        async let s3: Void = healthKit.fetchGoalHealth()
+                        async let s4: Void = healthKit.fetchWeeklyBurnData()
+                        async let s5: Void = healthKit.fetchWeeklyDietarySamples()
+                        async let ex   = authManager.getTodayExercises()
+                        async let ws   = healthKit.fetchTodayWorkoutSessions()
+                        async let wsc  = authManager.fetchWeeklySetCounts()
+                        async let wid  = authManager.fetchWeeklyIntakeData()
+                        let (exercises, sessions, setCounts, intakeData, _, _, _, _, _, _) =
+                            await (ex, ws, wsc, wid, s0, s1, s2, s3, s4, s5)
+                        todayExercises       = exercises
+                        todayWorkoutSessions = sessions
+                        weeklySetCounts      = setCounts
+                        weeklyIntakeData     = intakeData
+                    }
             }
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
@@ -1524,6 +1529,23 @@ struct GoalView: View {
         )
     }
 
+    // MARK: - 週間カロリーカード ＋ アクティビティ履歴 統合カード
+
+    private var weeklyCalorieWithHistoryCard: some View {
+        VStack(spacing: 0) {
+            GoalWeeklyCalorieCard(
+                data: healthKit.weeklyCalorieData,
+                dailyGoal: dietManager.settings.dailyDeficitGoal
+            )
+            Divider()
+                .padding(.horizontal, 12)
+            activityHistoryExpandable
+        }
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+    }
+
     // MARK: - FITフィード（体重計測の写真）
 
     private var weightFeedSection: some View {
@@ -1831,26 +1853,23 @@ private struct GoalWeeklyCalorieCard: View {
                             .cornerRadius(6)
                     }
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 1) {
-                        HStack(alignment: .lastTextBaseline, spacing: 3) {
-                            Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
-                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                                .foregroundColor(Color.duoSubtitle)
-                            Text("/")
-                                .font(.system(size: 10 * UIScale.font))
-                                .foregroundColor(Color.duoSubtitle)
-                            Text("計 " + (weekTotal >= 0 ? "+" : "") + "\(weekTotal)")
-                                .font(.system(size: 15 * UIScale.font, weight: .black))
-                                .foregroundColor(balanceColor)
-                        }
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .fixedSize(horizontal: true, vertical: false)
-
+                    HStack(alignment: .lastTextBaseline, spacing: 3) {
+                        Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("/")
+                            .font(.system(size: 10 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                        Text("計 " + (weekTotal >= 0 ? "+" : "") + "\(weekTotal)")
+                            .font(.system(size: 15 * UIScale.font, weight: .black))
+                            .foregroundColor(balanceColor)
                         Text("kcal")
                             .font(.system(size: 10 * UIScale.font, weight: .semibold))
                             .foregroundColor(Color.duoSubtitle)
                     }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .fixedSize(horizontal: false, vertical: false)
                 }
 
                 if data.isEmpty {

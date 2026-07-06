@@ -78,6 +78,7 @@ struct WorkoutSession: Identifiable {
     let calories: Double
     let sourceName: String
     let sourceBundleId: String
+    let distanceKm: Double
 }
 
 struct SleepSegment: Identifiable {
@@ -293,6 +294,7 @@ final class HealthKitManager: ObservableObject {
     @Published var weeklyCalorieData: [DailyCalorieBalance] = []  // 今週の日別カロリー収支
     @Published var weeklyBurnData: [DailyBurnSummary] = []       // 今週の日別消費カロリー内訳
     @Published var weeklyDietarySamples: [DietarySample] = []    // 今週の食事カロリーサンプル（タイムスタンプ付き）
+    @Published var weeklyRaceDistances: (swimKm: Double, bikeKm: Double, runKm: Double) = (0, 0, 0)
 
     // 摂取データ（Apple Healthから読み取り）
     @Published var todayIntakeCalories: Double = 0      // kcal
@@ -313,6 +315,8 @@ final class HealthKitManager: ObservableObject {
     // 摂取サンプル（時刻付き）
     @Published var todayWaterSamples: [DietarySample] = []  // 水分サンプル（ml）
     @Published var todayMealSamples:  [DietarySample] = []  // 食事カロリーサンプル（kcal）
+    /// 時間帯別摂取カロリー（HKStatisticsQuery で正確に集計: Apple Health の表示値と一致）
+    @Published var todayMealCalBySlot: (breakfast: Double, lunch: Double, snack: Double, dinner: Double) = (0, 0, 0, 0)
     @Published var todayToothbrushingSamples: [Date] = []   // 歯磨きイベント（終了時刻）
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
     private var lastFetchAllAt: Date? = nil
@@ -325,6 +329,7 @@ final class HealthKitManager: ObservableObject {
     // ワークアウト
     @Published var todayWorkoutMinutes: Int = 0         // 今日のワークアウト時間（分）
     @Published var todayWorkoutCount: Int = 0           // 今日のワークアウト件数
+    @Published var weeklyWorkoutSessions: [WorkoutSession] = []  // 今週の全ワークアウト
 
     // スタンド時間
     @Published var todayStandHours: Int = 0             // 今日のスタンド時間（時間）
@@ -350,11 +355,11 @@ final class HealthKitManager: ObservableObject {
     // HRV平均（現状は最新値のみ取得のため latestHRV と同値）
     var todayAverageHRV: Double { latestHRV }
 
-    // HRV ステータス文字列
+    // HRV ステータス文字列（閾値は HRVThreshold 定数で一元管理）
     var hrvStatus: String {
-        if latestHRV >= 60 { return "良好" }
-        if latestHRV >= 40 { return "中程度" }
-        if latestHRV > 0   { return "要注意" }
+        if latestHRV >= HRVThreshold.excellent { return "良好" }
+        if latestHRV >= HRVThreshold.moderate  { return "中程度" }
+        if latestHRV > 0                        { return "要注意" }
         return "—"
     }
 
@@ -450,6 +455,8 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - ワークアウト書き込み
 
+    // NOTE: Watch 側の WatchHealthKitManager.caloriesPerRep と値を揃えること。
+    // 将来は Swift Package の SharedExerciseConstants に移して両ターゲットから参照する。
     static let caloriesPerRep: [String: Double] = [
         "pushup": 0.32, "squat": 0.32, "situp": 0.15,
         "lunge": 0.40,  "burpee": 1.00, "plank": 0.08,
@@ -592,6 +599,7 @@ final class HealthKitManager: ObservableObject {
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples  = fetchTodayMealSamplesRaw()
         async let toothbrushing = fetchTodayToothbrushingRaw()
+        async let mealBySlot   = fetchTodayMealCaloriesBySlot()
 
         todaySteps          = await steps
         todayActiveCalories = await activeCalories
@@ -653,6 +661,7 @@ final class HealthKitManager: ObservableObject {
         todayWaterSamples       = await waterSamples
         todayMealSamples        = await mealSamples
         todayToothbrushingSamples = await toothbrushing
+        todayMealCalBySlot      = await mealBySlot
         weeklyCalorieData       = await fetchWeeklyCalories()
     }
 
@@ -785,6 +794,7 @@ final class HealthKitManager: ObservableObject {
         async let intakeCarbs = fetchTodayIntakeCarbs()
         async let waterSamples = fetchTodayWaterSamplesRaw()
         async let mealSamples = fetchTodayMealSamplesRaw()
+        async let mealBySlot = fetchTodayMealCaloriesBySlot()
 
         todayIntakeCalories = await intakeCal
         todayIntakeWater = await intakeWater
@@ -795,6 +805,7 @@ final class HealthKitManager: ObservableObject {
         todayIntakeCarbs = await intakeCarbs
         todayWaterSamples = await waterSamples
         todayMealSamples = await mealSamples
+        todayMealCalBySlot = await mealBySlot
         lastFetchedAt = Date()
     }
 
@@ -1880,7 +1891,8 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: Date(), options: .strictStartDate)
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         return await withCheckedContinuation { continuation in
-            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: 50, sortDescriptors: [sort]) { _, samples, _ in
+            // HKObjectQueryNoLimit(=0) で件数制限なし: 全サンプルを取得して時間帯集計を正確にする
+            let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, _ in
                 let result = (samples as? [HKQuantitySample])?.map {
                     DietarySample(startDate: $0.startDate, value: $0.quantity.doubleValue(for: .kilocalorie()))
                 } ?? []
@@ -1888,6 +1900,46 @@ final class HealthKitManager: ObservableObject {
             }
             self.store.execute(q)
         }
+    }
+
+    /// 今日の摂取カロリーを時間帯別に HKStatisticsQuery で集計する。
+    /// Apple Healthの統計クエリを時間帯ごとに走らせることで、
+    /// データソース優先度・重複排除のロジックが反映された正確な値を返す。
+    func fetchTodayMealCaloriesBySlot() async -> (breakfast: Double, lunch: Double, snack: Double, dinner: Double) {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else {
+            return (0, 0, 0, 0)
+        }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: today)!
+
+        // 時間帯境界をDateで定義（当日の時刻）
+        func dateAt(hour: Int) -> Date {
+            cal.date(bySettingHour: hour, minute: 0, second: 0, of: today) ?? today
+        }
+        let slot5  = dateAt(hour: 5)   // 朝食開始
+        let slot10 = dateAt(hour: 10)  // ランチ開始
+        let slot14 = dateAt(hour: 14)  // スナック開始
+        let slot18 = dateAt(hour: 18)  // 夕食開始
+
+        // 各時間帯の (start, end) ペア
+        let slots: [(Date, Date)] = [
+            (slot5,  slot10),   // 朝食 5〜10時
+            (slot10, slot14),   // ランチ 10〜14時
+            (slot14, slot18),   // スナック 14〜18時
+            (slot18, tomorrow), // 夕食 18〜翌0時（＋深夜0〜5時は朝食扱い）
+        ]
+        // 0〜5時の深夜帯を朝食バケツに加算するためのスロット
+        let midnightSlot: (Date, Date) = (today, slot5)  // 0〜5時
+
+        async let v0 = fetchDietaryEnergyCalories(start: slots[0].0, end: slots[0].1)
+        async let v1 = fetchDietaryEnergyCalories(start: slots[1].0, end: slots[1].1)
+        async let v2 = fetchDietaryEnergyCalories(start: slots[2].0, end: slots[2].1)
+        async let v3 = fetchDietaryEnergyCalories(start: slots[3].0, end: slots[3].1)
+        async let v4 = fetchDietaryEnergyCalories(start: midnightSlot.0, end: midnightSlot.1) // 深夜→朝食へ
+
+        let (breakfast, lunch, snack, dinner, midnight) = await (v0, v1, v2, v3, v4)
+        return (breakfast: breakfast + midnight, lunch: lunch, snack: snack, dinner: dinner)
     }
 
     /// 今日の歯磨きイベントを取得（終了時刻の配列）
@@ -2192,6 +2244,7 @@ final class HealthKitManager: ObservableObject {
 
                 let sessions = workouts.map { workout in
                     let meta = self.workoutDisplayMeta(for: workout.workoutActivityType)
+                    let distM = workout.totalDistance?.doubleValue(for: .meter()) ?? 0
                     return WorkoutSession(
                         startDate: workout.startDate,
                         endDate: workout.endDate,
@@ -2200,10 +2253,94 @@ final class HealthKitManager: ObservableObject {
                         emoji: meta.emoji,
                         calories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
                         sourceName: workout.sourceRevision.source.name,
-                        sourceBundleId: workout.sourceRevision.source.bundleIdentifier
+                        sourceBundleId: workout.sourceRevision.source.bundleIdentifier,
+                        distanceKm: distM / 1000.0
                     )
                 }
                 continuation.resume(returning: sessions)
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今週（月曜日起算）の全ワークアウトを WorkoutSession として取得して weeklyWorkoutSessions を更新する
+    func fetchWeeklyWorkoutSessions() async {
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "ja_JP")
+        cal.firstWeekday = 2
+        let now = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        let predicate = HKQuery.predicateForSamples(withStart: weekStart, end: now, options: .strictStartDate)
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let query = HKSampleQuery(
+                sampleType: HKWorkoutType.workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: [sort]
+            ) { [weak self] _, samples, _ in
+                guard let self, let workouts = samples as? [HKWorkout] else {
+                    continuation.resume(); return
+                }
+                let sessions = workouts.map { workout in
+                    let meta = self.workoutDisplayMeta(for: workout.workoutActivityType)
+                    let distM = workout.totalDistance?.doubleValue(for: .meter()) ?? 0
+                    return WorkoutSession(
+                        startDate: workout.startDate,
+                        endDate: workout.endDate,
+                        durationMinutes: workout.duration / 60.0,
+                        activityName: meta.name,
+                        emoji: meta.emoji,
+                        calories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
+                        sourceName: workout.sourceRevision.source.name,
+                        sourceBundleId: workout.sourceRevision.source.bundleIdentifier,
+                        distanceKm: distM / 1000.0
+                    )
+                }
+                DispatchQueue.main.async {
+                    self.weeklyWorkoutSessions = sessions
+                }
+                continuation.resume()
+            }
+            store.execute(query)
+        }
+    }
+
+    /// 今週（月曜日起算）のスイム・バイク・ランの合計距離(km)を取得して weeklyRaceDistances を更新する
+    func fetchWeeklyRaceWorkouts() async {
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "ja_JP")
+        cal.firstWeekday = 2  // 月曜日起算
+        let now = Date()
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
+        let predicate = HKQuery.predicateForSamples(withStart: weekStart, end: now, options: .strictStartDate)
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let query = HKSampleQuery(
+                sampleType: HKWorkoutType.workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { [weak self] _, samples, _ in
+                guard let self, let workouts = samples as? [HKWorkout] else {
+                    continuation.resume(); return
+                }
+                var swimKm = 0.0, bikeKm = 0.0, runKm = 0.0
+                for workout in workouts {
+                    let distKm = (workout.totalDistance?.doubleValue(for: HKUnit.meter()) ?? 0) / 1000.0
+                    switch workout.workoutActivityType {
+                    case .swimming:                                         swimKm += distKm
+                    case .cycling:                                          bikeKm += distKm
+                    case .running, .trackAndField,
+                         .walking, .hiking, .crossCountrySkiing:            runKm  += distKm
+                    default: break
+                    }
+                }
+                DispatchQueue.main.async {
+                    self.weeklyRaceDistances = (swimKm, bikeKm, runKm)
+                }
+                continuation.resume()
             }
             store.execute(query)
         }

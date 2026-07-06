@@ -47,6 +47,7 @@ struct SettingsView: View {
     @State private var showHabitStack = false
     @State private var showHabitSettings = false
     @State private var showTimeSlotGoals = false
+    @State private var showRaceGoalSettings = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
@@ -59,12 +60,13 @@ struct SettingsView: View {
     @State private var showAddCustomGoal = false
     @State private var newGoalName = ""
     @State private var newGoalEmoji = "⭐"
-    @AppStorage(MainMenuTabPreferences.fitVisibleKey) private var fitTabVisible = true
-    @AppStorage(MainMenuTabPreferences.goalVisibleKey) private var goalTabVisible = true
-    @AppStorage(MainMenuTabPreferences.mindVisibleKey) private var mindTabVisible = false
-    @AppStorage(MainMenuTabPreferences.foodVisibleKey) private var foodTabVisible = false
-    @AppStorage(MainMenuTabPreferences.tomoVisibleKey) private var tomoTabVisible = false
-    @AppStorage(MainMenuTabPreferences.logVisibleKey) private var logTabVisible = true
+    @AppStorage(MainMenuTabPreferences.fitVisibleKey)      private var fitTabVisible      = true
+    @AppStorage(MainMenuTabPreferences.goalVisibleKey)     private var goalTabVisible     = true
+    @AppStorage(MainMenuTabPreferences.mindVisibleKey)     private var mindTabVisible     = false
+    @AppStorage(MainMenuTabPreferences.foodVisibleKey)     private var foodTabVisible     = false
+    @AppStorage(MainMenuTabPreferences.tomoVisibleKey)     private var tomoTabVisible     = false
+    @AppStorage(MainMenuTabPreferences.goalingoVisibleKey) private var goalingoTabVisible = false
+    @AppStorage(MainMenuTabPreferences.logVisibleKey)      private var logTabVisible      = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
     // 時間帯別カスタム活動
@@ -129,6 +131,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showHabitSettings) { habitSettingsSheet }
         .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
+        .sheet(isPresented: $showRaceGoalSettings) { NavigationView { RaceGoalSettingsView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
         .sheet(isPresented: $showSetEditor) {
             SetConfigurationEditorView(configuration: $setConfiguration)
@@ -407,6 +410,18 @@ struct SettingsView: View {
                         .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
+            } else if tab == .goalingo {
+                Button {
+                    showRaceGoalSettings = true
+                } label: {
+                    Text("ゴール設定")
+                        .font(.caption2).fontWeight(.bold)
+                        .foregroundColor(Color.duoGreen)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.duoGreen.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
             } else if tab == .food {
                 Button {
                     showIntakeSettings = true
@@ -431,9 +446,10 @@ struct SettingsView: View {
     private func tabVisible(_ tab: MainMenuTab) -> Bool {
         switch tab {
         case .fit, .goal: return true  // 常に表示
-        case .mind: return mindTabVisible
-        case .food: return foodTabVisible
-        case .tomo: return tomoTabVisible
+        case .mind:     return mindTabVisible
+        case .food:     return foodTabVisible
+        case .tomo:     return tomoTabVisible
+        case .goalingo: return goalingoTabVisible
         }
     }
 
@@ -455,9 +471,10 @@ struct SettingsView: View {
 
         switch tab {
         case .fit, .goal: break
-        case .mind: mindTabVisible = newValue
-        case .food: foodTabVisible = newValue
-        case .tomo: tomoTabVisible = newValue
+        case .mind:     mindTabVisible     = newValue
+        case .food:     foodTabVisible     = newValue
+        case .tomo:     tomoTabVisible     = newValue
+        case .goalingo: goalingoTabVisible = newValue
         }
 
         UserDefaults.standard.set(newValue, forKey: MainMenuTabPreferences.visibleKey(for: tab))
@@ -547,6 +564,35 @@ struct SettingsView: View {
 
                 // 📚 勉強アイコンのリンクURL設定
                 studyBookUrlSection
+
+                // ゴール目標設定ボタン（レース・トライアスロン等）
+                Button { showRaceGoalSettings = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "flag.checkered")
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoOrange)
+                            .frame(width: 32, height: 32)
+                            .background(Color.duoOrange.opacity(0.12))
+                            .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("ゴール目標設定")
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text("大会・レース目標を設定（スイム・バイク・ラン）")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
 
                 // 時間帯別設定ボタン
                 Button { showTimeSlotGoals = true } label: {

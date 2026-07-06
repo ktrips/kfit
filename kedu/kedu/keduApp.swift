@@ -14,8 +14,24 @@ struct keduApp: App {
     @StateObject private var photoLogManager = PhotoLogManager.shared
     @StateObject private var eduLogManager = EduLogManager.shared
 
+    /// "auto" / "light" / "dark"
+    @AppStorage("keduColorScheme") private var colorSchemePref: String = "auto"
+
+    private var preferredColorScheme: ColorScheme? {
+        switch colorSchemePref {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil   // auto = システム設定に従う
+        }
+    }
+
     init() {
         FirebaseApp.configure()
+    }
+
+    // WatchConnectivity セッションをアプリ起動直後に確立（EdulingoView 表示前に送信できるよう）
+    private func activateWatchSession() {
+        WatchEduSender.shared.activate()
     }
 
     var body: some Scene {
@@ -32,8 +48,16 @@ struct keduApp: App {
                         .environmentObject(auth)
                 }
             }
+            .preferredColorScheme(preferredColorScheme)
             .onOpenURL { url in
                 GIDSignIn.sharedInstance.handle(url)
+            }
+            .task {
+                // WatchConnectivity を早期確立（ログイン状態に関わらず）
+                activateWatchSession()
+                // EduLogManager の初期ロードが完了してから送信（1秒後）
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                WatchEduSender.shared.sendCachedItems()
             }
         }
     }

@@ -347,6 +347,8 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
     var isLiked: Bool = false
     var likeCount: Int = 0
     var feedComments: [FeedComment] = []
+    /// HealthKitへ栄養素を保存済みかのフラグ（trueならcachedPhotoLogTotalsから除外して二重計算防止）
+    var savedToHealthKit: Bool = false
 
     // 新フィールド追加後も旧データを正常に読み込めるよう実装
     init(from decoder: Decoder) throws {
@@ -363,6 +365,7 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         isLiked            = try c.decodeIfPresent(Bool.self,               forKey: .isLiked)            ?? false
         likeCount          = try c.decodeIfPresent(Int.self,                forKey: .likeCount)          ?? 0
         feedComments       = try c.decodeIfPresent([FeedComment].self,      forKey: .feedComments)       ?? []
+        savedToHealthKit   = try c.decodeIfPresent(Bool.self,               forKey: .savedToHealthKit)   ?? false
     }
 
     init(foodName: String = "", comment: String = "",
@@ -462,6 +465,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var grammarNote: String?             // 文法解説（コメントに「文法」と入れた場合に LLM 生成）
     var exampleSentences: [ExampleSentence]? // 例文 2 件（コメントに「例文」と入れた場合に LLM 生成）
     var mistakeNote: String?             // 間違えた理由解説（コメントに「ダメな理由」と入れた場合に LLM 生成）
+    var relatedWords: [ExampleSentence]? // 関連単語/文章（コメントに「単語」「文章」と入れた場合に LLM 生成）
 
     // 体重ログ用：記録時点の Apple Health 計測値
     var weightKg: Double?              // 体重（kg）
@@ -469,6 +473,15 @@ struct EduLogHistoryItem: Codable, Identifiable {
 
     // FOOD投稿用：共有フィードでカロリーを表示するための値（食事ログのみ）
     var calories: Int?
+
+    // お気に入りフラグ
+    var isFavorite: Bool = false
+
+    // 読書・リンク共有用フィールド
+    var sharedUrl: String?         // 共有されたURL (Audible/Kindle/図書館など)
+    var sharedTitle: String?       // リンクのタイトル（OG取得 or 共有時の名称）
+    var sharedDescription: String? // OG description / 本の概要など
+    var sharedImageURL: String?    // OG image URL（書影等）
 
     // 新フィールド追加後も古いデータを読み込めるようカスタムデコーダーを実装
     init(from decoder: Decoder) throws {
@@ -493,9 +506,15 @@ struct EduLogHistoryItem: Codable, Identifiable {
         grammarNote           = try c.decodeIfPresent(String.self,              forKey: .grammarNote)
         exampleSentences      = try c.decodeIfPresent([ExampleSentence].self,   forKey: .exampleSentences)
         mistakeNote           = try c.decodeIfPresent(String.self,              forKey: .mistakeNote)
+        relatedWords          = try c.decodeIfPresent([ExampleSentence].self,   forKey: .relatedWords)
         weightKg              = try c.decodeIfPresent(Double.self,              forKey: .weightKg)
         bodyFatPercent        = try c.decodeIfPresent(Double.self,              forKey: .bodyFatPercent)
         calories              = try c.decodeIfPresent(Int.self,                 forKey: .calories)
+        isFavorite            = try c.decodeIfPresent(Bool.self,               forKey: .isFavorite)        ?? false
+        sharedUrl             = try c.decodeIfPresent(String.self,             forKey: .sharedUrl)
+        sharedTitle           = try c.decodeIfPresent(String.self,             forKey: .sharedTitle)
+        sharedDescription     = try c.decodeIfPresent(String.self,             forKey: .sharedDescription)
+        sharedImageURL        = try c.decodeIfPresent(String.self,             forKey: .sharedImageURL)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

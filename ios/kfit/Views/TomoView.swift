@@ -46,6 +46,7 @@ struct FriendProfile: Sendable {
     let totalPoints: Int
     let streak: Int
     let weeklyPoints: Int
+    let photoURL: String
 }
 
 /// 友達の公開投稿（タスクグループ越えのため Sendable な素データ）
@@ -74,6 +75,22 @@ struct FriendPostData: Sendable {
 @MainActor
 final class TomoManager: ObservableObject {
 
+    /// 1カテゴリのポイント（曜日内訳内）
+    struct CategoryPts: Identifiable {
+        let id = UUID()
+        let emoji: String
+        let name: String
+        let points: Int
+        let color: Color
+    }
+    /// 1曜日の内訳
+    struct DayBreakdown: Identifiable {
+        let id: String          // 曜日ラベル (月, 火, ...)
+        let label: String
+        let total: Int
+        var categories: [CategoryPts]
+    }
+
     struct TomoEntry: Identifiable {
         let id: String
         let email: String
@@ -83,6 +100,9 @@ final class TomoManager: ObservableObject {
         var weeklyPoints: Int
         var isMe: Bool = false
         var rank: Int = 0
+        var photoURL: String = ""
+        /// 曜日別ポイント内訳 (月〜日 順、ポイントが0の曜日も含む)
+        var dailyBreakdown: [DayBreakdown] = []
     }
 
     enum AddResult {
@@ -115,6 +135,16 @@ final class TomoManager: ObservableObject {
         Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     }
 
+    /// 今週の月曜日 0:00 を返す（週間ポイント集計の起点）
+    static func thisMonday() -> Date {
+        var cal = Calendar.current
+        cal.firstWeekday = 2  // Monday
+        let today = cal.startOfDay(for: Date())
+        let weekday = cal.component(.weekday, from: today)
+        let daysFromMonday = (weekday + 5) % 7
+        return cal.date(byAdding: .day, value: -daysFromMonday, to: today) ?? today
+    }
+
     /// 2人のuidから決定的な friendship ドキュメントIDを生成
     private func friendshipId(_ a: String, _ b: String) -> String {
         [a, b].sorted().joined(separator: "_")
@@ -133,19 +163,41 @@ final class TomoManager: ObservableObject {
             PhotoLogManager.shared.syncAllPublicPosts()
         }
 
-        var all: [TomoEntry] = []
+        // ── 週間ポイント（曜日内訳込み）と友達ID を同時並列取得 ────────────────
+        async let myWeeklyTask = weeklyPointsWithBreakdown(userId: uid)
+        async let friendIdsTask: [String] = {
+            (try? await withAsyncTimeout(seconds: 8) {
+                let snap = try await Firestore.firestore()
+                    .collection("friendships")
+                    .whereField("members", arrayContains: uid)
+                    .getDocuments()
+                var ids: [String] = []
+                for doc in snap.documents {
+                    let members = doc.data()["members"] as? [String] ?? []
+                    if let other = members.first(where: { $0 != uid }) { ids.append(other) }
+                }
+                return ids
+            }) ?? []
+        }()
 
-        // Self（自分の週間ポイントは completed-exercises から計算できる）
-        let myWeekly = await weeklyPoints(userId: uid)
+        let (myWeeklyResult, friendIds) = await (myWeeklyTask, friendIdsTask)
+        let myWeekly = myWeeklyResult.total
+        let myDailyBreakdown = myWeeklyResult.daily
+
+        // 自分のエントリーを先に追加
+        var all: [TomoEntry] = []
+        let myPhotoURL = Auth.auth().currentUser?.photoURL?.absoluteString
+            ?? UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
         if let me = AuthenticationManager.shared.userProfile {
-            all.append(TomoEntry(id: uid, email: me.email, username: me.username,
-                                 totalPoints: me.totalPoints, streak: me.streak,
-                                 weeklyPoints: myWeekly, isMe: true))
-            // 友達がランキングで参照できるよう、自分の週間ポイントを公開プロフィールへ反映
-            let myPoints = me.totalPoints
-            let myStreak = me.streak
-            try? await withAsyncTimeout(seconds: 12) {
-                try await Firestore.firestore().collection("publicProfiles").document(uid).setData([
+            var myEntry = TomoEntry(id: uid, email: me.email, username: me.username,
+                                   totalPoints: me.totalPoints, streak: me.streak,
+                                   weeklyPoints: myWeekly, isMe: true, photoURL: myPhotoURL)
+            myEntry.dailyBreakdown = myDailyBreakdown
+            all.append(myEntry)
+            // 自分のプロフィールを公開（非同期・ノンブロッキング）
+            let myPoints = me.totalPoints; let myStreak = me.streak
+            Task {
+                try? await Firestore.firestore().collection("publicProfiles").document(uid).setData([
                     "weeklyPoints": myWeekly,
                     "totalPoints": myPoints,
                     "streak": myStreak,
@@ -154,22 +206,14 @@ final class TomoManager: ObservableObject {
             }
         }
 
-        // 友達（friendships の members に自分が含まれるもの）
-        let friendIds: [String] = (try? await withAsyncTimeout(seconds: 12) {
-            let snap = try await Firestore.firestore().collection("friendships")
-                .whereField("members", arrayContains: uid)
-                .getDocuments()
-            var ids: [String] = []
-            for doc in snap.documents {
-                let members = doc.data()["members"] as? [String] ?? []
-                if let other = members.first(where: { $0 != uid }) {
-                    ids.append(other)
-                }
-            }
-            return ids
-        }) ?? []
+        // 自分だけでも先に表示（友達データ待ちの間もランキング欄に自分が見える）
+        if !all.isEmpty {
+            var preliminary = all
+            for i in preliminary.indices { preliminary[i].rank = i + 1 }
+            entries = preliminary
+        }
 
-        // 友達のプロフィールと投稿を並列フェッチ
+        // ── 友達のプロフィールと投稿を全員まとめて並列フェッチ ──────────────
         struct FriendResult: Sendable {
             let profile: FriendProfile?
             let posts: [FriendPostData]
@@ -180,7 +224,7 @@ final class TomoManager: ObservableObject {
             for fid in friendIds {
                 group.addTask {
                     async let profileTask = { () -> FriendProfile? in
-                        try? await withAsyncTimeout(seconds: 12) { () -> FriendProfile? in
+                        try? await withAsyncTimeout(seconds: 8) { () -> FriendProfile? in
                             let pdoc = try await Firestore.firestore()
                                 .collection("publicProfiles").document(fid).getDocument()
                             guard pdoc.exists, let data = pdoc.data() else { return nil }
@@ -189,14 +233,15 @@ final class TomoManager: ObservableObject {
                                 username: data["username"] as? String ?? "TOMO",
                                 totalPoints: data["totalPoints"] as? Int ?? 0,
                                 streak: data["streak"] as? Int ?? 0,
-                                weeklyPoints: data["weeklyPoints"] as? Int ?? 0
+                                weeklyPoints: data["weeklyPoints"] as? Int ?? 0,
+                                photoURL: data["photoURL"] as? String
+                                    ?? data["authorPhotoURL"] as? String ?? ""
                             )
                         }
                     }()
 
                     async let postsTask = { () -> [FriendPostData] in
-                        (try? await withAsyncTimeout(seconds: 12) {
-                            // 直近1週間の投稿のみ取得（古い投稿は「過去の投稿を見る」ボタンで遅延ロード）
+                        (try? await withAsyncTimeout(seconds: 8) {
                             let snap = try await Firestore.firestore()
                                 .collection("publicProfiles").document(fid)
                                 .collection("posts")
@@ -204,36 +249,7 @@ final class TomoManager: ObservableObject {
                                 .order(by: "timestamp", descending: true)
                                 .limit(to: 15)
                                 .getDocuments()
-                            return snap.documents.map { doc -> FriendPostData in
-                                let data = doc.data()
-                                return FriendPostData(
-                                    id: "friend_\(fid)_\(doc.documentID)",
-                                    timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
-                                    activityName: data["activityName"] as? String ?? "",
-                                    activityEmoji: data["activityEmoji"] as? String ?? "",
-                                    comment: data["comment"] as? String ?? "",
-                                    authorName: data["authorName"] as? String ?? "TOMO",
-                                    authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
-                                    likeCount: data["likeCount"] as? Int ?? 0,
-                                    thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
-                                    weightKg: data["weightKg"] as? Double,
-                                    bodyFatPercent: data["bodyFatPercent"] as? Double,
-                                    extractedPhrase: data["extractedPhrase"] as? String,
-                                    extractedLanguageCode: data["extractedLanguageCode"] as? String,
-                                    translationJA: data["translationJA"] as? String,
-                                    pronunciation: data["pronunciation"] as? String,
-                                    calories: data["calories"] as? Int,
-                                    grammarNote: data["grammarNote"] as? String,
-                                    mistakeNote: data["mistakeNote"] as? String,
-                                    exampleSentences: {
-                                        guard let raw = data["exampleSentences"] as? [[String: Any]],
-                                              let d = try? JSONSerialization.data(withJSONObject: raw),
-                                              let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
-                                        else { return nil }
-                                        return decoded
-                                    }()
-                                )
-                            }
+                            return snap.documents.map { TomoManager.makeFriendPostData(fid: fid, doc: $0) }
                         }) ?? []
                     }()
 
@@ -256,10 +272,25 @@ final class TomoManager: ObservableObject {
                     username: p.username,
                     totalPoints: p.totalPoints,
                     streak: p.streak,
-                    weeklyPoints: p.weeklyPoints
+                    weeklyPoints: p.weeklyPoints,
+                    photoURL: p.photoURL
                 ))
             }
             for p in result.posts { feedItems.append(makeFriendItem(from: p)) }
+        }
+
+        // 友達の写真投稿ポイント（投稿 × 10）を weeklyPoints に加算
+        // ※ 自分のポイントは weeklyPointsWithBreakdown() で既に算入済みのためスキップ
+        let monday = Self.thisMonday()
+        var postCountMap: [String: Int] = [:]
+        for item in feedItems where item.timestamp >= monday {
+            postCountMap[item.authorName, default: 0] += 1
+        }
+
+        for i in all.indices {
+            guard !all[i].isMe else { continue }   // 自分は二重計算を防ぐためスキップ
+            let name = all[i].username
+            all[i].weeklyPoints += (postCountMap[name] ?? 0) * 10
         }
 
         all.sort { $0.weeklyPoints > $1.weeklyPoints }
@@ -310,36 +341,7 @@ final class TomoManager: ObservableObject {
                             .order(by: "timestamp", descending: true)
                             .limit(to: 30)
                             .getDocuments()
-                        return snap.documents.map { doc -> FriendPostData in
-                            let data = doc.data()
-                            return FriendPostData(
-                                id: "friend_\(fid)_\(doc.documentID)",
-                                timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
-                                activityName: data["activityName"] as? String ?? "",
-                                activityEmoji: data["activityEmoji"] as? String ?? "",
-                                comment: data["comment"] as? String ?? "",
-                                authorName: data["authorName"] as? String ?? "TOMO",
-                                authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
-                                likeCount: data["likeCount"] as? Int ?? 0,
-                                thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
-                                weightKg: data["weightKg"] as? Double,
-                                bodyFatPercent: data["bodyFatPercent"] as? Double,
-                                extractedPhrase: data["extractedPhrase"] as? String,
-                                extractedLanguageCode: data["extractedLanguageCode"] as? String,
-                                translationJA: data["translationJA"] as? String,
-                                pronunciation: data["pronunciation"] as? String,
-                                calories: data["calories"] as? Int,
-                                grammarNote: data["grammarNote"] as? String,
-                                mistakeNote: data["mistakeNote"] as? String,
-                                exampleSentences: {
-                                    guard let raw = data["exampleSentences"] as? [[String: Any]],
-                                          let d = try? JSONSerialization.data(withJSONObject: raw),
-                                          let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
-                                    else { return nil }
-                                    return decoded
-                                }()
-                            )
-                        }
+                        return snap.documents.map { TomoManager.makeFriendPostData(fid: fid, doc: $0) }
                     }) ?? []
                     return OlderPostResult(posts: posts)
                 }
@@ -359,6 +361,38 @@ final class TomoManager: ObservableObject {
         if !newItems.isEmpty {
             friendFeedItems.append(contentsOf: newItems)
         }
+    }
+
+    /// Firestore ドキュメントから FriendPostData を生成する共通ヘルパー
+    private nonisolated static func makeFriendPostData(fid: String, doc: QueryDocumentSnapshot) -> FriendPostData {
+        let data = doc.data()
+        return FriendPostData(
+            id: "friend_\(fid)_\(doc.documentID)",
+            timestamp: (data["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
+            activityName: data["activityName"] as? String ?? "",
+            activityEmoji: data["activityEmoji"] as? String ?? "",
+            comment: data["comment"] as? String ?? "",
+            authorName: data["authorName"] as? String ?? "TOMO",
+            authorPhotoURL: data["authorPhotoURL"] as? String ?? "",
+            likeCount: data["likeCount"] as? Int ?? 0,
+            thumbnailData: (data["thumbnail"] as? String).flatMap { Data(base64Encoded: $0) },
+            weightKg: data["weightKg"] as? Double,
+            bodyFatPercent: data["bodyFatPercent"] as? Double,
+            extractedPhrase: data["extractedPhrase"] as? String,
+            extractedLanguageCode: data["extractedLanguageCode"] as? String,
+            translationJA: data["translationJA"] as? String,
+            pronunciation: data["pronunciation"] as? String,
+            calories: data["calories"] as? Int,
+            grammarNote: data["grammarNote"] as? String,
+            mistakeNote: data["mistakeNote"] as? String,
+            exampleSentences: {
+                guard let raw = data["exampleSentences"] as? [[String: Any]],
+                      let d = try? JSONSerialization.data(withJSONObject: raw),
+                      let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
+                else { return nil }
+                return decoded
+            }()
+        )
     }
 
     /// Sendable な素データからフィード用 EduLogHistoryItem を構築
@@ -390,32 +424,51 @@ final class TomoManager: ObservableObject {
 
     func addTomo(email rawEmail: String) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        let email = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard email.contains("@") else {
-            addResult = .error("有効なメールアドレスを入力してください")
+        let query = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isEmail = query.contains("@")
+        let lowerQuery = query.lowercased()
+
+        guard !query.isEmpty else {
+            addResult = .error("メールアドレスまたはユーザー名を入力してください")
             return
         }
-        if entries.contains(where: { !$0.isMe && $0.email.lowercased() == email }) {
+
+        if isEmail, entries.contains(where: { !$0.isMe && $0.email.lowercased() == lowerQuery }) {
             addResult = .alreadyAdded; return
         }
 
         addResult = .searching
 
-        // 公開プロフィールを emailLower（小文字正規化）で検索（タイムアウト付き）
+        // メールアドレスなら emailLower で検索、そうでなければ username で検索
         let found: TomoSearchResult?
         do {
             found = try await withAsyncTimeout(seconds: 12) {
-                let snap = try await Firestore.firestore()
-                    .collection("publicProfiles")
-                    .whereField("emailLower", isEqualTo: email)
-                    .limit(to: 1)
-                    .getDocuments()
+                let db = Firestore.firestore()
+                let snap: QuerySnapshot
+                if isEmail {
+                    snap = try await db.collection("publicProfiles")
+                        .whereField("emailLower", isEqualTo: lowerQuery)
+                        .limit(to: 1)
+                        .getDocuments()
+                } else {
+                    // username は大文字小文字を区別するので、まず完全一致、次に元の文字列を試みる
+                    let snapExact = try await db.collection("publicProfiles")
+                        .whereField("username", isEqualTo: query)
+                        .limit(to: 1)
+                        .getDocuments()
+                    snap = snapExact.documents.isEmpty
+                        ? try await db.collection("publicProfiles")
+                            .whereField("username", isEqualTo: lowerQuery)
+                            .limit(to: 1)
+                            .getDocuments()
+                        : snapExact
+                }
                 guard let doc = snap.documents.first else { return nil }
                 let d = doc.data()
                 return TomoSearchResult(
                     id: doc.documentID,
-                    username: d["username"] as? String ?? email,
-                    email: d["email"] as? String ?? email,
+                    username: d["username"] as? String ?? query,
+                    email: d["email"] as? String ?? query,
                     totalPoints: d["totalPoints"] as? Int ?? 0,
                     streak: d["streak"] as? Int ?? 0,
                     weeklyPoints: d["weeklyPoints"] as? Int ?? 0,
@@ -431,7 +484,7 @@ final class TomoManager: ObservableObject {
         }
 
         guard let tomo = found else {
-            addResult = .notFound(email); return
+            addResult = .notFound(query); return
         }
         guard tomo.id != uid else { addResult = .selfAdd; return }
 
@@ -464,22 +517,77 @@ final class TomoManager: ObservableObject {
         friendFeedItems.removeAll { $0.id.hasPrefix("friend_\(id)_") }
     }
 
-    private func weeklyPoints(userId: String) async -> Int {
-        let calendar = Calendar.current
+    /// 今週の合計ポイントとカテゴリ別・曜日別内訳を返す
+    private func weeklyPointsWithBreakdown(userId: String) async -> (total: Int, daily: [DayBreakdown]) {
+        var cal = Calendar.current
+        cal.firstWeekday = 2  // 月曜始まり
         let today = Date()
-        let weekday = calendar.component(.weekday, from: today)  // 1=Sun, 2=Mon...
+        let weekday = cal.component(.weekday, from: today)
         let daysSinceMonday = weekday == 1 ? 6 : weekday - 2
-        guard let monday = calendar.date(byAdding: .day, value: -daysSinceMonday,
-                                         to: calendar.startOfDay(for: today)) else { return 0 }
-        let points: [Int] = (try? await withAsyncTimeout(seconds: 12) {
-            let snap = try await Firestore.firestore()
+        guard let monday = cal.date(byAdding: .day, value: -daysSinceMonday,
+                                    to: cal.startOfDay(for: today)) else { return (0, []) }
+
+        let docs = (try? await withAsyncTimeout(seconds: 12) {
+            try await Firestore.firestore()
                 .collection("users").document(userId)
                 .collection("completed-exercises")
                 .whereField("timestamp", isGreaterThanOrEqualTo: Timestamp(date: monday))
                 .getDocuments()
-            return snap.documents.compactMap { $0.data()["points"] as? Int }
-        }) ?? []
-        return points.reduce(0, +)
+        })?.documents ?? []
+
+        let dayLabels = ["月", "火", "水", "木", "金", "土", "日"]
+
+        // カテゴリ別・曜日別ポイント
+        var trainingPts = [Int](repeating: 0, count: 7)
+
+        for doc in docs {
+            let data = doc.data()
+            let pts = data["points"] as? Int ?? 0
+            guard pts > 0 else { continue }
+            if let ts = (data["timestamp"] as? Timestamp)?.dateValue() {
+                let wd = cal.component(.weekday, from: ts)
+                let idx = wd == 1 ? 6 : wd - 2  // 月=0, …, 日=6
+                if idx >= 0 && idx < 7 { trainingPts[idx] += pts }
+            }
+        }
+
+        // EDU 投稿（EduLogManager ローカル履歴）: 1件 = 10pt
+        var eduPts = [Int](repeating: 0, count: 7)
+        for item in EduLogManager.shared.history where item.timestamp >= monday {
+            let wd = cal.component(.weekday, from: item.timestamp)
+            let idx = wd == 1 ? 6 : wd - 2
+            if idx >= 0 && idx < 7 { eduPts[idx] += 10 }
+        }
+
+        // 食事投稿（PhotoLogManager ローカル履歴）: 1件 = 10pt
+        var foodPts = [Int](repeating: 0, count: 7)
+        for item in PhotoLogManager.shared.history where item.timestamp >= monday {
+            let wd = cal.component(.weekday, from: item.timestamp)
+            let idx = wd == 1 ? 6 : wd - 2
+            if idx >= 0 && idx < 7 { foodPts[idx] += 10 }
+        }
+
+        let daily: [DayBreakdown] = dayLabels.enumerated().map { (i, label) in
+            var cats: [CategoryPts] = []
+            if trainingPts[i] > 0 {
+                cats.append(CategoryPts(emoji: "💪", name: "トレーニング", points: trainingPts[i], color: Color.duoBlue))
+            }
+            if eduPts[i] > 0 {
+                cats.append(CategoryPts(emoji: "📚", name: "EDU", points: eduPts[i], color: Color(hex: "#F5A623")))
+            }
+            if foodPts[i] > 0 {
+                cats.append(CategoryPts(emoji: "🍽️", name: "食事", points: foodPts[i], color: Color(hex: "#6C5CE7")))
+            }
+            let total = trainingPts[i] + eduPts[i] + foodPts[i]
+            return DayBreakdown(id: label, label: label, total: total, categories: cats)
+        }
+        let grandTotal = daily.map(\.total).reduce(0, +)
+        return (grandTotal, daily)
+    }
+
+    // 後方互換：合計のみ返す（内部で新関数を呼ぶ）
+    private func weeklyPoints(userId: String) async -> Int {
+        await weeklyPointsWithBreakdown(userId: userId).total
     }
 }
 
@@ -505,6 +613,14 @@ struct TomoQuickRecord: Identifiable {
     let isFood: Bool   // true → フォトログ(PhotoLogView)、false → EduPhotoLogSheet
 }
 
+// items と startIndex をひとまとめに渡すことで、sheet(isPresented:) の
+// 状態キャプチャ競合を防ぎ、初回から正しくコンテンツが表示されるようにする
+struct SwipeDetailRequest: Identifiable {
+    let id = UUID()
+    let items: [EduLogHistoryItem]
+    let startIndex: Int
+}
+
 struct TomoView: View {
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
@@ -518,9 +634,7 @@ struct TomoView: View {
     @EnvironmentObject private var photoLogManager: PhotoLogManager
     @State private var selectedEduItem: EduLogHistoryItem? = nil
     @State private var selectedFoodItem: PhotoLogHistoryItem? = nil   // FOOD投稿の詳細
-    @State private var swipeDetailItems: [EduLogHistoryItem] = []     // スワイプ詳細グループ
-    @State private var swipeDetailStart: Int = 0
-    @State private var showSwipeDetail = false
+    @State private var swipeDetailRequest: SwipeDetailRequest? = nil  // スワイプ詳細（item:で渡し空白バグ回避）
     @State private var commentTargetItem: EduLogHistoryItem? = nil
     @State private var shareTargetItem: EduLogHistoryItem? = nil
     @State private var categoryGroupTarget: TomoView.FeedCategoryGroup? = nil
@@ -529,9 +643,14 @@ struct TomoView: View {
     @State private var deleteConfirmItem: EduLogHistoryItem? = nil
     @State private var speakingItemID: String? = nil       // TTS 再生中のアイテム ID
     @State private var speakingExampleKey: String? = nil   // 例文 TTS 再生中のキー（"itemID-index"）
+    @State private var expandedRankId: String? = nil       // ポイント内訳エクスパンド中のエントリー ID
+    @ObservedObject private var ttsEngine = DuolingoTextExtractor.shared
+    @ObservedObject private var linkFetcher = LinkMetadataFetcher.shared
     @State private var showFoodLog = false             // FOOD → フォトログ
     @State private var eduRecordTarget: TomoQuickRecord? = nil  // 写真記録シート対象
     @State private var selectedCategory: String? = nil  // カテゴリー絞り込み（nil=すべて）
+    @State private var showFavoritesOnly: Bool = false  // お気に入りフィルター
+    @State private var selectedDuolingoLanguage: String? = nil  // Duolingo言語フィルター
     @FocusState private var emailFocused: Bool
 
     // フィード集計のキャッシュ（body 毎の merge+sort+grouping 再計算を回避）
@@ -565,9 +684,6 @@ struct TomoView: View {
                 Color(UIColor.systemGroupedBackground).ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        quickRecordBar
-                            .padding(.horizontal, 14)
-                            .padding(.top, 10)
                         rankingSection
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
@@ -584,7 +700,14 @@ struct TomoView: View {
             .safeAreaInset(edge: .top, spacing: 0) { tomoHeader }
         }
         .task { await manager.load() }   // isLoaded で重複ロードを自動防止
-        .onAppear { rebuildFeedCache() }
+        .onAppear {
+            rebuildFeedCache()
+            // 共有直後に TomoView が生成された場合、OCR 等の非同期処理が
+            // 少し遅れて history を更新する可能性があるため 0.5 秒後にも再構築
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                rebuildFeedCache()
+            }
+        }
         .onReceive(eduLogManager.$history) { _ in scheduleFeedRebuild() }
         .onReceive(photoLogManager.$history) { _ in scheduleFeedRebuild() }
         .onReceive(manager.$friendFeedItems) { _ in scheduleFeedRebuild() }
@@ -592,7 +715,16 @@ struct TomoView: View {
             // 古い投稿のロード完了時にフィードを再ビルド
             if !loading { scheduleFeedRebuild() }
         }
-        .onChange(of: selectedCategory) { _, _ in rebuildFeedCache() }
+        .onReceive(NotificationCenter.default.publisher(for: .duolingoShareProcessed)) { _ in
+            // Duolingo 共有処理完了 → フィードを即時再構築（historyへのinsertは通知より前に完了済み）
+            rebuildFeedCache()
+        }
+        .onChange(of: selectedCategory) { _, newVal in
+            if newVal != "Duolingo" { selectedDuolingoLanguage = nil }
+            rebuildFeedCache()
+        }
+        .onChange(of: showFavoritesOnly) { _, _ in rebuildFeedCache() }
+        .onChange(of: selectedDuolingoLanguage) { _, _ in rebuildFeedCache() }
         .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(items: [shareText])
@@ -603,10 +735,10 @@ struct TomoView: View {
         .sheet(item: $selectedFoodItem) { item in
             PhotoFeedDetailSheet(item: item)
         }
-        .sheet(isPresented: $showSwipeDetail) {
+        .sheet(item: $swipeDetailRequest) { req in
             SwipeableTomoDetailSheet(
-                items: swipeDetailItems,
-                startIndex: swipeDetailStart,
+                items: req.items,
+                startIndex: req.startIndex,
                 photoLogManager: photoLogManager,
                 onComment: { commentTargetItem = $0 },
                 onLike: { toggleLikeFeed($0) },
@@ -786,9 +918,7 @@ struct TomoView: View {
 
     /// 投稿タップ時のルーティング：全種別を SwipeableTomoDetailSheet で統一表示
     private func openDetail(_ item: EduLogHistoryItem) {
-        swipeDetailItems = [item]
-        swipeDetailStart = 0
-        showSwipeDetail = true
+        swipeDetailRequest = SwipeDetailRequest(items: [item], startIndex: 0)
     }
 
     /// 同一グループ（同日×同カテゴリ）の複数アイテムをスワイプ詳細で開く
@@ -798,9 +928,7 @@ struct TomoView: View {
             return
         }
         let idx = siblings.firstIndex(where: { $0.id == item.id }) ?? 0
-        swipeDetailItems = siblings
-        swipeDetailStart = idx
-        showSwipeDetail = true
+        swipeDetailRequest = SwipeDetailRequest(items: siblings, startIndex: idx)
     }
 
     /// いいね：food_ プレフィックスで PhotoLogManager か EduLogManager に振り分け
@@ -959,6 +1087,12 @@ struct TomoView: View {
         if let cat = selectedCategory {
             items = items.filter { categoryKey(for: $0) == cat }
         }
+        if showFavoritesOnly {
+            items = items.filter { $0.isFavorite }
+        }
+        if let lang = selectedDuolingoLanguage {
+            items = items.filter { $0.extractedLanguageCode == lang }
+        }
 
         // 日付グループ化 → ユーザー×カテゴリーグループ化
         let cal = Calendar.current
@@ -1000,7 +1134,9 @@ struct TomoView: View {
         if showOlderFeed {
             cachedHasOlderFeed = false
         } else {
-            let base = selectedCategory.map { cat in all.filter { categoryKey(for: $0) == cat } } ?? all
+            var base = selectedCategory.map { cat in all.filter { categoryKey(for: $0) == cat } } ?? all
+            if showFavoritesOnly { base = base.filter { $0.isFavorite } }
+            if let lang = selectedDuolingoLanguage { base = base.filter { $0.extractedLanguageCode == lang } }
             let hasLocalOlder = base.count > base.filter { $0.timestamp >= oneWeekAgo }.count
             cachedHasOlderFeed = hasLocalOlder || manager.hasOlderPosts
         }
@@ -1011,69 +1147,122 @@ struct TomoView: View {
     @ViewBuilder
     private var categoryFilterBar: some View {
         if !cachedFeedCategories.isEmpty {
-            VStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                        .font(.system(size: 12 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoBlue)
-                    Text("カテゴリーで絞り込み")
-                        .font(.system(size: 13 * UIScale.font, weight: .black))
-                        .foregroundColor(Color.duoDark)
-                    Spacer()
-                    if selectedCategory != nil {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                Text("リセット")
-                                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                            }
-                            .foregroundColor(Color.duoSubtitle)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
+            VStack(spacing: 4) {
+                // カテゴリーチップ行（リセットXボタンを先頭に）
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        categoryChip(label: "すべて", emoji: "🗂", isSelected: selectedCategory == nil) {
-                            withAnimation(.easeInOut(duration: 0.2)) { selectedCategory = nil }
+                    HStack(spacing: 5) {
+                        // 絞り込み中のみXボタンを先頭表示
+                        if selectedCategory != nil || showFavoritesOnly {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selectedCategory = nil
+                                    selectedDuolingoLanguage = nil
+                                    showFavoritesOnly = false
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 18 * UIScale.font))
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        categoryChip(label: "すべて", emoji: "🗂", isSelected: selectedCategory == nil && !showFavoritesOnly) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedCategory = nil
+                                selectedDuolingoLanguage = nil
+                                showFavoritesOnly = false
+                            }
                         }
                         ForEach(cachedFeedCategories) { cat in
                             categoryChip(label: cat.key, emoji: cat.emoji,
-                                         isSelected: selectedCategory == cat.key) {
+                                         isSelected: selectedCategory == cat.key && !showFavoritesOnly) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
+                                    if showFavoritesOnly { showFavoritesOnly = false }
                                     selectedCategory = (selectedCategory == cat.key) ? nil : cat.key
+                                }
+                            }
+                        }
+                        // お気に入りチップ（常に一番右）
+                        categoryChip(label: "お気に入り", emoji: "⭐️", isSelected: showFavoritesOnly) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showFavoritesOnly.toggle()
+                                if showFavoritesOnly {
+                                    selectedCategory = nil
+                                    selectedDuolingoLanguage = nil
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+
+                // Duolingo 選択時: 言語フィルターチップ行
+                if selectedCategory == "Duolingo" {
+                    let duoItems = allFeedItems.filter { categoryKey(for: $0) == "Duolingo" }
+                    let langCodes: [String] = {
+                        var seen = Set<String>()
+                        return duoItems.compactMap { $0.extractedLanguageCode }
+                            .filter { seen.insert($0).inserted }
+                    }()
+                    if !langCodes.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 5) {
+                                Text("言語")
+                                    .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .padding(.leading, 12)
+                                ForEach(langCodes, id: \.self) { code in
+                                    let name = DuolingoTextExtractor.shared.languageDisplayNamePublic(code)
+                                    categoryChip(label: name, emoji: languageFlag(code),
+                                                 isSelected: selectedDuolingoLanguage == code) {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            selectedDuolingoLanguage = (selectedDuolingoLanguage == code) ? nil : code
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            .padding(14)
+            .padding(.vertical, 8)
             .background(Color(.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 6)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            .padding(.bottom, 4)
+        }
+    }
+
+    /// 言語コードから国旗絵文字を返す
+    private func languageFlag(_ code: String) -> String {
+        switch code {
+        case "en":                          return "🇺🇸"
+        case "zh", "zh-Hans", "cmn-Hans":  return "🇨🇳"
+        case "zh-Hant":                     return "🇹🇼"
+        case "ko":                          return "🇰🇷"
+        case "fr":                          return "🇫🇷"
+        case "es":                          return "🇪🇸"
+        case "de":                          return "🇩🇪"
+        case "pt":                          return "🇧🇷"
+        case "it":                          return "🇮🇹"
+        case "ru":                          return "🇷🇺"
+        case "ar":                          return "🇸🇦"
+        default:                            return "🌐"
         }
     }
 
     private func categoryChip(label: String, emoji: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Text(emoji).font(.system(size: 14 * UIScale.font))
+                Text(emoji).font(.system(size: 12 * UIScale.font))
                 Text(label)
-                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
                     .lineLimit(1)
             }
             .foregroundColor(isSelected ? .white : Color.duoDark)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
             .background(isSelected ? Color.duoBlue : Color(.systemGray6))
-            .cornerRadius(20)
+            .cornerRadius(14)
         }
         .buttonStyle(.plain)
     }
@@ -1196,35 +1385,34 @@ struct TomoView: View {
     private func instaPostCard(_ item: EduLogHistoryItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // ── ポストヘッダー ────────────────────────────────────────────
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(
                             colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 26, height: 26)
                     Circle()
                         .fill(Color(.systemBackground))
-                        .frame(width: 28, height: 28)
+                        .frame(width: 22, height: 22)
                     UserAvatarView(
                         name: item.authorFirstName,
                         photoURL: item.authorPhotoURL.isEmpty
                             ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
                             : item.authorPhotoURL,
-                        size: 25
+                        size: 19
                     )
                 }
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     let displayName = isOwnPost(item) ? "YOU" : item.authorFirstName
                     let isYou = isOwnPost(item)
-                    // 説明は写真上に表示するため、ヘッダーには名前のみ
                     Text(displayName)
-                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .font(.system(size: 10 * UIScale.font, weight: .black))
                         .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                     Text(relativeTimeString(item.timestamp))
-                        .font(.system(size: 9 * UIScale.font))
+                        .font(.system(size: 8 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -1239,15 +1427,15 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Text(categoryEmoji(for: item))
-                            .font(.system(size: 11 * UIScale.font))
+                            .font(.system(size: 10 * UIScale.font))
                         Text(categoryKey(for: item))
-                            .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
                             .foregroundColor(selectedCategory == categoryKey(for: item) ? .white : Color.duoSubtitle)
                             .lineLimit(1)
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(selectedCategory == categoryKey(for: item) ? Color.duoBlue : Color(.systemGray6))
-                    .cornerRadius(10)
+                    .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
 
@@ -1267,19 +1455,28 @@ struct TomoView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 16 * UIScale.font, weight: .semibold))
+                        .font(.system(size: 14 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
-                        .padding(.leading, 4)
+                        .padding(.leading, 2)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
 
-            // ── Instagram風 正方形写真 or グラデーション＋絵文字 ──────────────
+            // ── リンクのみ（サムネなし）→ テキストカード / それ以外 → Instagram風写真 ──
+            let isLinkOnly = item.sharedUrl != nil && item.thumbnail == nil &&
+                             !item.id.hasPrefix("food_") &&
+                             item.weightKg == nil
+            if isLinkOnly, let rUrlStr = item.sharedUrl, let rUrl = URL(string: rUrlStr) {
+                readingLinkTextCard(item: item, urlStr: rUrlStr, url: rUrl)
+            } else {
             Button { openDetail(item) } label: {
                 let isFood = item.id.hasPrefix("food_")
                 let foodItem = isFood ? originalFoodItem(for: item) : nil
                 let mealInfo = mealTimeInfo(for: item.timestamp)
+                let hasThumb = (foodItem?.thumbnail ?? item.thumbnail) != nil
+                // 写真なし + URLあり → リンクプレビューを正方形エリアに表示
+                let showLinkMain = !hasThumb && item.sharedUrl != nil
                 Group {
                     if let thumb = foodItem?.thumbnail ?? item.thumbnail {
                         // メイン被写体を中心に据えた正方形クロップ（中央寄せ・フィル）
@@ -1292,6 +1489,41 @@ struct TomoView: View {
                             )
                             .clipped()
                             .contentShape(Rectangle())
+                    } else if showLinkMain, let urlStr = item.sharedUrl {
+                        // リンク投稿: 縦横コンパクト（高さ = 幅の52%）＋ フォールバックアイコン
+                        let fetched = linkFetcher.meta(for: urlStr)
+                        let host = URL(string: urlStr)?.host ?? ""
+                        GeometryReader { geo in
+                            Group {
+                                if let img = fetched?.thumbnailImage {
+                                    Image(uiImage: img)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: geo.size.width, height: geo.size.height)
+                                        .clipped()
+                                } else if fetched == nil || fetched?.isLoading == true {
+                                    ZStack {
+                                        Color(.secondarySystemBackground)
+                                        ProgressView()
+                                            .tint(Color.duoSubtitle)
+                                    }
+                                } else {
+                                    // 取得済みだが画像なし → サービスアイコン
+                                    ZStack {
+                                        Color(.secondarySystemBackground)
+                                        VStack(spacing: 8) {
+                                            Text(feedServiceEmoji(from: host))
+                                                .font(.system(size: 44 * UIScale.font))
+                                            Text(feedServiceName(from: host))
+                                                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                                                .foregroundColor(Color.duoSubtitle)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .aspectRatio(1.0 / 0.52, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
                     } else {
                         ZStack {
                             instaGradient(for: item)
@@ -1316,20 +1548,52 @@ struct TomoView: View {
                     } else if (item.activityEmoji == "🦉"
                                || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
                               let langCode = item.extractedLanguageCode, !langCode.isEmpty {
-                        HStack(spacing: 3) {
+                        // 言語バッジ + 再生ボタン
+                        let isSpeakingThis = speakingItemID == item.id
+                        HStack(spacing: 4) {
                             Text(languageFlag(langCode))
                                 .font(.system(size: 12 * UIScale.font))
                             Text(languageLabel(langCode))
                                 .font(.system(size: 9 * UIScale.font, weight: .bold))
                                 .foregroundColor(.white)
+                            // 再生ボタン
+                            Button {
+                                if isSpeakingThis {
+                                    ttsEngine.stopSequence()
+                                    speakingItemID = nil
+                                } else {
+                                    // 再生するフレーズリストを構築（メイン + 例文 + 関連表現）
+                                    var phrases: [(phrase: String, langCode: String)] = []
+                                    if let p = item.extractedPhrase, !p.isEmpty {
+                                        phrases.append((p, langCode))
+                                    }
+                                    if let examples = item.exampleSentences {
+                                        phrases += examples.map { ($0.text, langCode) }
+                                    }
+                                    if let related = item.relatedWords {
+                                        phrases += related.map { ($0.text, langCode) }
+                                    }
+                                    guard !phrases.isEmpty else { return }
+                                    speakingItemID = item.id
+                                    speakingExampleKey = nil
+                                    ttsEngine.speakSequence(phrases) {
+                                        DispatchQueue.main.async { speakingItemID = nil }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isSpeakingThis ? "stop.fill" : "play.fill")
+                                    .font(.system(size: 8 * UIScale.font, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color.black.opacity(0.58))
+                        .background(tomoLangColor(langCode))
                         .clipShape(Capsule())
                         .padding(8)
                     }
                 }
-                // 右上: Weight 投稿のみ Day◯ バッジ
+                // 右上: Weight → Day◯ バッジ / リンクあり → リンクボタン
                 .overlay(alignment: .topTrailing) {
                     if item.weightKg != nil {
                         Text(dayLabel(for: item.timestamp))
@@ -1339,6 +1603,20 @@ struct TomoView: View {
                             .background(Color.black.opacity(0.52))
                             .clipShape(Capsule())
                             .padding(8)
+                    } else if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+                        // リンクあり投稿: リンクを一覧から直接開けるボタン
+                        Button {
+                            UIApplication.shared.open(url)
+                        } label: {
+                            Image(systemName: "arrow.up.right.square.fill")
+                                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(Color.black.opacity(0.48))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
                     }
                 }
                 // 下部: FOOD → 栄養情報、非FOOD → コメント（あれば）
@@ -1399,9 +1677,24 @@ struct TomoView: View {
                 duolingoPhrasePanel(item: item, phrase: phrase)
             }
 
+            // ── リンクカード（写真あり→thumb付き、写真なし→thumb非表示）──
+            if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+                let hasPhoto = item.thumbnail != nil
+                feedLinkCard(url: url, title: item.sharedTitle, urlStr: urlStr,
+                             description: item.sharedDescription,
+                             showThumb: hasPhoto)
+                    .padding(.horizontal, 12).padding(.bottom, 8)
+            }
+            } // end else (非読書リンクのみ投稿)
+
             Spacer().frame(height: 8)
         }
         .background(Color(.systemBackground))
+        .task(id: item.sharedUrl) {
+            if let urlStr = item.sharedUrl {
+                linkFetcher.prefetch(urlString: urlStr)
+            }
+        }
     }
 
     // MARK: - カルーセルカード（同一ユーザー×同一カテゴリー複数投稿）
@@ -1410,33 +1703,33 @@ struct TomoView: View {
         VStack(alignment: .leading, spacing: 0) {
 
             // ── ヘッダー（ユーザー + カテゴリー + 件数） ───────────────────
-            HStack(spacing: 10) {
+            HStack(spacing: 7) {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(
                             colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 32, height: 32)
                     Circle()
                         .fill(Color(.systemBackground))
-                        .frame(width: 37, height: 37)
+                        .frame(width: 28, height: 28)
                     UserAvatarView(
                         name: pg.authorFirstName,
                         photoURL: pg.authorPhotoURL.isEmpty
                             ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
                             : pg.authorPhotoURL,
-                        size: 33
+                        size: 25
                     )
                 }
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     let isYou = isOwnPost(pg.latestItem)
                     Text(isYou ? "YOU" : pg.authorFirstName)
-                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
                         .foregroundColor(isYou ? Color.duoGreen : Color.duoDark)
                     Text(relativeTimeString(pg.latestItem.timestamp))
-                        .font(.system(size: 11 * UIScale.font))
+                        .font(.system(size: 9 * UIScale.font))
                         .foregroundColor(Color.duoSubtitle)
                 }
 
@@ -1451,17 +1744,17 @@ struct TomoView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Text(pg.categoryEmoji)
-                            .font(.system(size: 12 * UIScale.font))
+                            .font(.system(size: 10 * UIScale.font))
                         Text(pg.categoryKey)
-                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .font(.system(size: 9 * UIScale.font, weight: .semibold))
                             .foregroundColor(selectedCategory == pg.categoryKey ? .white : Color.duoSubtitle)
                         Text("×\(pg.items.count)")
-                            .font(.system(size: 10 * UIScale.font, weight: .black))
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
                             .foregroundColor(selectedCategory == pg.categoryKey ? .white.opacity(0.85) : Color.duoBlue)
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(selectedCategory == pg.categoryKey ? Color.duoBlue : Color(.systemGray6))
-                    .cornerRadius(10)
+                    .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
 
@@ -1477,13 +1770,13 @@ struct TomoView: View {
                     } label: { Label("シェア", systemImage: "square.and.arrow.up") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 16 * UIScale.font, weight: .semibold))
+                        .font(.system(size: 14 * UIScale.font, weight: .semibold))
                         .foregroundColor(Color.duoSubtitle)
-                        .padding(.leading, 4)
+                        .padding(.leading, 2)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
 
             // ── 横スクロールカルーセル ────────────────────────────────────
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1508,13 +1801,47 @@ struct TomoView: View {
         let foodItem = isFood ? originalFoodItem(for: item) : nil
         let mealInfo = mealTimeInfo(for: item.timestamp)
 
-        return Button { openDetailInGroup(item, siblings: siblings.isEmpty ? [item] : siblings) } label: {
+        // リンク投稿は高さを縮小（写真・通常投稿は正方形のまま）
+        let isLinkSlide = item.sharedUrl != nil && (foodItem?.thumbnail ?? item.thumbnail) == nil
+        let slideHeight: CGFloat = isLinkSlide ? slideWidth * 0.52 : slideWidth
+
+        return VStack(spacing: 0) {
+        Button { openDetailInGroup(item, siblings: siblings.isEmpty ? [item] : siblings) } label: {
             ZStack {
                 Group {
                     if let thumb = foodItem?.thumbnail ?? item.thumbnail {
                         Image(uiImage: thumb)
                             .resizable()
                             .scaledToFill()
+                    } else if let urlStr = item.sharedUrl {
+                        let fetched = linkFetcher.meta(for: urlStr)
+                        if let ogImg = fetched?.thumbnailImage {
+                            // OGイメージ表示
+                            Image(uiImage: ogImg)
+                                .resizable()
+                                .scaledToFill()
+                        } else if fetched == nil || fetched?.isLoading == true {
+                            // 取得中: スピナー
+                            ZStack {
+                                Color(.secondarySystemBackground)
+                                ProgressView()
+                                    .tint(Color.duoSubtitle)
+                                    .scaleEffect(1.0)
+                            }
+                        } else {
+                            // 取得済みだが画像なし: サービスアイコン
+                            let host = URL(string: urlStr)?.host ?? ""
+                            ZStack {
+                                Color(.secondarySystemBackground)
+                                VStack(spacing: 6) {
+                                    Text(feedServiceEmoji(from: host))
+                                        .font(.system(size: 36 * UIScale.font))
+                                    Text(feedServiceName(from: host))
+                                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                }
+                            }
+                        }
                     } else {
                         ZStack {
                             instaGradient(for: item)
@@ -1524,7 +1851,7 @@ struct TomoView: View {
                         }
                     }
                 }
-                .frame(width: slideWidth, height: slideWidth)
+                .frame(width: slideWidth, height: slideHeight)
                 .clipped()
                 .contentShape(Rectangle())
 
@@ -1550,7 +1877,7 @@ struct TomoView: View {
                                     .foregroundColor(.white)
                             }
                             .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(Color.black.opacity(0.58))
+                            .background(tomoLangColor(langCode))
                             .clipShape(Capsule())
                         }
                         Spacer()
@@ -1614,56 +1941,268 @@ struct TomoView: View {
                     }
                 }
             }
-            .frame(width: slideWidth, height: slideWidth)
+            .frame(width: slideWidth, height: slideHeight)
         }
         .buttonStyle(.plain)
+
+        // URLがある投稿: OG画像を上に表示済みのためカードはタイトル＋サービス名のみ（thumb非表示）
+        if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+            feedLinkCard(url: url, title: item.sharedTitle, urlStr: urlStr,
+                         description: item.sharedDescription, showThumb: false)
+                .frame(width: slideWidth)
+                .padding(.top, 2)
+                .task(id: urlStr) { linkFetcher.prefetch(urlString: urlStr) }
+        }
+        } // end VStack
+    }
+
+    // MARK: - 読書・勉強リンクのみ投稿: テキストカード（一覧用）
+
+    private func readingLinkTextCard(item: EduLogHistoryItem, urlStr: String, url: URL) -> some View {
+        let host = url.host ?? urlStr
+        let svcEmoji  = feedServiceEmoji(from: host)
+        let svcName   = feedServiceName(from: host)
+        let svcColor  = feedServiceColor(from: host)
+        let fetched   = linkFetcher.meta(for: urlStr)
+        let dispTitle = (fetched?.title ?? item.sharedTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let dispDesc  = (fetched?.description ?? item.sharedDescription ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            // ── リンクコンテンツ（タップで詳細へ）──────────────
+            Button { openDetail(item) } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    // 書影 or サービスアイコン
+                    if let img = fetched?.thumbnailImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(svcColor.opacity(0.14))
+                            Text(svcEmoji)
+                                .font(.system(size: 34 * UIScale.font))
+                        }
+                        .frame(width: 72, height: 72)
+                    }
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        if !dispTitle.isEmpty {
+                            Text(dispTitle)
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !dispDesc.isEmpty {
+                            Text(dispDesc)
+                                .font(.system(size: 11 * UIScale.font))
+                                .foregroundColor(Color.duoSubtitle)
+                                .lineLimit(3)
+                        }
+                        HStack(spacing: 4) {
+                            Text(svcEmoji).font(.system(size: 10 * UIScale.font))
+                            Text(svcName)
+                                .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                                .foregroundColor(svcColor)
+                        }
+                    }
+
+                    Spacer()
+
+                    // リンクを直接開くボタン
+                    Button { UIApplication.shared.open(url) } label: {
+                        Image(systemName: "arrow.up.right.square.fill")
+                            .font(.system(size: 20 * UIScale.font))
+                            .foregroundColor(svcColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            // ── ユーザーのコメント（あれば）────────────────────
+            if !item.comment.isEmpty {
+                Divider().padding(.horizontal, 12)
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "quote.opening")
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                        .foregroundColor(svcColor.opacity(0.7))
+                        .padding(.top, 2)
+                    Text(item.comment)
+                        .font(.system(size: 12 * UIScale.font))
+                        .foregroundColor(Color.duoDark.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(svcColor.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(svcColor.opacity(0.15), lineWidth: 1))
+        .padding(.horizontal, 12).padding(.vertical, 4)
+    }
+
+    // MARK: - 読書リンクカード（フィード一覧用・コンパクト版）
+
+    private func feedLinkCard(url: URL, title: String?, urlStr: String,
+                              description: String? = nil,
+                              showThumb: Bool = true) -> some View {
+        let host        = url.host ?? urlStr
+        let serviceName = feedServiceName(from: host)
+        let serviceEmoji = feedServiceEmoji(from: host)
+        let color       = feedServiceColor(from: host)
+
+        let fetched      = linkFetcher.meta(for: urlStr)
+        let displayTitle = (fetched?.title ?? title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayDesc  = (fetched?.description ?? description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumbImage   = fetched?.thumbnailImage
+
+        return Button { UIApplication.shared.open(url) } label: {
+            HStack(spacing: 10) {
+                // サービスアイコン or 書影（showThumb: false の場合はサービス絵文字のみ）
+                if showThumb, let img = thumbImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 46, height: 46)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Text(serviceEmoji)
+                        .font(.system(size: 20 * UIScale.font))
+                        .frame(width: 32, height: 32)
+                        .background(color.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if !displayTitle.isEmpty {
+                        Text(displayTitle)
+                            .font(.system(size: 12 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoDark)
+                            .lineLimit(2)
+                    }
+                    if showThumb && !displayDesc.isEmpty {
+                        Text(displayDesc)
+                            .font(.system(size: 10 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                            .lineLimit(2)
+                    }
+                    Text(serviceName)
+                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                        .foregroundColor(color)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                    .foregroundColor(color)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(color.opacity(0.07))
+            .cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func feedServiceName(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "Audible" }
+        if h.contains("amazon") { return "Amazon Books" }
+        if h.contains("kindle") { return "Kindle" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "Libby 図書館" }
+        if h.contains("books.google") { return "Google Play Books" }
+        if h.contains("bookwalker") { return "BookWalker" }
+        if h.contains("kobo") { return "楽天Kobo" }
+        if h.contains("booklive") { return "BookLive" }
+        return "📖 リンクを開く"
+    }
+
+    private func feedServiceEmoji(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "🎧" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "🏛️" }
+        return "📖"
+    }
+
+    private func feedServiceColor(from host: String) -> Color {
+        let h = host.lowercased()
+        if h.contains("audible") { return Color(hex: "#F28C28") }
+        if h.contains("amazon") || h.contains("kindle") { return Color(hex: "#FF9900") }
+        if h.contains("libbyapp") || h.contains("overdrive") { return Color(hex: "#2E86AB") }
+        if h.contains("books.google") { return Color(hex: "#4285F4") }
+        if h.contains("bookwalker") { return Color(hex: "#E4001A") }
+        if h.contains("kobo") { return Color(hex: "#6A0DAD") }
+        return Color(hex: "#5E5CE6")
     }
 
     // MARK: - Duolingo フレーズパネル
 
     @ViewBuilder
     private func duolingoPhrasePanel(item: EduLogHistoryItem, phrase: String) -> some View {
-        let isSpeaking = speakingItemID == item.id
-        let langCode   = item.extractedLanguageCode ?? "en"
-        let langLabel  = languageLabel(langCode)
+        let isSeqPlaying = ttsEngine.isSequencePlaying
+        let langCode     = item.extractedLanguageCode ?? "en"
+        let langLabel    = languageLabel(langCode)
+        let langColor    = tomoLangColor(langCode)
+
+        // 全再生キュー：メインフレーズ + 例文 + 関連単語/文章
+        let allPhrases: [(phrase: String, langCode: String)] = {
+            var q: [(String, String)] = [(phrase, langCode)]
+            if let examples = item.exampleSentences { q += examples.map { ($0.text, langCode) } }
+            if let related  = item.relatedWords      { q += related.map  { ($0.text, langCode) } }
+            return q
+        }()
 
         VStack(alignment: .leading, spacing: 6) {
-            // 言語バッジ
-            HStack(spacing: 6) {
-                Text(languageFlag(langCode))
-                    .font(.system(size: 16))
-                Text(langLabel)
-                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-                Spacer()
-                // 再生ボタン
-                Button {
-                    if isSpeaking {
-                        DuolingoTextExtractor.shared.stopSpeaking()
-                        speakingItemID = nil
-                    } else {
-                        speakingItemID = item.id
-                        DuolingoTextExtractor.shared.speak(phrase: phrase, languageCode: langCode)
-                        // 読み上げ終了を 10 秒後にリセット（完了コールバック非対応のため）
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-                            if speakingItemID == item.id {
-                                speakingItemID = nil
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 14))
-                        Text(isSpeaking ? "停止" : "再生")
-                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                    }
-                    .foregroundColor(isSpeaking ? Color.red : Color(hex: "#1CB0F6"))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background((isSpeaking ? Color.red : Color(hex: "#1CB0F6")).opacity(0.12))
-                    .cornerRadius(10)
+            // 言語バッジ ＋ 全再生ボタン（横並び）
+            HStack(spacing: 8) {
+                // ── 言語バッジ（鮮やかなカプセル）──────────────────────────
+                HStack(spacing: 4) {
+                    Text(languageFlag(langCode))
+                        .font(.system(size: 13))
+                    Text(langLabel)
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .foregroundColor(.white)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(langColor)
+                .clipShape(Capsule())
+
+                // ── 全再生ボタン（バッジの右横）───────────────────────────
+                if !phrase.isEmpty {
+                    Button {
+                        if isSeqPlaying {
+                            ttsEngine.stopSequence()
+                        } else {
+                            speakingItemID = nil
+                            speakingExampleKey = nil
+                            ttsEngine.speakSequence(allPhrases)
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isSeqPlaying ? "stop.fill" : "play.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(isSeqPlaying
+                                 ? "\(ttsEngine.sequenceCurrent + 1)/\(ttsEngine.sequenceTotal)"
+                                 : "全再生")
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(isSeqPlaying ? Color.red : Color(hex: "#CE82FF"))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
             }
 
             // 外国語フレーズ（大）
@@ -1783,45 +2322,74 @@ struct TomoView: View {
                 .cornerRadius(8)
                 .padding(.top, 4)
             }
+
+            // 関連単語 / 関連文章セクション
+            if let related = item.relatedWords, !related.isEmpty {
+                let relColor = Color(hex: "#1CB0F6")
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("関連表現", systemImage: "text.bubble")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(relColor)
+                    ForEach(Array(related.enumerated()), id: \.offset) { idx, rel in
+                        let relKey = "\(item.id)-rel\(idx)"
+                        let isRelSpeaking = speakingExampleKey == relKey
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("·")
+                                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                                .foregroundColor(relColor)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rel.text)
+                                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoDark)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let tr = rel.translationJA, !tr.isEmpty {
+                                    Text(tr)
+                                        .font(.system(size: 12 * UIScale.font))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                if isRelSpeaking {
+                                    DuolingoTextExtractor.shared.stopSpeaking()
+                                    speakingExampleKey = nil
+                                } else {
+                                    speakingExampleKey = relKey
+                                    speakingItemID = nil
+                                    DuolingoTextExtractor.shared.speak(
+                                        phrase: rel.text, languageCode: langCode)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                                        if speakingExampleKey == relKey { speakingExampleKey = nil }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isRelSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isRelSpeaking ? .red : relColor)
+                                    .frame(width: 28, height: 28)
+                                    .background((isRelSpeaking ? Color.red : relColor).opacity(0.12))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(relColor.opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color(.systemGray6).opacity(0.6))
     }
 
-    private func languageFlag(_ code: String) -> String {
-        switch code {
-        case "zh", "zh-Hans", "cmn-Hans": return "🇨🇳"
-        case "zh-Hant":                   return "🇹🇼"
-        case "ko":                        return "🇰🇷"
-        case "fr":                        return "🇫🇷"
-        case "es":                        return "🇪🇸"
-        case "de":                        return "🇩🇪"
-        case "pt":                        return "🇧🇷"
-        case "it":                        return "🇮🇹"
-        case "ru":                        return "🇷🇺"
-        case "ar":                        return "🇸🇦"
-        default:                          return "🇺🇸"
-        }
-    }
-
-    private func languageLabel(_ code: String) -> String {
-        switch code {
-        case "zh", "zh-Hans", "cmn-Hans": return "中国語"
-        case "zh-Hant":                   return "中国語（繁体）"
-        case "ko":                        return "韓国語"
-        case "fr":                        return "フランス語"
-        case "es":                        return "スペイン語"
-        case "de":                        return "ドイツ語"
-        case "pt":                        return "ポルトガル語"
-        case "it":                        return "イタリア語"
-        case "ru":                        return "ロシア語"
-        case "ar":                        return "アラビア語"
-        default:                          return "英語"
-        }
-    }
-
     // MARK: - ヘルパー
+
+    /// 言語コードに対応した Edulingo 準拠のバッジ背景色
+    private func tomoLangColor(_ code: String) -> Color { languageBadgeColor(code) }
 
     private func relativeTimeString(_ date: Date) -> String {
         let diff = Int(Date().timeIntervalSince(date))
@@ -1893,9 +2461,9 @@ struct TomoView: View {
 
                 Spacer()
 
-                // 参加者アバター（自分＋TOMO）をインライン表示
+                // 友達アバター（自分は表示しない）＋招待ボタン
                 HStack(spacing: -8) {
-                    ForEach(manager.entries.prefix(4)) { entry in
+                    ForEach(manager.entries.filter { !$0.isMe }.prefix(4)) { entry in
                         headerAvatarCircle(entry)
                     }
                     // 招待ボタン
@@ -1903,10 +2471,10 @@ struct TomoView: View {
                         ZStack {
                             Circle()
                                 .fill(Color.white.opacity(0.25))
-                                .frame(width: 32, height: 32)
+                                .frame(width: 28, height: 28)
                                 .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
                             Image(systemName: "person.badge.plus")
-                                .font(.system(size: 12 * UIScale.font, weight: .bold))
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
                                 .foregroundColor(.white)
                         }
                     }
@@ -1923,23 +2491,27 @@ struct TomoView: View {
     }
 
     private func headerAvatarCircle(_ entry: TomoManager.TomoEntry) -> some View {
-        ZStack {
+        let photoURL = entry.isMe
+            ? (Auth.auth().currentUser?.photoURL?.absoluteString
+                ?? UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+            : entry.photoURL
+        return ZStack {
             Circle()
                 .fill(LinearGradient(
                     colors: [Color(hex: "#833ab4"), Color(hex: "#fd1d1d"), Color(hex: "#fcb045")],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
-                .frame(width: 34, height: 34)
+                .frame(width: 30, height: 30)
             Circle()
                 .fill(Color.white)
-                .frame(width: 30, height: 30)
+                .frame(width: 26, height: 26)
             UserAvatarView(
                 name: firstName(of: entry.username),
-                photoURL: "",
-                size: 26
+                photoURL: photoURL,
+                size: 23
             )
         }
-        .overlay(Circle().stroke(Color.white, lineWidth: 1.5).frame(width: 34, height: 34))
+        .overlay(Circle().stroke(Color.white, lineWidth: 1.5).frame(width: 30, height: 30))
     }
 
     @ViewBuilder
@@ -1948,7 +2520,8 @@ struct TomoView: View {
         ZStack {
             Circle().fill(Color.duoBlue.opacity(0.15)).frame(width: 44, height: 44)
             if let url = URL(string: tomo.photoURL), !tomo.photoURL.isEmpty {
-                AsyncImage(url: url) { image in
+                // CachedAsyncImage で URLCache を活用し繰り返しダウンロードを防止
+                CachedAsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Text(initial).font(.system(size: 18 * UIScale.font, weight: .black)).foregroundColor(Color.duoBlue)
@@ -2141,14 +2714,14 @@ struct TomoView: View {
                     Text("今週pt")
                         .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoBlue)
-                        .frame(width: 50, alignment: .trailing)
+                        .frame(width: 52, alignment: .trailing)
                     Text("連続")
                         .font(.system(size: 9 * UIScale.font, weight: .bold))
                         .foregroundColor(Color.duoSubtitle)
-                        .frame(width: 40, alignment: .trailing)
+                        .frame(width: 36, alignment: .trailing)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .background(
                     LinearGradient(
                         colors: [Color(hex: "#1CB5E0").opacity(0.08), Color(hex: "#4776E6").opacity(0.08)],
@@ -2159,7 +2732,7 @@ struct TomoView: View {
                 ForEach(manager.entries) { entry in
                     rankRow(entry)
                     if entry.id != manager.entries.last?.id {
-                        Divider().padding(.leading, 62)
+                        Divider().padding(.leading, 54)
                     }
                 }
             }
@@ -2170,66 +2743,145 @@ struct TomoView: View {
     }
 
     private func rankRow(_ entry: TomoManager.TomoEntry) -> some View {
-        HStack(spacing: 10) {
-            // アバター＋順位バッジ
-            ZStack(alignment: .bottomTrailing) {
-                UserAvatarView(name: firstName(of: entry.username), photoURL: "", size: 38)
-                    .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 2))
+        let isExpanded = expandedRankId == entry.id
 
-                Circle()
-                    .fill(rankBadgeColor(entry.rank))
-                    .frame(width: 16, height: 16)
-                    .overlay(
-                        Text(entry.rank <= 3 ? rankEmoji(entry.rank) : "\(entry.rank)")
-                            .font(.system(size: entry.rank <= 3 ? 10 : 8, weight: .black))
-                            .foregroundColor(entry.rank <= 3 ? .white : .white)
-                    )
-                    .offset(x: 2, y: 2)
-            }
-            .frame(width: 44)
+        return VStack(spacing: 0) {
+            // ── メイン行 ───────────────────────────────────────────────────
+            HStack(spacing: 8) {
+                // アバター＋順位バッジ（コンパクト）
+                ZStack(alignment: .bottomTrailing) {
+                    UserAvatarView(name: firstName(of: entry.username), photoURL: entry.photoURL, size: 30)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
 
-            // 名前
-            HStack(spacing: 5) {
-                Text(firstName(of: entry.username))
-                    .font(.system(size: 14 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoDark)
-                    .lineLimit(1)
-                if entry.isMe {
-                    Text("YOU")
-                        .font(.system(size: 8 * UIScale.font, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Color.duoBlue)
-                        .cornerRadius(5)
+                    Circle()
+                        .fill(rankBadgeColor(entry.rank))
+                        .frame(width: 14, height: 14)
+                        .overlay(
+                            Text(entry.rank <= 3 ? rankEmoji(entry.rank) : "\(entry.rank)")
+                                .font(.system(size: entry.rank <= 3 ? 8 : 7, weight: .black))
+                                .foregroundColor(.white)
+                        )
+                        .offset(x: 2, y: 2)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: 36)
 
-            // 今週pt
-            VStack(spacing: 0) {
-                Text("\(entry.weeklyPoints)")
-                    .font(.system(size: 14 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoBlue)
-                    .minimumScaleFactor(0.6)
-                Text("pt")
-                    .font(.system(size: 8 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-            .frame(width: 50, alignment: .trailing)
+                // 名前（1行固定・はみ出しは省略）
+                HStack(spacing: 4) {
+                    Text(firstName(of: entry.username))
+                        .font(.system(size: 13 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if entry.isMe {
+                        Text("YOU")
+                            .font(.system(size: 7 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4).padding(.vertical, 2)
+                            .background(Color.duoBlue)
+                            .cornerRadius(4)
+                            .layoutPriority(1)  // YOU バッジは優先的に確保
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(0)  // 右側の固定幅エリアを優先し名前を縮める
 
-            // 連続
-            HStack(spacing: 2) {
-                Text("🔥")
-                    .font(.system(size: 11 * UIScale.font))
-                Text("\(entry.streak)日")
+                // 今週pt（タップでエクスパンド）
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        expandedRankId = isExpanded ? nil : entry.id
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("\(entry.weeklyPoints)pt")
+                            .font(.system(size: 12 * UIScale.font, weight: .black))
+                            .foregroundColor(Color.duoBlue)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoBlue.opacity(0.7))
+                    }
+                    .fixedSize()  // ポイント表示は縮まないよう固定
+                }
+                .buttonStyle(.plain)
+                .layoutPriority(1)
+
+                // 連続
+                Text("🔥\(entry.streak)日")
                     .font(.system(size: 11 * UIScale.font, weight: .bold))
                     .foregroundColor(Color.duoDark)
-                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .fixedSize()  // 連続日数も縮まないよう固定
+                    .layoutPriority(1)
             }
-            .frame(width: 40, alignment: .trailing)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+
+            // ── 曜日別・カテゴリ別内訳（エクスパンド時）─────────────────────
+            if isExpanded && !entry.dailyBreakdown.isEmpty {
+                // 合計行
+                let breakdownTotal = entry.dailyBreakdown.map(\.total).reduce(0, +)
+                VStack(spacing: 0) {
+                    // ヘッダー（合計確認）
+                    HStack {
+                        Text("曜日別内訳")
+                            .font(.system(size: 9 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                        Text("計 \(breakdownTotal)pt")
+                            .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(Color.duoBlue)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
+
+                    Divider().padding(.horizontal, 10)
+
+                    // 各曜日行（ポイントがある曜日のみ表示）
+                    let activeDays = entry.dailyBreakdown.filter { $0.total > 0 }
+                    if activeDays.isEmpty {
+                        Text("今週はまだ記録なし")
+                            .font(.system(size: 10 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(activeDays) { day in
+                            HStack(spacing: 6) {
+                                Text(day.label)
+                                    .font(.system(size: 10 * UIScale.font, weight: .black))
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .frame(width: 16, alignment: .center)
+                                // カテゴリチップ
+                                HStack(spacing: 4) {
+                                    ForEach(day.categories) { cat in
+                                        HStack(spacing: 2) {
+                                            Text(cat.emoji)
+                                                .font(.system(size: 9 * UIScale.font))
+                                            Text("\(cat.points)pt")
+                                                .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                                .foregroundColor(cat.color)
+                                        }
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(cat.color.opacity(0.1))
+                                        .clipShape(Capsule())
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                Text("\(day.total)pt")
+                                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                    .foregroundColor(Color.duoDark)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                .background(Color.duoBlue.opacity(0.04))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
         .background(entry.isMe
             ? LinearGradient(colors: [Color.duoBlue.opacity(0.06), Color.duoBlue.opacity(0.03)],
                              startPoint: .leading, endPoint: .trailing)
@@ -2305,6 +2957,11 @@ struct SwipeableTomoDetailSheet: View {
     @State private var selection: Int
     @State private var speakingItemID: String? = nil
     @State private var speakingExampleKey: String? = nil
+    @ObservedObject private var ttsEngine = DuolingoTextExtractor.shared
+    @ObservedObject private var eduLog = EduLogManager.shared
+    @ObservedObject private var linkFetcher = LinkMetadataFetcher.shared
+    @State private var editingItem: EduLogHistoryItem? = nil
+    @State private var deleteConfirmItem: EduLogHistoryItem? = nil
     @Environment(\.dismiss) private var dismiss
 
     private static let hhmm: DateFormatter = {
@@ -2330,29 +2987,158 @@ struct SwipeableTomoDetailSheet: View {
 
     var body: some View {
         NavigationView {
+            // items が渡された時点で確実にコンテンツを表示するため、
+            // items.count を id に使って TabView を強制再生成する
             TabView(selection: $selection) {
-                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
                     slidePage(item: item)
                         .tag(idx)
+                        .task(id: item.sharedUrl) {
+                            if let urlStr = item.sharedUrl {
+                                linkFetcher.prefetch(urlString: urlStr)
+                            }
+                        }
                 }
             }
+            .id(items.map(\.id).joined())
             .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .always : .never))
             .background(Color.duoBg.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle(items.count > 1 ? "\(selection + 1) / \(items.count)" : "")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    detailLeadingButtons
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("閉じる") { dismiss() }
                         .foregroundColor(Color.duoGreen)
                         .fontWeight(.bold)
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                detailDeleteButton
+            }
+            .alert("投稿を削除しますか？", isPresented: Binding(
+                get: { deleteConfirmItem != nil },
+                set: { if !$0 { deleteConfirmItem = nil } }
+            )) {
+                Button("削除", role: .destructive) {
+                    if let it = deleteConfirmItem {
+                        EduLogManager.shared.deleteItem(id: it.id)
+                        deleteConfirmItem = nil
+                        dismiss()
+                    }
+                }
+                Button("キャンセル", role: .cancel) { deleteConfirmItem = nil }
+            }
+            .sheet(item: $editingItem) { item in
+                EduPhraseEditSheet(item: item) { updated in
+                    EduLogManager.shared.updateItem(updated)
+                    editingItem = nil
+                }
+            }
             .onAppear {
                 // TabView(.page) が初期 selection を反映しないことがある SwiftUI バグの workaround
-                let target = startIndex
-                DispatchQueue.main.async { selection = target }
+                if startIndex > 0 {
+                    let target = startIndex
+                    DispatchQueue.main.async { selection = target }
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private var detailLeadingButtons: some View {
+        let currentItem = selection < items.count ? items[selection] : nil
+        let isOwn = currentItem.map { isOwnItem($0) } ?? false
+        let isFav = currentItem.flatMap { liveItem(for: $0) }?.isFavorite ?? false
+
+        HStack(spacing: 12) {
+            // お気に入り（自分の投稿のみ）
+            if isOwn {
+                Button {
+                    if let it = currentItem {
+                        // "own_xxx" プレフィックスを除去して toggleFavorite を呼ぶ
+                        let targetId = it.id.hasPrefix("own_") ? String(it.id.dropFirst(4)) : it.id
+                        // ローカル履歴に存在すれば通常通りトグル
+                        if EduLogManager.shared.history.contains(where: { $0.id == targetId || $0.id == it.id }) {
+                            EduLogManager.shared.toggleFavorite(id: targetId)
+                        } else {
+                            // ローカル履歴にない場合: 現アイテムをローカルに取り込んでからお気に入りに
+                            var localCopy = it
+                            localCopy.id = targetId
+                            localCopy.isFavorite = true
+                            EduLogManager.shared.importAndFavorite(localCopy)
+                        }
+                    }
+                } label: {
+                    Image(systemName: isFav ? "heart.fill" : "heart")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(isFav ? Color(hex: "#FF4B4B") : Color.duoSubtitle)
+                }
+                .buttonStyle(.plain)
+
+                // 編集
+                Button {
+                    if let it = currentItem {
+                        editingItem = liveItem(for: it) ?? it
+                    }
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(hex: "#1CB0F6"))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailDeleteButton: some View {
+        let currentItem = selection < items.count ? items[selection] : nil
+        let isOwn = currentItem.map { isOwnItem($0) } ?? false
+
+        if isOwn {
+            Button {
+                if let it = currentItem {
+                    deleteConfirmItem = it
+                }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(14)
+                    .background(Color(hex: "#FF4B4B"))
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, 30)
+        }
+    }
+
+    private func isOwnItem(_ item: EduLogHistoryItem) -> Bool {
+        // kedu の fetchMyOwnPosts は自分の Firebase ポストに "own_" プレフィックスを付ける。
+        // このプレフィックスは自分のコレクション(publicProfiles/{uid}/posts)から
+        // 取得した場合のみ付与されるため、存在すれば必ず自分の投稿。
+        if item.id.hasPrefix("own_") { return true }
+
+        // kfit / kedu ローカル履歴に存在すれば自分の投稿
+        return EduLogManager.shared.history.contains { $0.id == item.id }
+    }
+
+    /// EduLogManager.shared から最新の item を取得（favorites など更新反映）。
+    /// ローカル履歴にない "own_" アイテム（kfit 経由でのみ投稿されたもの等）は
+    /// item 自身を返す（Firebase 取得版がそのまま live 扱い）。
+    private func liveItem(for item: EduLogHistoryItem) -> EduLogHistoryItem? {
+        let baseId = item.id.hasPrefix("own_") ? String(item.id.dropFirst(4)) : item.id
+        if let found = EduLogManager.shared.history.first(where: { $0.id == item.id || $0.id == baseId }) {
+            return found
+        }
+        // ローカル履歴にない自分の投稿（"own_" プレフィックス付き）→ item 自体を返す
+        if item.id.hasPrefix("own_") { return item }
+        return nil
     }
 
     @ViewBuilder
@@ -2476,6 +3262,9 @@ struct SwipeableTomoDetailSheet: View {
                                 .shadow(color: .black.opacity(0.2), radius: 4)
                                 .padding(12)
                         }
+                    } else if item.sharedUrl != nil && thumb == nil && item.weightKg == nil {
+                        // リンクのみ（サムネなし）: 画像エリアなし（下部の sharedLinkCard で表示）
+                        EmptyView()
                     } else {
                         // ── その他（Duolingo等）: 既存グラデーション表示 ────
                         ZStack(alignment: .bottom) {
@@ -2550,6 +3339,16 @@ struct SwipeableTomoDetailSheet: View {
                                    unit: "%", color: Color(hex: "#CE82FF"))
                     }
                     .padding(.horizontal, 16).padding(.top, 12)
+                }
+
+                // ── リンクカード（sharedUrl があれば最上部に大きく表示）─────
+                if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+                    let isLinkOnlyDetail = thumb == nil && item.weightKg == nil
+                    sharedLinkCard(url: url, title: item.sharedTitle, urlStr: urlStr,
+                                   description: item.sharedDescription,
+                                   imageURL: item.sharedImageURL)
+                        .padding(.horizontal, 16)
+                        .padding(.top, isLinkOnlyDetail ? 24 : 12)
                 }
 
                 // ── コメント ────────────────────────────────────────────────
@@ -2710,6 +3509,119 @@ struct SwipeableTomoDetailSheet: View {
     }
 
     // MARK: - FIT メトリクスタイル（WeightFeedDetailSheet と同一デザイン）
+    // MARK: - 読書リンクカード
+
+    private func sharedLinkCard(url: URL, title: String?, urlStr: String,
+                                description: String? = nil, imageURL: String? = nil) -> some View {
+        let host        = url.host ?? urlStr
+        let serviceName = readingServiceName(from: host)
+        let svcColor    = readingServiceColor(from: host)
+        let serviceEmoji = readingServiceEmoji(from: host)
+
+        let fetched      = linkFetcher.meta(for: urlStr)
+        let displayTitle = (fetched?.title ?? title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayDesc  = (fetched?.description ?? description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumbImage   = fetched?.thumbnailImage
+
+        return Button {
+            UIApplication.shared.open(url)
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                // ── 書影サムネイル（取得できた場合）─────────────────────────
+                if let img = thumbImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 160)
+                        .clipped()
+                }
+
+                HStack(alignment: .top, spacing: 12) {
+                    // サービスアイコン（書影なし時は大きめに）
+                    ZStack {
+                        RoundedRectangle(cornerRadius: thumbImage == nil ? 10 : 8, style: .continuous)
+                            .fill(svcColor)
+                            .frame(width: thumbImage == nil ? 46 : 36,
+                                   height: thumbImage == nil ? 46 : 36)
+                        Text(serviceEmoji)
+                            .font(.system(size: thumbImage == nil ? 22 : 18))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        // タイトル
+                        if !displayTitle.isEmpty {
+                            Text(displayTitle)
+                                .font(.system(size: 13 * UIScale.font, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        // 説明文
+                        if !displayDesc.isEmpty {
+                            Text(displayDesc)
+                                .font(.system(size: 11 * UIScale.font))
+                                .foregroundColor(Color.duoSubtitle)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        // サービス名
+                        Text(serviceName)
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(svcColor)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right.square.fill")
+                        .font(.system(size: 18 * UIScale.font))
+                        .foregroundColor(svcColor)
+                }
+                .padding(thumbImage == nil ? 14 : 12)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.07), radius: 6, y: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(svcColor.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func readingServiceName(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "Audible（オーディオブック）" }
+        if h.contains("amazon") && h.contains("/dp/") { return "Amazon（本）" }
+        if h.contains("kindle") { return "Kindle" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "Libby（図書館）" }
+        if h.contains("books.google") { return "Google Play Books" }
+        if h.contains("bookwalker") { return "BookWalker" }
+        if h.contains("kobo") { return "楽天Kobo" }
+        if h.contains("booklive") { return "BookLive" }
+        if h.contains("ebookjapan") { return "ebookjapan" }
+        return host
+    }
+
+    private func readingServiceEmoji(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "🎧" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "🏛️" }
+        return "📖"
+    }
+
+    private func readingServiceColor(from host: String) -> Color {
+        let h = host.lowercased()
+        if h.contains("audible") { return Color(hex: "#F28C28") }
+        if h.contains("amazon") || h.contains("kindle") { return Color(hex: "#FF9900") }
+        if h.contains("libbyapp") || h.contains("overdrive") { return Color(hex: "#2E86AB") }
+        if h.contains("books.google") { return Color(hex: "#4285F4") }
+        if h.contains("bookwalker") { return Color(hex: "#E4001A") }
+        if h.contains("kobo") { return Color(hex: "#6A0DAD") }
+        return Color(hex: "#5E5CE6")
+    }
+
     private func tomoMetric(emoji: String, label: String, value: String, unit: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(emoji).font(.system(size: 22 * UIScale.font))
@@ -2866,42 +3778,57 @@ struct SwipeableTomoDetailSheet: View {
     // MARK: - Duolingo フレーズパネル
     @ViewBuilder
     private func duolingoPhrasePanel(item: EduLogHistoryItem, phrase: String) -> some View {
-        let isSpeaking   = speakingItemID == item.id
+        let isSeqPlaying = ttsEngine.isSequencePlaying
         let langCode     = item.extractedLanguageCode ?? "en"
         let langLabel    = duoLangLabel(langCode)
 
+        // 「全再生」キュー: メインフレーズ + 例文
+        let allPhrases: [(phrase: String, langCode: String)] = {
+            var queue: [(String, String)] = [(phrase, langCode)]
+            if let examples = item.exampleSentences {
+                queue += examples.map { ($0.text, langCode) }
+            }
+            if let related = item.relatedWords {
+                queue += related.map { ($0.text, langCode) }
+            }
+            return queue
+        }()
+
         VStack(alignment: .leading, spacing: 6) {
-            // 言語バッジ + 再生ボタン
+            // 言語バッジ + 全再生ボタン
             HStack(spacing: 6) {
                 Text(duoLangFlag(langCode)).font(.system(size: 16))
                 Text(langLabel)
                     .font(.system(size: 11 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                 Spacer()
-                Button {
-                    if isSpeaking {
-                        DuolingoTextExtractor.shared.stopSpeaking()
-                        speakingItemID = nil
-                    } else {
-                        speakingItemID = item.id
-                        DuolingoTextExtractor.shared.speak(phrase: phrase, languageCode: langCode)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-                            if speakingItemID == item.id { speakingItemID = nil }
+
+                // 全再生ボタン（フレーズ + 例文を順次）
+                if !phrase.isEmpty {
+                    Button {
+                        if isSeqPlaying {
+                            ttsEngine.stopSequence()
+                        } else {
+                            speakingItemID = nil
+                            speakingExampleKey = nil
+                            ttsEngine.speakSequence(allPhrases)
                         }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isSeqPlaying ? "stop.fill" : "play.fill")
+                                .font(.system(size: 11))
+                            Text(isSeqPlaying
+                                 ? "\(ttsEngine.sequenceCurrent + 1)/\(ttsEngine.sequenceTotal)"
+                                 : "全再生")
+                                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(isSeqPlaying ? Color.red : Color(hex: "#CE82FF"))
+                        .cornerRadius(10)
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 14))
-                        Text(isSpeaking ? "停止" : "再生")
-                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                    }
-                    .foregroundColor(isSpeaking ? .red : Color(hex: "#1CB0F6"))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background((isSpeaking ? Color.red : Color(hex: "#1CB0F6")).opacity(0.12))
-                    .cornerRadius(10)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             // フレーズ本文（大）
@@ -3016,6 +3943,64 @@ struct SwipeableTomoDetailSheet: View {
                 .cornerRadius(8)
                 .padding(.top, 2)
             }
+
+            // 関連単語 / 関連文章セクション
+            if let related = item.relatedWords, !related.isEmpty {
+                let relColor = Color(hex: "#1CB0F6")
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("関連表現", systemImage: "text.bubble")
+                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                        .foregroundColor(relColor)
+                    ForEach(Array(related.enumerated()), id: \.offset) { idx, rel in
+                        let relKey = "\(item.id)-rel\(idx)"
+                        let isRelSpeaking = speakingExampleKey == relKey
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("·")
+                                .font(.system(size: 16 * UIScale.font, weight: .bold))
+                                .foregroundColor(relColor)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rel.text)
+                                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                                    .foregroundColor(Color.duoDark)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let tr = rel.translationJA, !tr.isEmpty {
+                                    Text(tr)
+                                        .font(.system(size: 12 * UIScale.font))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                if isRelSpeaking {
+                                    DuolingoTextExtractor.shared.stopSpeaking()
+                                    speakingExampleKey = nil
+                                } else {
+                                    speakingExampleKey = relKey
+                                    speakingItemID     = nil
+                                    DuolingoTextExtractor.shared.speak(
+                                        phrase: rel.text, languageCode: langCode)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                                        if speakingExampleKey == relKey { speakingExampleKey = nil }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isRelSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isRelSpeaking ? .red : relColor)
+                                    .frame(width: 28, height: 28)
+                                    .background((isRelSpeaking ? Color.red : relColor).opacity(0.12))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(relColor.opacity(0.07))
+                .cornerRadius(8)
+                .padding(.top, 2)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -3052,6 +4037,88 @@ struct SwipeableTomoDetailSheet: View {
         case "ru":                        return "ロシア語"
         case "ar":                        return "アラビア語"
         default:                          return "英語"
+        }
+    }
+}
+
+// MARK: - Edu phrase edit sheet
+struct EduPhraseEditSheet: View {
+    @State private var item: EduLogHistoryItem
+    private let onSave: (EduLogHistoryItem) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    init(item: EduLogHistoryItem, onSave: @escaping (EduLogHistoryItem) -> Void) {
+        _item = State(initialValue: item)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("フレーズ（外国語）") {
+                    TextEditor(text: Binding(
+                        get: { item.extractedPhrase ?? "" },
+                        set: { item.extractedPhrase = $0.isEmpty ? nil : $0 }
+                    ))
+                    .frame(minHeight: 60)
+                }
+                Section("発音・ピンイン") {
+                    TextField("発音記号など", text: Binding(
+                        get: { item.pronunciation ?? "" },
+                        set: { item.pronunciation = $0.isEmpty ? nil : $0 }
+                    ))
+                }
+                Section("日本語訳") {
+                    TextEditor(text: Binding(
+                        get: { item.translationJA ?? "" },
+                        set: { item.translationJA = $0.isEmpty ? nil : $0 }
+                    ))
+                    .frame(minHeight: 50)
+                }
+                if item.exampleSentences?.isEmpty == false {
+                    Section("例文（タップで編集）") {
+                        ForEach(Array((item.exampleSentences ?? []).enumerated()), id: \.offset) { idx, _ in
+                            exampleRow(idx: idx)
+                        }
+                    }
+                }
+                Section("コメント") {
+                    TextEditor(text: $item.comment)
+                        .frame(minHeight: 50)
+                }
+            }
+            .navigationTitle("フレーズを編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                        .foregroundColor(.secondary)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("保存") { onSave(item) }
+                        .fontWeight(.bold)
+                        .foregroundColor(Color(hex: "#58CC02"))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func exampleRow(idx: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            let phraseBinding = Binding<String>(
+                get: { item.exampleSentences?[idx].text ?? "" },
+                set: { item.exampleSentences?[idx].text = $0 }
+            )
+            let transBinding = Binding<String>(
+                get: { item.exampleSentences?[idx].translationJA ?? "" },
+                set: { item.exampleSentences?[idx].translationJA = $0 }
+            )
+            TextField("例文", text: phraseBinding)
+                .font(.system(size: 14))
+            TextField("訳", text: transBinding)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
         }
     }
 }

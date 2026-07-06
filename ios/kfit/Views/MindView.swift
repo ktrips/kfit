@@ -523,16 +523,6 @@ struct MindView: View {
         .cornerRadius(8)
     }
 
-    private func formatMindfulMinutes(_ minutes: Double) -> String {
-        if minutes < 1 {
-            return "\(Int(minutes * 60))秒"
-        }
-        if abs(minutes.rounded() - minutes) < 0.05 {
-            return "\(Int(minutes.rounded()))分"
-        }
-        return String(format: "%.1f分", minutes)
-    }
-
     private func formatMinutes(_ minutes: Int) -> String {
         if minutes <= 0 { return "—" }
         if minutes < 60 { return "\(minutes)分" }
@@ -1341,23 +1331,7 @@ struct MindView: View {
     }
 
     private func stressInfo(_ hrv: Double) -> MindStressInfo {
-        guard hrv > 0 else {
-            return MindStressInfo(score: -1, label: "不明", englishLabel: "Unknown", color: Color.duoSubtitle)
-        }
-        let score: Int = {
-            if hrv >= 100 { return 5 }
-            if hrv >= 80  { return Int(5  + (100 - hrv) / 20 * 10) }
-            if hrv >= 60  { return Int(15 + (80  - hrv) / 20 * 20) }
-            if hrv >= 40  { return Int(35 + (60  - hrv) / 20 * 25) }
-            if hrv >= 20  { return Int(60 + (40  - hrv) / 20 * 20) }
-            return Int(min(95, 80 + (20 - hrv) / 20 * 15))
-        }()
-        switch score {
-        case ..<30: return MindStressInfo(score: score, label: "低い", englishLabel: "Low", color: Color.duoGreen)
-        case ..<55: return MindStressInfo(score: score, label: "普通", englishLabel: "Normal", color: Color(red: 0.4, green: 0.75, blue: 0.1))
-        case ..<75: return MindStressInfo(score: score, label: "やや高", englishLabel: "Elevated", color: Color.duoOrange)
-        default:    return MindStressInfo(score: score, label: "高い", englishLabel: "High", color: Color(hex: "#FF4B4B"))
-        }
+        stressInfoFromHRV(hrv)
     }
 
     private func loadDailyFixedGoals() {
@@ -1421,13 +1395,6 @@ struct MindView: View {
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
     }
-}
-
-private struct MindStressInfo {
-    let score: Int
-    let label: String
-    let englishLabel: String
-    let color: Color
 }
 
 private struct HRVTrendChart: View {

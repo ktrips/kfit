@@ -379,6 +379,30 @@ class AuthenticationManager: ObservableObject {
         return snap?.documents.compactMap { $0.data()["points"] as? Int }.reduce(0, +) ?? 0
     }
 
+    /// 過去 `days` 日分の日別運動XPを返す（Firestore summaries から取得）
+    func getWeeklyDailyStats(days: Int = 7) async -> [(date: Date, exerciseXP: Int)] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var result: [(date: Date, exerciseXP: Int)] = []
+        await withTaskGroup(of: (Date, Int).self) { group in
+            for offset in 0..<days {
+                guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+                let key = Self.yyyyMMddFmt.string(from: date)
+                group.addTask {
+                    let snap = try? await self.db
+                        .collection("users").document(userId)
+                        .collection("summaries").document("daily-\(key)")
+                        .getDocument()
+                    let xp = snap?.data()?["exercisePoints"] as? Int ?? 0
+                    return (date, xp)
+                }
+            }
+            for await pair in group { result.append(pair) }
+        }
+        return result.sorted { $0.date > $1.date }
+    }
+
     // MARK: - キャッシュから即時取得（ブロックしない）
     func getTodayExercisesFromCache() async -> [CompletedExercise] {
         guard let userId = Auth.auth().currentUser?.uid else {
@@ -1760,6 +1784,53 @@ class AuthenticationManager: ObservableObject {
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
     }
 
+    /// エスプレッソダブルを記録（30ml / カフェイン120mg）
+    func recordEspresso() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+        let amountMl  = 30
+        let caffeineMg = 120
+        let data: [String: Any] = ["amountMl": amountMl, "caffeineMg": caffeineMg, "timestamp": now]
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("coffee")
+            .collection("logs").addDocument(data: data)
+        await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
+        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
+    /// 緑茶を記録（150ml / カフェイン30mg）
+    func recordGreenTea() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+        let amountMl  = 150
+        let caffeineMg = 30
+        let data: [String: Any] = ["amountMl": amountMl, "caffeineMg": caffeineMg, "timestamp": now]
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("coffee")
+            .collection("logs").addDocument(data: data)
+        await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
+        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
+    /// スポーツ飲料を記録（300ml / 72kcal / 糖質21g / ナトリウム360mg）
+    func recordSportsDrink() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let now = Date()
+        let amountMl   = 300
+        let calorieKcal = 72
+        let data: [String: Any] = ["amountMl": amountMl, "calories": calorieKcal, "timestamp": now]
+        try? await db.collection("users").document(userId)
+            .collection("daily-intake").document("juice")
+            .collection("logs").addDocument(data: data)
+        await updateSummaryForIntake(userId: userId, calories: calorieKcal, waterMl: amountMl, timestamp: now)
+        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+    }
+
     /// アルコールを記録
     func recordAlcohol(alcoholType: AlcoholType, servings: Int = 1) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
@@ -2304,6 +2375,22 @@ enum PublicFeedPublisher {
         UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
     }
 
+    // MARK: - Debounce（同じIDへの書き込みを500ms待ってまとめる）
+    // @MainActor コンテキスト専用。EduLogManager は MainActor なので安全。
+    nonisolated(unsafe) private static var _pendingEduTasks: [String: Task<Void, Never>] = [:]
+
+    /// デバウンス付き publishEdu。OCR/LLM完了など短時間に複数回呼ばれる場合にまとめる。
+    @MainActor
+    static func publishEduDebounced(_ item: EduLogHistoryItem) {
+        _pendingEduTasks[item.id]?.cancel()
+        _pendingEduTasks[item.id] = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            publishEdu(item)
+            _pendingEduTasks[item.id] = nil
+        }
+    }
+
     static func sharedThumbnailBase64(from data: Data?) -> String? {
         guard let data else { return nil }
         guard let img = ThumbnailCache.downsample(data: data, maxPixel: 800),
@@ -2342,6 +2429,10 @@ enum PublicFeedPublisher {
            let arr = try? JSONSerialization.jsonObject(with: encoded) as? [[String: Any]] {
             data["exampleSentences"] = arr
         }
+        if let v = item.sharedUrl         { data["sharedUrl"]         = v }
+        if let v = item.sharedTitle       { data["sharedTitle"]       = v }
+        if let v = item.sharedDescription { data["sharedDescription"] = v }
+        if let v = item.sharedImageURL    { data["sharedImageURL"]    = v }
         write(uid: uid, postId: item.id, data: data)
     }
 
@@ -2399,6 +2490,8 @@ class PhotoLogManager: ObservableObject {
     @Published var logs: [PhotoLogEntry] = []
     @Published var isAnalyzing = false
     @Published var history: [PhotoLogHistoryItem] = []
+    /// history の内容変化（件数変化を含まない更新）を検知するためのバージョンカウンタ
+    @Published var historyVersion: Int = 0
 
     private let historyKey = "photoLogHistory"
 
@@ -2430,8 +2523,15 @@ class PhotoLogManager: ObservableObject {
     }
 
     /// 履歴をUserDefaultsに保存。ファイル保存済みの場合のみ thumbnailData を除外する。
+    /// 差分なし（idリスト が前回と同一）の場合はエンコードをスキップして CPU 節約。
+    private var _lastPersistedSignature: String = ""
     private func persistHistory() {
         let snapshot = history
+        // savedToHealthKit の変化も検知できるようシグネチャに含める
+        let sig = snapshot.map { "\($0.id):\($0.savedToHealthKit)" }.joined(separator: ",")
+        guard sig != _lastPersistedSignature else { return }  // 変更なし → スキップ
+        _lastPersistedSignature = sig
+        historyVersion &+= 1  // 変化を監視側に通知
         Task.detached(priority: .utility) {
             let stripped = snapshot.map { item -> PhotoLogHistoryItem in
                 guard item.thumbnailPath != nil else { return item }  // ファイル未保存はそのまま保持
@@ -2575,6 +2675,27 @@ class PhotoLogManager: ObservableObject {
 
         // 写真アップロードボーナス: +10 XP
         Task { await AuthenticationManager.shared.awardPoints(10) }
+
+        // HealthKitに栄養素を保存（Apple Healthとの摂取カロリー一致のため）
+        // 保存完了後に savedToHealthKit = true をセットして二重計算を防ぐ
+        let itemId = item.id
+        let mealNutrition = MealNutrition(
+            calories: nutrition.calories,
+            protein: nutrition.protein,
+            fat: nutrition.fat,
+            carbs: nutrition.carbs,
+            sugar: nutrition.sugar,
+            fiber: nutrition.fiber,
+            sodium: nutrition.sodium
+        )
+        let savedAt = item.timestamp
+        Task { @MainActor in
+            await HealthKitManager.shared.saveMealNutrition(mealNutrition, date: savedAt)
+            if let idx = self.history.firstIndex(where: { $0.id == itemId }) {
+                self.history[idx].savedToHealthKit = true
+                self.persistHistory()
+            }
+        }
     }
 
     /// description の最初の文（句読点または改行まで）を料理名として抽出
@@ -2928,246 +3049,3 @@ enum PhotoLogError: LocalizedError {
     }
 }
 
-// MARK: - EduLogManager
-
-@MainActor
-class EduLogManager: ObservableObject {
-    static let shared = EduLogManager()
-
-    @Published var history: [EduLogHistoryItem] = []
-
-    private let historyKey = "eduLogHistory_v1"
-
-    private init() { loadHistory() }
-
-    func addItem(activityName: String, activityEmoji: String, comment: String,
-                 image: UIImage?, isPublic: Bool = true,
-                 extractedPhrase: String? = nil,
-                 extractedLanguageCode: String? = nil,
-                 translationJA: String? = nil,
-                 pronunciation: String? = nil,
-                 weightKg: Double? = nil,
-                 bodyFatPercent: Double? = nil) {
-        let authorName     = AuthenticationManager.shared.userProfile?.username ?? ""
-        let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
-        var item = EduLogHistoryItem(
-            activityName: activityName,
-            activityEmoji: activityEmoji,
-            comment: comment,
-            authorName: authorName,
-            authorPhotoURL: authorPhotoURL,
-            isPublic: isPublic
-        )
-        if let image, let thumbData = EduLogManager.makeThumbnailHQ(from: image) {
-            item.thumbnailPath = ThumbnailFileStore.save(thumbData, id: "edu_\(item.id)")
-        }
-
-        // 呼び出し元から OCR 結果を直接渡された場合はセット
-        item.extractedPhrase       = extractedPhrase
-        item.extractedLanguageCode = extractedLanguageCode
-        item.translationJA         = translationJA
-        item.pronunciation         = pronunciation
-        // 体重ログ用：記録時点の体重・体脂肪
-        item.weightKg              = weightKg
-        item.bodyFatPercent        = bodyFatPercent
-
-        history.insert(item, at: 0)
-        persistHistory()
-        PublicFeedPublisher.publishEdu(item)
-
-        // OCR 結果未提供かつ Duolingo 画像の場合は自動抽出、続けて文法/例文 LLM を呼ぶ
-        let isDuolingo = activityName.localizedCaseInsensitiveContains("Duolingo")
-                      || activityEmoji == "🦉"
-        let needsOCR = isDuolingo && extractedPhrase == nil
-        let wantsGrammar  = comment.contains("文法")
-        let wantsExamples = comment.contains("例文")
-
-        if isDuolingo {
-            let itemID   = item.id
-            let capturedComment = comment
-            Task { @MainActor in
-                // OCR フェーズ
-                var phrase   = extractedPhrase
-                var langCode = extractedLanguageCode ?? "en"
-                var langName = "英語"
-
-                if needsOCR, let image {
-                    guard let result = await DuolingoTextExtractor.shared.extract(from: image) else { return }
-                    let pinyin = DuolingoTextExtractor.shared.generatePronunciation(
-                        phrase: result.phrase, languageCode: result.languageCode
-                    )
-                    phrase   = result.phrase
-                    langCode = result.languageCode
-                    langName = result.languageName
-                    if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
-                        self.history[idx].extractedPhrase       = result.phrase
-                        self.history[idx].extractedLanguageCode = result.languageCode
-                        self.history[idx].translationJA         = result.translationJA
-                        self.history[idx].pronunciation         = pinyin
-                    }
-                } else if let p = phrase {
-                    // 呼び出し元から phrase 済み → 言語名を解決
-                    langName = DuolingoTextExtractor.shared.languageDisplayNamePublic(langCode)
-                    let _ = p
-                }
-
-                // LLM フェーズ（文法 / 例文）
-                guard let finalPhrase = phrase, !finalPhrase.isEmpty else {
-                    if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
-                        self.persistHistory()
-                        PublicFeedPublisher.publishEdu(self.history[idx])
-                    }
-                    return
-                }
-
-                let llmSettings = await AuthenticationManager.shared.getLLMSettings()
-                let needsLLM = (capturedComment.contains("文法")
-                             || capturedComment.contains("例文")
-                             || capturedComment.contains("ダメな理由"))
-                              && !llmSettings.apiKey.isEmpty
-
-                async let grammarTask: String? = needsLLM && capturedComment.contains("文法")
-                    ? DuolingoTextExtractor.shared.generateGrammarNote(
-                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
-                    : nil
-                async let examplesTask: [ExampleSentence]? = needsLLM && capturedComment.contains("例文")
-                    ? DuolingoTextExtractor.shared.generateExampleSentences(
-                        phrase: finalPhrase, languageName: langName,
-                        languageCode: langCode, settings: llmSettings)
-                    : nil
-                async let mistakeTask: String? = needsLLM && capturedComment.contains("ダメな理由")
-                    ? DuolingoTextExtractor.shared.generateMistakeExplanation(
-                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
-                    : nil
-
-                let (grammarNote, examples, mistakeNote) = await (grammarTask, examplesTask, mistakeTask)
-
-                if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
-                    if let g = grammarNote  { self.history[idx].grammarNote      = g }
-                    if let e = examples     { self.history[idx].exampleSentences = e }
-                    if let m = mistakeNote  { self.history[idx].mistakeNote      = m }
-                    self.persistHistory()
-                    PublicFeedPublisher.publishEdu(self.history[idx])
-                }
-            }
-        }
-    }
-
-    static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
-        // アップロード前に明るさ・コントラスト・彩度を自動補正
-        let enhanced = image.enhancedForUpload()
-        let size = enhanced.size
-        let maxSide = max(size.width, size.height)
-        let target: UIImage
-        if maxSide > maxDimension {
-            let scale = maxDimension / maxSide
-            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-            target = renderer.image { _ in enhanced.draw(in: CGRect(origin: .zero, size: newSize)) }
-        } else {
-            target = enhanced
-        }
-        return target.jpegData(compressionQuality: 0.88)
-    }
-
-    /// 既存の公開投稿をまとめて共有フィードへ同期（機能導入前の投稿のバックフィル用）
-    func syncAllPublicPosts() {
-        for item in history where item.isPublic {
-            PublicFeedPublisher.publishEdu(item)
-        }
-    }
-
-    func deleteItem(id: String) {
-        history.removeAll { $0.id == id }
-        persistHistory()
-        PublicFeedPublisher.deleteEdu(id: id)
-        ThumbnailFileStore.delete(id: "edu_\(id)")
-    }
-
-    /// TOMOフィードへの公開フラグを切り替える
-    func setPublic(id: String, isPublic: Bool) {
-        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
-        history[idx].isPublic = isPublic
-        persistHistory()
-        if isPublic {
-            PublicFeedPublisher.publishEdu(history[idx])
-        } else {
-            PublicFeedPublisher.deleteEdu(id: id)
-        }
-    }
-
-    func toggleLike(id: String) {
-        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
-        history[idx].isLiked.toggle()
-        history[idx].likeCount = max(0, history[idx].likeCount + (history[idx].isLiked ? 1 : -1))
-        persistHistory()
-        PublicFeedPublisher.publishEdu(history[idx])
-    }
-
-    func addFeedComment(id: String, text: String) {
-        guard let idx = history.firstIndex(where: { $0.id == id }) else { return }
-        let authorName     = AuthenticationManager.shared.userProfile?.username ?? "Kenichi Yoshida"
-        let authorPhotoURL = UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
-        let c = FeedComment(text: text, authorName: authorName, authorPhotoURL: authorPhotoURL)
-        history[idx].feedComments.append(c)
-        persistHistory()
-    }
-
-    func deleteFeedComment(itemId: String, commentId: String) {
-        guard let idx = history.firstIndex(where: { $0.id == itemId }) else { return }
-        history[idx].feedComments.removeAll { $0.id == commentId }
-        persistHistory()
-    }
-
-    /// 履歴をUserDefaultsから読み込む。旧データの thumbnailData はファイルに移行する。
-    private func loadHistory() {
-        guard let raw = UserDefaults.standard.data(forKey: historyKey),
-              let items = try? JSONDecoder().decode([EduLogHistoryItem].self, from: raw) else { return }
-
-        var needsMigration = false
-        history = items.map { item in
-            guard let thumbData = item.thumbnailData, item.thumbnailPath == nil else { return item }
-            var copy = item
-            if let path = ThumbnailFileStore.save(thumbData, id: "edu_\(item.id)") {
-                copy.thumbnailPath = path
-                copy.thumbnailData = nil
-                needsMigration = true
-            }
-            return copy
-        }
-        if needsMigration { persistHistory() }
-    }
-
-    /// 履歴をUserDefaultsに保存。ファイル保存済みの場合のみ thumbnailData を除外する。
-    private func persistHistory() {
-        let snapshot = history
-        Task.detached(priority: .utility) {
-            let stripped = snapshot.map { item -> EduLogHistoryItem in
-                guard item.thumbnailPath != nil else { return item }  // ファイル未保存はそのまま保持
-                var copy = item
-                copy.thumbnailData = nil
-                return copy
-            }
-            if let data = try? JSONEncoder().encode(stripped) {
-                UserDefaults.standard.set(data, forKey: self.historyKey)
-            }
-        }
-    }
-
-    private func makeThumbnail(from image: UIImage, maxDimension: CGFloat = 200) -> Data? {
-        let size = image.size
-        let maxSide = max(size.width, size.height)
-        let target: UIImage
-        if maxSide > maxDimension {
-            let scale = maxDimension / maxSide
-            let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-            let renderer = UIGraphicsImageRenderer(size: newSize)
-            target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
-        } else {
-            target = image
-        }
-        return target.jpegData(compressionQuality: 0.55)
-    }
-}

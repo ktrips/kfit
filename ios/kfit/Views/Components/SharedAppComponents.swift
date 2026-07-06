@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import Combine
 import FirebaseAuth
 import GoogleSignIn
 
@@ -9,37 +11,41 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
     case goal = 1
     case mind = 2
     case food = 3
-    case tomo = 6  // 4=Settings, 5=More are reserved
+    case tomo = 6      // 4=Settings, 5=More are reserved
+    case goalingo = 7
 
     var id: Int { rawValue }
 
     var label: String {
         switch self {
-        case .fit: return "ROUTIN"
-        case .goal: return "FIT"
-        case .mind: return "MIND"
-        case .food: return "FOOD"
-        case .tomo: return "TOMO"
+        case .fit:      return "ROUTIN"
+        case .goal:     return "FIT"
+        case .mind:     return "MIND"
+        case .food:     return "FOOD"
+        case .tomo:     return "TOMO"
+        case .goalingo: return "GOAL"
         }
     }
 
     var settingsLabel: String {
         switch self {
-        case .fit: return "ROUTINタブ"
-        case .goal: return "FITタブ"
-        case .mind: return "MINDタブ"
-        case .food: return "FOODタブ"
-        case .tomo: return "TOMOタブ"
+        case .fit:      return "ROUTINタブ"
+        case .goal:     return "FITタブ"
+        case .mind:     return "MINDタブ"
+        case .food:     return "FOODタブ"
+        case .tomo:     return "TOMOタブ"
+        case .goalingo: return "GOALタブ"
         }
     }
 
     var icon: String {
         switch self {
-        case .fit: return "house.fill"
-        case .goal: return "target"
-        case .mind: return "brain.head.profile"
-        case .food: return "fork.knife"
-        case .tomo: return "person.2.fill"
+        case .fit:      return "house.fill"
+        case .goal:     return "target"
+        case .mind:     return "brain.head.profile"
+        case .food:     return "fork.knife"
+        case .tomo:     return "person.2.fill"
+        case .goalingo: return "flag.checkered"
         }
     }
 }
@@ -47,24 +53,26 @@ enum MainMenuTab: Int, CaseIterable, Identifiable {
 // MARK: - MainMenuTabPreferences
 
 enum MainMenuTabPreferences {
-    static let fitVisibleKey = "mainTab.fit.visible"
-    static let goalVisibleKey = "mainTab.goal.visible"
-    static let mindVisibleKey = "mainTab.mind.visible"
-    static let foodVisibleKey = "mainTab.food.visible"
-    static let tomoVisibleKey = "mainTab.tomo.visible"
-    static let logVisibleKey = "mainTab.log.visible"
-    static let defaultTabKey = "mainTab.default"
-    static let orderKey = "mainTab.order"
+    static let fitVisibleKey      = "mainTab.fit.visible"
+    static let goalVisibleKey     = "mainTab.goal.visible"
+    static let mindVisibleKey     = "mainTab.mind.visible"
+    static let foodVisibleKey     = "mainTab.food.visible"
+    static let tomoVisibleKey     = "mainTab.tomo.visible"
+    static let goalingoVisibleKey = "mainTab.goalingo.visible"
+    static let logVisibleKey      = "mainTab.log.visible"
+    static let defaultTabKey      = "mainTab.default"
+    static let orderKey           = "mainTab.order"
 
-    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind, .tomo]
+    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind, .goalingo, .tomo]
 
     static func visibleKey(for tab: MainMenuTab) -> String {
         switch tab {
-        case .fit: return fitVisibleKey
-        case .goal: return goalVisibleKey
-        case .mind: return mindVisibleKey
-        case .food: return foodVisibleKey
-        case .tomo: return tomoVisibleKey
+        case .fit:      return fitVisibleKey
+        case .goal:     return goalVisibleKey
+        case .mind:     return mindVisibleKey
+        case .food:     return foodVisibleKey
+        case .tomo:     return tomoVisibleKey
+        case .goalingo: return goalingoVisibleKey
         }
     }
 
@@ -545,6 +553,215 @@ struct UserStatusSheet: View {
                 .shadow(color: Color(hex: "#FF8C00").opacity(0.35), radius: 8, y: 3)
             }
             .buttonStyle(.plain)
+        }
+    }
+}
+
+// MARK: - LinkMeta / LinkMetadataFetcher
+// URLのOGメタデータ（og:title, og:description, og:image）を非同期取得・キャッシュ。
+// SharedAppComponents に置くことで kfit/kedu 両プロジェクトから参照可能。
+
+struct LinkMeta: Equatable {
+    var title: String?
+    var description: String?
+    var imageURL: String?
+    var thumbnailImage: UIImage?
+    var isLoading: Bool = false
+    var hasContent: Bool { !(title ?? "").isEmpty || !(description ?? "").isEmpty }
+}
+
+// ObservableObject + @Published の組み合わせを明示的に実装。
+// @MainActor をクラスレベルに付けると Swift バージョンによって
+// ObservableObject 合成が失敗するため、スレッド管理は内部で行う。
+final class LinkMetadataFetcher: ObservableObject {
+
+    static let shared = LinkMetadataFetcher()
+
+    // MARK: - 正規表現キャッシュ（静的。毎回コンパイルすると CPU 負荷大）
+    // NSRegularExpression のコンパイルは高コスト。static で初回のみ行い以降は再利用。
+    private static var regexCache: [String: NSRegularExpression] = [:]
+    private static let regexCacheLock = NSLock()
+
+    private static func cachedRegex(pattern: String, options: NSRegularExpression.Options = [.caseInsensitive, .dotMatchesLineSeparators]) -> NSRegularExpression? {
+        regexCacheLock.lock()
+        defer { regexCacheLock.unlock() }
+        if let cached = regexCache[pattern] { return cached }
+        guard let r = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        regexCache[pattern] = r
+        return r
+    }
+
+    // メインスレッドから読み書きする前提
+    var cache: [String: LinkMeta] = [:] {
+        willSet { objectWillChange.send() }
+    }
+    private var inFlight: Set<String> = []
+
+    func prefetch(urlString: String) {
+        guard !inFlight.contains(urlString), cache[urlString] == nil else { return }
+        inFlight.insert(urlString)
+        cache[urlString] = LinkMeta(isLoading: true)
+        Task { @MainActor in await self.doFetch(urlString: urlString) }
+    }
+
+    func meta(for urlString: String) -> LinkMeta? { cache[urlString] }
+
+    @MainActor
+    private func doFetch(urlString: String) async {
+        defer {
+            inFlight.remove(urlString)
+        }
+        guard let url = URL(string: urlString) else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let html = String(data: data, encoding: .utf8)
+                ?? String(data: data, encoding: .isoLatin1)
+                ?? String(data: data, encoding: .shiftJIS)
+                ?? ""
+            var meta = LinkMeta(isLoading: false)
+            (meta.title, meta.description, meta.imageURL) = parseOG(from: html)
+            if let imgUrl = meta.imageURL, let iurl = URL(string: imgUrl),
+               let (imgData, _) = try? await URLSession.shared.data(from: iurl),
+               let img = UIImage(data: imgData) {
+                meta.thumbnailImage = resized(img, maxPixel: 180)
+            }
+            cache[urlString] = meta
+        } catch {
+            cache[urlString] = LinkMeta(isLoading: false)
+        }
+    }
+
+    private func parseOG(from html: String) -> (title: String?, description: String?, imageURL: String?) {
+        func extract(property: String) -> String? {
+            let patterns = [
+                "property=[\"']og:\(property)[\"'][^>]*content=[\"']([^\"'<>]+)[\"']",
+                "content=[\"']([^\"'<>]+)[\"'][^>]*property=[\"']og:\(property)[\"']",
+                "name=[\"']twitter:\(property)[\"'][^>]*content=[\"']([^\"'<>]+)[\"']",
+                "content=[\"']([^\"'<>]+)[\"'][^>]*name=[\"']twitter:\(property)[\"']",
+                "name=[\"']\(property)[\"'][^>]*content=[\"']([^\"'<>]+)[\"']",
+                "content=[\"']([^\"'<>]+)[\"'][^>]*name=[\"']\(property)[\"']"
+            ]
+            for pattern in patterns {
+                // cachedRegex を使用し、毎回のコンパイルを回避（パフォーマンス改善）
+                guard let regex = LinkMetadataFetcher.cachedRegex(pattern: pattern) else { continue }
+                let ns = html as NSString
+                if let m = regex.firstMatch(in: html, range: NSRange(location: 0, length: ns.length)),
+                   m.numberOfRanges > 1 {
+                    let r = m.range(at: 1)
+                    if r.location != NSNotFound {
+                        return htmlDecode(ns.substring(with: r)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+            return nil
+        }
+        let titleFallback: String? = {
+            // title タグ用正規表現もキャッシュ
+            guard let r = LinkMetadataFetcher.cachedRegex(
+                pattern: "<title[^>]*>([^<]+)</title>",
+                options: .caseInsensitive
+            ) else { return nil }
+            let ns = html as NSString
+            if let m = r.firstMatch(in: html, range: NSRange(location: 0, length: ns.length)),
+               m.numberOfRanges > 1 {
+                let rng = m.range(at: 1)
+                if rng.location != NSNotFound {
+                    return htmlDecode(ns.substring(with: rng)).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            return nil
+        }()
+        return (extract(property: "title") ?? titleFallback,
+                extract(property: "description"),
+                extract(property: "image"))
+    }
+
+    private func htmlDecode(_ s: String) -> String {
+        s.replacingOccurrences(of: "&amp;", with: "&")
+         .replacingOccurrences(of: "&quot;", with: "\"")
+         .replacingOccurrences(of: "&#39;", with: "'")
+         .replacingOccurrences(of: "&apos;", with: "'")
+         .replacingOccurrences(of: "&lt;", with: "<")
+         .replacingOccurrences(of: "&gt;", with: ">")
+         .replacingOccurrences(of: "&nbsp;", with: " ")
+    }
+
+    private func resized(_ img: UIImage, maxPixel: CGFloat) -> UIImage {
+        let long = max(img.size.width, img.size.height)
+        guard long > maxPixel else { return img }
+        let scale = maxPixel / long
+        let newSize = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
+    }
+}
+
+extension LinkMetadataFetcher {
+    /// PendingShareProcessor から呼ぶ static ヘルパー（キャッシュなし・バックグラウンド）
+    static func fetchOGMeta(urlString: String) async -> (title: String?, description: String?, imageURL: String?) {
+        guard let url = URL(string: urlString) else { return (nil, nil, nil) }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+                         forHTTPHeaderField: "User-Agent")
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return (nil, nil, nil) }
+        let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+        return LinkMetadataFetcher.shared.parseOG(from: html)
+    }
+}
+
+// MARK: - CachedAsyncImage（URLCache を活用した画像キャッシュ付き AsyncImage 代替）
+// AsyncImage はデフォルトで URLCache を使わず、LazyVStack でのスクロール時に
+// 同一 URL を繰り返しダウンロードする。CachedAsyncImage は URLCache.shared を
+// 経由するセッションを使い、ディスク/メモリキャッシュを活用する。
+
+// Generic 型は static stored property を持てないため、URLSession をトップレベル定数で管理する。
+private let _cachedImageSession: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.urlCache = URLCache.shared          // ディスク 512MB / メモリ 64MB
+    config.requestCachePolicy = .returnCacheDataElseLoad
+    return URLSession(configuration: config)
+}()
+
+struct CachedAsyncImage<Content: View, Placeholder: View>: View {
+    let url: URL?
+    @ViewBuilder var content: (Image) -> Content
+    @ViewBuilder var placeholder: () -> Placeholder
+
+    @State private var image: UIImage? = nil
+    @State private var isLoading = false
+
+    var body: some View {
+        Group {
+            if let img = image {
+                content(Image(uiImage: img))
+            } else {
+                placeholder()
+                    .onAppear { load() }
+            }
+        }
+    }
+
+    private func load() {
+        guard !isLoading, let url else { return }
+        isLoading = true
+        Task {
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
+            guard let (data, _) = try? await _cachedImageSession.data(for: request),
+                  let loaded = UIImage(data: data) else {
+                await MainActor.run { isLoading = false }
+                return
+            }
+            await MainActor.run {
+                image = loaded
+                isLoading = false
+            }
         }
     }
 }

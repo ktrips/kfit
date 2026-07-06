@@ -1,6 +1,8 @@
 import Combine
 import WatchConnectivity
 import Foundation
+import FirebaseFirestore
+import FirebaseAuth
 
 /// Apple Watch → iPhone へのワークアウトデータ受信ブリッジ
 ///
@@ -134,10 +136,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 dlog("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
-                let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
-                                 todaySets: summary.completedSets, todayExercises: todayExercises)
+                await sendStatsAfterSet(stats)
                 return
             }
 
@@ -156,31 +155,13 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                               Date().timeIntervalSince(lastReq) < statsRequestCacheInterval {
                         // 5秒以内の再リクエスト: fetch をスキップして前回の結果を再送
                         dlog("[iOSWatchBridge] request_stats キャッシュ利用（fetch スキップ）")
-                        let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                        let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                        self.sendStatsToWatch(
-                            streak:    profile?.streak ?? 0,
-                            todayReps: summary.exerciseReps,
-                            todayXP:   summary.exercisePoints,
-                            todaySets: summary.completedSets,
-                            todayExercises: todayExercises,
-                            force: false
-                        )
+                        await self.fetchAndSendStats(force: false)
                         return
                     } else {
                         lastStatsRequestTime = Date()
                         await HealthKitManager.shared.fetchWatchSnapshotHealth()
                     }
-                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                    let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                    self.sendStatsToWatch(
-                        streak:    profile?.streak ?? 0,
-                        todayReps: summary.exerciseReps,
-                        todayXP:   summary.exercisePoints,
-                        todaySets: summary.completedSets,
-                        todayExercises: todayExercises,
-                        force: force
-                    )
+                    await self.fetchAndSendStats(force: force)
                 }
                 return
             }
@@ -203,10 +184,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                         }
                         dlog("[iOSWatchBridge] ✅ Recorded \(needed) mindfulness to \(currentSlot.displayName)")
                     }
-                    let profile = AuthenticationManager.shared.userProfile
-                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                    let exercises = await AuthenticationManager.shared.getTodayExercises()
-                    self.sendStatsToWatch(streak: profile?.streak ?? 0, todayReps: summary.exerciseReps, todayXP: summary.exercisePoints, todaySets: summary.completedSets, todayExercises: exercises)
+                    await self.fetchAndSendStats()
                 }
                 return
             }
@@ -219,6 +197,12 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     await Self.saveMindfulStandSession(at: currentSlot)
                     dlog("[iOSWatchBridge] 🧍 Watch stand completed at \(currentSlot.displayName)")
                 }
+                return
+            }
+
+            // ⑤-pre フィードリクエスト（Watch 起動時 / 手動同期）
+            if (message["action"] as? String) == "request_feed" {
+                Task { await self.sendFeedToWatch() }
                 return
             }
 
@@ -273,16 +257,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                     dlog("[iOSWatchBridge] 📊 摂取記録完了（インメモリ状態を使用）")
 
                     // 最新データをWatchに送信
-                    let profile = AuthenticationManager.shared.userProfile
-                    let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                    let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                    self.sendStatsToWatch(
-                        streak: profile?.streak ?? 0,
-                        todayReps: summary.exerciseReps,
-                        todayXP: summary.exercisePoints,
-                        todaySets: summary.completedSets,
-                        todayExercises: todayExercises
-                    )
+                    await self.fetchAndSendStats()
                 }
                 return
             }
@@ -303,10 +278,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             if let setData = applicationContext["pendingCompletedSet"] as? Data,
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
-                let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-                let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-                sendStatsToWatch(streak: stats.streak, todayReps: stats.todayReps, todayXP: stats.todayXP,
-                                 todaySets: summary.completedSets, todayExercises: todayExercises)
+                await sendStatsAfterSet(stats)
             }
 
             if (applicationContext["action"] as? String) == "stand_completed" {
@@ -344,18 +316,37 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
     // iOS側で直接記録した後にWatchへ通知
     func notifyWatchAfterDirectRecord() {
-        Task {
-            let profile = AuthenticationManager.shared.userProfile
-            let summary = await AuthenticationManager.shared.getTodayActivitySummary()
-            let todayExercises = await AuthenticationManager.shared.getTodayExercises()
-            sendStatsToWatch(
-                streak: profile?.streak ?? 0,
-                todayReps: summary.exerciseReps,
-                todayXP: summary.exercisePoints,
-                todaySets: summary.completedSets,
-                todayExercises: todayExercises
-            )
-        }
+        Task { await fetchAndSendStats() }
+    }
+
+    // MARK: - Watch送信共通ヘルパー
+
+    /// profile取得 → summary取得 → exercises取得 → sendStatsToWatch の共通パターン
+    private func fetchAndSendStats(force: Bool = false) async {
+        let profile = AuthenticationManager.shared.userProfile
+        let summary = await AuthenticationManager.shared.getTodayActivitySummary()
+        let exercises = await AuthenticationManager.shared.getTodayExercises()
+        sendStatsToWatch(
+            streak: profile?.streak ?? 0,
+            todayReps: summary.exerciseReps,
+            todayXP: summary.exercisePoints,
+            todaySets: summary.completedSets,
+            todayExercises: exercises,
+            force: force
+        )
+    }
+
+    /// recordWatchCompletedSet の返り値を使って summary + exercises だけ追加取得して送信
+    private func sendStatsAfterSet(_ stats: (streak: Int, todayReps: Int, todayXP: Int)) async {
+        let summary = await AuthenticationManager.shared.getTodayActivitySummary()
+        let exercises = await AuthenticationManager.shared.getTodayExercises()
+        sendStatsToWatch(
+            streak: stats.streak,
+            todayReps: stats.todayReps,
+            todayXP: stats.todayXP,
+            todaySets: summary.completedSets,
+            todayExercises: exercises
+        )
     }
 
     // 時間帯別の進捗を返す（DashboardView.updateWidgetData が書き込む共有 UserDefaults を読む）
@@ -680,6 +671,86 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    // MARK: - iOS → Watch: フィード投稿送信
+    private func sendFeedToWatch() async {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+
+        // 自分の投稿（EduLogManager）
+        var items: [WatchFeedItemForTransfer] = EduLogManager.shared.history.prefix(20).map {
+            WatchFeedItemForTransfer(
+                id: $0.id,
+                timestamp: $0.timestamp,
+                activityName: $0.activityName,
+                activityEmoji: $0.activityEmoji,
+                comment: $0.comment,
+                authorName: $0.authorName.isEmpty
+                    ? (AuthenticationManager.shared.userProfile?.username ?? "Me") : $0.authorName,
+                likeCount: $0.likeCount,
+                calories: $0.calories,
+                isOwn: true
+            )
+        }
+
+        // 友達の投稿（Firestore から直近7日間を最大20件取得）
+        if let uid = Auth.auth().currentUser?.uid {
+            let friendItems = await fetchFriendFeedForWatch(uid: uid)
+            items.append(contentsOf: friendItems)
+        }
+
+        items.sort { $0.timestamp > $1.timestamp }
+        let payload30 = Array(items.prefix(30))
+        guard let data = try? JSONEncoder().encode(payload30) else { return }
+        session.sendMessage(["feedItems": data], replyHandler: nil, errorHandler: nil)
+        dlog("[iOSWatchBridge] 📤 フィード \(payload30.count) 件を Watch に送信")
+    }
+
+    private func fetchFriendFeedForWatch(uid: String) async -> [WatchFeedItemForTransfer] {
+        let db = Firestore.firestore()
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+
+        let friendIds: [String]
+        do {
+            let snap = try await db.collection("friendships")
+                .whereField("members", arrayContains: uid)
+                .getDocuments()
+            friendIds = snap.documents.compactMap { doc -> String? in
+                let members = doc.data()["members"] as? [String] ?? []
+                return members.first(where: { $0 != uid })
+            }
+        } catch {
+            dlog("[iOSWatchBridge] 友達ID取得失敗: \(error)")
+            return []
+        }
+        guard !friendIds.isEmpty else { return [] }
+
+        var result: [WatchFeedItemForTransfer] = []
+        for fid in friendIds.prefix(5) {
+            guard let snap = try? await db.collection("publicProfiles").document(fid)
+                .collection("posts")
+                .whereField("timestamp", isGreaterThan: Timestamp(date: cutoff))
+                .order(by: "timestamp", descending: true)
+                .limit(to: 10)
+                .getDocuments() else { continue }
+            for doc in snap.documents {
+                let d = doc.data()
+                result.append(WatchFeedItemForTransfer(
+                    id: "friend_\(fid)_\(doc.documentID)",
+                    timestamp: (d["timestamp"] as? Timestamp)?.dateValue() ?? Date(),
+                    activityName: d["activityName"] as? String ?? "",
+                    activityEmoji: d["activityEmoji"] as? String ?? "",
+                    comment: d["comment"] as? String ?? "",
+                    authorName: d["authorName"] as? String ?? "TOMO",
+                    likeCount: d["likeCount"] as? Int ?? 0,
+                    calories: d["calories"] as? Int,
+                    isOwn: false
+                ))
+            }
+        }
+        return result
+    }
+
     private func buildWatchFaceTasks() async -> [WatchFaceTaskConfigForWatch] {
         // M4: 毎呼び出しで全 HK+Firestore 同期を走らせないよう変更。
         // 設定はキャッシュ済みのインメモリ状態を参照するだけにし、
@@ -966,4 +1037,17 @@ struct WatchFaceTaskConfigForWatch: Codable {
     let actionType: String
     let mealSubtype: String?
     let intakeMessage: String
+}
+
+/// Watch に送信するフィード投稿アイテム（iOS 側で構築）
+struct WatchFeedItemForTransfer: Codable {
+    let id: String
+    let timestamp: Date
+    let activityName: String
+    let activityEmoji: String
+    let comment: String
+    let authorName: String
+    let likeCount: Int
+    let calories: Int?
+    let isOwn: Bool
 }

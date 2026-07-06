@@ -685,6 +685,12 @@ class TimeSlotManager: ObservableObject {
         UserDefaults.standard.stringArray(forKey: customGoalCacheKey()) ?? []
     }
 
+    /// カスタム目標を「完了」にする（未完了の場合のみ。トグルしないので二重タップ事故なし）
+    func completeCustomGoalIfNeeded(id: String) async {
+        guard !progress.globalProgress.completedCustomGoalIds.contains(id) else { return }
+        await toggleCustomGoal(id: id)
+    }
+
     /// カスタム目標の達成状態をトグル
     func toggleCustomGoal(id: String) async {
         var updatedProgress = progress

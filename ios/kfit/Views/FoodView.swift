@@ -144,7 +144,8 @@ struct FoodView: View {
 
     @State private var showPhotoLog        = false
     @State private var showDetailLog       = false
-    @State private var showPhotoCarousel   = false  // 今日の食事タップ→フォトカルーセル
+    @State private var showPhotoCarousel   = false  // 今日の食事タップ→食事スライド
+    @State private var mealSlideFilter: String? = nil  // nil=全件, "朝食"/"ランチ"/"スナック"/"夕食"
     @State private var showDrinkRows       = false  // 飲料クイックボタン行の展開
     @State private var showIntakeConfirm = false
     @State private var pendingIntakeAction: (() -> Void)?
@@ -344,6 +345,113 @@ struct FoodView: View {
         ]
     }
 
+    // MARK: - 食事スライドエントリ（クイック・フォト・HK 統合）
+
+    struct MealSlideEntry: Identifiable {
+        let id: String
+        let emoji: String
+        let name: String
+        let time: Date
+        let image: UIImage?
+        let calories: Int
+        let protein: Double
+        let fat: Double
+        let carbs: Double
+        let sugar: Double
+        let sodium: Double
+        let source: String  // "クイック" | "フォト" | "HealthKit"
+
+        var slotLabel: String {
+            let h = Calendar.current.component(.hour, from: time)
+            switch h {
+            case 0..<10: return "朝食"
+            case 10..<14: return "ランチ"
+            case 14..<18: return "スナック"
+            default:      return "夕食"
+            }
+        }
+        var slotEmoji: String {
+            switch slotLabel {
+            case "朝食":   return "🌅"
+            case "ランチ": return "☀️"
+            case "スナック": return "🍎"
+            default:       return "🌙"
+            }
+        }
+    }
+
+    private var todayMealSlideEntries: [MealSlideEntry] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var entries: [MealSlideEntry] = []
+
+        // 1. Firestoreクイックミール
+        let fsTimes = todayIntake.meals.map { $0.timestamp }
+        for meal in todayIntake.meals {
+            let nutr = intakeGoals.nutritionFor(mealType: meal.mealType)
+            entries.append(MealSlideEntry(
+                id: meal.id.uuidString,
+                emoji: meal.mealType.emoji,
+                name: meal.mealType.displayName,
+                time: meal.timestamp,
+                image: nil,
+                calories: meal.calories,
+                protein: nutr.protein,
+                fat: nutr.fat,
+                carbs: nutr.carbs,
+                sugar: nutr.sugar,
+                sodium: nutr.sodium,
+                source: "クイック"
+            ))
+        }
+
+        // 2. フォトログ
+        let photoToday = photoLogManager.history.filter { cal.startOfDay(for: $0.timestamp) == today }
+        let photoTimes = photoToday.map { $0.timestamp }
+        for item in photoToday {
+            let isDup = fsTimes.contains { abs($0.timeIntervalSince(item.timestamp)) < 300 }
+            if isDup { continue }
+            let n = item.analyzedNutrition
+            entries.append(MealSlideEntry(
+                id: item.id,
+                emoji: "📸",
+                name: item.displayName,
+                time: item.timestamp,
+                image: item.thumbnail,
+                calories: n.calories,
+                protein: n.protein,
+                fat: n.fat,
+                carbs: n.carbs,
+                sugar: n.sugar,
+                sodium: n.sodium,
+                source: "フォト"
+            ))
+        }
+
+        // 3. HKサンプル（重複なし）
+        let usedTimes = fsTimes + photoTimes
+        for sample in healthKit.todayMealSamples {
+            let isDup = usedTimes.contains { abs($0.timeIntervalSince(sample.startDate)) < 300 }
+            if isDup { continue }
+            entries.append(MealSlideEntry(
+                id: UUID().uuidString,
+                emoji: "🍽️",
+                name: "食事",
+                time: sample.startDate,
+                image: nil,
+                calories: Int(sample.value),
+                protein: 0,
+                fat: 0,
+                carbs: 0,
+                sugar: 0,
+                sodium: 0,
+                source: "HealthKit"
+            ))
+        }
+
+        return entries.sorted { $0.time < $1.time }
+    }
+
     private var nutritionSummaryCard: some View {
         VStack(spacing: 0) {
             // ── 食事時間帯別カロリー（今日の食事：最上部）─────────────────
@@ -384,109 +492,167 @@ struct FoodView: View {
         .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 
-    // MARK: - フォトミール カルーセルシート
-    // 「今日の食事」ヘッダータップ時にモーダル表示
+    // MARK: - 食事スライドシート（クイック・フォト・HK 統合）
     struct PhotoMealCarouselSheet: View {
-        let items: [PhotoLogHistoryItem]
+        let allEntries: [MealSlideEntry]
+        let filterSlot: String?         // nil=全件, "朝食"/"ランチ"/"スナック"/"夕食"
         @Environment(\.dismiss) private var dismiss
-
-        private func slotLabel(for date: Date) -> String {
-            let h = Calendar.current.component(.hour, from: date)
-            switch h {
-            case 0..<5:   return "🌅 朝食"
-            case 5..<10:  return "🌅 朝食"
-            case 10..<14: return "☀️ ランチ"
-            case 14..<18: return "🍎 スナック"
-            default:      return "🌙 夕食"
-            }
-        }
 
         private static let timeFmt: DateFormatter = {
             let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
         }()
 
+        private var displayEntries: [MealSlideEntry] {
+            guard let slot = filterSlot else { return allEntries }
+            return allEntries.filter { $0.slotLabel == slot }
+        }
+
+        private var sheetTitle: String {
+            if let slot = filterSlot { return "\(slot)の食事 \(displayEntries.count)件" }
+            return "今日の食事 \(displayEntries.count)件"
+        }
+
         var body: some View {
             NavigationView {
-                TabView {
-                    ForEach(items) { item in
-                        ScrollView {
-                            VStack(spacing: 0) {
-                                // 写真
-                                Group {
-                                    if let img = item.thumbnail {
-                                        Image(uiImage: img)
-                                            .resizable()
-                                            .scaledToFit()
-                                    } else {
-                                        Rectangle()
-                                            .fill(Color(.systemGray5))
-                                            .overlay(Image(systemName: "photo").font(.largeTitle).foregroundColor(.gray))
+                Group {
+                    if displayEntries.isEmpty {
+                        VStack(spacing: 16) {
+                            Text("🍽️").font(.system(size: 48))
+                            Text("この時間帯の記録はありません")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        TabView {
+                            ForEach(displayEntries) { entry in
+                                ScrollView {
+                                    VStack(spacing: 0) {
+                                        // ── 画像 or 絵文字アイコン ────────────────
+                                        Group {
+                                            if let img = entry.image {
+                                                Image(uiImage: img)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .cornerRadius(20)
+                                            } else {
+                                                ZStack {
+                                                    RoundedRectangle(cornerRadius: 20)
+                                                        .fill(
+                                                            LinearGradient(
+                                                                colors: [Color.duoOrange.opacity(0.12), Color.duoOrange.opacity(0.04)],
+                                                                startPoint: .topLeading, endPoint: .bottomTrailing
+                                                            )
+                                                        )
+                                                    VStack(spacing: 6) {
+                                                        Text(entry.emoji).font(.system(size: 80))
+                                                        Text(entry.name)
+                                                            .font(.system(size: 14, weight: .bold))
+                                                            .foregroundColor(Color.duoDark)
+                                                            .multilineTextAlignment(.center)
+                                                            .padding(.horizontal, 16)
+                                                    }
+                                                }
+                                                .frame(height: 200)
+                                            }
+                                        }
+                                        .frame(maxHeight: entry.image != nil ? 300 : 200)
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 10)
+
+                                        // ── 時間帯ヘッダー（大きく目立つ）─────────
+                                        VStack(spacing: 6) {
+                                            // 時間帯ラベル（特大）
+                                            HStack(spacing: 10) {
+                                                Text(entry.slotEmoji)
+                                                    .font(.system(size: 28))
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(entry.slotLabel)
+                                                        .font(.system(size: 22, weight: .black))
+                                                        .foregroundColor(Color.duoOrange)
+                                                    Text(Self.timeFmt.string(from: entry.time))
+                                                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(Color.duoOrange.opacity(0.75))
+                                                }
+                                                Spacer()
+                                                // ソースバッジ
+                                                Text(entry.source)
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundColor(.secondary)
+                                                    .padding(.horizontal, 9).padding(.vertical, 4)
+                                                    .background(Color(.systemGray5))
+                                                    .clipShape(Capsule())
+                                            }
+                                            .padding(.horizontal, 20)
+
+                                            // 食品名（画像ありの場合のみ表示）
+                                            if entry.image != nil {
+                                                Text(entry.name)
+                                                    .font(.system(size: 16, weight: .black))
+                                                    .foregroundColor(Color.duoDark)
+                                                    .multilineTextAlignment(.center)
+                                                    .padding(.horizontal, 20)
+                                            }
+                                        }
+                                        .padding(.top, 14)
+                                        .padding(.bottom, 4)
+
+                                        // ── カロリー大表示 ────────────────────────
+                                        if entry.calories > 0 {
+                                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                                Text("🔥")
+                                                    .font(.system(size: 26))
+                                                Text("\(entry.calories)")
+                                                    .font(.system(size: 44, weight: .black, design: .rounded))
+                                                    .foregroundColor(Color.duoOrange)
+                                                Text("kcal")
+                                                    .font(.system(size: 18, weight: .bold))
+                                                    .foregroundColor(Color.duoOrange.opacity(0.75))
+                                                    .padding(.bottom, 4)
+                                            }
+                                            .padding(.vertical, 10)
+                                            .frame(maxWidth: .infinity)
+                                            .background(Color.duoOrange.opacity(0.06))
+                                            .cornerRadius(16)
+                                            .padding(.horizontal, 16)
+                                        }
+
+                                        // ── P/F/C チップ ──────────────────────────
+                                        let hasDetail = entry.protein > 0 || entry.fat > 0 || entry.carbs > 0
+                                        if hasDetail {
+                                            HStack(spacing: 10) {
+                                                macroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: Color.duoRed)
+                                                macroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
+                                                macroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.top, 10)
+                                        }
+
+                                        if entry.sugar > 0 || entry.sodium > 0 {
+                                            HStack(spacing: 10) {
+                                                if entry.sugar > 0 {
+                                                    macroChip(label: "🍬 糖質", value: String(format: "%.1fg", entry.sugar), color: Color(hex: "#A78BFA"))
+                                                }
+                                                if entry.sodium > 0 {
+                                                    macroChip(label: "🧂 塩分", value: String(format: "%.2fg", entry.sodium), color: Color(hex: "#1CB0F6"))
+                                                }
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.top, 6)
+                                        }
+
+                                        Spacer(minLength: 32)
                                     }
                                 }
-                                .frame(maxHeight: 320)
-                                .cornerRadius(16)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-
-                                // 時間帯ラベル + 時刻
-                                HStack {
-                                    Text(slotLabel(for: item.timestamp))
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(Color.duoOrange)
-                                    Spacer()
-                                    Text(Self.timeFmt.string(from: item.timestamp))
-                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.top, 12)
-
-                                // 食品名
-                                Text(item.displayName)
-                                    .font(.system(size: 16, weight: .black))
-                                    .foregroundColor(Color.duoDark)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 20)
-                                    .padding(.top, 4)
-
-                                // 栄養素カード
-                                HStack(spacing: 12) {
-                                    nutriChip(emoji: "🔥", label: "カロリー", value: "\(item.analyzedNutrition.calories) kcal", color: Color.duoOrange)
-                                    nutriChip(emoji: "🥩", label: "タンパク質", value: String(format: "%.1fg", item.analyzedNutrition.protein), color: Color.duoRed)
-                                    nutriChip(emoji: "🫙", label: "脂質", value: String(format: "%.1fg", item.analyzedNutrition.fat), color: Color(hex: "#F5A623"))
-                                    nutriChip(emoji: "🍚", label: "炭水化物", value: String(format: "%.1fg", item.analyzedNutrition.carbs), color: Color(hex: "#58CC02"))
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 12)
-
-                                // コメント
-                                if !item.comment.isEmpty {
-                                    Text(item.comment)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
-                                        .padding(.horizontal, 20)
-                                        .padding(.top, 8)
-                                }
-
-                                // AI説明
-                                if !item.analyzedNutrition.description.isEmpty {
-                                    Text(item.analyzedNutrition.description)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.leading)
-                                        .padding(.horizontal, 20)
-                                        .padding(.top, 6)
-                                        .padding(.bottom, 20)
-                                }
+                                .tag(entry.id)
                             }
                         }
-                        .tag(item.id)
+                        .tabViewStyle(.page)
+                        .indexViewStyle(.page(backgroundDisplayMode: .always))
                     }
                 }
-                .tabViewStyle(.page)
-                .indexViewStyle(.page(backgroundDisplayMode: .always))
-                .navigationTitle("今日の食事フォト \(items.count)件")
+                .navigationTitle(sheetTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -496,20 +662,21 @@ struct FoodView: View {
             }
         }
 
-        private func nutriChip(emoji: String, label: String, value: String, color: Color) -> some View {
-            VStack(spacing: 3) {
-                Text(emoji).font(.system(size: 18))
-                Text(label)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.secondary)
+        private func macroChip(label: String, value: String, color: Color) -> some View {
+            VStack(spacing: 4) {
                 Text(value)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.system(size: 16, weight: .black, design: .rounded))
                     .foregroundColor(color)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(color.opacity(0.75))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
             .background(color.opacity(0.08))
-            .cornerRadius(10)
+            .cornerRadius(12)
         }
     }
 
@@ -836,28 +1003,27 @@ struct FoodView: View {
         let breakdown = todayMealBreakdown
         let maxKcal = max(breakdown.map(\.kcal).max() ?? 1, 1)
         let totalKcal = breakdown.reduce(0) { $0 + $1.kcal }
-        // 今日のフォトログ（タイムスタンプ順）
-        let todayPhotos: [PhotoLogHistoryItem] = {
-            let today = Calendar.current.startOfDay(for: Date())
-            return photoLogManager.history
-                .filter { Calendar.current.startOfDay(for: $0.timestamp) == today }
-                .sorted { $0.timestamp < $1.timestamp }
-        }()
+        let slideEntries = todayMealSlideEntries
+        let hasEntries = !slideEntries.isEmpty
 
         return VStack(alignment: .leading, spacing: 8) {
+            // ── ヘッダー（全件スライドを開く）───────────────────────────
             HStack(spacing: 6) {
                 Image(systemName: "fork.knife")
                     .font(.system(size: 12 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoOrange)
                 Button {
-                    if !todayPhotos.isEmpty { showPhotoCarousel = true }
+                    if hasEntries {
+                        mealSlideFilter = nil
+                        showPhotoCarousel = true
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Text("今日の食事")
                             .font(.system(size: 13 * UIScale.font, weight: .bold))
                             .foregroundColor(Color.duoDark)
-                        if !todayPhotos.isEmpty {
-                            Image(systemName: "photo.stack.fill")
+                        if hasEntries {
+                            Image(systemName: "rectangle.stack.fill")
                                 .font(.system(size: 10 * UIScale.font))
                                 .foregroundColor(Color.duoOrange.opacity(0.7))
                         }
@@ -867,8 +1033,7 @@ struct FoodView: View {
                 Spacer()
                 if totalKcal > 0 {
                     HStack(spacing: 2) {
-                        Text("🔥")
-                            .font(.system(size: 9 * UIScale.font))
+                        Text("🔥").font(.system(size: 9 * UIScale.font))
                         Text("\(totalKcal)")
                             .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)
@@ -876,14 +1041,10 @@ struct FoodView: View {
                             .font(.system(size: 9 * UIScale.font, weight: .bold))
                             .foregroundColor(.white.opacity(0.88))
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.duoOrange)
-                    .clipShape(Capsule())
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color.duoOrange).clipShape(Capsule())
                 }
-                Button {
-                    showIntakeSettings = true
-                } label: {
+                Button { showIntakeSettings = true } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12 * UIScale.font))
                         .foregroundColor(Color.duoOrange)
@@ -893,71 +1054,93 @@ struct FoodView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .sheet(isPresented: $showPhotoCarousel) {
-                PhotoMealCarouselSheet(items: todayPhotos)
-            }
 
+            // ── 時間帯内訳行（タップで該当スロットのスライド表示）──────
             ForEach(breakdown, id: \.label) { meal in
-                HStack(spacing: 8) {
-                    Text(meal.emoji)
-                        .font(.system(size: 13))
-                        .frame(width: 20)
-                    Text(meal.label)
-                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoDark)
-                        .frame(width: 52, alignment: .leading)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(meal.color.opacity(0.12))
-                                .frame(height: 10)
-                            let ratio = meal.kcal > 0
-                                ? CGFloat(meal.kcal) / CGFloat(maxKcal) : 0
-                            Capsule()
-                                .fill(meal.color)
-                                .frame(width: max(0, geo.size.width * ratio), height: 10)
+                let slotKey = meal.label  // "朝食" | "ランチ" | "スナック" | "夕食"
+                let slotCount = slideEntries.filter { $0.slotLabel == slotKey }.count
+                Button {
+                    if slotCount > 0 {
+                        mealSlideFilter = slotKey
+                        showPhotoCarousel = true
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(meal.emoji)
+                            .font(.system(size: 13))
+                            .frame(width: 20)
+                        Text(meal.label)
+                            .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color.duoDark)
+                            .frame(width: 52, alignment: .leading)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(meal.color.opacity(0.12)).frame(height: 10)
+                                let ratio = meal.kcal > 0 ? CGFloat(meal.kcal) / CGFloat(maxKcal) : 0
+                                Capsule().fill(meal.color)
+                                    .frame(width: max(0, geo.size.width * ratio), height: 10)
+                            }
+                        }
+                        .frame(height: 10)
+                        Text(meal.kcal > 0 ? "\(meal.kcal)" : "—")
+                            .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
+                            .foregroundColor(meal.kcal > 0 ? meal.color : Color.duoSubtitle)
+                            .frame(width: 42, alignment: .trailing)
+                        Text("kcal")
+                            .font(.system(size: 8 * UIScale.font))
+                            .foregroundColor(Color.duoSubtitle)
+                        if slotCount > 0 {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8 * UIScale.font, weight: .semibold))
+                                .foregroundColor(meal.color.opacity(0.6))
                         }
                     }
-                    .frame(height: 10)
-                    Text(meal.kcal > 0 ? "\(meal.kcal)" : "—")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
-                        .foregroundColor(meal.kcal > 0 ? meal.color : Color.duoSubtitle)
-                        .frame(width: 42, alignment: .trailing)
-                    Text("kcal")
-                        .font(.system(size: 8 * UIScale.font))
-                        .foregroundColor(Color.duoSubtitle)
                 }
+                .buttonStyle(.plain)
+                .disabled(slotCount == 0)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .sheet(isPresented: $showPhotoCarousel) {
+            PhotoMealCarouselSheet(allEntries: todayMealSlideEntries, filterSlot: mealSlideFilter)
+        }
     }
 
     // MARK: - PFC Balance Card
 
     private func pfcBalanceCard(_ analysis: PFCBalanceAnalysis) -> some View {
-        // ヘッダー行（タイトル・kcal・評価バッジ）は削除済み。設定アイコンは「今日の食事」ヘッダーへ移動済み。
-        // レイアウト: 左：PFCリング、右：P/F/C 説明行（元の横並び構成を維持）
-        return HStack(spacing: 12) {
-            ZStack {
-                PFCPieChart(proteinPercent: analysis.proteinPercent,
-                            fatPercent: analysis.fatPercent,
-                            carbsPercent: analysis.carbsPercent)
-                .frame(width: 80, height: 80)
-                VStack(spacing: 0) {
-                    Text("\(analysis.score)")
-                        .font(.system(size: 22 * UIScale.font, weight: .black))
-                        .foregroundColor(pfcScoreColor(analysis.score))
-                    Text("点").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+        Button {
+            mealSlideFilter = nil
+            showPhotoCarousel = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    PFCPieChart(proteinPercent: analysis.proteinPercent,
+                                fatPercent: analysis.fatPercent,
+                                carbsPercent: analysis.carbsPercent)
+                    .frame(width: 80, height: 80)
+                    VStack(spacing: 0) {
+                        Text("\(analysis.score)")
+                            .font(.system(size: 22 * UIScale.font, weight: .black))
+                            .foregroundColor(pfcScoreColor(analysis.score))
+                        Text("点").font(.system(size: 9 * UIScale.font)).foregroundColor(Color.duoSubtitle)
+                    }
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    pfcRow(color: Color.duoOrange, label: "P", name: "たんぱく質", percent: analysis.proteinPercent, grams: analysis.proteinGrams, target: 15)
+                    pfcRow(color: Color.duoPurple, label: "F", name: "脂質",       percent: analysis.fatPercent,     grams: analysis.fatGrams,     target: 25)
+                    pfcRow(color: Color.duoBlue,   label: "C", name: "炭水化物",   percent: analysis.carbsPercent,   grams: analysis.carbsGrams,   target: 60)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle.opacity(0.5))
             }
-            VStack(alignment: .leading, spacing: 4) {
-                pfcRow(color: Color.duoOrange, label: "P", name: "たんぱく質", percent: analysis.proteinPercent, grams: analysis.proteinGrams, target: 15)
-                pfcRow(color: Color.duoPurple, label: "F", name: "脂質",       percent: analysis.fatPercent,     grams: analysis.fatGrams,     target: 25)
-                pfcRow(color: Color.duoBlue,   label: "C", name: "炭水化物",   percent: analysis.carbsPercent,   grams: analysis.carbsGrams,   target: 60)
-            }
+            .padding(12)
         }
-        .padding(12)
+        .buttonStyle(.plain)
+        .disabled(todayMealSlideEntries.isEmpty)
     }
 
     private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double, target: Int) -> some View {
@@ -3248,86 +3431,146 @@ struct FeedCommentsSheet: View {
 
 struct SocialShareSheet: View {
     let item: EduLogHistoryItem
+    /// 追加で共有したいURL（リンクシェア用）
+    var shareURL: URL? = nil
+    /// 追加で共有したい画像（item.thumbnail より優先）
+    var overrideImage: UIImage? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var showSystemShare = false
-    @State private var shareImage: UIImage? = nil
+
+    // 設定済みSNSアカウント
+    @AppStorage("sns.x.handle")         private var xHandle  = ""
+    @AppStorage("sns.instagram.handle") private var igHandle = ""
+    @AppStorage("sns.facebook.url")     private var fbUrl    = ""
+    @AppStorage("sns.line.id")          private var lineId   = ""
+
+    private var effectiveImage: UIImage? { overrideImage ?? item.thumbnail }
+
+    private var systemShareItems: [Any] {
+        var items: [Any] = [shareText]
+        if let img = effectiveImage { items.insert(img, at: 0) }
+        if let url = shareURL { items.append(url) }
+        return items
+    }
 
     private var shareText: String {
         let emoji = item.activityEmoji.isEmpty ? "💪" : item.activityEmoji
         let name  = item.activityName.isEmpty ? "アクティビティ" : item.activityName
         var text  = "\(emoji) \(name) を達成！"
         if !item.comment.isEmpty { text += "\n\(item.comment)" }
+        if let url = shareURL { text += "\n\(url.absoluteString)" }
         text += "\n\n#kfit #フィットネス #健康習慣"
         return text
     }
 
+    // LINE shared text (URL encoded)
+    private var lineText: String {
+        var t = shareText
+        if let url = shareURL { t += "\n\(url.absoluteString)" }
+        return t
+    }
+
+    // シートの高さ：LINEボタンありの場合は高め
+    private var sheetHeight: CGFloat {
+        let hasLine = !lineId.isEmpty
+        return hasLine ? 230 : 195
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // ハンドル
+            // ドラッグハンドル
             Capsule()
                 .fill(Color(.systemGray4))
                 .frame(width: 36, height: 4)
                 .padding(.top, 10)
-                .padding(.bottom, 20)
+                .padding(.bottom, 14)
 
             Text("シェア")
                 .font(.system(size: 16 * UIScale.font, weight: .black))
                 .foregroundColor(Color.duoDark)
-                .padding(.bottom, 20)
+                .padding(.bottom, 16)
 
-            // SNS ボタン行
-            HStack(spacing: 28) {
+            // ── メインSNSボタン行 ────────────────────────────────
+            HStack(spacing: 0) {
+                Spacer()
                 socialButton(
-                    label: "X (Twitter)",
-                    color: Color.black,
-                    icon: "x.square.fill"
+                    label: xHandle.isEmpty ? "X (Twitter)" : xHandle,
+                    color: .black,
+                    systemIcon: "x.square.fill"
                 ) { shareToX() }
-
+                Spacer()
                 socialButton(
-                    label: "Facebook",
+                    label: fbUrl.isEmpty ? "Facebook" : "Facebook",
                     color: Color(hex: "#1877F2"),
-                    icon: "f.square.fill"
+                    systemIcon: "f.square.fill"
                 ) { shareToFacebook() }
-
+                Spacer()
                 socialButton(
-                    label: "Instagram",
+                    label: igHandle.isEmpty ? "Instagram" : igHandle,
                     color: Color(hex: "#E1306C"),
-                    icon: "camera.fill"
+                    systemIcon: "camera.fill"
                 ) { shareToInstagram() }
-
+                Spacer()
                 socialButton(
                     label: "その他",
                     color: Color.duoSubtitle,
-                    icon: "square.and.arrow.up"
+                    systemIcon: "square.and.arrow.up"
                 ) { showSystemShare = true }
+                Spacer()
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.bottom, lineId.isEmpty ? 28 : 16)
+
+            // ── LINEボタン（登録済みの場合のみ表示）────────────────
+            if !lineId.isEmpty {
+                Button { shareToLine() } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "message.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                        Text("LINEで送る")
+                            .font(.system(size: 14 * UIScale.font, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("(\(lineId))")
+                            .font(.system(size: 11 * UIScale.font))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "#06C755"))
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+            }
         }
         .background(Color(.systemBackground))
-        .presentationDetents([.height(180)])
+        .presentationDetents([.height(sheetHeight)])
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showSystemShare) {
-            let items: [Any] = item.thumbnail.map { [$0, shareText] } ?? [shareText]
-            SystemShareSheet(items: items)
+            SystemShareSheet(items: systemShareItems)
         }
     }
 
-    private func socialButton(label: String, color: Color, icon: String, action: @escaping () -> Void) -> some View {
+    // MARK: - ボタンビュー
+
+    private func socialButton(label: String, color: Color, systemIcon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(color)
                         .frame(width: 54, height: 54)
-                    Image(systemName: icon)
-                        .font(.system(size: 26 * UIScale.font))
+                    Image(systemName: systemIcon)
+                        .font(.system(size: 24 * UIScale.font))
                         .foregroundColor(.white)
                 }
                 Text(label)
-                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(Color.duoSubtitle)
                     .lineLimit(1)
+                    .frame(width: 60)
             }
         }
         .buttonStyle(.plain)
@@ -3336,41 +3579,53 @@ struct SocialShareSheet: View {
     // MARK: - Share Actions
 
     private func shareToX() {
-        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let appURL  = URL(string: "twitter://post?message=\(encoded)")
-        let webURL  = URL(string: "https://x.com/intent/post?text=\(encoded)")
-        if let app = appURL, UIApplication.shared.canOpenURL(app) {
-            UIApplication.shared.open(app)
-        } else if let web = webURL {
-            UIApplication.shared.open(web)
+        var text = shareText
+        // アカウントハンドルが設定されていれば末尾に追加
+        if !xHandle.isEmpty, !text.contains(xHandle) {
+            text += "\n\(xHandle)"
+        }
+        let encodedText = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        // URL を別パラメータで渡す（x.com Web Intent対応）
+        var urlStr = "https://x.com/intent/post?text=\(encodedText)"
+        if let url = shareURL, let encodedURL = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlStr += "&url=\(encodedURL)"
+        }
+        let appURLStr = "twitter://post?message=\(encodedText)"
+        if let appURL = URL(string: appURLStr), UIApplication.shared.canOpenURL(appURL) {
+            UIApplication.shared.open(appURL)
+        } else if let webURL = URL(string: urlStr) {
+            UIApplication.shared.open(webURL)
         }
         dismiss()
     }
 
     private func shareToFacebook() {
-        // Facebook アプリ経由でシェア（テキスト）
-        let encoded = shareText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let appURL  = URL(string: "fb://publish/profile/me?text=\(encoded)")
-        let webURL  = URL(string: "https://www.facebook.com/")
-        if let app = appURL, UIApplication.shared.canOpenURL(app) {
-            UIApplication.shared.open(app)
-        } else if let web = webURL {
-            UIApplication.shared.open(web)
+        // Facebook はURLシェアが主流（テキスト直接投稿はAPIなしでは困難）
+        if let url = shareURL,
+           let encoded = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let webURL = URL(string: "https://www.facebook.com/sharer/sharer.php?u=\(encoded)") {
+            UIApplication.shared.open(webURL)
+        } else if let appURL = URL(string: "fb://"), UIApplication.shared.canOpenURL(appURL) {
+            UIApplication.shared.open(appURL)
+        } else {
+            UIApplication.shared.open(URL(string: "https://www.facebook.com/")!)
         }
         dismiss()
     }
 
     private func shareToInstagram() {
-        if let image = item.thumbnail {
-            // 画像がある場合：Instagram にシェア
-            guard let imageData = image.pngData() else { openInstagramApp(); return }
+        let image = effectiveImage
+        if let image {
+            guard let imageData = image.pngData() else { openInstagramApp(); dismiss(); return }
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("kfit_share_\(UUID().uuidString).igo")
             do {
                 try imageData.write(to: tmpURL)
                 let controller = UIDocumentInteractionController(url: tmpURL)
                 controller.uti = "com.instagram.exclusivegram"
-                controller.annotation = ["InstagramCaption": shareText]
+                var caption = shareText
+                if !igHandle.isEmpty, !caption.contains(igHandle) { caption += "\n\(igHandle)" }
+                controller.annotation = ["InstagramCaption": caption]
                 if let root = UIApplication.shared.connectedScenes
                     .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController })
                     .first {
@@ -3390,6 +3645,19 @@ struct SocialShareSheet: View {
         } else {
             UIApplication.shared.open(URL(string: "https://www.instagram.com")!)
         }
+    }
+
+    private func shareToLine() {
+        let text = lineText
+        let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let appURL = URL(string: "line://msg/text/\(encoded)")
+        let webURL = URL(string: "https://line.me/R/msg/text/?\(encoded)")
+        if let app = appURL, UIApplication.shared.canOpenURL(app) {
+            UIApplication.shared.open(app)
+        } else if let web = webURL {
+            UIApplication.shared.open(web)
+        }
+        dismiss()
     }
 }
 

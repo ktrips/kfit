@@ -87,6 +87,11 @@ struct SettingsView: View {
     @State private var newWeekdayGoalEmoji = "⭐"
     // 📚 勉強アイコンのリンクURL
     @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
+    // SNSアカウント
+    @AppStorage("sns.x.handle")        private var xHandle    = ""
+    @AppStorage("sns.instagram.handle") private var igHandle  = ""
+    @AppStorage("sns.facebook.url")    private var fbUrl      = ""
+    @AppStorage("sns.line.id")         private var lineId     = ""
     @Environment(\.dismiss) private var dismiss
     @AppStorage("app.colorScheme") private var colorSchemePref = "light"
 
@@ -107,6 +112,7 @@ struct SettingsView: View {
                     watchSection
                     habitStackSection
                     linkedAppsSection
+                    snsAccountSection
                     saveButton
                     Spacer(minLength: 40)
                 }
@@ -2088,6 +2094,65 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    // MARK: - SNSアカウント設定セクション
+
+    private var snsAccountSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(icon: "person.2.wave.2.fill", title: "SNSアカウント",
+                          subtitle: "シェア時に自分のアカウントへ投稿")
+            VStack(spacing: 0) {
+                snsRow(emoji: "𝕏", label: "X (Twitter)",
+                       placeholder: "@username",
+                       text: $xHandle)
+                Divider().padding(.leading, 54)
+                snsRow(emoji: "📸", label: "Instagram",
+                       placeholder: "@username",
+                       text: $igHandle)
+                Divider().padding(.leading, 54)
+                snsRow(emoji: "🔵", label: "Facebook",
+                       placeholder: "プロフィールURL or 名前",
+                       text: $fbUrl)
+                Divider().padding(.leading, 54)
+                snsRow(emoji: "💬", label: "LINE",
+                       placeholder: "LINE ID",
+                       text: $lineId)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
+            Text("登録したアカウントはシェアシートに表示され、タップで直接投稿できます。アカウント情報はこのデバイスにのみ保存されます。")
+                .font(.caption2)
+                .foregroundColor(Color.duoSubtitle)
+                .padding(.horizontal, 4)
+                .padding(.top, 6)
+        }
+    }
+
+    private func snsRow(emoji: String, label: String, placeholder: String, text: Binding<String>) -> some View {
+        HStack(spacing: 12) {
+            Text(emoji)
+                .font(.system(size: 20))
+                .frame(width: 32, alignment: .center)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                TextField(placeholder, text: text)
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .keyboardType(.URL)
+            }
+            if !text.wrappedValue.isEmpty {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(Color.duoGreen)
+                    .font(.system(size: 16))
+            }
+        }
+        .padding(14)
     }
 
     // MARK: - 連動アプリセクション

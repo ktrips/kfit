@@ -29,6 +29,7 @@ struct MindView: View {
     @State private var showPlusView = false
     @State private var showSettings = false
     @State private var showLogoutConfirm = false
+    @State private var showMoominQuotes   = false  // ムーミン名言一覧シート
 
     var body: some View {
         NavigationView {
@@ -40,6 +41,7 @@ struct MindView: View {
                             currentStressCard
                             todaySummaryCard       // 今日のまとめ + 睡眠スコア統合
                             suggestionsCard
+                            moominQuoteLinkButton
                             mindBookSection
                             Spacer(minLength: 40)
                         }
@@ -253,6 +255,7 @@ struct MindView: View {
 
     private var currentStressCard: some View {
         let stress = stressInfo(healthKit.latestHRV)
+        let quote = moominQuoteForStress(stress)
         return card {
             cardTitleWithHelp("現在のストレスレベル", icon: "heart.fill", color: stress.color)
             HStack(spacing: 10) {
@@ -273,6 +276,8 @@ struct MindView: View {
                     text: "今の状態は落ち着いています。こまめな水分補給と短い休憩で維持しましょう。",
                     color: Color.duoGreen)
             }
+            // ── ムーミン「あなたへの一言」──────────────────────────────────
+            moominQuoteCard(quote: quote, accentColor: stress.score < 0 ? Color.duoPurple : stress.color)
             largeActionButton(icon: "🧘", title: "1分瞑想タイマー",
                               subtitle: "自分の呼吸に集中して1分瞑想でリラックスする",
                               color: Color(hex: "#1CB0F6")) {
@@ -282,6 +287,45 @@ struct MindView: View {
                 .padding(10).background(Color(.systemBackground)).cornerRadius(14)
             mindfulHistorySection
         }
+    }
+
+    // MARK: - ムーミン名言カード
+    private func moominQuoteCard(quote: MoominQuote, accentColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Text("🌿")
+                    .font(.system(size: 13))
+                Text("あなたへの一言")
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(accentColor)
+                Spacer()
+                Text("Moomin")
+                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                    .foregroundColor(accentColor.opacity(0.6))
+            }
+            Text("「\(quote.text)」")
+                .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.duoDark)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+            HStack {
+                Spacer()
+                Text("— \(quote.speaker)")
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(accentColor.opacity(0.8))
+                    .italic()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(accentColor.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(accentColor.opacity(0.2), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - 今日のまとめ + 睡眠（統合カード）
@@ -395,6 +439,42 @@ struct MindView: View {
                     recommendationRow(item)
                 }
             }
+        }
+    }
+
+    // MARK: - ムーミン名言リンクボタン
+    private var moominQuoteLinkButton: some View {
+        Button { showMoominQuotes = true } label: {
+            HStack(spacing: 12) {
+                Text("🌿")
+                    .font(.system(size: 24))
+                    .frame(width: 46, height: 46)
+                    .background(Color(hex: "#CE82FF").opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("ムーミンの名言集")
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("ストレスレベル別 · キャラクター別に整理した全名言")
+                        .font(.system(size: 11 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color(hex: "#CE82FF").opacity(0.7))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(hex: "#CE82FF").opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+                Color(hex: "#CE82FF").opacity(0.22), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showMoominQuotes) {
+            MoominQuoteListSheet()
         }
     }
 
@@ -1493,6 +1573,202 @@ private struct MindRecommendation: Identifiable {
     let text: String
     let color: Color
     var actionType: String? = nil
+}
+
+// MARK: - ムーミン名言一覧シート
+
+struct MoominQuoteListSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedCategory: Int? = nil
+
+    private struct QuoteSection: Identifiable {
+        let id: Int
+        let title: String
+        let emoji: String
+        let color: Color
+        let quotes: [MoominQuote]
+    }
+
+    private let sections: [QuoteSection] = [
+        QuoteSection(id: 0, title: "すっきり・元気なとき", emoji: "🟢", color: Color.duoGreen, quotes: [
+            MoominQuote(text: "道や川ってふしぎだなあ。ずっと先までつづくのを見ていると、遠くへ行きたくてたまらなくなっちゃう。どこまで行くのかなって、ついていきたくなるんだ……", speaker: "スニフ"),
+            MoominQuote(text: "食べることもわすれるほど、しあわせになれるんだね！", speaker: "スニフ"),
+            MoominQuote(text: "長い旅行に必要なのは大きなカバンじゃなく、口ずさめる一つの歌さ", speaker: "スナフキン"),
+            MoominQuote(text: "自分できれいだと思うものは、なんでも僕のものさ。その気になれば、世界中でもね", speaker: "スナフキン"),
+            MoominQuote(text: "生きるなんて、だれにだってできるじゃないか", speaker: "ムーミンパパ"),
+            MoominQuote(text: "月の光をごらんよ。なんてあったかいんだろ。ぼく、飛べそうな気がするよ！", speaker: "ムーミントロール"),
+            MoominQuote(text: "これから、なにもかもがうまくいくんだ", speaker: "ムーミントロール"),
+            MoominQuote(text: "今だったら、どんなことだってできるわ。ま、なにもしないけど。でも、なんだって自分のやりたいと思ったことをするっていうのは、すてきよね！", speaker: "ミムラねえさん"),
+            MoominQuote(text: "劇場は、世界でいちばん大事なものなんだ。そこへ行けばだれでも、自分にどんな生き方ができるか、見ることができる", speaker: "エンマ"),
+            MoominQuote(text: "友だちが、それぞれ自分にぴったりのことを見つけられるのって、うれしいものでしょ？", speaker: "ムーミンママ"),
+            MoominQuote(text: "同じところに住みついていたんじゃ、冒険家になれるもんか！", speaker: "ムーミンパパ"),
+            MoominQuote(text: "世の中には、すばらしいことがいっぱいあるが、そういうものはそれにふさわしい人物でなくては開かれんのだ", speaker: "ムーミンパパ"),
+            MoominQuote(text: "ぼくは自分の運命を、この手で切り開いてみせるぞ", speaker: "ムーミンパパ"),
+        ]),
+        QuoteSection(id: 30, title: "おだやか・バランスの良いとき", emoji: "🟡", color: Color(hex: "#58CC02"), quotes: [
+            MoominQuote(text: "大切なのは、自分のしたいことを自分で知ってるってことだよ", speaker: "スナフキン"),
+            MoominQuote(text: "「そのうち」なんて当てにならないな。いまがその時さ", speaker: "スナフキン"),
+            MoominQuote(text: "いつも希望を胸に生きるって、いいことよね", speaker: "リトルミイ"),
+            MoominQuote(text: "さあ、明日もまた、長い一日になるでしょうよ。しかも、はじめからおわりまで自分のものよ。とてもすてきなことじゃない！", speaker: "ムーミンママ"),
+            MoominQuote(text: "たまには変化も必要ですよ。わたしたちはおたがいに、あまりにも、あたりまえのことをあたりまえと思いすぎるのじゃない？", speaker: "ムーミンママ"),
+            MoominQuote(text: "しないではいられないということと、しなければならないということは、ちがうわよね。", speaker: "フィリフヨンカ"),
+            MoominQuote(text: "なんにでも、時期というものがあってね。今は、はたらくときなのさ", speaker: "ヘムレン"),
+            MoominQuote(text: "人と違った考えを持つことは一向にかまわないさ。でも、その考えを無理やり他の人に押し付けてはいけないなあ", speaker: "スナフキン"),
+            MoominQuote(text: "心の繋がった仲間こそ、ルビーにも勝る美しいルビーさ。", speaker: "スナフキン"),
+            MoominQuote(text: "今夜は歌のことだけを考えよう。明日は明日の風が吹くさ", speaker: "スナフキン"),
+            MoominQuote(text: "ぜったいにたしかなもの―そういうものがあるんだよ。たとえば、海の潮流とか、季節のうつり変わりとか、朝になったら日がのぼるとかさ", speaker: "ムーミンパパ"),
+            MoominQuote(text: "ときには思いついたことをやってみよ、ですわ", speaker: "フィリフヨンカ"),
+            MoominQuote(text: "なにかためしてみようってときには、どうしたって危険がともなうんだ", speaker: "スナフキン"),
+            MoominQuote(text: "生きるってことは、平和じゃないんですよ", speaker: "スナフキン"),
+        ]),
+        QuoteSection(id: 55, title: "少し疲れ気味・休息が必要なとき", emoji: "🟠", color: Color.duoOrange, quotes: [
+            MoominQuote(text: "あんまりおおげさに考えすぎないようにしろよ。なんでも、大きくしすぎちゃ、だめだぜ", speaker: "スナフキン"),
+            MoominQuote(text: "ちょっと眠るよ。ちょいちょい、寝ている間に、問題が自然にとけることがあるからな。頭はほったらかしておくと、よく働くものなんだ", speaker: "ムーミンパパ"),
+            MoominQuote(text: "眠っているときは、休んでいるときだ。春、また元気を取り戻すために", speaker: "スナフキン"),
+            MoominQuote(text: "ゆううつになんか、ならないで。ぼくたちが帰ったら、ママはごちそうを作って待ってるんだ", speaker: "ムーミントロール"),
+            MoominQuote(text: "もう泣くのはやめて、サンドイッチを食べなよ。", speaker: "ムーミントロール"),
+            MoominQuote(text: "ものごとって、みんなとてもあいまいなのよ。まさにそのことが、わたしを安心させるんだけれどもね", speaker: "トゥーティッキ"),
+            MoominQuote(text: "あんまりだれかを崇拝すると、本物の自由はえられないんだぜ。そういうものなのさ", speaker: "スナフキン"),
+            MoominQuote(text: "生きるって、すばらしいことだなあ。どんなものでも、なんの理由もなしにあべこべになったりするんだねえ", speaker: "ムーミントロール"),
+            MoominQuote(text: "なんだっておもしろいのよ—多かれ、少なかれ", speaker: "リトルミイ"),
+            MoominQuote(text: "だけど、こんなに泣いてもいい理由があるときには、泣けるだけ泣いておくの", speaker: "ミーサ"),
+            MoominQuote(text: "明日という日があるじゃないの", speaker: "ムーミンママ"),
+            MoominQuote(text: "なにもかもがちゃんとするまでには、ずいぶんと長くかかるかもしれないわ", speaker: "ムーミンママ"),
+            MoominQuote(text: "人の目なんか気にしないで、思うとおりに暮らしていればいいのさ", speaker: "スナフキン"),
+        ]),
+        QuoteSection(id: 75, title: "ストレス高め・力が必要なとき", emoji: "🔴", color: Color(hex: "#FF4B4B"), quotes: [
+            MoominQuote(text: "どんなことでも、自分で見つけださなきゃいけないものよ。そうして自分ひとりで、それを乗りこえるんだわ", speaker: "トゥーティッキ"),
+            MoominQuote(text: "ほら、元気をなくしてはだめだよ。もう一回！", speaker: "ヘムレン"),
+            MoominQuote(text: "本当の勇気とは自分の弱い心に打ち勝つことだよ。包み隠さず本当のことを正々堂々と言える者こそ本当の勇気のある強い者なんだ", speaker: "スナフキン"),
+            MoominQuote(text: "一度決めたら最後までやりぬく、それが俺の人生さ", speaker: "スナフキン"),
+            MoominQuote(text: "あのさ、たたかうってことをおぼえないかぎり、あんたには自分の顔を持てるわけないわ", speaker: "リトルミイ"),
+            MoominQuote(text: "飢えを知っていればこそ、ぼくは二度とそうなりたくないと努力するだけだよ", speaker: "スナフキン"),
+            MoominQuote(text: "なにかちがうこと、なにかあたらしいことをしなくちゃな。なにかすごく大きなことをやるんだ", speaker: "ムーミンパパ"),
+            MoominQuote(text: "いつでも日曜日だったら、すばらしいじゃないか。そういう気持ちこそ、われわれが見失っていたものなんだ", speaker: "ムーミンパパ"),
+            MoominQuote(text: "おだやかな人生なんてあるわけがない", speaker: "スナフキン"),
+            MoominQuote(text: "さあ、さっと思い立ったときに決心しなくては。決心がにぶらないうちに、すばやく実行しなくては", speaker: "フィリフヨンカ"),
+            MoominQuote(text: "だれだって、ときにはおこるほうがいいのよ。どんな小さなクニットだって、おこる権利はあるのよ", speaker: "リトルミイ"),
+        ]),
+        QuoteSection(id: -1, title: "いつでも・誰にでも", emoji: "🌿", color: Color.duoPurple, quotes: [
+            MoominQuote(text: "ね、なにが起こったって、わたしにはちゃんとあなたがわかるのよ", speaker: "ムーミンママ"),
+            MoominQuote(text: "もうだいじょうぶよ、ほら、いらっしゃい。", speaker: "ムーミンママ"),
+            MoominQuote(text: "なんでも自分のものにして、持って帰ろうとすると、むずかしくなっちゃうんだよ。ぼくは見るだけにしてるんだ。そして立ち去るときには、頭の中へしまっておく", speaker: "スナフキン"),
+            MoominQuote(text: "孤独になるには、旅に出るのがいちばんさ", speaker: "スナフキン"),
+            MoominQuote(text: "でも、冒険物語じゃ、かならず助かることになっているんだよ", speaker: "スナフキン"),
+            MoominQuote(text: "みんなそれぞれ、こうもちがうものなんだな", speaker: "ムーミントロール"),
+            MoominQuote(text: "ときどき、どうしてもひとりになりたいっていうきみの気持ちを、ぼくはもちろんよくわかるんだ", speaker: "ムーミントロール"),
+            MoominQuote(text: "ブラックコーヒーを一ぱい飲んだら、もう、ぼくのものだ。", speaker: "スナフキン"),
+            MoominQuote(text: "あんまり誰かを崇拝したら、ホントの自由は、得られないんだぜ", speaker: "スナフキン"),
+            MoominQuote(text: "故郷は別にないさ、強いて言えば地球かな", speaker: "スナフキン"),
+            MoominQuote(text: "この世にはいくら考えてもわからない、でも、長く生きることで解かってくる事がたくさんあると思う", speaker: "スナフキン"),
+            MoominQuote(text: "ムーミン「義務って何のこと？」スナフキン「したくないことを、することさ」", speaker: "スナフキン"),
+            MoominQuote(text: "自由が幸せだとは限らない", speaker: "スナフキン"),
+            MoominQuote(text: "だまされてはだめよ。わたしはちゃんとわかってるんだから。大きな災難が来るまえは、いつだって、こんなふうにおだやかなのよ", speaker: "フィリフヨンカ"),
+            MoominQuote(text: "自分の入りたくないところへ無理やりに入れられたら、君はどうする？自分のやりたいことを押さえつけられたら、君はどうする", speaker: "スナフキン"),
+            MoominQuote(text: "いきるってことは、平和なものじゃないんですよ", speaker: "スナフキン"),
+        ]),
+    ]
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterChip(id: nil, label: "すべて", emoji: "✨", color: Color.duoPurple)
+                            ForEach(sections) { sec in
+                                filterChip(id: sec.id, label: sec.title, emoji: sec.emoji, color: sec.color)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    Divider()
+
+                    let visibleSections = selectedCategory == nil
+                        ? sections
+                        : sections.filter { $0.id == selectedCategory }
+
+                    ForEach(visibleSections) { section in
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(spacing: 8) {
+                                Text(section.emoji).font(.system(size: 16))
+                                Text(section.title)
+                                    .font(.system(size: 14, weight: .black))
+                                    .foregroundColor(section.color)
+                                Spacer()
+                                Text("\(section.quotes.count)件")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(section.color.opacity(0.7))
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(section.color.opacity(0.1))
+                                    .clipShape(Capsule())
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 20)
+                            .padding(.bottom, 10)
+
+                            VStack(spacing: 10) {
+                                ForEach(section.quotes.indices, id: \.self) { idx in
+                                    quoteRow(section.quotes[idx], color: section.color)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 8)
+
+                            Divider().padding(.horizontal, 16).padding(.top, 8)
+                        }
+                    }
+                    Spacer(minLength: 40)
+                }
+            }
+            .navigationTitle("🌿 ムーミンの名言集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func filterChip(id: Int?, label: String, emoji: String, color: Color) -> some View {
+        let isSelected = selectedCategory == id
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) { selectedCategory = id }
+        } label: {
+            HStack(spacing: 4) {
+                Text(emoji).font(.system(size: 12))
+                Text(label).font(.system(size: 11, weight: isSelected ? .black : .semibold)).lineLimit(1)
+            }
+            .foregroundColor(isSelected ? .white : color)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(isSelected ? color : color.opacity(0.1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func quoteRow(_ quote: MoominQuote, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("「\(quote.text)」")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.duoDark)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(3)
+            HStack {
+                Spacer()
+                Text("— \(quote.speaker)")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(color.opacity(0.8))
+                    .italic()
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(color.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.15), lineWidth: 1))
+    }
 }
 
 #Preview {

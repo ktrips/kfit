@@ -629,6 +629,12 @@ struct TomoView: View {
     @State private var emailInput = ""
     @State private var showShareSheet = false
     @State private var shareText = ""
+
+    private var inviteShareItems: [Any] {
+        var items: [Any] = [shareText]
+        if let url = URL(string: "https://apps.apple.com/app/fitingo") { items.append(url) }
+        return items
+    }
     // PhotoLogManager は kfitApp から EnvironmentObject で配布済みのため
     // @StateObject による二重購読を解消（不要な View 再レンダリングを防ぐ）
     @EnvironmentObject private var photoLogManager: PhotoLogManager
@@ -727,7 +733,7 @@ struct TomoView: View {
         .onChange(of: selectedDuolingoLanguage) { _, _ in rebuildFeedCache() }
         .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareText])
+            SystemShareSheet(items: inviteShareItems)
         }
         .sheet(item: $selectedEduItem) { item in
             EduFeedDetailSheet(item: item)
@@ -750,7 +756,11 @@ struct TomoView: View {
                               photoLogManager: photoLogManager)
         }
         .sheet(item: $shareTargetItem) { item in
-            SocialShareSheet(item: item)
+            SocialShareSheet(
+                item: item,
+                shareURL: item.sharedUrl.flatMap { URL(string: $0) },
+                overrideImage: item.thumbnail
+            )
         }
         .sheet(item: $categoryGroupTarget) { grp in
             CategoryGroupListSheet(

@@ -621,9 +621,9 @@ struct FoodView: View {
                                         let hasDetail = entry.protein > 0 || entry.fat > 0 || entry.carbs > 0
                                         if hasDetail {
                                             HStack(spacing: 10) {
-                                                macroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: Color.duoRed)
-                                                macroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
-                                                macroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
+                                                MacroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: Color.duoRed)
+                                                MacroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
+                                                MacroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
                                             }
                                             .padding(.horizontal, 16)
                                             .padding(.top, 10)
@@ -632,10 +632,10 @@ struct FoodView: View {
                                         if entry.sugar > 0 || entry.sodium > 0 {
                                             HStack(spacing: 10) {
                                                 if entry.sugar > 0 {
-                                                    macroChip(label: "🍬 糖質", value: String(format: "%.1fg", entry.sugar), color: Color(hex: "#A78BFA"))
+                                                    MacroChip(label: "🍬 糖質", value: String(format: "%.1fg", entry.sugar), color: Color(hex: "#A78BFA"))
                                                 }
                                                 if entry.sodium > 0 {
-                                                    macroChip(label: "🧂 塩分", value: String(format: "%.2fg", entry.sodium), color: Color(hex: "#1CB0F6"))
+                                                    MacroChip(label: "🧂 塩分", value: String(format: "%.2fg", entry.sodium), color: Color(hex: "#1CB0F6"))
                                                 }
                                             }
                                             .padding(.horizontal, 16)
@@ -662,22 +662,6 @@ struct FoodView: View {
             }
         }
 
-        private func macroChip(label: String, value: String, color: Color) -> some View {
-            VStack(spacing: 4) {
-                Text(value)
-                    .font(.system(size: 16, weight: .black, design: .rounded))
-                    .foregroundColor(color)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                Text(label)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(color.opacity(0.75))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(color.opacity(0.08))
-            .cornerRadius(12)
-        }
     }
 
     // MARK: - 食事記録カード（フォトログ＋クイックログ＋詳細ログ）

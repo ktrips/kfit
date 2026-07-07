@@ -41,6 +41,8 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
     @Published var sequenceCurrent: Int = 0
     /// 順次再生のフレーズ総数
     @Published var sequenceTotal: Int = 0
+    /// 単発 speak() で読み上げ中かどうか（UI バインド用）
+    @Published var isSpeaking: Bool = false
 
     // MARK: - OCR + 言語検出
 
@@ -165,6 +167,7 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
 
     /// フレーズを検出言語で音声再生する
     func speak(phrase: String, languageCode: String) {
+        isSpeaking = true
         speechSynthesizer.stopSpeaking(at: .immediate)
 
         // サイレントモード・他セッションに関わらず確実に再生する
@@ -187,9 +190,8 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
 
     func stopSpeaking() {
         speechSynthesizer.stopSpeaking(at: .immediate)
+        isSpeaking = false
     }
-
-    var isSpeaking: Bool { speechSynthesizer.isSpeaking }
 
     // MARK: - 順次再生
 
@@ -455,11 +457,23 @@ extension DuolingoTextExtractor: AVSpeechSynthesizerDelegate {
         didFinish utterance: AVSpeechUtterance
     ) {
         Task { @MainActor in
-            guard self.isSequencePlaying else { return }
-            self.sequenceIdx += 1
-            // フレーズ間に 0.5 秒の間を空ける
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            self.speakNextInQueue()
+            if self.isSequencePlaying {
+                self.sequenceIdx += 1
+                // フレーズ間に 0.5 秒の間を空ける
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                self.speakNextInQueue()
+            } else {
+                self.isSpeaking = false
+            }
+        }
+    }
+
+    nonisolated func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        didCancel utterance: AVSpeechUtterance
+    ) {
+        Task { @MainActor in
+            self.isSpeaking = false
         }
     }
 }

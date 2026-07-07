@@ -1,4 +1,36 @@
 import SwiftUI
+import AVFoundation
+
+// MARK: - 軽量 TTS ヘルパー（kmind専用）
+private final class MindTTS: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+    static let shared = MindTTS()
+    private let synth = AVSpeechSynthesizer()
+    @Published var isSpeaking = false
+    private override init() {
+        super.init()
+        synth.delegate = self
+    }
+    func speak(_ text: String) {
+        synth.stopSpeaking(at: .immediate)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: .duckOthers)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let utt = AVSpeechUtterance(string: text)
+        utt.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        utt.rate = 0.48
+        isSpeaking = true
+        synth.speak(utt)
+    }
+    func stop() {
+        synth.stopSpeaking(at: .immediate)
+        isSpeaking = false
+    }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { self.isSpeaking = false }
+    }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { self.isSpeaking = false }
+    }
+}
 
 // MARK: - MindView（kfit と同等レイアウト）
 // 変更点: 「昨晩の睡眠」カードの内容を「今日のまとめ」カード内に統合
@@ -30,6 +62,8 @@ struct MindView: View {
     @State private var showSettings = false
     @State private var showLogoutConfirm = false
     @State private var showMoominQuotes   = false  // ムーミン名言一覧シート
+    @ObservedObject private var ttsEngine = MindTTS.shared
+    @State private var speakingQuoteText: String? = nil
 
     var body: some View {
         NavigationView {
@@ -291,7 +325,8 @@ struct MindView: View {
 
     // MARK: - ムーミン名言カード
     private func moominQuoteCard(quote: MoominQuote, accentColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Text("🌿")
                     .font(.system(size: 13))
@@ -302,6 +337,23 @@ struct MindView: View {
                 Text("Moomin")
                     .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(accentColor.opacity(0.6))
+                Button {
+                    if isSpeaking {
+                        ttsEngine.stop()
+                        speakingQuoteText = nil
+                    } else {
+                        speakingQuoteText = quote.text
+                        ttsEngine.speak(quote.text)
+                    }
+                } label: {
+                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isSpeaking ? .red : accentColor)
+                        .frame(width: 28, height: 28)
+                        .background((isSpeaking ? Color.red : accentColor).opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
             Text("「\(quote.text)」")
                 .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
@@ -1580,6 +1632,8 @@ private struct MindRecommendation: Identifiable {
 struct MoominQuoteListSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedCategory: Int? = nil
+    @ObservedObject private var ttsEngine = MindTTS.shared
+    @State private var speakingQuoteText: String? = nil
 
     private struct QuoteSection: Identifiable {
         let id: Int
@@ -1750,24 +1804,43 @@ struct MoominQuoteListSheet: View {
     }
 
     private func quoteRow(_ quote: MoominQuote, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
+        return VStack(alignment: .leading, spacing: 6) {
             Text("「\(quote.text)」")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(Color.duoDark)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
-            HStack {
-                Spacer()
+            HStack(spacing: 8) {
                 Text("— \(quote.speaker)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(color.opacity(0.8))
                     .italic()
+                Spacer()
+                Button {
+                    if isSpeaking {
+                        ttsEngine.stop()
+                        speakingQuoteText = nil
+                    } else {
+                        speakingQuoteText = quote.text
+                        ttsEngine.speak(quote.text)
+                    }
+                } label: {
+                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isSpeaking ? .red : color)
+                        .frame(width: 26, height: 26)
+                        .background((isSpeaking ? Color.red : color).opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(color.opacity(0.05))
+        .background(isSpeaking ? color.opacity(0.12) : color.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.15), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSpeaking ? color.opacity(0.4) : color.opacity(0.15), lineWidth: isSpeaking ? 1.5 : 1))
+        .animation(.easeInOut(duration: 0.2), value: isSpeaking)
     }
 }
 

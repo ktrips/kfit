@@ -42,6 +42,8 @@ struct MindView: View {
 
     @State private var showPlusViewFromMind = false
     @State private var showMoominQuotes    = false  // ムーミン名言一覧シート
+    @ObservedObject private var ttsEngine  = DuolingoTextExtractor.shared
+    @State private var speakingQuoteText: String? = nil  // 読み上げ中の名言テキスト
 
     var body: some View {
         NavigationView {
@@ -327,7 +329,8 @@ struct MindView: View {
 
     // MARK: - ムーミン名言カード
     private func moominQuoteCard(quote: MoominQuote, accentColor: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Text("🌿")
                     .font(.system(size: 13))
@@ -338,6 +341,24 @@ struct MindView: View {
                 Text("Moomin")
                     .font(.system(size: 9 * UIScale.font, weight: .semibold))
                     .foregroundColor(accentColor.opacity(0.6))
+                // 読み上げボタン
+                Button {
+                    if isSpeaking {
+                        ttsEngine.stopSpeaking()
+                        speakingQuoteText = nil
+                    } else {
+                        speakingQuoteText = quote.text
+                        ttsEngine.speak(phrase: quote.text, languageCode: "ja")
+                    }
+                } label: {
+                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isSpeaking ? .red : accentColor)
+                        .frame(width: 28, height: 28)
+                        .background((isSpeaking ? Color.red : accentColor).opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
             Text("「\(quote.text)」")
                 .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
@@ -1810,6 +1831,8 @@ private struct MindRecommendation: Identifiable {
 struct MoominQuoteListSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedCategory: Int? = nil  // nil = すべて
+    @ObservedObject private var ttsEngine = DuolingoTextExtractor.shared
+    @State private var speakingQuoteText: String? = nil
 
     private struct QuoteSection: Identifiable {
         let id: Int          // stress score帯のID（-1, 0, 30, 55, 75）
@@ -1995,24 +2018,43 @@ struct MoominQuoteListSheet: View {
     }
 
     private func quoteRow(_ quote: MoominQuote, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
+        return VStack(alignment: .leading, spacing: 6) {
             Text("「\(quote.text)」")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(Color.duoDark)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
-            HStack {
-                Spacer()
+            HStack(spacing: 8) {
                 Text("— \(quote.speaker)")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(color.opacity(0.8))
                     .italic()
+                Spacer()
+                Button {
+                    if isSpeaking {
+                        ttsEngine.stopSpeaking()
+                        speakingQuoteText = nil
+                    } else {
+                        speakingQuoteText = quote.text
+                        ttsEngine.speak(phrase: quote.text, languageCode: "ja")
+                    }
+                } label: {
+                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isSpeaking ? .red : color)
+                        .frame(width: 26, height: 26)
+                        .background((isSpeaking ? Color.red : color).opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(color.opacity(0.05))
+        .background(isSpeaking ? color.opacity(0.12) : color.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.15), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSpeaking ? color.opacity(0.4) : color.opacity(0.15), lineWidth: isSpeaking ? 1.5 : 1))
+        .animation(.easeInOut(duration: 0.2), value: isSpeaking)
     }
 }

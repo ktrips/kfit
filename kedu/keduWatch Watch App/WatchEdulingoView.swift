@@ -51,10 +51,20 @@ private final class WatchEduSpeechEngine: NSObject, ObservableObject, AVSpeechSy
         try? session.setCategory(.playback, mode: .spokenAudio, options: .duckOthers)
         try? session.setActive(true)
         let utterance = AVSpeechUtterance(string: phrase)
-        utterance.voice = AVSpeechSynthesisVoice(language: bcp47(langCode))
-            ?? AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = Self.bestVoice(for: bcp47(langCode))
         utterance.rate = 0.42
         synthesizer.speak(utterance)
+    }
+
+    /// 指定言語の音声を選ぶ。完全一致 → インストール済み音声の言語プレフィックス一致 →
+    /// en-US の順でフォールバックする（watchOS は音声の搭載状況が機種・設定で異なるため、
+    /// AVSpeechSynthesisVoice(language:) の nil で即 en-US に落とすと外国語が英語読みになる）
+    private static func bestVoice(for bcp47Code: String) -> AVSpeechSynthesisVoice? {
+        if let exact = AVSpeechSynthesisVoice(language: bcp47Code) { return exact }
+        let prefix = String(bcp47Code.prefix(2))
+        let installed = AVSpeechSynthesisVoice.speechVoices()
+        if let match = installed.first(where: { $0.language.hasPrefix(prefix) }) { return match }
+        return AVSpeechSynthesisVoice(language: "en-US")
     }
 
     private func speakNext() {

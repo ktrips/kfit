@@ -24,11 +24,24 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
 
     // Plus 状態変化の監視
     private var plusCancellable: AnyCancellable?
+    // フィード（自分の投稿）変化の監視
+    private var feedCancellable: AnyCancellable?
 
     private override init() {
         super.init()
         activate()
         observePlusStatus()
+        observeFeedChanges()
+    }
+
+    /// 自分の投稿履歴が変化したら Watch へ自動送信（Watch 側の手動同期を不要にする）
+    private func observeFeedChanges() {
+        feedCancellable = EduLogManager.shared.$history
+            .dropFirst()
+            .debounce(for: .seconds(2.0), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                Task { await self?.sendFeedToWatch() }
+            }
     }
 
     /// PlusManager.isPlus が変化したとき即座に Watch へ通知
@@ -120,8 +133,24 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         WCSession.default.activate()
     }
 
-    // Watch からワークアウトデータを受信
+    // Watch からワークアウトデータを受信（リアルタイム）
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        Task { @MainActor in
+            self.processWatchPayload(message)
+        }
+    }
+
+    // Watch からキュー配信（transferUserInfo）を受信。
+    // Watch 側はオフライン時に記録を transferUserInfo で積むため、
+    // ここで sendMessage と同一のハンドラに流す（複数件が順番に届く）。
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        Task { @MainActor in
+            self.processWatchPayload(userInfo)
+        }
+    }
+
+    /// sendMessage / transferUserInfo 共通の受信ハンドラ
+    private func processWatchPayload(_ message: [String: Any]) {
         Task { @MainActor in
             // ① 種目ごとのデータ（通知キャンセル用）
             if let workoutData = message["workout"] as? Data,
@@ -612,7 +641,8 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
             if session.isReachable {
                 session.sendMessage(payload, replyHandler: nil, errorHandler: nil)
             } else {
-                try? session.updateApplicationContext(payload)
+                // フィード等の既存キーを消さないようマージして保存
+                self.updateContextMerging(payload, session: session)
             }
 
             // コンプリケーション更新: 重要な指標のみ高優先度で送信
@@ -671,11 +701,26 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         }
     }
 
+    // MARK: - applicationContext のマージ更新
+    // applicationContext は「1 方向につき 1 辞書・上書き」のため、stats とフィードを
+    // 別々に updateApplicationContext すると互いに消し合う。自分が最後に送った context に
+    // 新しいキーをマージしてから更新することで両方を保持する。
+    private func updateContextMerging(_ payload: [String: Any], session: WCSession) {
+        var ctx = session.applicationContext
+        for (key, value) in payload { ctx[key] = value }
+        do {
+            try session.updateApplicationContext(ctx)
+        } catch {
+            // マージ後が 65KB を超えた場合などは新ペイロード単体で再試行
+            try? session.updateApplicationContext(payload)
+        }
+    }
+
     // MARK: - iOS → Watch: フィード投稿送信
     private func sendFeedToWatch() async {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
-        guard session.activationState == .activated, session.isReachable else { return }
+        guard session.activationState == .activated else { return }
 
         // 自分の投稿（EduLogManager）
         var items: [WatchFeedItemForTransfer] = EduLogManager.shared.history.prefix(20).map {
@@ -702,8 +747,14 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
         items.sort { $0.timestamp > $1.timestamp }
         let payload30 = Array(items.prefix(30))
         guard let data = try? JSONEncoder().encode(payload30) else { return }
-        session.sendMessage(["feedItems": data], replyHandler: nil, errorHandler: nil)
-        dlog("[iOSWatchBridge] 📤 フィード \(payload30.count) 件を Watch に送信")
+
+        // リアルタイム: Watch がフォアグラウンドなら即時反映
+        if session.isReachable {
+            session.sendMessage(["feedItems": data], replyHandler: nil, errorHandler: nil)
+        }
+        // バックグラウンド: context にマージ保存（Watch 次回起動時に反映）
+        updateContextMerging(["feedItems": data], session: session)
+        dlog("[iOSWatchBridge] 📤 フィード \(payload30.count) 件を Watch に送信 (reachable=\(session.isReachable))")
     }
 
     private func fetchFriendFeedForWatch(uid: String) async -> [WatchFeedItemForTransfer] {

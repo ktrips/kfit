@@ -120,74 +120,52 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
-    // MARK: - Watch → iOS: 種目ごとの送信（通知キャンセル用）
-    func sendWorkout(_ workout: WorkoutData) {
-        guard let session = session, session.isReachable else {
-            sendWorkoutViaContext(workout)
-            return
+    // MARK: - Watch → iOS: 記録送信の共通経路
+    // reachable なら sendMessage（即時）、送信失敗・非到達なら transferUserInfo（FIFO キュー・
+    // 保証配信）にフォールバックする。以前は updateApplicationContext を使っていたが、
+    // context は「最新 1 件のみ保持・上書き」のためオフラインで複数記録すると先の記録が
+    // 消えるデータロスがあった。transferUserInfo はキューに積まれ iOS 側到達時に全件届く。
+    private func sendReliably(_ payload: [String: Any], label: String) {
+        guard let session = session else { return }
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { [weak session] error in
+                print("WatchConnectivity \(label) sendMessage error: \(error) — queuing via transferUserInfo")
+                session?.transferUserInfo(payload)
+            }
+        } else {
+            session.transferUserInfo(payload)
         }
-        guard let data = try? JSONEncoder().encode(workout) else { return }
-        session.sendMessage(
-            ["workout": data, "workout_recorded": true],
-            replyHandler: nil
-        ) { error in print("WatchConnectivity sendMessage error: \(error)") }
     }
 
-    private func sendWorkoutViaContext(_ workout: WorkoutData) {
+    // MARK: - Watch → iOS: 種目ごとの送信（通知キャンセル用）
+    func sendWorkout(_ workout: WorkoutData) {
         guard let data = try? JSONEncoder().encode(workout) else { return }
-        try? session?.updateApplicationContext(["pendingWorkout": data])
+        sendReliably(["workout": data, "workout_recorded": true], label: "workout")
     }
 
     // MARK: - Watch → iOS: セット完了（全種目まとめて送信）
     func sendCompletedSet(_ set: WatchSetData) {
         guard let data = try? JSONEncoder().encode(set) else { return }
-        if let session = session, session.isReachable {
-            session.sendMessage(["completed_set": data], replyHandler: nil) { error in
-                print("WatchConnectivity sendCompletedSet error: \(error)")
-            }
-        } else {
-            try? session?.updateApplicationContext(["pendingCompletedSet": data])
-        }
+        sendReliably(["completed_set": data], label: "completedSet")
     }
 
     // MARK: - Watch → iOS: マインドフルネス完了通知
     func sendMindfulnessCompleted() {
-        guard let session = session else { return }
-        let message: [String: Any] = ["action": "mindfulness_completed"]
-        if session.isReachable {
-            session.sendMessage(message, replyHandler: nil) { error in
-                print("WatchConnectivity sendMindfulnessCompleted error: \(error)")
-            }
-        }
+        sendReliably(["action": "mindfulness_completed"], label: "mindfulness")
     }
 
     // MARK: - Watch → iOS: 20分スタンド完了
     func sendStandCompleted() {
-        guard let session = session else { return }
-        let message: [String: Any] = ["action": "stand_completed"]
-        if session.isReachable {
-            session.sendMessage(message, replyHandler: nil) { error in
-                print("WatchConnectivity sendStandCompleted error: \(error)")
-            }
-        } else {
-            try? session.updateApplicationContext(message)
-        }
+        sendReliably(["action": "stand_completed"], label: "stand")
     }
 
     // MARK: - Watch → iOS: 摂取記録
     func sendIntakeRecord(type: String, subtype: String? = nil) {
-        guard let session = session else { return }
         var message: [String: Any] = ["action": "record_intake", "type": type]
         if let subtype = subtype {
             message["subtype"] = subtype
         }
-        if session.isReachable {
-            session.sendMessage(message, replyHandler: nil) { error in
-                print("WatchConnectivity sendIntakeRecord error: \(error)")
-            }
-        } else {
-            try? session.updateApplicationContext(message)
-        }
+        sendReliably(message, label: "intake")
     }
 
     // MARK: - Watch → iOS: フィードリクエスト
@@ -198,6 +176,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         }
         isSyncingFeed = true
         guard session.isReachable else {
+            // iPhone 非到達時: applicationContext に保存済みのフィードを即時反映
+            // （iOS 側が updateApplicationContext でフィードをマージ保存している）
+            applyFeedItems(from: session.receivedApplicationContext)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 self?.isSyncingFeed = false
             }
@@ -266,6 +247,14 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
         default:
             return 12
         }
+    }
+
+    // MARK: - フィード適用（message / applicationContext 共通）
+    private func applyFeedItems(from payload: [String: Any]) {
+        guard let data = payload["feedItems"] as? Data,
+              let items = try? JSONDecoder().decode([WatchFeedItem].self, from: data) else { return }
+        feedItems = items
+        isSyncingFeed = false
     }
 
     // MARK: - 今日の記録に追加（Watch側UI更新）
@@ -485,11 +474,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             }
 
             // フィード受信
-            if let data = message["feedItems"] as? Data,
-               let items = try? JSONDecoder().decode([WatchFeedItem].self, from: data) {
-                self.feedItems = items
-                self.isSyncingFeed = false
-            }
+            self.applyFeedItems(from: message)
         }
     }
 
@@ -520,6 +505,9 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
                 if hasIntake { print("📥 Watch: Received application context with intake data") }
                 self.handleProfileUpdate(applicationContext)
             }
+
+            // フィード（iOS がバックグラウンド配信用にマージ保存したもの）
+            self.applyFeedItems(from: applicationContext)
         }
     }
 
@@ -551,6 +539,7 @@ class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
             print("📥 Watch: Loading latest application context")
             Task { @MainActor in
                 self.handleProfileUpdate(context)
+                self.applyFeedItems(from: context)
             }
         }
     }

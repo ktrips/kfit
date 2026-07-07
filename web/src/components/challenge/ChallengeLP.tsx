@@ -94,11 +94,18 @@ export function ChallengeLP() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [stats, setStats] = useState({ pageViews: 0, registrations: 0 });
+  const [d90Rate, setD90Rate] = useState<number | null>(null);
 
-  // ページビュー記録
+  // ページビュー記録 + 公開継続率統計の取得
   useEffect(() => {
     recordPageView();
     fetchStats().then(setStats);
+    import('../../services/retentionService').then(m =>
+      m.getPublicRetentionStats().then(s => {
+        // 母数10人以上になってから公表する（少数だと数字が暴れるため）
+        if (s?.d90?.rate != null && s.d90.eligible >= 10) setD90Rate(s.d90.rate);
+      })
+    ).catch(() => {});
   }, []);
 
   const registrationRate = stats.pageViews > 0
@@ -158,7 +165,11 @@ export function ChallengeLP() {
           <div className="grid grid-cols-3 gap-3 max-w-sm mx-auto mb-8">
             <StatBadge icon="🎯" value="90日" label="チャレンジ期間" highlight />
             <StatBadge icon="👥" value={`${stats.registrations}人`} label="参加申込み中" />
-            <StatBadge icon="📈" value="78%" label="数値改善率（β実績）" />
+            {d90Rate != null ? (
+              <StatBadge icon="📈" value={`${d90Rate}%`} label="90日継続率（実測）" />
+            ) : (
+              <StatBadge icon="📈" value="計測中" label="90日継続率" />
+            )}
           </div>
 
           <button

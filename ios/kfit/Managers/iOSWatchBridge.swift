@@ -157,6 +157,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let workout = try? JSONDecoder().decode(WatchWorkoutData.self, from: workoutData) {
                 dlog("[iOSWatchBridge] 種目受信: \(workout.exerciseName) \(workout.reps)rep")
                 await AuthenticationManager.shared.recordWatchWorkout(workout)
+                RetentionTracker.shared.markActiveToday()
                 return
             }
 
@@ -165,6 +166,7 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
                let set = try? JSONDecoder().decode(WatchSetData.self, from: setData) {
                 dlog("[iOSWatchBridge] セット完了受信: \(set.totalReps)rep / \(set.totalXP)XP")
                 let stats = await AuthenticationManager.shared.recordWatchCompletedSet(set)
+                RetentionTracker.shared.markActiveToday()
                 await sendStatsAfterSet(stats)
                 return
             }
@@ -344,6 +346,9 @@ final class iOSWatchBridge: NSObject, WCSessionDelegate {
     }
 
     // iOS側で直接記録した後にWatchへ通知
+    // NOTE: ここはフォアグラウンド復帰時にも呼ばれるため RetentionTracker は呼ばない
+    // （「開いただけの日」を活動日にしない）。活動日マークは
+    // .timeSlotProgressDidSave 監視と Watch 記録受信（processWatchPayload）で行う。
     func notifyWatchAfterDirectRecord() {
         Task { await fetchAndSendStats() }
     }

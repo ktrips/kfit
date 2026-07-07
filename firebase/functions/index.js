@@ -340,3 +340,80 @@ function getWeekStart(date) {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+// ===== RETENTION COHORT STATS =====
+// 週1回、全ユーザーの retention/summary（クライアントが記録する活動日マップ）から
+// 7/30/90 日継続率を集計し、public-stats/retention に公開する。
+// LP・90日チャレンジページ・ストア文言の「90日継続率 X%」の唯一のデータソース。
+//
+// 定義:
+//   継続日数 = 活動日マップ上で「3日以上空けずに」続いた期間の最長スパン
+//              （iOS のストリーク3日猶予と同じ基準）
+//   Dn 継続率 = 初回活動から n 日以上経過したユーザーのうち、
+//               継続日数が n 日以上に達した人の割合
+exports.computeRetentionStats = functions.pubsub
+  .schedule('every monday 03:00')
+  .timeZone('Asia/Tokyo')
+  .onRun(async () => {
+    const MS_DAY = 86400000;
+    const today = new Date();
+    const MILESTONES = [7, 30, 90];
+    const buckets = {};
+    MILESTONES.forEach((n) => { buckets[n] = { eligible: 0, reached: 0 }; });
+
+    const userRefs = await db.collection('users').listDocuments();
+
+    for (const userRef of userRefs) {
+      try {
+        const snap = await userRef.collection('retention').doc('summary').get();
+        if (!snap.exists) continue;
+        const data = snap.data() || {};
+        const days = Object.keys(data.days || {}).sort();
+        if (days.length === 0) continue;
+
+        // 3日猶予の最長継続スパンを計算
+        let runStart = new Date(days[0]);
+        let prev = new Date(days[0]);
+        let longestSpan = 1;
+        for (let i = 1; i < days.length; i++) {
+          const cur = new Date(days[i]);
+          const gap = Math.round((cur - prev) / MS_DAY);
+          if (gap > 3) {
+            runStart = cur; // 3日超の空白でリセット
+          }
+          longestSpan = Math.max(longestSpan, Math.round((cur - runStart) / MS_DAY) + 1);
+          prev = cur;
+        }
+
+        const firstDay = new Date(data.firstActiveDay || days[0]);
+        const daysSinceFirst = Math.round((today - firstDay) / MS_DAY);
+
+        for (const n of MILESTONES) {
+          if (daysSinceFirst >= n) {
+            buckets[n].eligible += 1;
+            if (longestSpan >= n) buckets[n].reached += 1;
+          }
+        }
+      } catch (e) {
+        console.error(`retention read failed for ${userRef.id}:`, e);
+      }
+    }
+
+    const toStat = (b) => ({
+      eligible: b.eligible,
+      reached: b.reached,
+      rate: b.eligible > 0 ? Math.round((b.reached / b.eligible) * 1000) / 10 : null,
+    });
+
+    await db.collection('public-stats').doc('retention').set({
+      d7: toStat(buckets[7]),
+      d30: toStat(buckets[30]),
+      d90: toStat(buckets[90]),
+      computedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log('Retention stats:', JSON.stringify({
+      d7: toStat(buckets[7]), d30: toStat(buckets[30]), d90: toStat(buckets[90]),
+    }));
+    return null;
+  });

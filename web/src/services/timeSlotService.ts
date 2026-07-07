@@ -14,6 +14,7 @@ import {
   DailyTimeSlotProgress,
 } from '../types/timeSlot';
 import { localDateKey } from '../utils/date';
+import { markActiveToday } from './retentionService';
 
 const TIME_SLOT_GOALS_COLLECTION = 'time-slot-goals';
 const TIME_SLOT_PROGRESS_COLLECTION = 'time-slot-progress';
@@ -311,6 +312,9 @@ export async function saveTodayProgress(
   };
 
   await setDoc(docRef, data, { merge: true });
+
+  // 継続コホート計測: 実績保存 = 何らかの活動を記録した日（1日1回のみ書き込み）
+  void markActiveToday(userId);
 }
 
 // 今日の実績をリアルタイム購読する。

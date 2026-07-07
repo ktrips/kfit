@@ -199,6 +199,9 @@ export const recordExercise = async (userId: string, exerciseData: any) => {
       { ...exerciseData, timestamp: now }
     );
 
+    // 継続コホート計測（循環import回避のため動的import）
+    import('./retentionService').then(m => m.markActiveToday(userId)).catch(() => {});
+
     // Client-side streak + points update（Cloud Functions が未デプロイでも動作する）
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);

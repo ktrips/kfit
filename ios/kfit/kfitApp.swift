@@ -32,6 +32,8 @@ struct kfitApp: App {
         settings.cacheSettings = PersistentCacheSettings()
         Firestore.firestore().settings = settings
         _authManager = StateObject(wrappedValue: AuthenticationManager.shared)
+        // 継続コホート計測: 記録保存を監視して活動日をマーク（1日1回）
+        RetentionTracker.shared.startObserving()
     }
 
     var body: some Scene {

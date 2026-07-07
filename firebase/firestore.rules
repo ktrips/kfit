@@ -76,6 +76,13 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // 公開統計（7/30/90日継続率など）。
+    // 書き込みは Cloud Functions（Admin SDK、rules 対象外）のみ。
+    match /public-stats/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny everything else by default
     match /{document=**} {
       allow read, write: if false;

@@ -13,6 +13,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { markActiveToday } from './retentionService';
 import type {
   DietGoalSettings,
   DrinkType,
@@ -103,6 +104,7 @@ export async function recordMealIntake(
     sodium: 0,
     timestamp: Timestamp.fromDate(timestamp),
   });
+  void markActiveToday(userId); // 継続コホート計測
   return {
     id: ref.id,
     type: 'meal',
@@ -152,6 +154,7 @@ export async function recordDrinkIntake(
     })).id;
   }
 
+  void markActiveToday(userId); // 継続コホート計測
   return {
     id: refId,
     type: 'drink',
@@ -320,6 +323,7 @@ export async function recordMindfulnessSession(
     { merge: true },
   );
   await updateDoc(doc(db, 'users', userId), { totalPoints: increment(xp) });
+  void markActiveToday(userId); // 継続コホート計測
   return { id: ref.id, type, label, durationSeconds, xp, timestamp: now };
 }
 

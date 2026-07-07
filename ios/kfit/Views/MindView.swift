@@ -72,24 +72,26 @@ struct MindView: View {
                         await AuthenticationManager.shared.awardXPForMindfulSessions(healthKit.todayMindfulnessSamples)
                     }
                 } else {
-                    // Free ユーザー: ロック画面 + Smartfulness バナー
+                    // Free ユーザー: 睡眠スコアは開放（実データ）。
+                    // ストレス分析・AI提案は実データのぼかしプレビュー + ロック
+                    // （空のロック画面では価値が伝わらないため、中身を見せて絞る）
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 16) {
-                            PlusFullLockView(
-                                tabIcon: "brain.head.profile",
-                                tabName: "MIND",
-                                features: [
-                                    "ストレス分析（HRVモニタリング）",
-                                    "今日のまとめ（心拍・HRV）",
-                                    "昨晩の睡眠スコア詳細",
-                                    "健康改善の提案"
-                                ],
-                                onUpgrade: { showPlusViewFromMind = true }
-                            )
+                            sleepScoreCard
+                            plusLockedPreview { currentStressCard }
+                            plusLockedPreview { averageStressCard }
+                            plusLockedPreview { suggestionsCard }
                             smartfulnessBanner
+                            moominQuoteLinkButton
+                            mindBookSection
+                            Spacer(minLength: 40)
                         }
                         .padding(.horizontal, 16)
+                        .padding(.top, 12)
                         .padding(.bottom, 32)
+                    }
+                    .refreshable {
+                        await healthKit.fetchMindHealth(force: true)
                     }
                 }
             }
@@ -1046,6 +1048,43 @@ struct MindView: View {
     }
 
     /// Free ユーザー向け Smartfulness Kindle バナー
+    /// Plus 限定カードの実データぼかしプレビュー。
+    /// Free ユーザーには中身をぼかして見せ、ロックバッジとアップグレード導線を重ねる。
+    @ViewBuilder
+    private func plusLockedPreview<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ZStack {
+            content()
+                .blur(radius: 5)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                    Text("Plus で解放")
+                }
+                .font(.system(size: 13, weight: .black))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(hex: "#FF8C00"))
+                .clipShape(Capsule())
+
+                Button {
+                    showPlusViewFromMind = true
+                } label: {
+                    Text("アップグレード →")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color(hex: "#FF8C00"))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                }
+            }
+        }
+    }
+
     private var smartfulnessBanner: some View {
         let bookURL = URL(string: "https://amzn.to/4xODH4z")!
         return Link(destination: bookURL) {

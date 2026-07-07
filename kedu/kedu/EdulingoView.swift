@@ -99,6 +99,12 @@ struct EdulingoView: View {
         f.dateFormat = "M月d日"
         return f
     }()
+    private static let rankDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d(E)"
+        return f
+    }()
 
     // MARK: - 教育コンテンツ判定
 
@@ -877,12 +883,8 @@ struct EdulingoView: View {
             cal.date(byAdding: .day, value: $0, to: monday)
         }.reversed()
 
-        let dayFmt: DateFormatter = {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "ja_JP")
-            f.dateFormat = "M/d(E)"
-            return f
-        }()
+        // body 評価毎の DateFormatter 生成を避けるため static を参照
+        let dayFmt = Self.rankDayFormatter
 
         let ptWidth: CGFloat = 52
 

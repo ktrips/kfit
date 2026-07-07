@@ -226,6 +226,11 @@ struct WeeklyGoalView: View {
         return min(max(daysSinceMonday + 1, 1), activeDays)
     }
 
+    // DateFormatter は生成コストが高いため static で一度だけ生成
+    private static let mdFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M/d"; return f
+    }()
+
     private func currentWeekLabel() -> String {
         let calendar = Calendar.current
         let today = Date()
@@ -233,7 +238,7 @@ struct WeeklyGoalView: View {
         let daysToMonday = weekday == 1 ? -6 : 2 - weekday
         let monday = calendar.date(byAdding: .day, value: daysToMonday, to: today) ?? today
         let sunday = calendar.date(byAdding: .day, value: 6, to: monday) ?? today
-        let fmt = DateFormatter(); fmt.dateFormat = "M/d"
+        let fmt = Self.mdFmt
         return "\(fmt.string(from: monday)) 〜 \(fmt.string(from: sunday))"
     }
 

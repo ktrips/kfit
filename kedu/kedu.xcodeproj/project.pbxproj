@@ -33,6 +33,7 @@
 		CCDD0000000000000000005D /* MindfulnessSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000005C /* MindfulnessSessionView.swift */; };
 		CCDD0000000000000000005F /* StandPomodoroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000005E /* StandPomodoroView.swift */; };
 		CCDD00000000000000000061 /* SharedAppComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000060 /* SharedAppComponents.swift */; };
+		CCDD0000000000000000006F /* SharedEduViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000006E /* SharedEduViews.swift */; };
 		CCDD00000000000000000063 /* PremiumBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000062 /* PremiumBadge.swift */; };
 		CCDD00000000000000000065 /* PremiumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000064 /* PremiumView.swift */; };
 		CCDD00000000000000000067 /* LanguageUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000066 /* LanguageUtils.swift */; };
@@ -86,6 +87,7 @@
 		CCDD0000000000000000005C /* MindfulnessSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MindfulnessSessionView.swift; path = ../ios/kfit/Views/MindfulnessSessionView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000005E /* StandPomodoroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StandPomodoroView.swift; path = ../ios/kfit/Views/StandPomodoroView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000060 /* SharedAppComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedAppComponents.swift; path = ../ios/kfit/Views/Components/SharedAppComponents.swift; sourceTree = SOURCE_ROOT; };
+		CCDD0000000000000000006E /* SharedEduViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedEduViews.swift; path = ../ios/kfit/Views/Components/SharedEduViews.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000062 /* PremiumBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PremiumBadge.swift; path = ../ios/kfit/Views/Components/PremiumBadge.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000064 /* PremiumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PremiumView.swift; path = ../ios/kfit/Views/PremiumView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000066 /* LanguageUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageUtils.swift; path = ../ios/kfit/Extensions/LanguageUtils.swift; sourceTree = SOURCE_ROOT; };
@@ -215,6 +217,7 @@
 				CCDD0000000000000000005C /* MindfulnessSessionView.swift */,
 				CCDD0000000000000000005E /* StandPomodoroView.swift */,
 				CCDD00000000000000000060 /* SharedAppComponents.swift */,
+				CCDD0000000000000000006E /* SharedEduViews.swift */,
 				CCDD00000000000000000062 /* PremiumBadge.swift */,
 				CCDD00000000000000000064 /* PremiumView.swift */,
 				CCDD00000000000000000066 /* LanguageUtils.swift */,
@@ -438,6 +441,7 @@
 				CCDD0000000000000000005D /* MindfulnessSessionView.swift in Sources */,
 				CCDD0000000000000000005F /* StandPomodoroView.swift in Sources */,
 				CCDD00000000000000000061 /* SharedAppComponents.swift in Sources */,
+				CCDD0000000000000000006F /* SharedEduViews.swift in Sources */,
 				CCDD00000000000000000063 /* PremiumBadge.swift in Sources */,
 				CCDD00000000000000000065 /* PremiumView.swift in Sources */,
 				CCDD00000000000000000067 /* LanguageUtils.swift in Sources */,

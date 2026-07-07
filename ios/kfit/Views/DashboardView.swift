@@ -372,9 +372,13 @@ private struct VideoCarouselTicker: View {
     let onTick: (Int) -> Void
     @State private var index = 0
 
+    // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
+    // カウントがリセットされるため、static で1つだけ保持する
+    private static let ticker = Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()
+
     var body: some View {
         Color.clear
-            .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
+            .onReceive(Self.ticker) { _ in
                 guard playlistCount > 0 else { return }
                 let next = (index + 1) % playlistCount
                 withAnimation(.easeInOut(duration: 0.2)) { onTick(next) }
@@ -404,6 +408,16 @@ struct DashboardView: View {
         f.dateFormat = "M/d(E)"
         return f
     }()
+    private static let slashMdSpaceE: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d (E)"
+        return f
+    }()
+
+    // body 再評価毎に Timer.publish を再生成するとカウントがリセットされ
+    // 実質発火しなくなるため、static で1つだけ保持する
+    private static let widgetSyncTimer = Timer.publish(every: 600, on: .main, in: .common).autoconnect()
 
     @Binding var selectedTab: Int
     @Binding var showRecordMenu: Bool
@@ -533,7 +547,7 @@ struct DashboardView: View {
                 // kedu/共有からの新規Edu投稿でスパイラルも即時更新
                 Task { await autoCompleteDuolingoIfNeeded(using: newHistory) }
             }
-            .onReceive(Timer.publish(every: 600, on: .main, in: .common).autoconnect()) { _ in
+            .onReceive(Self.widgetSyncTimer) { _ in
                 Task { await periodicWidgetSync() }
                 let h = Calendar.current.component(.hour,   from: Date())
                 let m = Calendar.current.component(.minute, from: Date())
@@ -1280,6 +1294,7 @@ struct DashboardView: View {
                     showStandSession: $showStandSession,
                     showMandalaDetail: $showMandalaDetail,
                     selectedMandalaNode: $selectedMandalaNode,
+                    selectedTab: $selectedTab,
                     activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal
                         && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal,
                     dailyCalorieDone: dailyCalorieDone,
@@ -4140,13 +4155,8 @@ struct DashboardView: View {
             return (foodCount + eduCount) * 10
         }
 
-        // 日付フォーマッター
-        let dayFmt: DateFormatter = {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "ja_JP")
-            f.dateFormat = "M/d (E)"
-            return f
-        }()
+        // 日付フォーマッター（body 評価毎の生成を避けるため static を参照）
+        let dayFmt = Self.slashMdSpaceE
 
         return NavigationView {
             ScrollView {
@@ -6945,6 +6955,7 @@ private struct DailySetsMandalaSectionView: View {
     @Binding var showStandSession: Bool
     @Binding var showMandalaDetail: Bool
     @Binding var selectedMandalaNode: MandalaNodeData?
+    @Binding var selectedTab: Int
     var activityRingsDone: Bool = false
     var dailyCalorieDone: Bool = false
     var dailyWaterDone: Bool = false
@@ -8978,7 +8989,28 @@ struct DayCarouselEntry: Identifiable {
     }
 }
 
+// DayCarouselEntry は kfit 専用のため、共有ファイル（SharedEduViews.swift）ではなく
+// ここで DuolingoPhrase への変換を定義する
+extension DayCarouselEntry {
+    var duolingoPhrase: DuolingoPhrase? {
+        guard let p = extractedPhrase, !p.isEmpty else { return nil }
+        return DuolingoPhrase(
+            id: id,
+            phrase: p,
+            languageCode: extractedLanguageCode ?? "en",
+            pronunciation: pronunciation,
+            translationJA: translationJA,
+            mistakeNote: mistakeNote,
+            grammarNote: grammarNote,
+            exampleSentences: exampleSentences,
+            relatedWords: relatedWords
+        )
+    }
+}
+
 // MARK: - 今日の投稿カルーセル シート
+
+// MARK: - 今日の投稿カルーセル シート（コンパクトリスト型）
 
 struct DayCarouselSheet: View {
     let allEntries: [DayCarouselEntry]
@@ -8990,47 +9022,55 @@ struct DayCarouselSheet: View {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
 
-    // エントリ種別からタブ番号を解決する
-    private func tabFor(_ entry: DayCarouselEntry) -> Int {
-        if entry.kind == .foodPhoto { return MainMenuTab.food.rawValue }
-        return MainMenuTab.tomo.rawValue
-    }
-
     private var displayEntries: [DayCarouselEntry] {
         guard let slot = filterSlot else { return allEntries }
         return allEntries.filter { $0.slot == slot }
     }
 
-    private var sheetTitle: String {
-        if let slot = filterSlot {
-            return "\(slot.emoji) \(slot.displayName)の投稿 \(displayEntries.count)件"
+    // 時間帯ごとにグループ化（時系列順）
+    private var groupedBySlot: [(slot: TimeSlot, entries: [DayCarouselEntry])] {
+        let ordered: [TimeSlot] = [.morning, .noon, .afternoon, .evening, .midnight]
+        return ordered.compactMap { slot in
+            let items = displayEntries.filter { $0.slot == slot }
+                .sorted { $0.time < $1.time }
+            return items.isEmpty ? nil : (slot: slot, entries: items)
         }
-        return "📅 今日の投稿 \(displayEntries.count)件"
+    }
+
+    private func tabFor(_ entry: DayCarouselEntry) -> Int {
+        entry.kind == .foodPhoto ? MainMenuTab.food.rawValue : MainMenuTab.tomo.rawValue
     }
 
     var body: some View {
         NavigationView {
-            Group {
-                if displayEntries.isEmpty {
-                    VStack(spacing: 16) {
-                        Text("📭").font(.system(size: 48))
-                        Text("この時間帯の投稿はありません")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    TabView {
-                        ForEach(displayEntries) { entry in
-                            carouselPage(entry)
-                                .tag(entry.id)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    if displayEntries.isEmpty {
+                        VStack(spacing: 16) {
+                            Text("📭").font(.system(size: 48))
+                            Text("この時間帯の投稿はありません")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        ForEach(groupedBySlot, id: \.slot) { group in
+                            Section {
+                                ForEach(group.entries) { entry in
+                                    entryCard(entry)
+                                        .padding(.horizontal, 16)
+                                        .padding(.bottom, 10)
+                                }
+                            } header: {
+                                slotHeader(group.slot, count: group.entries.count)
+                            }
                         }
                     }
-                    .tabViewStyle(.page)
-                    .indexViewStyle(.page(backgroundDisplayMode: .always))
                 }
+                .padding(.bottom, 24)
             }
-            .navigationTitle(sheetTitle)
+            .navigationTitle("今日の投稿 \(displayEntries.count)件")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -9040,192 +9080,295 @@ struct DayCarouselSheet: View {
         }
     }
 
+    // MARK: - セクションヘッダー（時間帯バー）
+
+    private func slotHeader(_ slot: TimeSlot, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(slot.emoji).font(.system(size: 16))
+            Text(slot.displayName)
+                .font(.system(size: 14, weight: .black))
+                .foregroundColor(.white)
+            Text("\(count)件")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.8))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(slot.mandalaColor)
+    }
+
+    // MARK: - エントリカード（コンパクト）
+
     @ViewBuilder
-    private func carouselPage(_ entry: DayCarouselEntry) -> some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-
-                // ── 3カラムヘッダー ───────────────────────────────
-                // 左: 時間帯 + 時刻   中央: タイトル（目立つ）   右: バッジ
-                ZStack {
-                    // 中央: アクティビティ名
-                    Text(entry.title)
-                        .font(.system(size: 18, weight: .black))
-                        .foregroundColor(Color.duoDark)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .padding(.horizontal, 90)
-
-                    HStack(alignment: .center, spacing: 0) {
-                        // 左: 時間帯 + 時刻
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 3) {
-                                Text(entry.slot.emoji).font(.system(size: 14))
-                                Text(entry.slot.displayName)
-                                    .font(.system(size: 13, weight: .black))
-                                    .foregroundColor(entry.slot.mandalaColor)
-                            }
-                            Text(Self.timeFmt.string(from: entry.time))
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundColor(entry.slot.mandalaColor.opacity(0.75))
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Spacer()
-
-                        // 右: 種別バッジ
-                        kindBadge(entry.kind, isDuolingo: entry.isDuolingo)
-                            .frame(alignment: .trailing)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 8)
-
-                // ── 画像 or 絵文字（タップで対応タブへ遷移）──────
-                Button {
-                    let tab = tabFor(entry)
-                    dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    Group {
-                        if let img = entry.image {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFit()
-                                .cornerRadius(20)
-                                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-                        } else {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [entry.slot.mandalaColor.opacity(0.18),
-                                                     entry.slot.mandalaColor.opacity(0.05)],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing
-                                        )
-                                    )
-                                VStack(spacing: 6) {
-                                    Text(entry.emoji).font(.system(size: 80))
-                                    // タップ誘導ヒント
-                                    Label(entry.kind == .foodPhoto ? "FOODページへ" : "TOMOページへ",
-                                          systemImage: "arrow.right.circle.fill")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(entry.slot.mandalaColor.opacity(0.6))
-                                }
-                            }
-                            .frame(height: 200)
-                        }
-                    }
-                    .frame(maxHeight: entry.image != nil ? 300 : 200)
-                    .overlay(alignment: .bottomTrailing) {
-                        // 遷移ヒントオーバーレイ（画像のみ）
-                        if entry.image != nil {
-                            Label(entry.kind == .foodPhoto ? "FOOD" : "TOMO",
-                                  systemImage: "arrow.right.circle.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(Color.black.opacity(0.45))
-                                .clipShape(Capsule())
-                                .padding(10)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-
-                // ── コメント ──────────────────────────────────────
-                if !entry.comment.isEmpty {
-                    Text(entry.comment)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.duoDark.opacity(0.85))
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(4)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(entry.slot.mandalaColor.opacity(0.04))
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                }
-
-                // ── リンクプレビュー ──────────────────────────────
-                if let url = entry.linkURL {
-                    LinkPreviewCard(title: entry.linkTitle, url: url)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-                }
-
-                // ── 食事栄養素（フードフォトのみ）────────────────
-                if entry.kind == .foodPhoto, entry.calories > 0 {
-                    VStack(spacing: 10) {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("🔥").font(.system(size: 22))
-                            Text("\(entry.calories)")
-                                .font(.system(size: 38, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoOrange)
-                            Text("kcal")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(Color.duoOrange.opacity(0.75))
-                                .padding(.bottom, 2)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.duoOrange.opacity(0.07))
-                        .cornerRadius(14)
-
-                        if entry.protein > 0 || entry.fat > 0 || entry.carbs > 0 {
-                            HStack(spacing: 10) {
-                                MacroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: .duoRed)
-                                MacroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
-                                MacroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                }
-
-                // ── Duolingo フレーズパネル ─────────────────────────
-                if let phrase = entry.duolingoPhrase {
-                    DuolingoPhraseView(data: phrase)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                }
-
-                Spacer(minLength: 32)
+    private func entryCard(_ entry: DayCarouselEntry) -> some View {
+        Button {
+            let tab = tabFor(entry)
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                selectedTab = tab
             }
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+
+                // ── フォト / 絵文字エリア ─────────────────────────
+                if let img = entry.image {
+                    photoCard(entry: entry, image: img)
+                } else {
+                    emojiCard(entry: entry)
+                }
+
+                // ── テキストエリア ────────────────────────────────
+                VStack(alignment: .leading, spacing: 6) {
+                    // 時刻 + タイトル
+                    HStack(spacing: 6) {
+                        Text(Self.timeFmt.string(from: entry.time))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Text(entry.title)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Color.duoDark)
+                            .lineLimit(1)
+                    }
+
+                    // コメント
+                    if !entry.comment.isEmpty {
+                        Text(entry.comment)
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.duoDark.opacity(0.8))
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    // 食事カロリー（FOOD のみ）
+                    if entry.kind == .foodPhoto, entry.calories > 0 {
+                        HStack(spacing: 4) {
+                            Text("🔥").font(.system(size: 14))
+                            Text("\(entry.calories) kcal")
+                                .font(.system(size: 14, weight: .black, design: .rounded))
+                                .foregroundColor(Color.duoOrange)
+                        }
+                    }
+
+                    // Duolingo フレーズ（コンパクト）
+                    if let dp = entry.duolingoPhrase {
+                        compactPhraseRow(dp)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.07), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - フォトカード（画像あり）
+
+    private func photoCard(entry: DayCarouselEntry, image: UIImage) -> some View {
+        ZStack {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 160)
+                .clipped()
+
+            // 暗めグラデーション（上下）
+            LinearGradient(
+                colors: [.black.opacity(0.35), .clear, .black.opacity(0.2)],
+                startPoint: .top, endPoint: .bottom
+            )
+
+            // 中央: アクティビティバッジ
+            centerBadge(entry)
+
+            // Duolingo: 言語ラベル（左上）
+            if entry.isDuolingo, let lang = entry.extractedLanguageCode {
+                HStack(spacing: 4) {
+                    Text(languageFlag(lang)).font(.system(size: 14))
+                    Text(languageLabel(lang))
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(languageBadgeColor(lang))
+                .clipShape(Capsule())
+                .padding(10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .frame(height: 160)
+        .cornerRadius(16)
+    }
+
+    // MARK: - 絵文字カード（画像なし）
+
+    private func emojiCard(entry: DayCarouselEntry) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(LinearGradient(
+                    colors: [entry.slot.mandalaColor.opacity(0.25),
+                             entry.slot.mandalaColor.opacity(0.08)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ))
+
+            // 絵文字
+            Text(entry.emoji)
+                .font(.system(size: 52))
+
+            // 中央: アクティビティバッジ（右下寄り）
+            centerBadge(entry)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(10)
+
+            // Duolingo 言語ラベル（左上）
+            if entry.isDuolingo, let lang = entry.extractedLanguageCode {
+                HStack(spacing: 4) {
+                    Text(languageFlag(lang)).font(.system(size: 14))
+                    Text(languageLabel(lang))
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(languageBadgeColor(lang))
+                .clipShape(Capsule())
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(10)
+            }
+        }
+        .frame(height: 100)
+        .cornerRadius(16)
+    }
+
+    // MARK: - 中央バッジ（Duolingo / FOOD）
+
+    @ViewBuilder
+    private func centerBadge(_ entry: DayCarouselEntry) -> some View {
+        if entry.isDuolingo {
+            Text("🦉")
+                .font(.system(size: 32))
+                .frame(width: 52, height: 52)
+                .background(Color(hex: "#58CC02"))
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.25), radius: 4)
+        } else if entry.kind == .foodPhoto {
+            Text("🍽️")
+                .font(.system(size: 26))
+                .frame(width: 48, height: 48)
+                .background(Color.duoOrange)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.25), radius: 4)
         }
     }
 
-    // MARK: - Helper Views
+    // MARK: - コンパクトフレーズ行
 
-    private func kindBadge(_ kind: DayCarouselEntry.Kind, isDuolingo: Bool = false) -> some View {
-        let (label, color): (String, Color) = {
-            if isDuolingo { return ("Duolingo", Color(hex: "#58CC02")) }
-            switch kind {
-            case .activity:  return ("活動", Color.duoGreen)
-            case .photo:     return ("フォト", Color.duoPurple)
-            case .link:      return ("リンク", Color(hex: "#1CB0F6"))
-            case .foodPhoto: return ("FOOD", Color.duoOrange)
-            }
-        }()
-        return Text(label)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundColor(color)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(color.opacity(0.12))
-            .clipShape(Capsule())
+    private func compactPhraseRow(_ dp: DuolingoPhrase) -> some View {
+        CompactDuolingoRow(data: dp)
     }
-
-
 }
+
+// MARK: - コンパクトDuolingo行（DayCarouselSheet専用）
+
+private struct CompactDuolingoRow: View {
+    let data: DuolingoPhrase
+    @ObservedObject private var tts = DuolingoTextExtractor.shared
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                // フレーズ本文
+                Text(data.phrase)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                    .lineLimit(expanded ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: expanded)
+
+                Spacer()
+
+                // 再生ボタン
+                Button {
+                    if tts.isSpeaking {
+                        tts.stopSpeaking()
+                    } else {
+                        tts.speak(phrase: data.phrase, languageCode: data.languageCode)
+                    }
+                } label: {
+                    Image(systemName: tts.isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(tts.isSpeaking ? .red : Color(hex: "#58CC02"))
+                        .frame(width: 30, height: 30)
+                        .background((tts.isSpeaking ? Color.red : Color(hex: "#58CC02")).opacity(0.12))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                // 展開ボタン（例文があるとき）
+                if data.exampleSentences?.isEmpty == false || data.translationJA != nil {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                    } label: {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if expanded {
+                // 訳
+                if let tja = data.translationJA, !tja.isEmpty {
+                    Text(tja)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                // 例文（最大2件、コンパクト）
+                if let examples = data.exampleSentences?.prefix(2) {
+                    ForEach(Array(examples.enumerated()), id: \.offset) { idx, ex in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("\(idx + 1).")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: "#58CC02"))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(ex.text)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color.duoDark)
+                                if let tr = ex.translationJA, !tr.isEmpty {
+                                    Text(tr)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.duoSubtitle)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                tts.speak(phrase: ex.text, languageCode: data.languageCode)
+                            } label: {
+                                Image(systemName: "speaker.wave.2.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(hex: "#58CC02"))
+                                    .frame(width: 24, height: 24)
+                                    .background(Color(hex: "#58CC02").opacity(0.12))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(hex: "#58CC02").opacity(0.07))
+        .cornerRadius(10)
+    }
+}
+
 
 #Preview {
     DashboardView(selectedTab: .constant(0), showRecordMenu: .constant(false))

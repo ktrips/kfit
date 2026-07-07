@@ -3646,16 +3646,7 @@ struct SocialShareSheet: View {
 }
 
 // MARK: - System Share Sheet Wrapper
-
-struct SystemShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
+// → Components/SharedEduViews.swift に移動（kedu ターゲットと共有するため）
 
 // MARK: - Category Mini Card
 // 横スクロール行の中に並ぶ、カテゴリ単位のコンパクトカード

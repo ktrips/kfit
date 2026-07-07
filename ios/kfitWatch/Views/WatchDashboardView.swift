@@ -28,6 +28,14 @@ private func timeString(from date: Date) -> String {
     _timeStringFmt.string(from: date)
 }
 
+/// フィード行用フォーマッタ（行ごとの DateFormatter 生成を避ける）
+private let _feedTimeFmt: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "M/d HH:mm"
+    f.locale = Locale(identifier: "ja_JP")
+    return f
+}()
+
 private struct WatchFaceTaskNode {
     let id: String
     let emoji: String
@@ -1696,13 +1704,6 @@ struct WatchDashboardView: View {
 
     @ViewBuilder
     private func watchFeedItemRow(_ item: WatchFeedItem) -> some View {
-        let feedTimeFmt: DateFormatter = {
-            let f = DateFormatter()
-            f.dateFormat = "M/d HH:mm"
-            f.locale = Locale(identifier: "ja_JP")
-            return f
-        }()
-
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(item.activityEmoji.isEmpty ? "📝" : item.activityEmoji)
@@ -1719,7 +1720,7 @@ struct WatchDashboardView: View {
                         Text("·")
                             .font(.system(size: 10))
                             .foregroundColor(.gray)
-                        Text(feedTimeFmt.string(from: item.timestamp))
+                        Text(_feedTimeFmt.string(from: item.timestamp))
                             .font(.system(size: 10))
                             .foregroundColor(.gray)
                     }

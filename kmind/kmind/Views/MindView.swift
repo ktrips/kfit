@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Combine
 
 // MARK: - 軽量 TTS ヘルパー（kmind専用）
 private final class MindTTS: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {

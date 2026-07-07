@@ -7,7 +7,8 @@ struct HealthView: View {
     @StateObject private var hk = HealthKitManager.shared
     @StateObject private var tsm = TimeSlotManager.shared
 
-    private let timeFmt: DateFormatter = {
+    // View 構造体は親の再描画毎に再生成されるため、フォーマッタは static で一度だけ生成
+    private static let timeFmt: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
         return f
@@ -973,7 +974,7 @@ struct HealthView: View {
             VStack(spacing: 0) {
                 ForEach(Array(hk.hrSamples.prefix(10).enumerated()), id: \.element.id) { idx, s in
                     HStack(spacing: 12) {
-                        Text(timeFmt.string(from: s.date))
+                        Text(Self.timeFmt.string(from: s.date))
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                             .frame(width: 44, alignment: .leading)
 

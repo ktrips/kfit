@@ -725,7 +725,7 @@ struct TomoView: View {
             // Duolingo 共有処理完了 → フィードを即時再構築（historyへのinsertは通知より前に完了済み）
             rebuildFeedCache()
         }
-        .onChange(of: selectedCategory) { _, newVal in
+        .onChange(of: selectedCategory) { (_: String?, newVal: String?) in
             if newVal != "Duolingo" { selectedDuolingoLanguage = nil }
             rebuildFeedCache()
         }
@@ -742,34 +742,17 @@ struct TomoView: View {
             PhotoFeedDetailSheet(item: item)
         }
         .sheet(item: $swipeDetailRequest) { req in
-            SwipeableTomoDetailSheet(
-                items: req.items,
-                startIndex: req.startIndex,
-                photoLogManager: photoLogManager,
-                onComment: { commentTargetItem = $0 },
-                onLike: { toggleLikeFeed($0) },
-                onShare: { shareTargetItem = $0 }
-            )
+            swipeDetailSheet(req)
         }
         .sheet(item: $commentTargetItem) { item in
             FeedCommentsSheet(item: item, eduLogManager: eduLogManager,
                               photoLogManager: photoLogManager)
         }
         .sheet(item: $shareTargetItem) { item in
-            SocialShareSheet(
-                item: item,
-                shareURL: item.sharedUrl.flatMap { URL(string: $0) },
-                overrideImage: item.thumbnail
-            )
+            socialShareSheet(item)
         }
         .sheet(item: $categoryGroupTarget) { grp in
-            CategoryGroupListSheet(
-                group: grp,
-                onTapItem: { openDetail($0); categoryGroupTarget = nil },
-                onLike: { eduLogManager.toggleLike(id: $0.id) },
-                onComment: { commentTargetItem = $0; categoryGroupTarget = nil },
-                onShare: { shareTargetItem = $0; categoryGroupTarget = nil }
-            )
+            categoryGroupSheet(grp)
         }
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
@@ -929,6 +912,35 @@ struct TomoView: View {
     /// 投稿タップ時のルーティング：全種別を SwipeableTomoDetailSheet で統一表示
     private func openDetail(_ item: EduLogHistoryItem) {
         swipeDetailRequest = SwipeDetailRequest(items: [item], startIndex: 0)
+    }
+
+    /// スワイプ詳細シートの生成（body 内に直接書くと型推論がタイムアウトするため分離）
+    private func swipeDetailSheet(_ req: SwipeDetailRequest) -> SwipeableTomoDetailSheet {
+        SwipeableTomoDetailSheet(
+            items: req.items,
+            startIndex: req.startIndex,
+            photoLogManager: photoLogManager,
+            onComment: { commentTargetItem = $0 },
+            onLike: { toggleLikeFeed($0) },
+            onShare: { shareTargetItem = $0 }
+        )
+    }
+
+    /// SNS共有シートの生成（型推論タイムアウト回避のため分離）
+    private func socialShareSheet(_ item: EduLogHistoryItem) -> SocialShareSheet {
+        let url: URL? = item.sharedUrl.flatMap { URL(string: $0) }
+        return SocialShareSheet(item: item, shareURL: url, overrideImage: item.thumbnail)
+    }
+
+    /// カテゴリグループ一覧シートの生成（型推論タイムアウト回避のため分離）
+    private func categoryGroupSheet(_ grp: FeedCategoryGroup) -> CategoryGroupListSheet {
+        CategoryGroupListSheet(
+            group: grp,
+            onTapItem: { openDetail($0); categoryGroupTarget = nil },
+            onLike: { eduLogManager.toggleLike(id: $0.id) },
+            onComment: { commentTargetItem = $0; categoryGroupTarget = nil },
+            onShare: { shareTargetItem = $0; categoryGroupTarget = nil }
+        )
     }
 
     /// 同一グループ（同日×同カテゴリ）の複数アイテムをスワイプ詳細で開く

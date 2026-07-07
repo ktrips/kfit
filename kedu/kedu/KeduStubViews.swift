@@ -77,6 +77,8 @@ struct FeedCommentsSheet: View {
 
 struct SocialShareSheet: View {
     let item: EduLogHistoryItem
+    var shareURL: URL? = nil
+    var overrideImage: UIImage? = nil
     var body: some View { EmptyView() }
 }
 

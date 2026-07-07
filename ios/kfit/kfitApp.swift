@@ -103,6 +103,10 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
+    // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
+    // カウントがリセットされるため、static で1つだけ保持する
+    private static let endOfDayTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
     var body: some View {
         decoratedContent
             .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
@@ -130,7 +134,7 @@ struct MainTabView: View {
                     await PendingShareProcessor.shared.processPendingShares()
                 }
             }
-            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            .onReceive(Self.endOfDayTimer) { _ in
                 checkEndOfDayCalorieTopUp()
             }
             .onChange(of: fitVisible)      { _, _ in normalizeSelection() }
@@ -551,7 +555,8 @@ struct RotatingAdBanner: View {
 
     @State private var slotIndex = 0
     private let slots = AdSlot.allCases
-    private let rotateEvery: TimeInterval = 12
+    // body 再評価毎の Timer 再生成（=ローテーションのリセット）を防ぐため static で保持
+    private static let rotateTimer = Timer.publish(every: 12, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -574,7 +579,7 @@ struct RotatingAdBanner: View {
             }
             .buttonStyle(.plain)
         }
-        .onReceive(Timer.publish(every: rotateEvery, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(Self.rotateTimer) { _ in
             withAnimation { slotIndex += 1 }
         }
     }

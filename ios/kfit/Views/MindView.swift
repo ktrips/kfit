@@ -44,6 +44,9 @@ struct MindView: View {
     @State private var showMoominQuotes    = false  // ムーミン名言一覧シート
     @ObservedObject private var ttsEngine  = DuolingoTextExtractor.shared
     @State private var speakingQuoteText: String? = nil  // 読み上げ中の名言テキスト
+    @State private var quoteRefreshSeed: Int = Int.random(in: 0..<10000)  // 頻繁ローテーション用シード
+
+    private static let quoteTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
         NavigationView {
@@ -95,6 +98,12 @@ struct MindView: View {
             .sheet(isPresented: $showPlusViewFromMind) { PlusView() }
             .sheet(isPresented: $showHRVHelp) {
                 HRVStressHelpView()
+            }
+            .sheet(isPresented: $showMoominQuotes) {
+                MoominQuoteListSheet()
+            }
+            .onReceive(MindView.quoteTimer) { _ in
+                quoteRefreshSeed = Int.random(in: 0..<10000)
             }
             .task {
                 loadDailyFixedGoals()
@@ -286,7 +295,7 @@ struct MindView: View {
 
     private var currentStressCard: some View {
         let stress = stressInfo(healthKit.latestHRV)
-        let quote = moominQuoteForStress(stress)
+        let quote = moominQuoteForStress(stress, seed: quoteRefreshSeed)
         return card {
             cardTitleWithHelp(
                 "現在のストレスレベル",
@@ -327,62 +336,68 @@ struct MindView: View {
         }
     }
 
-    // MARK: - ムーミン名言カード
+    // MARK: - ムーミン名言カード（タップで名言集へ）
     private func moominQuoteCard(quote: MoominQuote, accentColor: Color) -> some View {
         let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
-                Text("🌿")
-                    .font(.system(size: 13))
-                Text("あなたへの一言")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(accentColor)
-                Spacer()
-                Text("Moomin")
-                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                    .foregroundColor(accentColor.opacity(0.6))
-                // 読み上げボタン
-                Button {
-                    if isSpeaking {
-                        ttsEngine.stopSpeaking()
-                        speakingQuoteText = nil
-                    } else {
-                        speakingQuoteText = quote.text
-                        ttsEngine.speak(phrase: quote.text, languageCode: "ja")
+        return Button { showMoominQuotes = true } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 5) {
+                    Text("🌿").font(.system(size: 13))
+                    Text("あなたへの一言")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .foregroundColor(accentColor)
+                    Spacer()
+                    // 読み上げボタン（タップ伝播を止める）
+                    Button {
+                        if isSpeaking {
+                            ttsEngine.stopSpeaking()
+                            speakingQuoteText = nil
+                        } else {
+                            speakingQuoteText = quote.text
+                            ttsEngine.speak(phrase: quote.text, languageCode: "ja")
+                        }
+                    } label: {
+                        Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(isSpeaking ? .red : accentColor)
+                            .frame(width: 28, height: 28)
+                            .background((isSpeaking ? Color.red : accentColor).opacity(0.1))
+                            .clipShape(Circle())
                     }
-                } label: {
-                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isSpeaking ? .red : accentColor)
-                        .frame(width: 28, height: 28)
-                        .background((isSpeaking ? Color.red : accentColor).opacity(0.1))
-                        .clipShape(Circle())
+                    .buttonStyle(.plain)
+                    // 名言集リンクアイコン
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(accentColor.opacity(0.5))
                 }
-                .buttonStyle(.plain)
+                Text("「\(quote.text)」")
+                    .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.duoDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+                HStack {
+                    Text("— \(quote.speaker)")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .foregroundColor(accentColor.opacity(0.8))
+                        .italic()
+                    Spacer()
+                    Text("名言集を見る →")
+                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                        .foregroundColor(accentColor.opacity(0.6))
+                }
             }
-            Text("「\(quote.text)」")
-                .font(.system(size: 13 * UIScale.font, weight: .semibold, design: .rounded))
-                .foregroundColor(Color.duoDark)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(4)
-            HStack {
-                Spacer()
-                Text("— \(quote.speaker)")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(accentColor.opacity(0.8))
-                    .italic()
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(accentColor.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(accentColor.opacity(0.2), lineWidth: 1)
+                    )
+            )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(accentColor.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(accentColor.opacity(0.2), lineWidth: 1)
-                )
-        )
+        .buttonStyle(.plain)
     }
 
     private var averageStressCard: some View {
@@ -988,9 +1003,6 @@ struct MindView: View {
                 Color(hex: "#CE82FF").opacity(0.22), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .sheet(isPresented: $showMoominQuotes) {
-            MoominQuoteListSheet()
-        }
     }
 
     private var mindBookSection: some View {
@@ -1843,7 +1855,7 @@ struct MoominQuoteListSheet: View {
     }
 
     private let sections: [QuoteSection] = [
-        QuoteSection(id: 0, title: "すっきり・元気なとき", emoji: "🟢", color: Color.duoGreen, quotes: [
+        QuoteSection(id: 0, title: "元気なとき", emoji: "🟢", color: Color.duoGreen, quotes: [
             MoominQuote(text: "道や川ってふしぎだなあ。ずっと先までつづくのを見ていると、遠くへ行きたくてたまらなくなっちゃう。どこまで行くのかなって、ついていきたくなるんだ……", speaker: "スニフ"),
             MoominQuote(text: "食べることもわすれるほど、しあわせになれるんだね！", speaker: "スニフ"),
             MoominQuote(text: "長い旅行に必要なのは大きなカバンじゃなく、口ずさめる一つの歌さ", speaker: "スナフキン"),
@@ -1859,7 +1871,7 @@ struct MoominQuoteListSheet: View {
             MoominQuote(text: "ぼくは自分の運命を、この手で切り開いてみせるぞ", speaker: "ムーミンパパ"),
             MoominQuote(text: "ぼく、腹ぺこだよ。食べることもわすれるほど、しあわせになれるんだね！", speaker: "スニフ"),
         ]),
-        QuoteSection(id: 30, title: "おだやか・バランスの良いとき", emoji: "🟡", color: Color(hex: "#58CC02"), quotes: [
+        QuoteSection(id: 30, title: "おだやかなとき", emoji: "🟡", color: Color(hex: "#58CC02"), quotes: [
             MoominQuote(text: "大切なのは、自分のしたいことを自分で知ってるってことだよ", speaker: "スナフキン"),
             MoominQuote(text: "「そのうち」なんて当てにならないな。いまがその時さ", speaker: "スナフキン"),
             MoominQuote(text: "いつも希望を胸に生きるって、いいことよね", speaker: "リトルミイ"),
@@ -1878,7 +1890,7 @@ struct MoominQuoteListSheet: View {
             MoominQuote(text: "正義は正義であるべきです。そこは、わきまえなくてはいけない。", speaker: "スノーク"),
             MoominQuote(text: "生きるってことは、平和じゃないんですよ", speaker: "スナフキン"),
         ]),
-        QuoteSection(id: 55, title: "少し疲れ気味・休息が必要なとき", emoji: "🟠", color: Color.duoOrange, quotes: [
+        QuoteSection(id: 55, title: "疲れ気味のとき", emoji: "🟠", color: Color.duoOrange, quotes: [
             MoominQuote(text: "あんまりおおげさに考えすぎないようにしろよ。なんでも、大きくしすぎちゃ、だめだぜ", speaker: "スナフキン"),
             MoominQuote(text: "ちょっと眠るよ。ちょいちょい、寝ている間に、問題が自然にとけることがあるからな。頭はほったらかしておくと、よく働くものなんだ", speaker: "ムーミンパパ"),
             MoominQuote(text: "眠っているときは、休んでいるときだ。春、また元気を取り戻すために", speaker: "スナフキン"),
@@ -1895,7 +1907,7 @@ struct MoominQuoteListSheet: View {
             MoominQuote(text: "あそこへ行けば、ほんとうに助けてくれるかね？ 人間て、そういうものかね？", speaker: "ムーミントロール"),
             MoominQuote(text: "人の目なんか気にしないで、思うとおりに暮らしていればいいのさ", speaker: "スナフキン"),
         ]),
-        QuoteSection(id: 75, title: "ストレス高め・力が必要なとき", emoji: "🔴", color: Color(hex: "#FF4B4B"), quotes: [
+        QuoteSection(id: 75, title: "力が必要なとき", emoji: "🔴", color: Color(hex: "#FF4B4B"), quotes: [
             MoominQuote(text: "どんなことでも、自分で見つけださなきゃいけないものよ。そうして自分ひとりで、それを乗りこえるんだわ", speaker: "トゥーティッキ"),
             MoominQuote(text: "ほら、元気をなくしてはだめだよ。もう一回！", speaker: "ヘムレン"),
             MoominQuote(text: "本当の勇気とは自分の弱い心に打ち勝つことだよ。包み隠さず本当のことを正々堂々と言える者こそ本当の勇気のある強い者なんだ", speaker: "スナフキン"),
@@ -1910,7 +1922,7 @@ struct MoominQuoteListSheet: View {
             MoominQuote(text: "自然の力はすばらしいもんだよ", speaker: "スナフキン"),
             MoominQuote(text: "何でも自分のものにして持って帰ろうとすると難しいものなんだよ。ぼくは見るだけにしてるんだ。そして立ち去るときにはそれを頭の中へしまっておくのさ", speaker: "スナフキン"),
         ]),
-        QuoteSection(id: -1, title: "いつでも・誰にでも", emoji: "🌿", color: Color.duoPurple, quotes: [
+        QuoteSection(id: -1, title: "いつでも", emoji: "🌿", color: Color.duoPurple, quotes: [
             MoominQuote(text: "ね、なにが起こったって、わたしにはちゃんとあなたがわかるのよ", speaker: "ムーミンママ"),
             MoominQuote(text: "もうだいじょうぶよ、ほら、いらっしゃい。", speaker: "ムーミンママ"),
             MoominQuote(text: "なんでも自分のものにして、持って帰ろうとすると、むずかしくなっちゃうんだよ。ぼくは見るだけにしてるんだ。そして立ち去るときには、頭の中へしまっておく", speaker: "スナフキン"),
@@ -1935,16 +1947,16 @@ struct MoominQuoteListSheet: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
-                    // カテゴリフィルター
+                    // カテゴリフィルター（コンパクト）
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterChip(id: nil, label: "すべて", emoji: "✨", color: Color.duoPurple)
+                        HStack(spacing: 6) {
+                            filterChip(id: nil, label: "全て", emoji: "✨", color: Color.duoPurple)
                             ForEach(sections) { sec in
                                 filterChip(id: sec.id, label: sec.title, emoji: sec.emoji, color: sec.color)
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 8)
                     }
                     Divider()
 
@@ -1970,10 +1982,10 @@ struct MoominQuoteListSheet: View {
                                     .clipShape(Capsule())
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, 20)
-                            .padding(.bottom, 10)
+                            .padding(.top, 12)
+                            .padding(.bottom, 6)
 
-                            VStack(spacing: 10) {
+                            VStack(spacing: 8) {
                                 ForEach(section.quotes.indices, id: \.self) { idx in
                                     let q = section.quotes[idx]
                                     quoteRow(q, color: section.color)
@@ -2019,42 +2031,42 @@ struct MoominQuoteListSheet: View {
 
     private func quoteRow(_ quote: MoominQuote, color: Color) -> some View {
         let isSpeaking = speakingQuoteText == quote.text && ttsEngine.isSpeaking
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("「\(quote.text)」")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(Color.duoDark)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(3)
-            HStack(spacing: 8) {
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("「\(quote.text)」")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.duoDark)
+                    .lineLimit(4)
+                    .lineSpacing(2)
                 Text("— \(quote.speaker)")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(color.opacity(0.8))
                     .italic()
-                Spacer()
-                Button {
-                    if isSpeaking {
-                        ttsEngine.stopSpeaking()
-                        speakingQuoteText = nil
-                    } else {
-                        speakingQuoteText = quote.text
-                        ttsEngine.speak(phrase: quote.text, languageCode: "ja")
-                    }
-                } label: {
-                    Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(isSpeaking ? .red : color)
-                        .frame(width: 26, height: 26)
-                        .background((isSpeaking ? Color.red : color).opacity(0.1))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
             }
+            Spacer(minLength: 4)
+            Button {
+                if isSpeaking {
+                    ttsEngine.stopSpeaking()
+                    speakingQuoteText = nil
+                } else {
+                    speakingQuoteText = quote.text
+                    ttsEngine.speak(phrase: quote.text, languageCode: "ja")
+                }
+            } label: {
+                Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(isSpeaking ? .red : color)
+                    .frame(width: 24, height: 24)
+                    .background((isSpeaking ? Color.red : color).opacity(0.1))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(isSpeaking ? color.opacity(0.12) : color.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSpeaking ? color.opacity(0.4) : color.opacity(0.15), lineWidth: isSpeaking ? 1.5 : 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(isSpeaking ? color.opacity(0.4) : color.opacity(0.12), lineWidth: isSpeaking ? 1.5 : 1))
         .animation(.easeInOut(duration: 0.2), value: isSpeaking)
     }
 }

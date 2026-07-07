@@ -552,11 +552,16 @@ struct TimeSlotGoalsView: View {
 
     // MARK: - Mandala Section
 
+    // DateFormatter は生成コストが高いため static で一度だけ生成
+    private static let mandalaDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日(E)"
+        return f
+    }()
+
     private var mandalaTodayDateText: String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "M月d日(E)"
-        return fmt.string(from: Date())
+        Self.mandalaDateFmt.string(from: Date())
     }
 
     private var mandalaNodeCount: (done: Int, total: Int) {

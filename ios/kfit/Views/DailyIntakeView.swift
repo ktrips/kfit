@@ -389,10 +389,15 @@ struct DailyIntakeView: View {
         .cornerRadius(16)
     }
 
-    private func timeString(_ date: Date) -> String {
+    // DateFormatter は生成コストが高いため static で一度だけ生成
+    private static let hhmmFmt: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func timeString(_ date: Date) -> String {
+        Self.hhmmFmt.string(from: date)
     }
 
     private func pfcRow(label: String, emoji: String, percent: Double, grams: Double, target: Double, color: Color) -> some View {

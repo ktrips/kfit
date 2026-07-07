@@ -47,7 +47,8 @@ struct MoominQuote {
 
 /// ストレスレベルに応じたムーミン名言を返す。
 /// 今日の日付をシードにすることで同じ日は同じ名言になる（毎日変わる）。
-func moominQuoteForStress(_ stress: MindStressInfo) -> MoominQuote {
+/// seed: -1 → 日付ベース（デフォルト）、0以上 → その値で名言を選択（頻繁なローテーション用）
+func moominQuoteForStress(_ stress: MindStressInfo, seed: Int = -1) -> MoominQuote {
     let quotes: [MoominQuote]
     switch stress.score {
     case ..<0:
@@ -123,9 +124,13 @@ func moominQuoteForStress(_ stress: MindStressInfo) -> MoominQuote {
             MoominQuote(text: "さあ、さっと思い立ったときに決心しなくては。決心がにぶらないうちに、すばやく実行しなくては", speaker: "フィリフヨンカ"),
         ]
     }
-    // 今日の日付をシードにした決定的選択（毎日同じ名言、日によって変わる）
-    let dayOfYear = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
-    return quotes[dayOfYear % quotes.count]
+    let effectiveSeed: Int
+    if seed >= 0 {
+        effectiveSeed = seed
+    } else {
+        effectiveSeed = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
+    }
+    return quotes[effectiveSeed % quotes.count]
 }
 
 // MARK: - マインドフルネス時間フォーマット

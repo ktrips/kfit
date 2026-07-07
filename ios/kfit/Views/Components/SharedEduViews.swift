@@ -33,21 +33,20 @@ extension EduLogHistoryItem {
     }
 }
 
-extension DayCarouselEntry {
-    var duolingoPhrase: DuolingoPhrase? {
-        guard let p = extractedPhrase, !p.isEmpty else { return nil }
-        return DuolingoPhrase(
-            id: id,
-            phrase: p,
-            languageCode: extractedLanguageCode ?? "en",
-            pronunciation: pronunciation,
-            translationJA: translationJA,
-            mistakeNote: mistakeNote,
-            grammarNote: grammarNote,
-            exampleSentences: exampleSentences,
-            relatedWords: relatedWords
-        )
+// NOTE: DayCarouselEntry の duolingoPhrase 拡張は DashboardView.swift 側に定義
+// （DayCarouselEntry が kfit 専用のため。本ファイルは kedu ターゲットとも共有される）
+
+// MARK: - System Share Sheet Wrapper
+// TomoView（kfit / kedu 共有）から使用するためここに定義
+
+struct SystemShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
+
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - DuolingoPhraseView

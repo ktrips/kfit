@@ -45,7 +45,7 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   if (path.startsWith('/books/cursor-claude-code-plus')) return { view: 'bookDetail', bookId: 'cursor-claude-code-plus' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
   if (path.startsWith('/books')) return { view: 'books' };
-  if (path.startsWith('/challenge-90')) return { view: 'challenge' };
+  if (path.startsWith('/challenge-90') || path.startsWith('/c90')) return { view: 'challenge' };
   return { view: 'login' };
 }
 
@@ -86,15 +86,19 @@ function App() {
           ]);
           if (profile) setUserProfile(profile);
           setExercises(exercisesList);
-          setCurrentView('dashboard');
+          // /books・/challenge-90 にいる場合はそのまま
+          const { view: initView } = getInitialViewFromPath();
+          if (!initView.startsWith('book') && initView !== 'challenge') {
+            setCurrentView('dashboard');
+          }
           // Real-time listener: Cloud Function updates totalPoints/streak after each exercise
           profileUnsub = subscribeToUserProfile(firebaseUser.uid, setUserProfile);
         } else {
           setUser(null);
           setUserProfile(null);
-          // /books/* パスにいる場合はそのまま
+          // /books/* や /challenge-90 パスにいる場合はそのまま
           const { view } = getInitialViewFromPath();
-          if (!view.startsWith('book')) {
+          if (!view.startsWith('book') && view !== 'challenge') {
             setCurrentView('login');
           }
         }
@@ -122,7 +126,11 @@ function App() {
     if (view === 'books') {
       window.history.pushState({}, '', '/books');
     } else if (view === 'challenge') {
-      window.history.pushState({}, '', '/challenge-90');
+      // パス維持（/challenge-90 でも /c90 でもそのまま）
+      const curPath = window.location.pathname;
+      if (!curPath.startsWith('/challenge-90') && !curPath.startsWith('/c90')) {
+        window.history.pushState({}, '', '/c90');
+      }
     } else if (view !== 'bookDetail') {
       window.history.pushState({}, '', '/');
     }

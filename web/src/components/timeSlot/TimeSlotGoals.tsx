@@ -10,6 +10,7 @@ import {
 import {
   getTodaySettings,
   getTodayProgress,
+  subscribeTodayProgress,
   recordMindfulnessCompleted,
   recordStretchCompleted,
   toggleCustomActivity
@@ -26,6 +27,10 @@ const TimeSlotGoals: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    if (!user) return;
+    // iOS / Watch での記録をリアルタイム反映
+    const unsubscribe = subscribeTodayProgress(user.uid, setProgress);
+    return unsubscribe;
   }, [user]);
 
   const loadData = async () => {

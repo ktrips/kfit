@@ -95,6 +95,8 @@ export interface TimeSlotGoal {
   customActivities?: CustomActivity[];
   reminderEnabled: boolean;       // リマインダー有効
   reminderTime?: Date;            // リマインダー時刻
+  /** Firestore の生データ（standGoal 等 iOS 専用フィールドを書き戻し時に保持） */
+  raw?: Record<string, unknown>;
 }
 
 // ログ進捗
@@ -115,6 +117,8 @@ export interface TimeSlotProgress {
   logProgress: LogProgress;
   completedActivityIds?: string[];
   lastUpdated: Date;
+  /** Firestore の生データ（standCompleted 等 iOS 専用フィールドを書き戻し時に保持） */
+  raw?: Record<string, unknown>;
 }
 
 // 1日の時間帯別目標設定

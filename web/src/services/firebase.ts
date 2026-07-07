@@ -466,7 +466,12 @@ function getWeekBounds(): { start: Date; end: Date } {
 
 export function getCurrentWeekId(): string {
   const { start } = getWeekBounds();
-  return start.toISOString().split('T')[0]; // Monday's date, e.g. "2026-04-27"
+  // ローカル日付で月曜の yyyy-MM-dd（iOS の currentWeekId と同一キー）。
+  // toISOString() は UTC 変換のため JST では日曜日付になり iOS とずれる。
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  const d = String(start.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`; // Monday's date, e.g. "2026-04-27"
 }
 
 export function getActiveDaysElapsed(): number {

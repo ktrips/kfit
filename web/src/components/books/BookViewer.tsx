@@ -14,9 +14,10 @@ export const KINDLE_URLS: Record<BookId, string> = {
   'apple-watch-diet': 'https://amzn.to/4ek5fHi',
   'cursor-claude-code': 'https://amzn.to/4w8mPE2',
   'cursor-claude-code-plus': 'https://amzn.to/4ek5fHi',
+  'sam-bez-thie-musk-jobs': 'https://amzn.to/4ek5fHi', // 関連書（収益化本）の特別付録と対応
 };
 
-export type BookId = 'apple-watch-diet' | 'cursor-claude-code' | 'cursor-claude-code-plus';
+export type BookId = 'apple-watch-diet' | 'cursor-claude-code' | 'cursor-claude-code-plus' | 'sam-bez-thie-musk-jobs';
 
 interface BookMeta {
   id: BookId;
@@ -29,6 +30,7 @@ interface BookMeta {
   description: string;
   tags: string[];
   companionFor?: BookId; // この本が「続編・関連書」である場合の親BookId
+  freeFull?: boolean;    // true なら Plus でなくても全文公開（試し読み制限なし）
 }
 
 export const BOOKS: BookMeta[] = [
@@ -71,6 +73,20 @@ export const BOOKS: BookMeta[] = [
       'SNSマーケティングまで実践的に解説するAI個人開発完全ガイド。',
     tags: ['収益化', 'Kindle', 'Freemium', 'Plus', 'マーケティング', 'SNS'],
     companionFor: 'cursor-claude-code',
+  },
+  {
+    id: 'sam-bez-thie-musk-jobs',
+    title: 'Fitingo 統合戦略プラン',
+    subtitle: 'Sam × Bezos × Thiel × Musk × Jobs ─ 5人の思考法で作る勝ち筋',
+    emoji: '🧠',
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-400',
+    description:
+      'サム・アルトマン、ベゾス、ティール、マスク、ジョブズの思考法をAI（Claude Fable 5）で' +
+      'Fitingoに適用した戦略ドキュメントを全文公開。ニッチ選定からPR/FAQ、48時間検証まで。',
+    tags: ['戦略', 'AI活用', 'ティール', 'ベゾス', 'ジョブズ', '全文無料'],
+    freeFull: true,
   },
 ];
 
@@ -219,8 +235,8 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
           </div>
         )}
         {!loading && !error && (() => {
-          // Plus ユーザーは全文表示、非Plusは試し読み分のみ
-          const needsTruncation = !isPlus && content.length > FREE_CHAR_LIMIT;
+          // Plus ユーザーは全文表示、非Plusは試し読み分のみ（freeFull の本は常に全文）
+          const needsTruncation = !isPlus && !meta.freeFull && content.length > FREE_CHAR_LIMIT;
           let displayContent = content;
           if (needsTruncation) {
             // FREE_CHAR_LIMIT 以降で最初の ## 見出しを切れ目にする
@@ -352,6 +368,13 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                     Full pages
                   </span>
                   <span className="text-xs text-gray-400">Fitingo Plus で全文公開中</span>
+                </div>
+              ) : meta.freeFull ? (
+                <div className="flex items-center gap-2 mb-5">
+                  <span className="inline-flex items-center gap-1.5 bg-green-50 border border-green-300 text-green-600 text-xs font-black px-3 py-1.5 rounded-full">
+                    🆓 全文公開
+                  </span>
+                  <span className="text-xs text-gray-400">このドキュメントは全文無料で読めます</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 mb-5">

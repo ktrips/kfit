@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { getDietGoalSettings, getTodayIntakeSummary, saveDietGoalSettings } from '../services/wellnessService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
+import { localDateKey } from '../utils/date';
 
 function formatKg(value: number): string {
   return `${value.toFixed(1).replace('.0', '')}kg`;
@@ -59,8 +60,9 @@ export const DietGoalView: React.FC = () => {
   const startToCurrent = settings.currentWeightKg - settings.startWeightKg;
   const currentToGoal = settings.goalWeightKg - settings.currentWeightKg;
   const totalDays = daysBetween(settings.startDate, settings.goalDate);
-  const elapsedDays = daysBetween(settings.startDate, new Date().toISOString().split('T')[0]);
-  const remainingDays = daysBetween(new Date().toISOString().split('T')[0], settings.goalDate);
+  const todayStr = localDateKey();
+  const elapsedDays = daysBetween(settings.startDate, todayStr);
+  const remainingDays = daysBetween(todayStr, settings.goalDate);
   const schedulePct = totalDays > 0 ? Math.min(100, Math.round((elapsedDays / totalDays) * 100)) : 0;
   const weightPct = settings.startWeightKg !== settings.goalWeightKg
     ? Math.min(100, Math.max(0, Math.round(((settings.startWeightKg - settings.currentWeightKg) / (settings.startWeightKg - settings.goalWeightKg)) * 100)))

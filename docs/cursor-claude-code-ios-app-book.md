@@ -2292,11 +2292,31 @@ Apple Watchアプリは、iPhoneアプリの小さい版ではありません。
 - `stretch` ─ ストレッチ完了
 - `stand` ─ 20分スタンド完了
 
+**WatchConnectivityの3つの通信手段を使い分ける：**
+
+WatchConnectivityには性質の異なる通信手段があり、この使い分けが同期の信頼性を決めます。
+
+| 手段 | 性質 | 使いどころ |
+|---|---|---|
+| `sendMessage` | 相手が起動中（reachable）のみ即時到達 | フォアグラウンド同士のリアルタイム反映 |
+| `updateApplicationContext` | 1方向につき辞書1個だけ保持・**上書き** | 「最新の状態」の配信（進捗・目標・フィード） |
+| `transferUserInfo` | FIFOキューで**全件保証配信** | 「失ってはいけない記録」（運動・食事の完了イベント） |
+
+初期実装でやりがちな失敗は、オフライン時のフォールバックを `updateApplicationContext` にすることです。contextは上書き式のため、圏外で2セット記録すると1件目が消えます。**状態はcontext、イベントはuserInfo**と覚えてください。また、contextに複数種類のデータ（進捗とフィードなど）を入れる場合は、送信前に前回の辞書とマージしないと互いに消し合います。
+
 [プロンプト例]: WatchとiOSのタスク達成状態の同期問題を修正させる
 ```text
 Watchで、渦巻き表示の達成済みマークがiOSの達成済みとそろっていません。
 iOSの達成状態を正として、Watchの達成済み表示が必ず同期するようにしてください。
 meal、drink、mind-input、mindfulness、stretch、trainingは別々に扱ってください。
+```
+
+[プロンプト例]: オフライン時も記録が消えない同期に改修させる
+```text
+Watch単体（iPhone圏外）で記録した運動・食事が消えることがあります。
+WatchConnectivityの送信経路を調査し、reachable時はsendMessage、
+非到達時はtransferUserInfo（キュー保証配信）にフォールバックするよう修正してください。
+iOS側にはdidReceiveUserInfoの受信ハンドラを追加し、sendMessageと同じ処理に合流させてください。
 ```
 
 <div style="page-break-after: always;"></div>

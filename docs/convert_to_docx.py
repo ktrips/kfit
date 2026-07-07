@@ -17,7 +17,9 @@ import re
 import io
 import unicodedata
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '.pip_pkgs'))
+# .pip_pkgs はシステムに python-docx / lxml が無い場合のフォールバック。
+# insert(0) だと .pip_pkgs 内の古い lxml がシステムの正常版を隠すため append にする。
+sys.path.append(os.path.join(os.path.dirname(__file__), '.pip_pkgs'))
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm

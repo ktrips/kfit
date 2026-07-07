@@ -65,6 +65,24 @@ export function getDrinkDefaults(drinkType: DrinkType) {
   return DRINK_DEFAULTS[drinkType];
 }
 
+// ─────────────────────────────────────────────────────────────
+// 摂取記録の Firestore パスは iOS（AuthenticationManager.swift）が正:
+//   users/{uid}/daily-intake/meals/logs   { mealType, foodName?, calories, protein, fat, carbs, sugar, fiber, sodium, timestamp }
+//   users/{uid}/daily-intake/water/logs   { amountMl, timestamp }
+//   users/{uid}/daily-intake/coffee/logs  { amountMl, caffeineMg, timestamp }
+//   users/{uid}/daily-intake/alcohol/logs { alcoholType, amountMl, alcoholG, timestamp }
+// 旧 Web 実装はフラットな users/{uid}/daily-intake/{autoId} に書いており
+// iOS と同期しなかったため、iOS と同じ型別サブコレクションに統一する。
+// ─────────────────────────────────────────────────────────────
+
+function intakeLogs(userId: string, kind: 'meals' | 'water' | 'coffee' | 'alcohol') {
+  return collection(db, 'users', userId, 'daily-intake', kind, 'logs');
+}
+
+const MEAL_LABELS: Record<string, string> = {
+  breakfast: '朝食', lunch: '昼食', dinner: '夕食', snack: '間食',
+};
+
 export async function recordMealIntake(
   userId: string,
   mealType: MealType,
@@ -73,32 +91,29 @@ export async function recordMealIntake(
 ): Promise<IntakeLog> {
   const defaults = MEAL_DEFAULTS[mealType];
   const timestamp = new Date();
-  const payload = {
-    type: 'meal',
+  const kcal = calories ?? defaults.calories;
+  const ref = await addDoc(intakeLogs(userId, 'meals'), {
     mealType,
+    calories: kcal,
+    protein: defaults.protein,
+    fat: defaults.fat,
+    carbs: defaults.carbs,
+    sugar: 0,
+    fiber: 0,
+    sodium: 0,
+    timestamp: Timestamp.fromDate(timestamp),
+  });
+  return {
+    id: ref.id,
+    type: 'meal',
     label: defaults.label,
-    calories: calories ?? defaults.calories,
+    calories: kcal,
     waterMl: 0,
     caffeineMg: 0,
     alcoholGrams: 0,
     protein: defaults.protein,
     fat: defaults.fat,
     carbs: defaults.carbs,
-    timeSlot,
-    timestamp: Timestamp.fromDate(timestamp),
-  };
-  const ref = await addDoc(collection(db, 'users', userId, 'daily-intake'), payload);
-  return {
-    id: ref.id,
-    type: 'meal',
-    label: payload.label,
-    calories: payload.calories,
-    waterMl: 0,
-    caffeineMg: 0,
-    alcoholGrams: 0,
-    protein: payload.protein,
-    fat: payload.fat,
-    carbs: payload.carbs,
     timeSlot,
     timestamp,
   };
@@ -111,64 +126,110 @@ export async function recordDrinkIntake(
   timeSlot: string = 'web'
 ): Promise<IntakeLog> {
   const defaults = DRINK_DEFAULTS[drinkType];
-  const multiplier = amount && defaults.waterMl > 0 ? amount / defaults.waterMl : 1;
   const timestamp = new Date();
-  const payload = {
+  const amountMl = amount ?? defaults.waterMl;
+  const multiplier = defaults.waterMl > 0 ? amountMl / defaults.waterMl : 1;
+
+  let refId: string;
+  if (drinkType === 'water') {
+    refId = (await addDoc(intakeLogs(userId, 'water'), {
+      amountMl,
+      timestamp: Timestamp.fromDate(timestamp),
+    })).id;
+  } else if (drinkType === 'coffee') {
+    refId = (await addDoc(intakeLogs(userId, 'coffee'), {
+      amountMl,
+      caffeineMg: Math.round(defaults.caffeineMg * multiplier),
+      timestamp: Timestamp.fromDate(timestamp),
+    })).id;
+  } else {
+    // アルコール（既定はビール1杯 350ml 相当）
+    refId = (await addDoc(intakeLogs(userId, 'alcohol'), {
+      alcoholType: 'beer',
+      amountMl: amountMl > 0 ? amountMl : 350,
+      alcoholG: defaults.alcoholGrams,
+      timestamp: Timestamp.fromDate(timestamp),
+    })).id;
+  }
+
+  return {
+    id: refId,
     type: 'drink',
-    drinkType,
     label: defaults.label,
     calories: Math.round(defaults.calories * multiplier),
-    waterMl: drinkType === 'water' || drinkType === 'coffee' ? (amount ?? defaults.waterMl) : defaults.waterMl,
-    caffeineMg: Math.round(defaults.caffeineMg * multiplier),
-    alcoholGrams: defaults.alcoholGrams,
+    waterMl: amountMl,
+    caffeineMg: drinkType === 'coffee' ? Math.round(defaults.caffeineMg * multiplier) : 0,
+    alcoholGrams: drinkType === 'alcohol' ? defaults.alcoholGrams : 0,
     protein: 0,
     fat: 0,
     carbs: defaults.carbs,
-    timeSlot,
-    timestamp: Timestamp.fromDate(timestamp),
-  };
-  const ref = await addDoc(collection(db, 'users', userId, 'daily-intake'), payload);
-  return {
-    id: ref.id,
-    type: 'drink',
-    label: payload.label,
-    calories: payload.calories,
-    waterMl: payload.waterMl,
-    caffeineMg: payload.caffeineMg,
-    alcoholGrams: payload.alcoholGrams,
-    protein: 0,
-    fat: 0,
-    carbs: payload.carbs,
     timeSlot,
     timestamp,
   };
 }
 
 export async function getTodayIntakeSummary(userId: string): Promise<IntakeSummary> {
-  const q = query(
-    collection(db, 'users', userId, 'daily-intake'),
-    where('timestamp', '>=', startOfToday()),
-    where('timestamp', '<=', endOfToday()),
-    orderBy('timestamp', 'desc')
-  );
-  const snapshot = await getDocs(q);
-  const logs: IntakeLog[] = snapshot.docs.map(item => {
+  const todayRange = (kind: 'meals' | 'water' | 'coffee' | 'alcohol') =>
+    getDocs(query(
+      intakeLogs(userId, kind),
+      where('timestamp', '>=', startOfToday()),
+      where('timestamp', '<=', endOfToday()),
+      orderBy('timestamp', 'desc')
+    ));
+
+  const [mealSnap, waterSnap, coffeeSnap, alcoholSnap] = await Promise.all([
+    todayRange('meals'), todayRange('water'), todayRange('coffee'), todayRange('alcohol'),
+  ]);
+
+  const logs: IntakeLog[] = [];
+
+  mealSnap.docs.forEach(item => {
     const data = item.data();
-    return {
+    logs.push({
       id: item.id,
-      type: data.type,
-      label: data.label ?? '記録',
+      type: 'meal',
+      label: (data.foodName as string) || MEAL_LABELS[data.mealType as string] || '食事',
       calories: data.calories ?? 0,
-      waterMl: data.waterMl ?? 0,
-      caffeineMg: data.caffeineMg ?? 0,
-      alcoholGrams: data.alcoholGrams ?? 0,
+      waterMl: 0,
+      caffeineMg: 0,
+      alcoholGrams: 0,
       protein: data.protein ?? 0,
       fat: data.fat ?? 0,
       carbs: data.carbs ?? 0,
-      timeSlot: data.timeSlot ?? 'web',
+      timeSlot: 'meal',
       timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
-    };
+    });
   });
+  waterSnap.docs.forEach(item => {
+    const data = item.data();
+    logs.push({
+      id: item.id, type: 'drink', label: '水',
+      calories: 0, waterMl: data.amountMl ?? 0, caffeineMg: 0, alcoholGrams: 0,
+      protein: 0, fat: 0, carbs: 0, timeSlot: 'drink',
+      timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
+    });
+  });
+  coffeeSnap.docs.forEach(item => {
+    const data = item.data();
+    logs.push({
+      id: item.id, type: 'drink', label: 'コーヒー',
+      calories: 0, waterMl: data.amountMl ?? 0, caffeineMg: data.caffeineMg ?? 0, alcoholGrams: 0,
+      protein: 0, fat: 0, carbs: 0, timeSlot: 'drink',
+      timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
+    });
+  });
+  alcoholSnap.docs.forEach(item => {
+    const data = item.data();
+    logs.push({
+      id: item.id, type: 'drink', label: 'アルコール',
+      // iOS 同様、アルコールの液量もドリンク合計（waterMl）に含める
+      calories: 0, waterMl: data.amountMl ?? 0, caffeineMg: 0, alcoholGrams: data.alcoholG ?? 0,
+      protein: 0, fat: 0, carbs: 0, timeSlot: 'drink',
+      timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
+    });
+  });
+
+  logs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   return {
     calories: logs.reduce((sum, log) => sum + log.calories, 0),

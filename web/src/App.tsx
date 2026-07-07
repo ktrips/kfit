@@ -44,6 +44,7 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   if (path.startsWith('/books/apple-watch-diet')) return { view: 'bookDetail', bookId: 'apple-watch-diet' };
   if (path.startsWith('/books/cursor-claude-code-plus')) return { view: 'bookDetail', bookId: 'cursor-claude-code-plus' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
+  if (path.startsWith('/books/sam-bez-thie-musk-jobs')) return { view: 'bookDetail', bookId: 'sam-bez-thie-musk-jobs' };
   if (path.startsWith('/books')) return { view: 'books' };
   if (path.startsWith('/challenge-90') || path.startsWith('/c90')) return { view: 'challenge' };
   return { view: 'login' };

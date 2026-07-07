@@ -21,8 +21,9 @@ import { signOutUser } from './services/firebase';
 import { BooksLanding } from './components/books/BooksLanding';
 import { BookViewer, BookId } from './components/books/BookViewer';
 import { PlusView } from './components/PlusView';
+import { ChallengeLP } from './components/challenge/ChallengeLP';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge';
 
 /** URL パスから初期ビューを判定する */
 function getInitialViewFromPath(): { view: View; bookId?: BookId } {
@@ -44,6 +45,7 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   if (path.startsWith('/books/cursor-claude-code-plus')) return { view: 'bookDetail', bookId: 'cursor-claude-code-plus' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
   if (path.startsWith('/books')) return { view: 'books' };
+  if (path.startsWith('/challenge-90')) return { view: 'challenge' };
   return { view: 'login' };
 }
 
@@ -117,11 +119,12 @@ function App() {
   const navigate = (view: View) => {
     setCurrentView(view);
     setMenuOpen(false);
-    // /books 以外はアプリルート
-    if (view !== 'books' && view !== 'bookDetail') {
-      window.history.pushState({}, '', '/');
-    } else if (view === 'books') {
+    if (view === 'books') {
       window.history.pushState({}, '', '/books');
+    } else if (view === 'challenge') {
+      window.history.pushState({}, '', '/challenge-90');
+    } else if (view !== 'bookDetail') {
+      window.history.pushState({}, '', '/');
     }
   };
 
@@ -295,6 +298,8 @@ function App() {
             isPlus={isPlus}
           />
         )}
+        {/* ── 90日再検査チャレンジ LP（ログイン不要・全画面） ── */}
+        {currentView === 'challenge' && <ChallengeLP />}
 
         {currentView === 'login' && (
           <LoginView

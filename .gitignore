@@ -53,3 +53,4 @@ ios/xcuserdata/
 # iOS - Build artifacts
 ios/build/
 ios/DerivedData/
+__pycache__/

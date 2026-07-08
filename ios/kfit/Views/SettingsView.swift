@@ -68,6 +68,7 @@ struct SettingsView: View {
     @AppStorage(MainMenuTabPreferences.goalingoVisibleKey) private var goalingoTabVisible = false
     @AppStorage(MainMenuTabPreferences.logVisibleKey)      private var logTabVisible      = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
+    @AppStorage("simpleMode.enabled") private var simpleModeEnabled = false
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
     // 時間帯別カスタム活動
     @State private var activeActivitySlot: TimeSlot? = nil
@@ -251,6 +252,24 @@ struct SettingsView: View {
             sectionHeader(icon: "rectangle.grid.1x2.fill",
                           title: "メニューのカスタマイズ",
                           subtitle: "タブを非表示にすると関連する情報も非表示。並び順を一番上にするとデフォルト表示")
+
+            // 90秒モード（1画面に絞ったシンプル表示）
+            Toggle(isOn: $simpleModeEnabled) {
+                HStack(spacing: 8) {
+                    Text("⏱️").font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("90秒モード")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Text("「今日の90秒」だけの1画面表示に切り替え")
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            .tint(Color.duoGreen)
+            .padding(12)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
             VStack(spacing: 0) {
                 ForEach(Array(orderedConfigurableTabs.enumerated()), id: \.element.id) { index, tab in

@@ -56,6 +56,12 @@ struct MoreView: View {
                         .listRowBackground(Color.white)
                     }
 
+                    // 週間レポート共有カード
+                    NavigationLink(destination: WeeklyReportView().environmentObject(authManager)) {
+                        MenuRow(icon: "square.and.arrow.up.fill", iconColor: Color.duoPurple, label: "今週の実績をシェア")
+                    }
+                    .listRowBackground(Color.white)
+
                     // 履歴
                     NavigationLink(destination: HistoryView().environmentObject(authManager)) {
                         MenuRow(icon: "calendar", iconColor: Color.duoBlue, label: "履歴")

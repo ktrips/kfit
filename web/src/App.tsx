@@ -22,11 +22,12 @@ import { BooksLanding } from './components/books/BooksLanding';
 import { BookViewer, BookId } from './components/books/BookViewer';
 import { PlusView } from './components/PlusView';
 import { ChallengeLP } from './components/challenge/ChallengeLP';
+import { SharedReportView } from './components/SharedReportView';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge' | 'sharedReport';
 
 /** URL パスから初期ビューを判定する */
-function getInitialViewFromPath(): { view: View; bookId?: BookId } {
+function getInitialViewFromPath(): { view: View; bookId?: BookId; shareId?: string } {
   const path = window.location.pathname;
   if (path.startsWith('/privacy-policy')) {
     window.location.replace('https://fit.ktrips.net/privacy-policy/');
@@ -47,6 +48,9 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId } {
   if (path.startsWith('/books/sam-bez-thie-musk-jobs')) return { view: 'bookDetail', bookId: 'sam-bez-thie-musk-jobs' };
   if (path.startsWith('/books')) return { view: 'books' };
   if (path.startsWith('/challenge-90') || path.startsWith('/c90')) return { view: 'challenge' };
+  // 週間レポート共有カード（iOS からシェアされた閲覧専用ページ）
+  const reportMatch = path.match(/^\/r\/([a-z0-9]+)/);
+  if (reportMatch) return { view: 'sharedReport', shareId: reportMatch[1] };
   return { view: 'login' };
 }
 

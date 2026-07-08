@@ -417,3 +417,91 @@ exports.computeRetentionStats = functions.pubsub
     }));
     return null;
   });
+
+// ===== AI PROXY =====
+// 「AI 機能は別途 API キー要」の廃止（docs/ai_proxy_plan.md 参照）。
+// サーバー側の API キーで AI を代理呼び出しし、ユーザーには API キーの
+// 概念を一切見せない。コストは月次クォータで管理する。
+//
+// クォータ（1ヶ月あたりの呼び出し回数）:
+//   Free: 5 回（オンボーディングで「写真だけで記録」を体験させる）
+//   Plus: 300 回
+//
+// API キーの設定:
+//   firebase functions:config:set ai.openai_key="sk-..."
+// Plus 判定:
+//   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
+const AI_QUOTA = { free: 5, plus: 300 };
+const AI_DEFAULT_MODEL = 'gpt-4o-mini';
+
+exports.aiProxy = functions
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
+    }
+    const uid = context.auth.uid;
+    const prompt = (data && data.prompt) || '';
+    const imageBase64 = data && data.imageBase64; // 任意（食事写真解析用）
+    if (!prompt || typeof prompt !== 'string' || prompt.length > 8000) {
+      throw new functions.https.HttpsError('invalid-argument', 'prompt が不正です');
+    }
+
+    // ── Plus 判定 + 月次クォータ ─────────────────────────────
+    const userSnap = await db.collection('users').doc(uid).get();
+    const isPlus = !!(userSnap.data() || {}).isPlus;
+    const quota = isPlus ? AI_QUOTA.plus : AI_QUOTA.free;
+
+    const monthKey = new Date().toISOString().slice(0, 7); // "2026-07"
+    const usageRef = db.collection('users').doc(uid)
+      .collection('ai-usage').doc(monthKey);
+    const usageSnap = await usageRef.get();
+    const used = (usageSnap.data() || {}).count || 0;
+    if (used >= quota) {
+      throw new functions.https.HttpsError(
+        'resource-exhausted',
+        isPlus ? '今月のAI利用上限に達しました' : 'AI解析の無料枠を使い切りました。Plusで月300回まで使えます'
+      );
+    }
+
+    // ── OpenAI 呼び出し（サーバー側キー） ────────────────────
+    const apiKey = (functions.config().ai || {}).openai_key;
+    if (!apiKey) {
+      throw new functions.https.HttpsError('failed-precondition', 'AI プロキシが未設定です');
+    }
+
+    const content = imageBase64
+      ? [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+        ]
+      : prompt;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: (data && data.model) || AI_DEFAULT_MODEL,
+        max_tokens: 1000,
+        messages: [{ role: 'user', content }],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('aiProxy upstream error:', res.status, body.slice(0, 500));
+      throw new functions.https.HttpsError('internal', 'AI 解析に失敗しました');
+    }
+    const json = await res.json();
+    const text = (((json.choices || [])[0] || {}).message || {}).content || '';
+
+    // 使用量を記録（失敗時はカウントしない）
+    await usageRef.set(
+      { count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return { text, used: used + 1, quota, isPlus };
+  });

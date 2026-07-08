@@ -105,12 +105,25 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
+    // ── 90秒モード（新規ユーザー向け 1 画面オンボーディング）──
+    // 5タブを見せず「今日の90秒」だけの画面で開始し、7活動日で全機能を開放する。
+    // 既存ユーザー（XP/ストリークあり）には初期化時に無効化する。
+    @AppStorage("simpleMode.enabled")     private var simpleModeEnabled = false
+    @AppStorage("simpleMode.initialized") private var simpleModeInitialized = false
+    @AppStorage("simpleMode.installedAt") private var simpleModeInstalledAt = 0.0  // timeIntervalSince1970
+
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
     private static let endOfDayTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        decoratedContent
+        Group {
+            if simpleModeEnabled {
+                simpleModeContent
+            } else {
+                decoratedContent
+            }
+        }
             .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
                 selectedTab = MainMenuTab.fit.rawValue
                 showTrainingTracker = true
@@ -132,12 +145,17 @@ struct MainTabView: View {
                 selectedTab = defaultVisibleTab.rawValue
                 normalizeSelection()
                 checkEndOfDayCalorieTopUp()
+                initializeSimpleModeIfNeeded()
                 Task {
                     await PendingShareProcessor.shared.processPendingShares()
                 }
             }
             .onReceive(Self.endOfDayTimer) { _ in
                 checkEndOfDayCalorieTopUp()
+            }
+            // プロフィール読み込み完了後に 90秒モードの初期判定を行う
+            .onReceive(authManager.$userProfile) { _ in
+                initializeSimpleModeIfNeeded()
             }
             .onChange(of: fitVisible)      { _, _ in normalizeSelection() }
             .onChange(of: goalVisible)     { _, _ in normalizeSelection() }
@@ -147,6 +165,38 @@ struct MainTabView: View {
             .onChange(of: goalingoVisible) { _, _ in normalizeSelection() }
             .onChange(of: defaultTabRaw)   { _, _ in normalizeSelection() }
             .onChange(of: tabOrderRaw)     { _, _ in normalizeSelection() }
+    }
+
+    // ── 90秒モード ──────────────────────────────────────────
+
+    /// 初回起動時のみ判定: 実績のない新規ユーザーだけ 90秒モードで開始する
+    private func initializeSimpleModeIfNeeded() {
+        guard !simpleModeInitialized else { return }
+        guard let profile = authManager.userProfile else { return } // プロフィール取得後に再判定
+        simpleModeInitialized = true
+        simpleModeInstalledAt = Date().timeIntervalSince1970
+        let isExistingUser = profile.totalPoints > 0 || profile.streak > 0
+            || RetentionTracker.shared.localActiveDayCount > 0
+        simpleModeEnabled = !isExistingUser
+    }
+
+    private var simpleModeContent: some View {
+        NinetySecondModeView(
+            installedAt: Date(timeIntervalSince1970: simpleModeInstalledAt),
+            onStart: {
+                showTrainingTracker = true
+                iOSWatchBridge.shared.sendStartWorkoutSignal()
+            },
+            onExit: {
+                withAnimation(.easeInOut(duration: 0.3)) { simpleModeEnabled = false }
+            }
+        )
+        .fullScreenCover(isPresented: $showTrainingTracker) {
+            ExerciseTrackerView(isPresented: $showTrainingTracker)
+                .environmentObject(authManager)
+                .environmentObject(healthKit)
+                .environmentObject(timeSlotMgr)
+        }
     }
 
     // body を分割してコンパイラの型推論タイムアウトを回避
@@ -715,5 +765,113 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
 
         completionHandler()
+    }
+}
+
+// MARK: - 90秒モード（新規ユーザー向け 1 画面オンボーディング）
+// 5タブ・機能説明を見せず「今日の90秒」だけに絞る。初回起動から60秒以内に
+// 最初の1セットを完了させることが目的（docs/SamBezThieMuskJobs_plan.md Musk 案2 / Jobs 5-4）。
+// 7活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
+
+struct NinetySecondModeView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var timeSlotMgr: TimeSlotManager
+    let installedAt: Date
+    let onStart: () -> Void
+    let onExit: () -> Void
+
+    private var todayTraining: Int {
+        TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
+    }
+    private var doneToday: Bool { todayTraining > 0 }
+    private var activeDays: Int { RetentionTracker.shared.localActiveDayCount }
+    private var graduated: Bool { activeDays >= 7 }
+
+    var body: some View {
+        ZStack {
+            Color.duoBg.ignoresSafeArea()
+            VStack(spacing: 28) {
+                Spacer()
+
+                // ストリーク
+                HStack(spacing: 6) {
+                    Text("🔥").font(.system(size: 22))
+                    Text("\(max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0))日連続")
+                        .font(.system(size: 17, weight: .black))
+                        .foregroundColor(.duoDark)
+                }
+
+                // メインボタン
+                Button(action: onStart) {
+                    VStack(spacing: 10) {
+                        Text(doneToday ? "✅" : "💪").font(.system(size: 56))
+                        Text(doneToday ? "今日は完了！" : "今日の90秒")
+                            .font(.system(size: 26, weight: .black))
+                            .foregroundColor(.white)
+                        Text(doneToday ? "もう1セットやる" : "スクワット5回だけ")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .frame(width: 240, height: 240)
+                    .background(
+                        Circle().fill(doneToday ? Color.duoBlue : Color.duoGreen)
+                            .shadow(color: (doneToday ? Color.duoBlue : Color.duoGreen).opacity(0.4),
+                                    radius: 18, y: 8)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Text("数えるのも、記録するのも、iPhoneがやります。\nあなたは、やるだけ。")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.duoSubtitle)
+                    .multilineTextAlignment(.center)
+
+                // 7日進捗ドット
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ForEach(0..<7, id: \.self) { i in
+                            Circle()
+                                .fill(i < activeDays ? Color.duoGreen : Color.gray.opacity(0.25))
+                                .frame(width: 14, height: 14)
+                        }
+                    }
+                    Text(graduated ? "🎉 7日続きました！" : "あと\(max(0, 7 - activeDays))日で全機能が開放")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
+                }
+
+                if graduated {
+                    Button(action: onExit) {
+                        Text("全機能を開く →")
+                            .font(.system(size: 16, weight: .black))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 28).padding(.vertical, 14)
+                            .background(Capsule().fill(Color.duoOrange))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                Button(action: onExit) {
+                    Text("すべての機能を見る")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.duoSubtitle)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 18)
+            }
+            .padding(.horizontal, 24)
+        }
+        .task {
+            await timeSlotMgr.loadTodayProgress()
+        }
+        // 最初の1セット完了までの秒数を計測（90秒モードの検証指標）
+        .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
+            if todayTraining > 0 {
+                RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)
+            }
+        }
     }
 }

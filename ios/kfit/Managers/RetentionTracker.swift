@@ -24,7 +24,29 @@ final class RetentionTracker {
     private init() {}
 
     private let lastMarkedKey = "retention.lastMarkedDay"
+    private let activeDayCountKey = "retention.activeDayCount"
+    private let firstSetSecondsKey = "retention.firstSetSecondsSent"
     private var observer: NSObjectProtocol?
+
+    /// この端末で記録した活動日数（90秒モードの卒業判定などに使用）
+    var localActiveDayCount: Int {
+        UserDefaults.standard.integer(forKey: activeDayCountKey)
+    }
+
+    /// 初回起動から最初の1セット完了までの秒数を一度だけ記録する（90秒モードの検証指標）
+    func recordFirstSetLatency(installedAt: Date) {
+        guard !UserDefaults.standard.bool(forKey: firstSetSecondsKey) else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        UserDefaults.standard.set(true, forKey: firstSetSecondsKey)
+        let seconds = Int(Date().timeIntervalSince(installedAt))
+        let ref = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("retention").document("summary")
+        Task {
+            try? await ref.setData(["firstSetSeconds": seconds], merge: true)
+            dlog("[RetentionTracker] 📏 firstSetSeconds = \(seconds)s")
+        }
+    }
 
     /// TimeSlotManager の進捗保存（運動・食事・水分・マインドフルネス等の
     /// あらゆる記録経路の合流点）を監視して活動日をマークする。
@@ -52,6 +74,7 @@ final class RetentionTracker {
         guard UserDefaults.standard.string(forKey: lastMarkedKey) != today else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         UserDefaults.standard.set(today, forKey: lastMarkedKey)
+        UserDefaults.standard.set(localActiveDayCount + 1, forKey: activeDayCountKey)
 
         let streak = AuthenticationManager.shared.userProfile?.streak ?? 0
         let ref = Firestore.firestore()
@@ -77,8 +100,9 @@ final class RetentionTracker {
                 try await ref.updateData(data)
                 dlog("[RetentionTracker] ✅ marked active: \(today)")
             } catch {
-                // 失敗時は次回の記録で再試行できるようフラグを戻す
+                // 失敗時は次回の記録で再試行できるようフラグとカウントを戻す
                 UserDefaults.standard.removeObject(forKey: lastMarkedKey)
+                UserDefaults.standard.set(max(0, self.localActiveDayCount - 1), forKey: self.activeDayCountKey)
                 dlog("[RetentionTracker] ❌ mark failed: \(error)")
             }
         }

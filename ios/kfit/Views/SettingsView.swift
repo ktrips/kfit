@@ -69,6 +69,8 @@ struct SettingsView: View {
     @AppStorage(MainMenuTabPreferences.logVisibleKey)      private var logTabVisible      = true
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage("simpleMode.enabled") private var simpleModeEnabled = false
+    @AppStorage("simpleMode.installedAt") private var simpleModeInstalledAt = 0.0
+    @State private var showNinetySecondPreview = false
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
     // 時間帯別カスタム活動
     @State private var activeActivitySlot: TimeSlot? = nil
@@ -170,6 +172,51 @@ struct SettingsView: View {
         )) {
             addActivitySheet
         }
+        .fullScreenCover(isPresented: $showNinetySecondPreview) {
+            ninetySecondPreviewSheet
+        }
+    }
+
+    // MARK: - 90秒モードのプレビュー
+
+    // モードを切り替えずに NinetySecondModeView の実画面を確認する。
+    // メインボタンは無効（記録画面は開かない）で、✕ か「すべての機能を見る」で閉じる。
+    private var ninetySecondPreviewSheet: some View {
+        ZStack(alignment: .top) {
+            NinetySecondModeView(
+                installedAt: Date(timeIntervalSince1970: simpleModeInstalledAt > 0
+                                  ? simpleModeInstalledAt
+                                  : Date().timeIntervalSince1970),
+                onStart: {},
+                onExit: { showNinetySecondPreview = false },
+                isPreview: true
+            )
+            .environmentObject(AuthenticationManager.shared)
+            .environmentObject(timeSlotManager)
+
+            HStack(spacing: 8) {
+                Text("👀 プレビュー中 — ボタン操作は無効")
+                    .font(.caption).fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                Spacer()
+                Button {
+                    showNinetySecondPreview = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                        .frame(width: 36, height: 36)
+                        .background(Color(.systemBackground))
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.14), radius: 8, y: 4)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
     }
 
     // MARK: - Header
@@ -254,19 +301,41 @@ struct SettingsView: View {
                           subtitle: "タブを非表示にすると関連する情報も非表示。並び順を一番上にするとデフォルト表示")
 
             // 90秒モード（1画面に絞ったシンプル表示）
-            Toggle(isOn: $simpleModeEnabled) {
-                HStack(spacing: 8) {
-                    Text("⏱️").font(.title3)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("90秒モード")
-                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                        Text("「今日の90秒」だけの1画面表示に切り替え")
-                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+            VStack(spacing: 0) {
+                Toggle(isOn: $simpleModeEnabled) {
+                    HStack(spacing: 8) {
+                        Text("⏱️").font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("90秒モード")
+                                .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                            Text("「今日の90秒」だけの1画面表示に切り替え")
+                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                        }
                     }
                 }
+                .tint(Color.duoGreen)
+                .padding(12)
+
+                Divider().padding(.leading, 52)
+
+                // モードを切り替えずに画面だけ確認できるプレビュー
+                Button {
+                    showNinetySecondPreview = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("👀").font(.title3)
+                        Text("90秒モードの画面をプレビュー")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoGreen)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .tint(Color.duoGreen)
-            .padding(12)
             .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)

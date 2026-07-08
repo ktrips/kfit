@@ -779,6 +779,8 @@ struct NinetySecondModeView: View {
     let installedAt: Date
     let onStart: () -> Void
     let onExit: () -> Void
+    /// 設定画面からのプレビュー表示時は true（firstSetSeconds 計測を行わない）
+    var isPreview: Bool = false
 
     private var todayTraining: Int {
         TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
@@ -869,7 +871,7 @@ struct NinetySecondModeView: View {
         }
         // 最初の1セット完了までの秒数を計測（90秒モードの検証指標）
         .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
-            if todayTraining > 0 {
+            if !isPreview && todayTraining > 0 {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)
             }
         }

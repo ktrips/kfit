@@ -272,11 +272,11 @@ struct LLMSettings: Codable {
     var defaultModel: String {
         switch provider {
         case .openAI:
-            return "gpt-4o-mini"  // 最もリーズナブル
+            return "gpt-5.4-mini"  // 現行の低価格モデル
         case .anthropic:
-            return "claude-3-haiku-20240307"  // 最もリーズナブル
+            return "claude-haiku-4-5"  // 現行の低価格モデル
         case .google:
-            return "gemini-2.5-flash"  // Gemini 2.5 Flash
+            return "gemini-3.1-flash-lite"  // 現行の低価格モデル
         }
     }
 

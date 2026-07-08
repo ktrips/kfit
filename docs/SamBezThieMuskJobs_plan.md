@@ -15,6 +15,57 @@
 
 ---
 
+## 実施状況ダッシュボード（最終更新: 2026-07-08）
+
+> 更新方法: `/plan-status` スキルで表示・更新。凡例: ✅完了 / 🚧実装済み・展開待ち / ⬜未着手
+
+### P0 — 48 時間実験
+
+| 施策 | 状況 | 備考 |
+|---|---|---|
+| 90日チャレンジ LP + 登録率計測 | 🚧 | LP・登録・PV計測は実装済み。SNS 投稿による流入テストが未実施 |
+| 既刊 Kindle への LP リンク追加 | ⬜ | KDP 側の作業 |
+| 90秒モードの TestFlight 検証 | 🚧 | 実装済み（firstSetSeconds 計測付き）。3〜5 人への配布が未実施 |
+
+### P0' — 今週
+
+| 施策 | 状況 | 備考 |
+|---|---|---|
+| /release-check skill | ✅ | .claude/skills/release-check |
+| 継続コホート計測（7/30/90日） | 🚧 | iOS/Web/Functions 実装済み。**要デプロイ**（functions + rules） |
+| AI APIキー廃止（サーバー代理） | 🚧 | 方針決定済（docs/ai_proxy_plan.md）+ aiProxy 関数実装済み。iOS 呼び出し切替が残 |
+
+### P1 — 今月
+
+| 施策 | 状況 | 備考 |
+|---|---|---|
+| 週次レポート共有カード（URL 付き Web 閲覧） | 🚧 | iOS + Web(/r/{id}) + rules 実装済み。**要デプロイ** |
+| 90秒モード正式実装 | ✅ | 新規ユーザー自動有効・7日で開放・設定トグルあり |
+| ストア文言のニッチ化 | 🚧 | appstore_metadata.md 書き換え済み。App Store Connect 反映が未実施 |
+| /port-feature skill | ✅ | .claude/skills/port-feature |
+
+### P2 — 健診シーズン（9〜11月）
+
+| 施策 | 状況 | 備考 |
+|---|---|---|
+| 90日再検査チャレンジ本ローンチ | 🚧 | Web 入口・登録は完成。同期コホート機能とアプリ接続が残 |
+| 健診ニッチ向けコンテンツ量産 | ⬜ | 書籍パイプライン A4/A5 の汎用化が前提 |
+| MIND タブ部分開放 | ✅ | 睡眠スコア Free / 分析はぼかしプレビュー+ロック |
+| 継続率データの公表 | 🚧 | computeRetentionStats + LP 表示実装済み。データ蓄積待ち（初回集計は毎週月曜） |
+
+### P3 — 独占後（来年〜）
+
+隣接ニッチ拡張 / UGC マーケットプレイス / 法人プラン / KFitCore 化 — すべて ⬜（P0〜P2 の結果待ち。着手しないことが正しい状態）
+
+### 次のアクション（上から順に）
+
+1. `firebase deploy --only functions,firestore:rules,hosting` + `functions:config:set ai.openai_key`（🚧 の大半がこれで展開）
+2. 90秒モードを TestFlight で 3〜5 人に配布 → firstSetSeconds で 120 秒判定
+3. チャレンジ LP を SNS に 2 投稿 → 登録率 5% 判定
+4. App Store Connect にストア文言を反映
+
+---
+
 **5 つの視点の役割分担（戦略の論理順）:**
 
 | 視点 | 問い | 結論（1 行） |

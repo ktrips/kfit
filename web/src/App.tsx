@@ -73,6 +73,7 @@ function App() {
   const initial = getInitialViewFromPath();
   const [currentView, setCurrentView] = useState<View>(initial.view);
   const [selectedBookId, setSelectedBookId] = useState<BookId | undefined>(initial.bookId);
+  const [sharedReportId] = useState<string | undefined>(initial.shareId);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -93,7 +94,7 @@ function App() {
           setExercises(exercisesList);
           // /books・/challenge-90 にいる場合はそのまま
           const { view: initView } = getInitialViewFromPath();
-          if (!initView.startsWith('book') && initView !== 'challenge') {
+          if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport') {
             setCurrentView('dashboard');
           }
           // Real-time listener: Cloud Function updates totalPoints/streak after each exercise
@@ -313,6 +314,11 @@ function App() {
         )}
         {/* ── 90日再検査チャレンジ LP（ログイン不要・全画面） ── */}
         {currentView === 'challenge' && <ChallengeLP />}
+
+        {/* ── 週間レポート共有カード閲覧（ログイン不要） ── */}
+        {currentView === 'sharedReport' && sharedReportId && (
+          <SharedReportView shareId={sharedReportId} />
+        )}
 
         {currentView === 'login' && (
           <LoginView

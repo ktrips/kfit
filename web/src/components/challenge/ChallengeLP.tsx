@@ -146,19 +146,19 @@ export function ChallengeLP() {
 
         <div className="relative max-w-2xl mx-auto px-5 pt-14 pb-16 text-center">
           <div className="inline-block bg-white/20 backdrop-blur-sm rounded-full px-4 py-1.5 text-sm font-bold mb-6 border border-white/30">
-            🏥 2026年 健診後の方へ
+            🌿 2026年 健診結果が気になる方へ
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-black leading-tight mb-4">
-            再検査になった方へ。<br />
+            今年こそ、<br />
             <span className="text-yellow-200">90日間</span>で<br />
-            数値を変えよう。
+            少しずつ変えていこう。
           </h1>
 
           <p className="text-lg sm:text-xl text-white/90 leading-relaxed mb-8">
-            血糖値、中性脂肪、血圧…<br />
-            kfitのAIコーチが、あなたの生活習慣を<br />
-            毎日サポートします。
+            血糖値・中性脂肪・血圧など気になる数値がある方へ。<br />
+            kfitが毎日の小さな習慣を<br />
+            一緒にサポートします。
           </p>
 
           {/* 統計バッジ */}
@@ -182,19 +182,19 @@ export function ChallengeLP() {
         </div>
       </section>
 
-      {/* ── 問題定義 ─────────────────────────────────────────────── */}
+      {/* ── 共感セクション ───────────────────────────────────────── */}
       <section className="max-w-2xl mx-auto px-5 py-14">
-        <div className="bg-red-50 border border-red-200 rounded-3xl p-8 mb-10">
-          <h2 className="text-2xl font-black text-red-700 mb-5">こんな経験はありませんか？</h2>
+        <div className="bg-orange-50 border border-orange-100 rounded-3xl p-8 mb-10">
+          <h2 className="text-2xl font-black text-orange-700 mb-5">こんなこと、ありませんか？</h2>
           <ul className="space-y-3 text-gray-700">
             {[
-              '健診で「要再検査」と書かれた結果票を受け取った',
-              '「気をつけてください」と言われたが、何をすればいいか分からない',
-              '一時的にダイエットしたが、続かなかった',
-              '次の健診まであと1年…また同じ結果になりそうで不安',
+              '健診で気になる数値があり、どこから手をつければいいか迷っている',
+              '「少し気をつけて」と言われたけれど、具体的に何をすればいいか分からない',
+              '運動や食事に気をつけようと思っても、なかなか続かない',
+              '次の健診まで、このままでいいのかなと少し気になっている',
             ].map((item, i) => (
               <li key={i} className="flex items-start gap-3">
-                <span className="text-red-500 text-xl mt-0.5">⚠️</span>
+                <span className="text-orange-400 text-xl mt-0.5">💭</span>
                 <span className="text-base leading-relaxed">{item}</span>
               </li>
             ))}
@@ -202,14 +202,14 @@ export function ChallengeLP() {
         </div>
 
         <div className="text-center">
-          <div className="text-5xl mb-4">↓</div>
+          <div className="text-4xl mb-4">🌱</div>
           <h2 className="text-2xl font-black text-gray-800 mb-3">
-            それを変えるのが<br />
-            <span className="text-orange-600">90日再検査チャレンジ</span>です
+            そんな方のための<br />
+            <span className="text-orange-600">90日チャレンジ</span>です
           </h2>
           <p className="text-gray-600 leading-relaxed">
-            3ヶ月（90日）という医学的に意味のある期間で<br />
-            生活習慣を根本から変えるプログラムです。
+            3ヶ月（90日）かけて、無理なく生活習慣を整えていく<br />
+            継続サポートプログラムです。
           </p>
         </div>
       </section>
@@ -249,7 +249,7 @@ export function ChallengeLP() {
             { phase: 'Day 1-7', title: 'セットアップ週間', desc: '現在の生活習慣をアプリに登録。基準値（体重・食事量・運動量）を把握する。', color: 'bg-orange-100 border-orange-300' },
             { phase: 'Day 8-30', title: '習慣形成フェーズ', desc: '小さな変化を毎日積み上げる。1日10分の運動＋食事ログを習慣化。', color: 'bg-amber-50 border-amber-200' },
             { phase: 'Day 31-60', title: '加速フェーズ', desc: '体の変化を実感し始める時期。運動強度を少し上げ、食事の質を上げる。', color: 'bg-green-50 border-green-200' },
-            { phase: 'Day 61-90', title: '仕上げフェーズ', desc: '再検査に向けて最終調整。睡眠・ストレス管理も含めた総合的なケア。', color: 'bg-blue-50 border-blue-200' },
+            { phase: 'Day 61-90', title: '定着フェーズ', desc: '習慣として定着してきた段階。睡眠・ストレスケアも含め、生活全体を整えていく。', color: 'bg-blue-50 border-blue-200' },
           ].map((item, i) => (
             <div key={i} className="relative flex gap-5 mb-6 pl-14">
               <div className="absolute left-3 top-3 w-6 h-6 rounded-full bg-orange-500 border-2 border-white shadow flex items-center justify-center text-white text-xs font-black">
@@ -314,8 +314,8 @@ export function ChallengeLP() {
         <section id="register" className="bg-gradient-to-br from-orange-600 to-amber-500 py-16">
           <div className="max-w-xl mx-auto px-5 text-center text-white">
             <div className="text-5xl mb-4">🎯</div>
-            <h2 className="text-3xl font-black mb-3">今すぐ参加登録する</h2>
-            <p className="text-white/80 mb-8">登録無料・メールアドレスだけでOK。90日後の自分を変えましょう。</p>
+            <h2 className="text-3xl font-black mb-3">参加登録する</h2>
+            <p className="text-white/80 mb-8">登録無料・メールアドレスのみ。無理のないペースで、一緒に始めましょう。</p>
             <button
               onClick={() => setStep('form')}
               className="bg-white text-orange-600 font-black text-xl px-12 py-5 rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all w-full sm:w-auto"

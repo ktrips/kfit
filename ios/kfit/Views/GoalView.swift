@@ -2741,16 +2741,6 @@ private struct GoalTimelineStrip: View {
                                 .font(.system(size: 12 * UIScale.font, weight: .black, design: .rounded))
                                 .foregroundColor(Color(hex: "#1CB0F6").opacity(0.8))
                         }
-                        if onWeightTap != nil {
-                            HStack(spacing: 2) {
-                                Image(systemName: "heart.fill")
-                                    .font(.system(size: 7 * UIScale.font))
-                                    .foregroundColor(Color(hex: "#FF2D55"))
-                                Text("Health")
-                                    .font(.system(size: 7 * UIScale.font, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#1CB0F6").opacity(0.7))
-                            }
-                        }
                     }
                 }
                 .buttonStyle(.plain)

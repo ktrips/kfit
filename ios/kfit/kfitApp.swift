@@ -782,78 +782,174 @@ struct NinetySecondModeView: View {
     /// 設定画面からのプレビュー表示時は true（firstSetSeconds 計測を行わない）
     var isPreview: Bool = false
 
+    // アニメーション状態
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var buttonGlow: CGFloat = 0
+    @State private var showBurst = false
+    @State private var gifIndex: Int = 0
+
+    // スクワット以外のGIFローテーション（パフォーマンス重視: maxFrames=15）
+    private let exerciseGifs: [String] = [
+        "fItingo_wo_pushups",
+        "fitingo_wo_legs",
+        "fitingo_wo_burpee",
+        "fitingo_wo_range",
+    ]
+
     private var todayTraining: Int {
         TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
     }
     private var doneToday: Bool { todayTraining > 0 }
     private var activeDays: Int { RetentionTracker.shared.localActiveDayCount }
     private var graduated: Bool { activeDays >= 7 }
+    private var streak: Int { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
+    private var accentColor: Color { doneToday ? Color.duoBlue : Color.duoGreen }
 
     var body: some View {
         ZStack {
-            Color.duoBg.ignoresSafeArea()
-            VStack(spacing: 28) {
-                Spacer()
+            // 背景
+            LinearGradient(
+                colors: doneToday
+                    ? [Color(hex: "#E8F4FF"), Color.white]
+                    : [Color(hex: "#F0FFF4"), Color.white],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-                // ストリーク
+            VStack(spacing: 0) {
+                // ── ストリーク ──────────────────────────────────────────────
                 HStack(spacing: 6) {
-                    Text("🔥").font(.system(size: 22))
-                    Text("\(max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0))日連続")
-                        .font(.system(size: 17, weight: .black))
+                    Text("🔥").font(.system(size: 18))
+                    Text("\(streak)日連続")
+                        .font(.system(size: 15, weight: .black))
                         .foregroundColor(.duoDark)
                 }
+                .padding(.top, 16)
+                .padding(.bottom, 10)
 
-                // メインボタン
-                Button(action: onStart) {
-                    VStack(spacing: 10) {
-                        Text(doneToday ? "✅" : "💪").font(.system(size: 56))
-                        Text(doneToday ? "今日は完了！" : "今日の90秒")
-                            .font(.system(size: 26, weight: .black))
-                            .foregroundColor(.white)
-                        Text(doneToday ? "もう1セットやる" : "スクワット5回だけ")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                    .frame(width: 240, height: 240)
-                    .background(
-                        Circle().fill(doneToday ? Color.duoBlue : Color.duoGreen)
-                            .shadow(color: (doneToday ? Color.duoBlue : Color.duoGreen).opacity(0.4),
-                                    radius: 18, y: 8)
+                // ── GIF（スクワット以外・コンパクト・タップで切替）────────
+                // パフォーマンス最適化: maxFrames=15、フレーム間引きで低メモリ動作
+                ZStack(alignment: .bottomTrailing) {
+                    GIFAnimationView(
+                        gifName: exerciseGifs[gifIndex % exerciseGifs.count],
+                        contentMode: .scaleAspectFit,
+                        maxFrames: 15
                     )
+                    .id(gifIndex)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .drawingGroup()   // Metal合成でCPU描画を軽減
+
+                    // 切替インジケータ
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(accentColor.opacity(0.7))
+                        .padding(8)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 28)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        gifIndex = (gifIndex + 1) % exerciseGifs.count
+                    }
+                }
 
-                Text("数えるのも、記録するのも、iPhoneがやります。\nあなたは、やるだけ。")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.duoSubtitle)
-                    .multilineTextAlignment(.center)
+                Spacer().frame(height: 18)
 
-                // 7日進捗ドット
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ForEach(0..<7, id: \.self) { i in
-                            Circle()
-                                .fill(i < activeDays ? Color.duoGreen : Color.gray.opacity(0.25))
-                                .frame(width: 14, height: 14)
+                // ── 大きなタグライン ──────────────────────────────────────
+                Text("今度こそ、続く。")
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .foregroundColor(accentColor)
+                    .shadow(color: accentColor.opacity(0.15), radius: 4, y: 2)
+
+                Spacer().frame(height: 20)
+
+                // ── メインスタートボタン（Fitingoアイコン入り）────────────
+                Button(action: {
+                    withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { showBurst = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        showBurst = false
+                        onStart()
+                    }
+                }) {
+                    ZStack {
+                        // グロー
+                        Circle()
+                            .fill(accentColor.opacity(0.15))
+                            .frame(width: 200 + buttonGlow, height: 200 + buttonGlow)
+
+                        // メイン円
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: 180, height: 180)
+                            .shadow(color: accentColor.opacity(0.4), radius: 16, y: 6)
+                            .scaleEffect(showBurst ? 0.92 : pulseScale)
+
+                        VStack(spacing: 4) {
+                            // Fitingoアイコン
+                            Image("fitingo_button_mascot")
+                                .resizable().scaledToFit()
+                                .frame(width: 72, height: 72)
+
+                            Text(doneToday ? "今日は完了！" : "今日の90秒")
+                                .font(.system(size: 18, weight: .black))
+                                .foregroundColor(.white)
                         }
                     }
-                    Text(graduated ? "🎉 7日続きました！" : "あと\(max(0, 7 - activeDays))日で全機能が開放")
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
+                .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: buttonGlow)
+
+                Spacer().frame(height: 14)
+
+                // ── ボタン下サブテキスト ──────────────────────────────────
+                Text(doneToday ? "もう1セットやる ▶" : "今日の90秒、それだけ")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.duoSubtitle)
+
+                Spacer()
+
+                // ── 7日進捗ドット ────────────────────────────────────────
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        ForEach(0..<7, id: \.self) { i in
+                            ZStack {
+                                Circle()
+                                    .fill(i < activeDays ? Color.duoGreen : Color(.systemGray5))
+                                    .frame(width: 14, height: 14)
+                                if i < activeDays {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 7, weight: .black))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                    }
+                    Text(graduated ? "🎉 7日続きました！全機能が開放されました！" : "あと\(max(0, 7 - activeDays))日で全機能が開放")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
                 }
 
+                Spacer().frame(height: 12)
+
                 if graduated {
                     Button(action: onExit) {
-                        Text("全機能を開く →")
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 28).padding(.vertical, 14)
-                            .background(Capsule().fill(Color.duoOrange))
+                        HStack(spacing: 6) {
+                            Text("全機能を開く")
+                                .font(.system(size: 15, weight: .black))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 13, weight: .black))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 28).padding(.vertical, 12)
+                        .background(Capsule().fill(Color.duoOrange))
+                        .shadow(color: Color.duoOrange.opacity(0.3), radius: 8, y: 4)
                     }
                     .buttonStyle(.plain)
+                    .padding(.bottom, 8)
                 }
-
-                Spacer()
 
                 Button(action: onExit) {
                     Text("すべての機能を見る")
@@ -862,14 +958,28 @@ struct NinetySecondModeView: View {
                         .underline()
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 18)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 24)
         }
         .task {
             await timeSlotMgr.loadTodayProgress()
         }
-        // 最初の1セット完了までの秒数を計測（90秒モードの検証指標）
+        // ライフサイクル管理された非同期タスクで GIF & アニメーションを駆動
+        .task(id: "gifRotation") {
+            // GIF 自動切替（12秒ごと）
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    gifIndex = (gifIndex + 1) % exerciseGifs.count
+                }
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulseScale = 1.04
+                buttonGlow = 18
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
             if !isPreview && todayTraining > 0 {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)

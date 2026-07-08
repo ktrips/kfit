@@ -486,6 +486,12 @@ struct ExerciseTrackerView: View {
                 }
                 Text("続けても記録できます 💪")
                     .font(.subheadline).foregroundColor(.white.opacity(0.75))
+
+                Text("今度こそ、続く。")
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.duoGreen.opacity(0.85)))
             }
             .padding(32)
             .background(
@@ -527,6 +533,21 @@ struct ExerciseTrackerView: View {
                         Capsule().fill(Color.duoYellow.opacity(0.25))
                             .overlay(Capsule().stroke(Color.duoYellow.opacity(0.5), lineWidth: 2))
                     )
+
+                    // タグライン
+                    Text("今度こそ、続く。")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 22).padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(
+                                LinearGradient(
+                                    colors: [Color.duoGreen, Color(hex: "#1A7F1A")],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                        )
+                        .shadow(color: Color.duoGreen.opacity(0.4), radius: 8, y: 4)
 
                     Text("この調子で続けよう！")
                         .font(.subheadline).fontWeight(.medium)

@@ -502,13 +502,15 @@ struct DashboardView: View {
     @State private var showMandalaDetail = false
     @State private var selectedMandalaNode: MandalaNodeData? = nil
     @State private var eduPhotoLogNode: MandalaNodeData? = nil
+    @State private var eduPhotoLogLinkMode: Bool = false  // コメント・リンクで記録モード
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
     @AppStorage("mainTab.food.visible") private var foodTabVisible = false
     @AppStorage("mainTab.mind.visible") private var mindTabVisible = false
     @AppStorage("mainTab.goal.visible") private var goalTabVisible = true
-    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
+    @State private var recordDetailItem: EduLogHistoryItem? = nil
+    @State private var recordDetailNode: MandalaNodeData? = nil
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -669,17 +671,34 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showPlusViewFromDashboard) { PlusView() }
             .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
+            .sheet(item: $recordDetailItem) { item in
+                EduRecordDetailSheet(item: item, onDelete: {
+                    EduLogManager.shared.deleteItem(id: item.id)
+                    if let node = recordDetailNode {
+                        recordDetailNode = nil
+                        Task { await handleMandalaComplete(node) }
+                    }
+                    recordDetailItem = nil
+                })
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showCalorieGoalEdit) { calorieGoalEditSheet }
             .sheet(isPresented: $showHealthGoalEdit) { healthGoalEditSheet }
             .sheet(isPresented: $showIntakeGoalEdit) {
                 IntakeSettingsView().environmentObject(authManager)
             }
             .sheet(item: $selectedMandalaNode) { node in
-                let isStudyOrReading = node.type == .custom &&
-                    (node.id == "wd-study" || node.label == "読書" || node.label == "勉強")
-                let nodeLinkURL: URL? = isStudyOrReading
-                    ? URL(string: studyBookUrl.hasPrefix("http") ? studyBookUrl : "https://\(studyBookUrl)")
-                    : nil
+                // 学習系ノード判定（勉強・語学・読書・書評・英語・学習 など）
+                let isLearningNode = node.type == .custom &&
+                    (["読書", "勉強", "語学", "書評", "英語", "学習",
+                      "ライティング", "Writing", "Reading", "Language"].contains(node.label)
+                     || node.id == "wd-study")
+                // 今日の EduLog 記録で対応するものを検索（記録確認ナビゲーション用）
+                let today = Calendar.current.startOfDay(for: Date())
+                let matchingEduItem = EduLogManager.shared.history.first(where: {
+                    $0.activityName == node.label && $0.timestamp >= today
+                })
                 GoalCompletionSheet(
                     emoji: node.emoji,
                     name: node.label,
@@ -692,10 +711,9 @@ struct DashboardView: View {
                         selectedMandalaNode = nil
                         showPhotoLog = true
                     } : node.type == .custom ? {
-                        // 読書・勉強も含む全カスタムノードでEduPhotoLogSheet（フィード投稿トグル付き）を使用
-                        // 前のシートを閉じてから item を立てて提示し、ブランク画面（提示競合）を回避
                         selectedMandalaNode = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            eduPhotoLogLinkMode = false
                             eduPhotoLogNode = node
                         }
                     } : nil,
@@ -709,44 +727,71 @@ struct DashboardView: View {
                     } : nil,
                     isRecordType: node.type == .meal || node.type == .drink,
                     showPhotoButton: node.type != .drink,
-                    linkURL: nodeLinkURL
+                    onViewRecord: (node.isCompleted && matchingEduItem != nil) ? {
+                        selectedMandalaNode = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            recordDetailNode = node
+                            recordDetailItem = matchingEduItem
+                        }
+                    } : nil
                 )
-                .presentationDetents([.height(node.type == .drink && !node.isCompleted
-                    ? (nodeLinkURL != nil ? 400 : 360)
-                    : (nodeLinkURL != nil ? 340 : 290))])
+                .presentationDetents([.height({
+                    var h = 290
+                    if node.type == .drink && !node.isCompleted { h = 360 }
+                    if isLearningNode { h += 60 }   // コメントボタン分
+                    return CGFloat(h)
+                }())])
                 .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
             .sheet(item: $eduPhotoLogNode) { node in
-                    EduPhotoLogSheet(
-                        nodeEmoji: node.emoji,
-                        nodeName: node.label,
-                        onComplete: { saveToFeed, isPublic, image, comment in
-                            eduPhotoLogNode = nil
-                            Task {
-                                await handleMandalaComplete(node)
-                                if saveToFeed {
-                                    EduLogManager.shared.addItem(
-                                        activityName: node.label,
-                                        activityEmoji: node.emoji,
-                                        comment: comment,
-                                        image: image,
-                                        isPublic: isPublic
-                                    )
-                                }
+                let isLearningNode = node.type == .custom &&
+                    (["読書", "勉強", "語学", "書評", "英語", "学習",
+                      "ライティング", "Writing", "Reading", "Language"].contains(node.label)
+                     || node.id == "wd-study")
+                EduPhotoLogSheet(
+                    nodeEmoji: node.emoji,
+                    nodeName: node.label,
+                    onComplete: { saveToFeed, isPublic, image, comment in
+                        eduPhotoLogNode = nil
+                        eduPhotoLogLinkMode = false
+                        Task {
+                            await handleMandalaComplete(node)
+                            if saveToFeed {
+                                EduLogManager.shared.addItem(
+                                    activityName: node.label,
+                                    activityEmoji: node.emoji,
+                                    comment: comment,
+                                    image: image,
+                                    isPublic: isPublic
+                                )
                             }
-                        },
-                        linkURL: {
-                            let isStudyOrReading = node.id == "wd-study"
-                                || node.label == "読書" || node.label == "勉強"
-                            guard isStudyOrReading else { return nil }
-                            let url = studyBookUrl.hasPrefix("http")
-                                ? studyBookUrl : "https://\(studyBookUrl)"
-                            return URL(string: url)
-                        }()
-                    )
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                        }
+                    },
+                    allowLinkInput: eduPhotoLogLinkMode || isLearningNode,
+                    onCompleteWithLink: { saveToFeed, isPublic, image, comment, linkStr in
+                        eduPhotoLogNode = nil
+                        eduPhotoLogLinkMode = false
+                        let cleanLink = linkStr.hasPrefix("http") ? linkStr
+                            : (linkStr.isEmpty ? "" : "https://\(linkStr)")
+                        Task {
+                            await handleMandalaComplete(node)
+                            if saveToFeed {
+                                EduLogManager.shared.addItem(
+                                    activityName: node.label,
+                                    activityEmoji: node.emoji,
+                                    comment: comment,
+                                    image: image,
+                                    isPublic: isPublic,
+                                    sharedUrl: cleanLink.isEmpty ? nil : cleanLink,
+                                    sharedTitle: comment.isEmpty ? nil : comment
+                                )
+                            }
+                        }
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showMindfulnessSession) {
                 MindfulnessSessionView(
@@ -972,18 +1017,25 @@ struct DashboardView: View {
 
                     // ロゴ + 統計（1行のみ）
                     HStack(spacing: 0) {
-                        // ── ロゴ ──────────────────
-                        HStack(spacing: 2) {
-                            Image("mascot")
-                                .resizable().scaledToFill()
-                                .frame(width: 11, height: 11)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
-                            HStack(spacing: 0) {
-                                Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
-                                Text("go").foregroundColor(.white)
+                        // ── ロゴ + タグライン ──────────────────
+                        HStack(spacing: 6) {
+                            HStack(spacing: 2) {
+                                Image("mascot")
+                                    .resizable().scaledToFill()
+                                    .frame(width: 11, height: 11)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 0.4))
+                                HStack(spacing: 0) {
+                                    Text("Routin").foregroundColor(Color(red: 1.0, green: 0.29, blue: 0.10))
+                                    Text("go").foregroundColor(.white)
+                                }
+                                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                             }
-                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                            Text("今度こそ、続く。")
+                                .font(.system(size: 8 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white.opacity(0.85))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.white.opacity(0.18)))
                         }
 
                         Spacer()
@@ -7004,7 +7056,6 @@ private struct MandalaSpiralCard: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
-    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
     @EnvironmentObject private var photoLogManager: PhotoLogManager
 
     // 体重計測ノード: 記録方法の選択 / 写真記録シート
@@ -7929,14 +7980,18 @@ struct EduPhotoLogSheet: View {
     let nodeEmoji: String
     let nodeName: String
     let onComplete: (Bool, Bool, UIImage?, String) -> Void
-    var linkURL: URL? = nil   // 読書・勉強ノード用：本のリンク
+    /// 学習ノード用：URLリンク入力欄を表示する
+    var allowLinkInput: Bool = false
+    /// allowLinkInput == true のとき、リンクURLも渡すコールバック（省略時は onComplete を使用）
+    var onCompleteWithLink: ((Bool, Bool, UIImage?, String, String) -> Void)? = nil
 
     @State private var selectedImage: UIImage? = nil
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var comment: String = ""
+    @State private var linkInput: String = ""   // ユーザー入力のリンクURL
     @State private var saveToFeed: Bool = true
     @State private var isPublic: Bool = true
-    @State private var showPhotoPicker = false   // 表示直後に自動でピッカーを開く
+    @State private var showPhotoPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -7978,13 +8033,52 @@ struct EduPhotoLogSheet: View {
                         .padding(12)
                         .background(Color(.systemGray6))
                         .cornerRadius(10)
-                        .submitLabel(.done)
+                        .submitLabel(.next)
                         .onSubmit {
                             UIApplication.shared.sendAction(
                                 #selector(UIResponder.resignFirstResponder),
                                 to: nil, from: nil, for: nil
                             )
                         }
+
+                    // リンクURL入力（学習ノードのみ）
+                    if allowLinkInput {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "link")
+                                    .font(.caption)
+                                    .foregroundColor(Color.duoBlue)
+                                Text("リンクURL（任意）")
+                                    .font(.caption)
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            TextField("https://...", text: $linkInput)
+                                .font(.body)
+                                .keyboardType(.URL)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .padding(12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(10)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    UIApplication.shared.sendAction(
+                                        #selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil
+                                    )
+                                }
+                            if !linkInput.isEmpty, let url = URL(string: linkInput), UIApplication.shared.canOpenURL(url) {
+                                Button {
+                                    UIApplication.shared.open(url)
+                                } label: {
+                                    Label("リンクを開いて確認", systemImage: "safari")
+                                        .font(.caption)
+                                        .foregroundColor(Color.duoBlue)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
 
                     // フィードに追加（Dailyフィード + TOMOフィードを同時制御）
                     Toggle(isOn: Binding(
@@ -8007,7 +8101,11 @@ struct EduPhotoLogSheet: View {
 
                     // 記録ボタン
                     Button {
-                        onComplete(saveToFeed, isPublic, selectedImage, comment)
+                        if let onCompleteWithLink {
+                            onCompleteWithLink(saveToFeed, isPublic, selectedImage, comment, linkInput)
+                        } else {
+                            onComplete(saveToFeed, isPublic, selectedImage, comment)
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill").font(.title3)
@@ -8021,23 +8119,6 @@ struct EduPhotoLogSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    // 本のリンク（読書・勉強ノードのみ）
-                    if let url = linkURL {
-                        Button {
-                            UIApplication.shared.open(url)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "book.fill").font(.title3)
-                                Text("設定したリンクに飛ぶ").font(.headline).fontWeight(.black)
-                                Spacer()
-                            }
-                            .foregroundColor(Color.duoOrange)
-                            .padding(.horizontal, 20).padding(.vertical, 14)
-                            .background(Color.duoOrange.opacity(0.1))
-                            .cornerRadius(14)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
@@ -8130,16 +8211,129 @@ private struct WeightRecordOptionsSheet: View {
     }
 }
 
+// MARK: - 記録詳細シート（EduLog投稿の確認・削除）
+
+private struct EduRecordDetailSheet: View {
+    let item: EduLogHistoryItem
+    let onDelete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm = false
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "M月d日 HH:mm"; return f
+    }()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ヘッダー
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(item.activityEmoji) \(item.activityName)")
+                        .font(.title3).fontWeight(.black)
+                        .foregroundColor(Color.duoDark)
+                    Text(Self.timeFmt.string(from: item.timestamp))
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 12)
+
+            Divider()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    // サムネイル
+                    if let img = item.thumbnail {
+                        Image(uiImage: img)
+                            .resizable().scaledToFill()
+                            .frame(maxWidth: .infinity).frame(height: 200)
+                            .cornerRadius(12).clipped()
+                    }
+
+                    // コメント
+                    if !item.comment.isEmpty {
+                        Text(item.comment)
+                            .font(.body)
+                            .foregroundColor(Color.duoDark)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                    }
+
+                    // リンク
+                    if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+                        Button {
+                            UIApplication.shared.open(url)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "link.circle.fill")
+                                    .foregroundColor(Color.duoBlue)
+                                Text(item.sharedTitle ?? urlStr)
+                                    .font(.subheadline)
+                                    .foregroundColor(Color.duoBlue)
+                                    .lineLimit(2)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            .padding(12)
+                            .background(Color.duoBlue.opacity(0.08))
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // 削除ボタン
+                    Button {
+                        showDeleteConfirm = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "trash.fill").font(.title3)
+                            Text("この記録を削除する").font(.headline).fontWeight(.black)
+                            Spacer()
+                        }
+                        .foregroundColor(Color.duoRed)
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .background(Color.duoRed.opacity(0.08))
+                        .cornerRadius(14)
+                    }
+                    .buttonStyle(.plain)
+                    .confirmationDialog("この記録を削除しますか？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                        Button("削除してスパイラルを未完了に戻す", role: .destructive) {
+                            onDelete()
+                        }
+                        Button("キャンセル", role: .cancel) {}
+                    } message: {
+                        Text("投稿が削除され、スパイラルのアイコンが未完了に戻ります。")
+                    }
+                }
+                .padding(.horizontal, 20).padding(.vertical, 16)
+            }
+        }
+    }
+}
+
+// MARK: - GoalCompletionSheet
+
 private struct GoalCompletionSheet: View {
     let emoji: String
     let name: String
     let isDone: Bool
     let onComplete: () -> Void
     var onPhotoTap: (() -> Void)? = nil
-    var onDrinkComplete: ((Int) -> Void)? = nil   // 水分ノード専用：選択mlを渡す
+    var onDrinkComplete: ((Int) -> Void)? = nil  // 水分ノード専用：選択mlを渡す
     var isRecordType: Bool = false
     var showPhotoButton: Bool = true
-    var linkURL: URL? = nil
+    var onViewRecord: (() -> Void)? = nil        // 登録済み記録へのナビゲーション
 
     @State private var pickerItem: PhotosPickerItem? = nil
 
@@ -8192,29 +8386,50 @@ private struct GoalCompletionSheet: View {
             Divider()
 
             VStack(spacing: 10) {
-                // 完了ボタン（水分ノードで未完了の場合は上の量ボタンで記録するため非表示）
+                // 完了ボタン / 記録を確認ボタン（水分ノードで未完了の場合は上の量ボタンで記録するため非表示）
                 if onDrinkComplete == nil || isDone {
-                    Button {
-                        onComplete()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: isDone
-                                  ? "arrow.uturn.backward.circle.fill"
-                                  : "checkmark.circle.fill")
-                                .font(.title3)
-                            Text(isDone ? "完了を取り消す" : (isRecordType ? "記録する" : "完了する"))
-                                .font(.headline).fontWeight(.black)
-                            Spacer()
+                    if isDone, let onViewRecord {
+                        // 登録済みの記録に飛ぶ
+                        Button {
+                            onViewRecord()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text.magnifyingglass")
+                                    .font(.title3)
+                                Text("この記録を確認する")
+                                    .font(.headline).fontWeight(.black)
+                                Spacer()
+                            }
+                            .foregroundColor(Color.duoGreen)
+                            .padding(.horizontal, 20).padding(.vertical, 14)
+                            .background(Color.duoGreen.opacity(0.1))
+                            .cornerRadius(14)
                         }
-                        .foregroundColor(isDone ? Color.duoRed : Color.duoGreen)
-                        .padding(.horizontal, 20).padding(.vertical, 14)
-                        .background((isDone ? Color.duoRed : Color.duoGreen).opacity(0.1))
-                        .cornerRadius(14)
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            onComplete()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: isDone
+                                      ? "arrow.uturn.backward.circle.fill"
+                                      : "checkmark.circle.fill")
+                                    .font(.title3)
+                                Text(isDone ? "完了を取り消す" : (isRecordType ? "記録する" : "完了する"))
+                                    .font(.headline).fontWeight(.black)
+                                Spacer()
+                            }
+                            .foregroundColor(isDone ? Color.duoRed : Color.duoGreen)
+                            .padding(.horizontal, 20).padding(.vertical, 14)
+                            .background((isDone ? Color.duoRed : Color.duoGreen).opacity(0.1))
+                            .cornerRadius(14)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
 
-                // 写真で記録（フォトログ or ライブラリ選択）- 水分ノードでは非表示
+
+                // 写真・コメント・リンクで記録（フォトログ or ライブラリ選択）- 水分ノードでは非表示
                 if showPhotoButton {
                     if let onPhotoTap {
                         Button {
@@ -8228,26 +8443,6 @@ private struct GoalCompletionSheet: View {
                             photoButtonLabel
                         }
                     }
-                }
-
-                // 設定したリンクに飛ぶ（読書・勉強ノードのみ）
-                if let url = linkURL {
-                    Button {
-                        UIApplication.shared.open(url)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "link.circle.fill")
-                                .font(.title3)
-                            Text("設定したリンクに飛ぶ")
-                                .font(.headline).fontWeight(.black)
-                            Spacer()
-                        }
-                        .foregroundColor(Color.duoOrange)
-                        .padding(.horizontal, 20).padding(.vertical, 14)
-                        .background(Color.duoOrange.opacity(0.1))
-                        .cornerRadius(14)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 20)
@@ -8266,7 +8461,7 @@ private struct GoalCompletionSheet: View {
         HStack(spacing: 12) {
             Image(systemName: "camera.fill")
                 .font(.title3)
-            Text("写真で記録する")
+            Text("写真・コメント・リンクで記録する")
                 .font(.headline).fontWeight(.black)
             Spacer()
         }
@@ -9283,10 +9478,18 @@ struct DayCarouselSheet: View {
         let (label, color): (String, Color) = {
             if entry.isDuolingo { return ("Duolingo", Color(hex: "#58CC02")) }
             switch entry.kind {
-            case .foodPhoto: return ("FOOD", Color.duoOrange)
-            case .activity:  return (entry.title, Color.duoGreen)
-            case .photo:     return ("フォト", Color.duoPurple)
-            case .link:      return ("リンク", Color(hex: "#1CB0F6"))
+            case .foodPhoto:
+                return ("FOOD", Color.duoOrange)
+            case .activity:
+                return (entry.title.isEmpty ? "FIT" : entry.title, Color.duoGreen)
+            case .photo:
+                // activityName（勉強・読書・語学など）を表示、空の場合のみ「フォト」
+                let t = entry.title.isEmpty ? "フォト" : entry.title
+                return (String(t.prefix(6)), Color.duoPurple)
+            case .link:
+                // activityName を表示、空の場合のみ「リンク」
+                let t = entry.title.isEmpty ? "リンク" : entry.title
+                return (String(t.prefix(6)), Color(hex: "#1CB0F6"))
             }
         }()
         Text(label)

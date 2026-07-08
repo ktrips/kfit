@@ -418,6 +418,82 @@ exports.computeRetentionStats = functions.pubsub
     return null;
   });
 
+// ===== WEEKLY REPORT AI COMMENT =====
+// 週次レポートカード用の AI コーチングコメントを生成する callable 関数。
+// WeeklyReportView（iOS）から呼ばれ、結果は shared-reports ドキュメントにも保存される。
+// 認証必須・Plus クォータ（AI_QUOTA）を消費しない（週1回の軽量呼び出しのため無料扱い）。
+exports.generateWeeklyReport = functions
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
+    }
+
+    const { streak = 0, weekSets = 0, weekXP = 0, avgHRV, sleepScore } = data || {};
+
+    const apiKey = (functions.config().ai || {}).openai_key;
+    if (!apiKey) {
+      // API キー未設定時はルールベースのコメントを返す（フォールバック）
+      return { comment: generateRuleBasedComment(streak, weekSets, weekXP), aiGenerated: false };
+    }
+
+    // プロンプト構築（日本語・短めのコーチングコメント）
+    let context_str = `ストリーク: ${streak}日連続、今週のセット: ${weekSets}回、XP: ${weekXP}`;
+    if (avgHRV != null) context_str += `、平均HRV: ${Math.round(avgHRV)}ms`;
+    if (sleepScore != null) context_str += `、睡眠スコア: ${sleepScore}/100`;
+
+    const prompt = [
+      'あなたは「Fitingo」というフィットネス習慣化アプリのコーチです。',
+      `ユーザーの今週の実績: ${context_str}`,
+      '',
+      '以下の条件で日本語のコーチングコメントを1文（60文字以内）で生成してください:',
+      '- 継続を褒め、次のアクションを1つだけ提案する',
+      '- 数値に触れて具体的にする',
+      '- 「今度こそ、続く。」というFitingoのメッセージと一致させる',
+      '- 励ましを含め、前向きなトーンにする',
+      '- マークダウン・記号は使わない。純粋なテキストのみ',
+      '',
+      'コメント（60文字以内）:',
+    ].join('\n');
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 150,
+          temperature: 0.7,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('generateWeeklyReport upstream error:', res.status, err.slice(0, 200));
+        return { comment: generateRuleBasedComment(streak, weekSets, weekXP), aiGenerated: false };
+      }
+
+      const json = await res.json();
+      const comment = ((json.choices?.[0]?.message?.content) || '').trim().slice(0, 80);
+      return { comment: comment || generateRuleBasedComment(streak, weekSets, weekXP), aiGenerated: true };
+    } catch (e) {
+      console.error('generateWeeklyReport error:', e);
+      return { comment: generateRuleBasedComment(streak, weekSets, weekXP), aiGenerated: false };
+    }
+  });
+
+/** API キー未設定時のルールベースコメント生成（フォールバック） */
+function generateRuleBasedComment(streak, weekSets, _weekXP) {
+  if (streak >= 30) return `${streak}日連続！この調子で今月の目標も超えていこう 🔥`;
+  if (streak >= 14) return `2週間以上継続中。${weekSets}セットの積み重ねが体を変える 💪`;
+  if (streak >= 7)  return `1週間継続達成！来週は ${weekSets + 1}セット以上を目指そう ✨`;
+  if (weekSets >= 10) return `今週${weekSets}セット！運動習慣が定着してきた証拠だよ 🌟`;
+  if (weekSets >= 5)  return `今週${weekSets}セット達成。明日もスクワット5回から始めよう 🏃`;
+  if (weekSets > 0)   return `最初の一歩を踏み出した。次は${weekSets + 1}セットを目指そう 👟`;
+  return '今週もFitingoを開いてくれてありがとう。明日の90秒から始めよう 🌱';
+}
+
 // ===== AI PROXY =====
 // 「AI 機能は別途 API キー要」の廃止（docs/ai_proxy_plan.md 参照）。
 // サーバー側の API キーで AI を代理呼び出しし、ユーザーには API キーの

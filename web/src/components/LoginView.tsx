@@ -8,9 +8,10 @@ const APP_STORE_URL = 'https://apps.apple.com/app/fitingo/id000000000';
 interface LoginViewProps {
   onOpenBooks?: () => void;
   onStartWorkout?: () => void;
+  onNinetySecond?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks, onStartWorkout }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks, onStartWorkout, onNinetySecond }) => {
   const setUser = useAppStore((state) => state.setUser);
   const setError = useAppStore((state) => state.setError);
 
@@ -82,6 +83,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks,
           サインインすることで利用規約・プライバシーポリシーに同意したものとみなされます。
         </p>
       </div>
+
+      {/* 90秒チャレンジモードへの誘導 */}
+      {onNinetySecond && (
+        <button
+          onClick={onNinetySecond}
+          className="w-full max-w-sm mt-5 py-4 rounded-2xl flex flex-col items-center gap-1 active:scale-[0.98] transition-transform"
+          style={{ background: 'linear-gradient(135deg, #F0FFF4, #E8FFE0)', border: '2px solid #58CC02', boxShadow: '0 4px 0 #46A302' }}
+        >
+          <p className="text-2xl font-black" style={{ color: '#58CC02' }}>今度こそ、続く。</p>
+          <p className="text-sm font-bold text-duo-dark">今日の90秒チャレンジを始める ▶</p>
+          <p className="text-xs text-duo-gray mt-0.5">ログイン不要・今すぐスタート</p>
+        </button>
+      )}
 
       {/* Workout GIF preview（タップでトレーニング開始） */}
       <button

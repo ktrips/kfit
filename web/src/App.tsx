@@ -23,8 +23,9 @@ import { BookViewer, BookId } from './components/books/BookViewer';
 import { PlusView } from './components/PlusView';
 import { ChallengeLP } from './components/challenge/ChallengeLP';
 import { SharedReportView } from './components/SharedReportView';
+import { NinetySecondMode } from './components/NinetySecondMode';
 
-type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge' | 'sharedReport';
+type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge' | 'sharedReport' | 'ninety';
 
 /** URL パスから初期ビューを判定する */
 function getInitialViewFromPath(): { view: View; bookId?: BookId; shareId?: string } {
@@ -48,6 +49,7 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId; shareId?: stri
   if (path.startsWith('/books/sam-bez-thie-musk-jobs')) return { view: 'bookDetail', bookId: 'sam-bez-thie-musk-jobs' };
   if (path.startsWith('/books')) return { view: 'books' };
   if (path.startsWith('/challenge-90') || path.startsWith('/c90')) return { view: 'challenge' };
+  if (path.startsWith('/90s') || path.startsWith('/start')) return { view: 'ninety' };
   // 週間レポート共有カード（iOS からシェアされた閲覧専用ページ）
   const reportMatch = path.match(/^\/r\/([a-z0-9]+)/);
   if (reportMatch) return { view: 'sharedReport', shareId: reportMatch[1] };
@@ -94,7 +96,7 @@ function App() {
           setExercises(exercisesList);
           // /books・/challenge-90 にいる場合はそのまま
           const { view: initView } = getInitialViewFromPath();
-          if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport') {
+          if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport' && initView !== 'ninety') {
             setCurrentView('dashboard');
           }
           // Real-time listener: Cloud Function updates totalPoints/streak after each exercise
@@ -104,7 +106,7 @@ function App() {
           setUserProfile(null);
           // /books/* や /challenge-90 パスにいる場合はそのまま
           const { view } = getInitialViewFromPath();
-          if (!view.startsWith('book') && view !== 'challenge') {
+          if (!view.startsWith('book') && view !== 'challenge' && view !== 'ninety') {
             setCurrentView('login');
           }
         }
@@ -132,10 +134,14 @@ function App() {
     if (view === 'books') {
       window.history.pushState({}, '', '/books');
     } else if (view === 'challenge') {
-      // パス維持（/challenge-90 でも /c90 でもそのまま）
       const curPath = window.location.pathname;
       if (!curPath.startsWith('/challenge-90') && !curPath.startsWith('/c90')) {
         window.history.pushState({}, '', '/c90');
+      }
+    } else if (view === 'ninety') {
+      const curPath = window.location.pathname;
+      if (!curPath.startsWith('/90s') && !curPath.startsWith('/start')) {
+        window.history.pushState({}, '', '/90s');
       }
     } else if (view !== 'bookDetail') {
       window.history.pushState({}, '', '/');
@@ -221,6 +227,7 @@ function App() {
                     >
                       {[
                         { view: 'dashboard' as View, icon: '🏠', label: 'ホーム' },
+                        { view: 'ninety' as View, icon: '⏱️', label: '90秒チャレンジ' },
                         { view: 'dietGoal' as View, icon: '🎯', label: 'DIET GOAL' },
                         { view: 'intake' as View, icon: '🍽️', label: '食事・ドリンク' },
                         { view: 'plan' as View, icon: '📋', label: '今日のプラン' },
@@ -315,6 +322,15 @@ function App() {
         {/* ── 90日再検査チャレンジ LP（ログイン不要・全画面） ── */}
         {currentView === 'challenge' && <ChallengeLP />}
 
+        {/* ── 90秒チャレンジモード（ログイン不要） ── */}
+        {currentView === 'ninety' && (
+          <NinetySecondMode
+            onStart={() => navigate(user ? 'workout' : 'login')}
+            onExit={() => navigate(user ? 'dashboard' : 'login')}
+            doneToday={false}
+          />
+        )}
+
         {/* ── 週間レポート共有カード閲覧（ログイン不要） ── */}
         {currentView === 'sharedReport' && sharedReportId && (
           <SharedReportView shareId={sharedReportId} />
@@ -324,6 +340,7 @@ function App() {
           <LoginView
             onOpenBooks={() => navigate('books')}
             onStartWorkout={() => navigate('workout')}
+            onNinetySecond={() => navigate('ninety')}
           />
         )}
         {currentView === 'dashboard' && user && (

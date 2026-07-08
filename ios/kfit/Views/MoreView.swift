@@ -21,6 +21,7 @@ struct MoreView: View {
     @State private var showLogoutConfirm = false
     @State private var showBooksSheet = false
     @State private var booksSheetURL: URL = URL(string: "https://fit.ktrips.net/books")!
+    @AppStorage("simpleMode.enabled") private var simpleModeEnabled = false
 
     var body: some View {
         NavigationView {
@@ -60,6 +61,28 @@ struct MoreView: View {
                     NavigationLink(destination: WeeklyReportView().environmentObject(authManager)) {
                         MenuRow(icon: "square.and.arrow.up.fill", iconColor: Color.duoPurple, label: "今週の実績をシェア")
                     }
+                    .listRowBackground(Color.white)
+
+                    // 90秒モード
+                    Toggle(isOn: $simpleModeEnabled) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "timer")
+                                .font(.title3)
+                                .foregroundColor(Color.duoGreen)
+                                .frame(width: 32)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("90秒モード")
+                                    .font(.body)
+                                    .foregroundColor(Color.duoDark)
+                                Text("「今日の90秒」だけの1画面表示")
+                                    .font(.caption2)
+                                    .foregroundColor(Color.duoSubtitle)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .tint(Color.duoGreen)
                     .listRowBackground(Color.white)
 
                     // 履歴

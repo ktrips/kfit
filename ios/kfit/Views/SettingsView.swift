@@ -88,8 +88,6 @@ struct SettingsView: View {
     @State private var showAddWeekdayCustom = false
     @State private var newWeekdayGoalName = ""
     @State private var newWeekdayGoalEmoji = "⭐"
-    // 📚 勉強アイコンのリンクURL
-    @AppStorage("studyBookUrl") private var studyBookUrl = "https://yonda.ktrips.net"
     // SNSアカウント
     @AppStorage("sns.x.handle")        private var xHandle    = ""
     @AppStorage("sns.instagram.handle") private var igHandle  = ""
@@ -340,6 +338,7 @@ struct SettingsView: View {
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
+
             VStack(spacing: 0) {
                 ForEach(Array(orderedConfigurableTabs.enumerated()), id: \.element.id) { index, tab in
                     tabVisibilityRow(tab: tab, index: index)
@@ -479,8 +478,10 @@ struct SettingsView: View {
                 .disabled(index == orderedConfigurableTabs.count - 1)
             }
 
-            // アクションボタン or トグル
+            // アクションボタン + トグル
+            // ROUTINタブは固定表示のみ（設定ボタンだけ）、それ以外は全てトグルも表示
             if tab == .fit {
+                // ROUTINタブ：常時表示・トグルなし
                 Button {
                     showHabitSettings = true
                 } label: {
@@ -492,46 +493,49 @@ struct SettingsView: View {
                         .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
-            } else if tab == .goal {
-                Button {
-                    showDietGoalSettings = true
-                } label: {
-                    Text("目標設定")
-                        .font(.caption2).fontWeight(.bold)
-                        .foregroundColor(Color.duoGreen)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.duoGreen.opacity(0.12))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-            } else if tab == .goalingo {
-                Button {
-                    showRaceGoalSettings = true
-                } label: {
-                    Text("ゴール設定")
-                        .font(.caption2).fontWeight(.bold)
-                        .foregroundColor(Color.duoGreen)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.duoGreen.opacity(0.12))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-            } else if tab == .food {
-                Button {
-                    showIntakeSettings = true
-                } label: {
-                    Text("食事設定")
-                        .font(.caption2).fontWeight(.bold)
-                        .foregroundColor(Color.duoOrange)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.duoOrange.opacity(0.12))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
             } else {
-                Toggle("", isOn: tabVisibleBinding(tab))
-                    .labelsHidden()
-                    .tint(Color.duoGreen)
+                // その他タブ：トグル（表示/非表示）＋ 設定ボタン（該当タブのみ）
+                HStack(spacing: 8) {
+                    // 設定ボタン（対応するタブのみ）
+                    switch tab {
+                    case .goal:
+                        Button { showDietGoalSettings = true } label: {
+                            Text("目標設定")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(Color.duoGreen)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.duoGreen.opacity(0.12))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    case .goalingo:
+                        Button { showRaceGoalSettings = true } label: {
+                            Text("ゴール設定")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(Color.duoGreen)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.duoGreen.opacity(0.12))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    case .food:
+                        Button { showIntakeSettings = true } label: {
+                            Text("食事設定")
+                                .font(.caption2).fontWeight(.bold)
+                                .foregroundColor(Color.duoOrange)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.duoOrange.opacity(0.12))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    default:
+                        EmptyView()
+                    }
+
+                    Toggle("", isOn: tabVisibleBinding(tab))
+                        .labelsHidden()
+                        .tint(Color.duoGreen)
+                }
             }
         }
         .padding(12)
@@ -539,7 +543,8 @@ struct SettingsView: View {
 
     private func tabVisible(_ tab: MainMenuTab) -> Bool {
         switch tab {
-        case .fit, .goal: return true  // 常に表示
+        case .fit:      return true               // ROUTINタブは常に表示
+        case .goal:     return goalTabVisible
         case .mind:     return mindTabVisible
         case .food:     return foodTabVisible
         case .tomo:     return tomoTabVisible
@@ -557,14 +562,15 @@ struct SettingsView: View {
     }
 
     private func setTabVisible(_ tab: MainMenuTab, _ newValue: Bool) {
-        if tab == .fit || tab == .goal { return }  // 常に表示（変更不可）
+        if tab == .fit { return }  // ROUTINタブは常に表示（変更不可）
         let currentlyEnabledCount = MainMenuTab.allCases.filter { tabVisible($0) }.count
         if !newValue && currentlyEnabledCount <= 1 {
             return
         }
 
         switch tab {
-        case .fit, .goal: break
+        case .fit:      break
+        case .goal:     goalTabVisible     = newValue
         case .mind:     mindTabVisible     = newValue
         case .food:     foodTabVisible     = newValue
         case .tomo:     tomoTabVisible     = newValue
@@ -655,9 +661,6 @@ struct SettingsView: View {
 
                 // 曜日毎の目標
                 weekdayGoalsSection
-
-                // 📚 勉強アイコンのリンクURL設定
-                studyBookUrlSection
 
                 // ゴール目標設定ボタン（レース・トライアスロン等）
                 Button { showRaceGoalSettings = true } label: {
@@ -916,7 +919,6 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     dailyFixedGoalsSection
                     weekdayGoalsSection
-                    studyBookUrlSection
 
                     NavigationLink {
                         TimeSlotGoalsView()
@@ -1004,39 +1006,6 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
-        .padding(16)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    private var studyBookUrlSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("📚").font(.title2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("読書・勉強リンク")
-                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("スパイラルの📚アイコンをタップすると開くURL")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-            HStack(spacing: 8) {
-                Image(systemName: "link")
-                    .font(.system(size: 13 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoGreen)
-                TextField("https://yonda.ktrips.net", text: $studyBookUrl)
-                    .font(.system(size: 13 * UIScale.font))
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .keyboardType(.URL)
-                    .submitLabel(.done)
-            }
-            .padding(10)
-            .background(Color(.systemGray6))
-            .cornerRadius(8)
         }
         .padding(16)
         .background(Color(.systemBackground))

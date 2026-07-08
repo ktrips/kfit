@@ -27,7 +27,7 @@ struct LoginView: View {
                     Spacer(minLength: 60)
 
                     // マスコット + アプリ名
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         Image("mascot")
                             .resizable()
                             .scaledToFit()
@@ -43,9 +43,24 @@ struct LoginView: View {
                             .font(.system(size: 44 * UIScale.font, weight: .black))
                             .foregroundColor(Color.duoGreen)
 
-                        Text("毎日の運動をゲームのように！Fitingoで習慣に！")
+                        // タグライン（メインスローガン）
+                        Text("今度こそ、続く。")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 22).padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(
+                                    LinearGradient(
+                                        colors: [Color.duoGreen, Color(hex: "#1A7F1A")],
+                                        startPoint: .leading, endPoint: .trailing
+                                    )
+                                )
+                            )
+                            .shadow(color: Color.duoGreen.opacity(0.35), radius: 8, y: 4)
+
+                        Text("毎日の運動をゲームのように。")
                             .font(.subheadline)
-                            .foregroundColor(Color.duoDark)
+                            .foregroundColor(Color.duoSubtitle)
                             .multilineTextAlignment(.center)
                     }
 

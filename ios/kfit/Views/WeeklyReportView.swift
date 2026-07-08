@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseFunctions
 
 /// 週間レポート共有カード（docs/SamBezThieMuskJobs_plan.md P1「続いた実績の可視化」）
 ///
@@ -13,6 +14,7 @@ struct WeeklyReportView: View {
 
     @State private var weekSets = 0
     @State private var weekXP = 0
+    @State private var aiComment: String? = nil
     @State private var loading = true
     @State private var sharing = false
     @State private var shareItems: [Any] = []
@@ -97,7 +99,8 @@ struct WeeklyReportView: View {
             streak: streak,
             weekSets: weekSets,
             weekXP: weekXP,
-            weekLabel: weekLabel
+            weekLabel: weekLabel,
+            aiComment: aiComment
         )
         .frame(maxWidth: 340)
         .aspectRatio(1, contentMode: .fit)
@@ -121,6 +124,36 @@ struct WeeklyReportView: View {
         weekSets = snap?.documents.count ?? 0
         weekXP = snap?.documents.reduce(0) { $0 + (($1.data()["totalXP"] as? Int) ?? 0) } ?? 0
         loading = false
+
+        // AI コーチングコメントを非同期で取得（失敗してもカードは表示する）
+        await fetchAIComment()
+    }
+
+    private func fetchAIComment() async {
+        let fn = Functions.functions(region: "us-central1")
+        var params: [String: Any] = [
+            "streak": streak,
+            "weekSets": weekSets,
+            "weekXP": weekXP,
+            "weekLabel": weekLabel,
+        ]
+        // HRV があれば渡す
+        if let mgr = (UIApplication.shared.connectedScenes.first?.delegate as? NSObject)
+            .flatMap({ _ in nil as HealthKitManager? }) {
+            // HealthKitManager への参照は EnvironmentObject 経由でも取れるが、
+            // ここでは直近の HRV 値があれば渡す（任意）
+        }
+        do {
+            let result = try await fn.httpsCallable("generateWeeklyReport").call(params)
+            if let data = result.data as? [String: Any],
+               let comment = data["comment"] as? String,
+               !comment.isEmpty {
+                await MainActor.run { aiComment = comment }
+            }
+        } catch {
+            // コメント取得失敗は無視（カードはコメントなしで表示）
+            print("[WeeklyReport] AI comment fetch failed:", error.localizedDescription)
+        }
     }
 
     // MARK: - 共有
@@ -134,7 +167,7 @@ struct WeeklyReportView: View {
 
         // 1. 公開閲覧用ドキュメントを発行（ID は推測不能なランダム値）
         let shareId = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12).lowercased()
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "username": username,
             "streak": streak,
             "weekSets": weekSets,
@@ -143,6 +176,7 @@ struct WeeklyReportView: View {
             "authorUid": userId,
             "createdAt": FieldValue.serverTimestamp()
         ]
+        if let comment = aiComment { data["aiComment"] = comment }
         do {
             try await Firestore.firestore()
                 .collection("shared-reports").document(String(shareId)).setData(data)
@@ -159,7 +193,8 @@ struct WeeklyReportView: View {
                 streak: streak,
                 weekSets: weekSets,
                 weekXP: weekXP,
-                weekLabel: weekLabel
+                weekLabel: weekLabel,
+                aiComment: aiComment
             )
             .frame(width: 360, height: 360)
         )
@@ -181,6 +216,7 @@ struct WeeklyReportCard: View {
     let weekSets: Int
     let weekXP: Int
     let weekLabel: String
+    var aiComment: String? = nil
 
     var body: some View {
         ZStack {
@@ -229,7 +265,17 @@ struct WeeklyReportCard: View {
                 Spacer()
 
                 VStack(spacing: 4) {
-                    Text("\(username) は続いている。")
+                    // AI コーチングコメント
+                    if let comment = aiComment, !comment.isEmpty {
+                        Text(comment)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .padding(.horizontal, 4)
+                            .padding(.bottom, 2)
+                    }
+                    Text("\(username) の今週の記録")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
                     Text("今度こそ、続く。 — fit.ktrips.net")

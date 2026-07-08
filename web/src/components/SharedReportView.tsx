@@ -12,6 +12,7 @@ interface SharedReport {
   weekSets: number;
   weekXP: number;
   weekLabel: string;
+  aiComment?: string;
 }
 
 const APP_STORE_URL = 'https://apps.apple.com/jp/app/kfit-fitingo/id6746108484';
@@ -75,7 +76,13 @@ export const SharedReportView: React.FC<{ shareId: string }> = ({ shareId }) => 
         </div>
 
         <div className="text-center">
-          <p className="font-bold text-sm">{report.username} は続いている。</p>
+          {/* AI コーチングコメント */}
+          {report.aiComment && (
+            <p className="text-xs font-semibold opacity-90 mb-2 leading-relaxed px-1">
+              {report.aiComment}
+            </p>
+          )}
+          <p className="font-bold text-sm">{report.username} の今週の記録</p>
           <p className="text-xs opacity-75 mt-1">今度こそ、続く。 — fit.ktrips.net</p>
         </div>
       </div>
@@ -83,11 +90,11 @@ export const SharedReportView: React.FC<{ shareId: string }> = ({ shareId }) => 
       {/* CTA */}
       <div className="mt-8 text-center max-w-sm">
         <p className="text-gray-700 font-bold mb-1">
-          10年三日坊主でも、大丈夫。
+          今度こそ、続く。
         </p>
         <p className="text-sm text-gray-500 mb-5 leading-relaxed">
-          数えるのも、記録するのも、iPhoneとApple Watchが勝手にやります。
-          あなたは明日の朝、スクワット5回だけ。
+          運動のカウントも、食事の記録も、iPhoneとApple Watchが自動でサポート。
+          まずは明日の朝、スクワット5回だけ。
         </p>
         <a
           href={APP_STORE_URL}

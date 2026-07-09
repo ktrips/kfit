@@ -828,18 +828,17 @@ struct NinetySecondModeView: View {
                 .padding(.bottom, 10)
 
                 // ── GIF（スクワット以外・コンパクト・タップで切替）────────
-                // パフォーマンス最適化: maxFrames=15、フレーム間引きで低メモリ動作
+                // .drawingGroup() は GIF アニメーションを止めるため使用しない
                 ZStack(alignment: .bottomTrailing) {
                     GIFAnimationView(
                         gifName: exerciseGifs[gifIndex % exerciseGifs.count],
                         contentMode: .scaleAspectFit,
-                        maxFrames: 15
+                        maxFrames: 20
                     )
                     .id(gifIndex)
                     .frame(maxWidth: .infinity)
                     .frame(height: 140)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .drawingGroup()   // Metal合成でCPU描画を軽減
 
                     // 切替インジケータ
                     Image(systemName: "arrow.right.circle.fill")
@@ -865,7 +864,7 @@ struct NinetySecondModeView: View {
 
                 Spacer().frame(height: 20)
 
-                // ── メインスタートボタン（Fitingoアイコン入り）────────────
+                // ── メインスタートボタン（Fitingo全面）────────────────────
                 Button(action: {
                     withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { showBurst = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -886,16 +885,11 @@ struct NinetySecondModeView: View {
                             .shadow(color: accentColor.opacity(0.4), radius: 16, y: 6)
                             .scaleEffect(showBurst ? 0.92 : pulseScale)
 
-                        VStack(spacing: 4) {
-                            // Fitingoアイコン
-                            Image("fitingo_button_mascot")
-                                .resizable().scaledToFit()
-                                .frame(width: 72, height: 72)
-
-                            Text(doneToday ? "今日は完了！" : "今日の90秒")
-                                .font(.system(size: 18, weight: .black))
-                                .foregroundColor(.white)
-                        }
+                        // Fitingo 画像をボタン全面に大きく配置
+                        Image("fitingo_button_mascot")
+                            .resizable().scaledToFit()
+                            .frame(width: 158, height: 158)
+                            .scaleEffect(showBurst ? 0.92 : pulseScale)
                     }
                 }
                 .buttonStyle(.plain)
@@ -904,10 +898,10 @@ struct NinetySecondModeView: View {
 
                 Spacer().frame(height: 14)
 
-                // ── ボタン下サブテキスト ──────────────────────────────────
+                // ── ボタン下テキスト ──────────────────────────────────────
                 Text(doneToday ? "もう1セットやる ▶" : "今日の90秒、それだけ")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.duoSubtitle)
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundColor(doneToday ? accentColor : .duoDark)
 
                 Spacer()
 

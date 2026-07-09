@@ -5,6 +5,7 @@ target 'kfit' do
   pod 'Firebase/Core'
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'
+  pod 'Firebase/Functions'
   pod 'GoogleSignIn'
 
   # ── Google AdMob（有効化手順） ─────────────────────────────────────────

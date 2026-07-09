@@ -131,18 +131,12 @@ struct WeeklyReportView: View {
 
     private func fetchAIComment() async {
         let fn = Functions.functions(region: "us-central1")
-        var params: [String: Any] = [
+        let params: [String: Any] = [
             "streak": streak,
             "weekSets": weekSets,
             "weekXP": weekXP,
             "weekLabel": weekLabel,
         ]
-        // HRV があれば渡す
-        if let mgr = (UIApplication.shared.connectedScenes.first?.delegate as? NSObject)
-            .flatMap({ _ in nil as HealthKitManager? }) {
-            // HealthKitManager への参照は EnvironmentObject 経由でも取れるが、
-            // ここでは直近の HRV 値があれば渡す（任意）
-        }
         do {
             let result = try await fn.httpsCallable("generateWeeklyReport").call(params)
             if let data = result.data as? [String: Any],

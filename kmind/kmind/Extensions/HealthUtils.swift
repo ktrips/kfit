@@ -1,8 +1,12 @@
 import SwiftUI
 
-// MARK: - HRV 閾値定数（kfit/kmind 共通）
-// kfit 側の LanguageUtils.swift の HRVThreshold と値を統一。
-// 将来的には Swift Package (KFitCore) に移して両アプリから参照する。
+// MARK: - HRV 閾値定数（kmind ローカルコピー）
+//
+// ⚠️ KFitCore.HRVThreshold（Packages/KFitCore/Sources/KFitCore/KFitHRV.swift）と
+//    同一の値を維持すること。値を変更する場合は KFitCore 側も同時に更新する。
+//
+// TODO: kmind ターゲットに KFitCore を追加したら、この定義を削除して
+//       import KFitCore に置き換える。
 
 enum HRVThreshold {
     static let excellent: Double = 60   // ≥60 → 良好
@@ -11,8 +15,9 @@ enum HRVThreshold {
 }
 
 // MARK: - HRV ストレス指数モデル
-// kfit/ios/kfit/Extensions/HealthUtils.swift と同一定義。
-// 将来的には Swift Package に移して両アプリから参照する。
+//
+// KFitCore.MindStressInfo と同一定義。
+// KFitCore 統合後はこの定義を削除し import KFitCore を使用する。
 
 struct MindStressInfo {
     let score: Int
@@ -22,6 +27,9 @@ struct MindStressInfo {
 }
 
 // MARK: - HRV → ストレス指数変換（0–100）
+//
+// KFitCore.stressInfoFromHRV と同一アルゴリズム。
+// KFitCore 統合後はこの関数を削除し KFitCore の public 版を使用する。
 
 /// HRV 値からストレス指数を計算する共有関数。
 /// score が -1 の場合はデータなし（HRV ≤ 0）。
@@ -53,8 +61,11 @@ struct MoominQuote {
 }
 
 /// ストレスレベルに応じたムーミン名言を返す。
-/// 今日の日付をシードにすることで同じ日は同じ名言になる（毎日変わる）。
-func moominQuoteForStress(_ stress: MindStressInfo) -> MoominQuote {
+/// - Parameters:
+///   - stress: `stressInfoFromHRV` が返した `MindStressInfo`。
+///   - seed: 0 以上を指定するとその値で名言を選択（頻繁なローテーション用）。
+///           -1（デフォルト）は当日の日付をシードにする（毎日変わる）。
+func moominQuoteForStress(_ stress: MindStressInfo, seed: Int = -1) -> MoominQuote {
     let quotes: [MoominQuote]
     switch stress.score {
     case ..<0:
@@ -125,8 +136,13 @@ func moominQuoteForStress(_ stress: MindStressInfo) -> MoominQuote {
             MoominQuote(text: "だれだって、ときにはおこるほうがいいのよ。どんな小さなクニットだって、おこる権利はあるのよ", speaker: "リトルミイ"),
         ]
     }
-    let dayOfYear = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
-    return quotes[dayOfYear % quotes.count]
+    let effectiveSeed: Int
+    if seed >= 0 {
+        effectiveSeed = seed
+    } else {
+        effectiveSeed = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
+    }
+    return quotes[effectiveSeed % quotes.count]
 }
 
 // MARK: - マインドフルネス時間フォーマット

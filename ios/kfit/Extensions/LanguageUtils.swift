@@ -35,12 +35,16 @@ func languageBCP47Code(_ code: String) -> String {
 }
 
 // MARK: - HRV 閾値定数（kfit/kmind 共通。HealthKitManager から参照）
-// 変更時はここ1箇所だけ修正すれば kfit / kfitWatch / kmind に反映される。
-// NOTE: kmind は別プロジェクトのため同じ定数をコピーして管理している。
-//       将来的に Swift Package に移動することを推奨。
+// ⚠️ KFitCore.HRVThreshold と同一の値を維持すること。
+//    値を変更する場合は KFitCore/KFitHRV.swift も同時に更新する。
+//
+// TODO: kfit ターゲットに KFitCore を追加したら：
+//   1. この HRVThreshold 定義を削除する
+//   2. kfit/Extensions/HealthUtils.swift を削除する
+//   3. import KFitCore に置き換える
 
 enum HRVThreshold {
-    static let excellent: Double = 60   // ≥60 → 良好
+    static let excellent: Double = 60   // ≥60 → 良好（KFitCore.HRVThreshold.excellent と同一）
     static let moderate: Double  = 40   // ≥40 → 中程度
     static let low: Double       = 20   // ≥20 → 要注意
 }

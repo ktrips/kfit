@@ -2,6 +2,19 @@ import HealthKit
 import Foundation
 import Combine
 
+// MARK: - HRV 閾値定数（Watch ローカルコピー）
+//
+// ⚠️ KFitCore.HRVThreshold（Packages/KFitCore/Sources/KFitCore/KFitHRV.swift）と
+//    同一の値を維持すること。値を変更する場合は両方を同時に更新する。
+//
+// TODO: kfitWatch ターゲットに KFitCore を追加したら、この定義を削除して
+//       import KFitCore + KFitCore.HRVThreshold に置き換える。
+fileprivate enum WatchHRVThreshold {
+    static let excellent: Double = 60   // ≥60 → 良好
+    static let moderate:  Double = 40   // ≥40 → 中程度
+    static let low:       Double = 20   // ≥20 → 要注意
+}
+
 struct WatchMindfulnessSession: Identifiable {
     let id = UUID()
     let startDate: Date
@@ -58,14 +71,19 @@ struct WatchMindfulnessImpact: Codable, Identifiable, Equatable {
     var stressAfter: Int { Self.stressScore(hrv: after.hrv) }
     var stressDelta: Int { stressAfter - stressBefore }
 
+    /// HRV からストレス指数（0–100）を算出する。
+    ///
+    /// アルゴリズムは KFitCore.stressInfoFromHRV と完全一致。
+    /// KFitCore を kfitWatch ターゲットに追加後は
+    /// `stressInfoFromHRV(hrv).score` に置き換えること。
     static func stressScore(hrv: Double) -> Int {
         guard hrv > 0 else { return -1 }
-        if hrv >= 100 { return 5 }
-        if hrv >= 80  { return Int(5  + (100 - hrv) / 20 * 10) }
-        if hrv >= 60  { return Int(15 + (80  - hrv) / 20 * 20) }
-        if hrv >= 40  { return Int(35 + (60  - hrv) / 20 * 25) }
-        if hrv >= 20  { return Int(60 + (40  - hrv) / 20 * 20) }
-        return Int(min(95, 80 + (20 - hrv) / 20 * 15))
+        if hrv >= 100                               { return 5 }
+        if hrv >= 80                                { return Int(5  + (100 - hrv) / 20 * 10) }
+        if hrv >= WatchHRVThreshold.excellent       { return Int(15 + (80  - hrv) / 20 * 20) }
+        if hrv >= WatchHRVThreshold.moderate        { return Int(35 + (WatchHRVThreshold.excellent - hrv) / 20 * 25) }
+        if hrv >= WatchHRVThreshold.low             { return Int(60 + (WatchHRVThreshold.moderate  - hrv) / 20 * 20) }
+        return Int(min(95, 80 + (WatchHRVThreshold.low - hrv) / 20 * 15))
     }
 }
 

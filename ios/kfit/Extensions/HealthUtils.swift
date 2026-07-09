@@ -1,11 +1,14 @@
 import SwiftUI
 
-// MARK: - HRV 閾値定数（kfit 側）
-// LanguageUtils.swift にも同一 HRVThreshold が定義されており、両方で統一値を使用する。
-// NOTE: kmind 側は kmind/Extensions/HealthUtils.swift に同一定義あり。
-//       将来的には Swift Package (KFitCore) に統合して単一実装にすること。
-
-// MARK: - HRV ストレス指数モデル
+// MARK: - HRV ストレス指数モデル（kfit ローカルコピー）
+//
+// ⚠️ KFitCore.MindStressInfo / KFitCore.stressInfoFromHRV と同一定義。
+//    KFitCore.HRVThreshold は kfit/Extensions/LanguageUtils.swift で参照している。
+//
+// TODO: kfit ターゲットに KFitCore を追加したら：
+//   1. このファイルを削除する
+//   2. LanguageUtils.swift の HRVThreshold を削除する
+//   3. 各 View で import KFitCore に置き換える
 
 struct MindStressInfo {
     let score: Int

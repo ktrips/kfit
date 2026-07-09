@@ -462,7 +462,7 @@ exports.generateWeeklyReport = functions
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          max_tokens: 150,
+          max_completion_tokens: 150,
           temperature: 0.7,
           messages: [{ role: 'user', content: prompt }],
         }),
@@ -561,7 +561,7 @@ exports.aiProxy = functions
       },
       body: JSON.stringify({
         model: (data && data.model) || AI_DEFAULT_MODEL,
-        max_tokens: 1000,
+        max_completion_tokens: 1000,
         messages: [{ role: 'user', content }],
       }),
     });

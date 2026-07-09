@@ -768,124 +768,362 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
-// MARK: - 90秒モード（新規ユーザー向け 1 画面オンボーディング）
-// 5タブ・機能説明を見せず「今日の90秒」だけに絞る。初回起動から60秒以内に
-// 最初の1セットを完了させることが目的（docs/SamBezThieMuskJobs_plan.md Musk 案2 / Jobs 5-4）。
-// 7活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
+// MARK: - 90秒モード種別
 
-struct NinetySecondModeView: View {
-    @EnvironmentObject var authManager: AuthenticationManager
-    @EnvironmentObject var timeSlotMgr: TimeSlotManager
-    let installedAt: Date
-    let onStart: () -> Void
-    let onExit: () -> Void
-    /// 設定画面からのプレビュー表示時は true（firstSetSeconds 計測を行わない）
-    var isPreview: Bool = false
+/// FIT / FOOD / EDU それぞれの 90 秒モードを表す。
+enum NinetySecondModeType: Int, CaseIterable {
+    case fit  = 0
+    case food = 1
+    case edu  = 2
+    case diet = 3
 
-    // アニメーション状態
-    @State private var pulseScale: CGFloat = 1.0
-    @State private var buttonGlow: CGFloat = 0
-    @State private var showBurst = false
-    @State private var gifIndex: Int = 0
-
-    // スクワット以外のGIFローテーション（パフォーマンス重視: maxFrames=15）
-    private let exerciseGifs: [String] = [
-        "fItingo_wo_pushups",
-        "fitingo_wo_legs",
-        "fitingo_wo_burpee",
-        "fitingo_wo_range",
-    ]
-
-    private var todayTraining: Int {
-        TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
+    var modeBadge: String {
+        switch self {
+        case .fit:  return "FIT 90秒"
+        case .food: return "FOOD 90秒"
+        case .edu:  return "EDU 90秒"
+        case .diet: return "DIET 90秒"
+        }
     }
-    private var doneToday: Bool { todayTraining > 0 }
-    private var activeDays: Int { RetentionTracker.shared.localActiveDayCount }
-    private var graduated: Bool { activeDays >= 7 }
-    private var streak: Int { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
-    private var accentColor: Color { doneToday ? Color.duoBlue : Color.duoGreen }
+
+    var tagline: String {
+        switch self {
+        case .fit:  return "今度こそ、続く\n「筋トレ」"
+        case .food: return "今度こそ、続く\n「食事ログ」"
+        case .edu:  return "今度こそ、続く\n「語学」"
+        case .diet: return "今度こそ、続く\n「ダイエット」"
+        }
+    }
+
+    var actionSubtitle: String {
+        switch self {
+        case .fit:  return "今日の90秒、それだけ"
+        case .food: return "今日の1枚、それだけ"
+        case .edu:  return "今日の1問、それだけ"
+        case .diet: return "今日の1計測、それだけ"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .fit:  return Color.duoGreen
+        case .food: return Color.duoOrange
+        case .edu:  return Color.duoBlue
+        case .diet: return Color.duoPurple
+        }
+    }
+
+    var backgroundColors: [Color] {
+        switch self {
+        case .fit:  return [Color(hex: "#F0FFF4"), Color.white]
+        case .food: return [Color(hex: "#FFF8F0"), Color.white]
+        case .edu:  return [Color(hex: "#EFF6FF"), Color.white]
+        case .diet: return [Color(hex: "#F8F0FF"), Color.white]
+        }
+    }
+
+    var illustrationEmoji: String {
+        switch self {
+        case .fit:  return "💪"
+        case .food: return "🍱"
+        case .edu:  return "📚"
+        case .diet: return "⚖️"
+        }
+    }
+}
+
+// MARK: - DIET 90秒 体重記録シート
+
+/// DIET モードのボタンから表示する体重記録シート。
+/// 手入力 / Withings連携 / 写真アップロード の3択を提供する。
+struct Diet90sWeightSheet: View {
+    @EnvironmentObject var healthKit: HealthKitManager
+    @Environment(\.dismiss) private var dismiss
+
+    let onPhoto: () -> Void
+
+    @State private var manualInput: String = ""
+    @State private var isSaving = false
+    @State private var savedMessage: String? = nil
+    @FocusState private var inputFocused: Bool
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+
+                // ── ヘッダー ──────────────────────────────────────────
+                VStack(spacing: 6) {
+                    Text("⚖️").font(.system(size: 44))
+                    Text("体重を記録")
+                        .font(.title3).fontWeight(.black)
+                        .foregroundColor(Color.duoDark)
+                    Text("Apple Health に記録されると自動で完了判定されます")
+                        .font(.system(size: 11))
+                        .foregroundColor(.duoSubtitle)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+
+                Divider()
+
+                ScrollView {
+                    VStack(spacing: 12) {
+
+                        // ── 手入力 ────────────────────────────────────
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("手入力", systemImage: "keyboard")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.duoPurple)
+
+                            HStack(spacing: 10) {
+                                TextField("例: 65.4", text: $manualInput)
+                                    .keyboardType(.decimalPad)
+                                    .focused($inputFocused)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+
+                                Text("kg")
+                                    .font(.headline)
+                                    .foregroundColor(.duoSubtitle)
+
+                                Button {
+                                    saveManualWeight()
+                                } label: {
+                                    if isSaving {
+                                        ProgressView()
+                                            .frame(width: 60, height: 42)
+                                    } else {
+                                        Text("保存")
+                                            .font(.headline.bold())
+                                            .foregroundColor(.white)
+                                            .frame(width: 60, height: 42)
+                                            .background(Capsule().fill(Color.duoPurple))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isSaving || manualInputKg == nil)
+                            }
+
+                            if let msg = savedMessage {
+                                Text(msg)
+                                    .font(.caption.bold())
+                                    .foregroundColor(msg.contains("✅") ? Color.duoGreen : Color.duoRed)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.duoPurple.opacity(0.06)))
+                        .padding(.horizontal, 16)
+
+                        // ── Withings 連携 ─────────────────────────────
+                        Button { openWithings() } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "scalemass.fill")
+                                    .font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Withingsを開く")
+                                        .font(.headline).fontWeight(.black)
+                                    Text("スマート体重計と連携して計測")
+                                        .font(.caption)
+                                        .opacity(0.8)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(Color(hex: "#00A6A6"))
+                            .padding(.horizontal, 20).padding(.vertical, 14)
+                            .background(RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(hex: "#00A6A6").opacity(0.08)))
+                            .padding(.horizontal, 16)
+                        }
+                        .buttonStyle(.plain)
+
+                        // ── 写真アップロード ───────────────────────────
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                onPhoto()
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "camera.fill")
+                                    .font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("写真で記録する")
+                                        .font(.headline).fontWeight(.black)
+                                    Text("体型写真を撮って変化を記録")
+                                        .font(.caption)
+                                        .opacity(0.8)
+                                }
+                                Spacer()
+                            }
+                            .foregroundColor(Color.duoBlue)
+                            .padding(.horizontal, 20).padding(.vertical, 14)
+                            .background(RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.duoBlue.opacity(0.08)))
+                            .padding(.horizontal, 16)
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer().frame(height: 20)
+                    }
+                    .padding(.top, 12)
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .font(.subheadline.bold())
+                        .foregroundColor(.duoPurple)
+                }
+            }
+        }
+        .onAppear { inputFocused = true }
+    }
+
+    private var manualInputKg: Double? {
+        let s = manualInput.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        guard let v = Double(s), v > 20, v < 300 else { return nil }
+        return v
+    }
+
+    private func saveManualWeight() {
+        guard let kg = manualInputKg else { return }
+        isSaving = true
+        inputFocused = false
+        Task {
+            let ok = await healthKit.saveBodyMass(kg: kg)
+            await MainActor.run {
+                isSaving = false
+                savedMessage = ok ? "✅ \(String(format: "%.1f", kg)) kg を記録しました" : "⚠️ 保存に失敗しました"
+                if ok {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func openWithings() {
+        dismiss()
+        let schemes = ["wiscale2://", "healthmate://", "withings://"]
+        let appStore = URL(string: "https://apps.apple.com/app/id542701020")!
+        if let url = schemes.compactMap({ URL(string: $0) })
+                            .first(where: { UIApplication.shared.canOpenURL($0) }) {
+            UIApplication.shared.open(url)
+        } else {
+            UIApplication.shared.open(appStore)
+        }
+    }
+}
+
+// MARK: - 90秒モード 共通カードビュー
+
+struct NinetySecondModeCard: View {
+    let mode: NinetySecondModeType
+    let doneToday: Bool
+    let streak: Int
+    let activeDays: Int
+    let graduated: Bool
+    let gifIndex: Int
+    let exerciseGifs: [String]
+    let onAction: () -> Void
+    let onExit: () -> Void
+
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var buttonGlow: CGFloat = 0.0
+    @State private var showBurst = false
+
+    private var accent: Color { mode.accentColor }
 
     var body: some View {
         ZStack {
-            // 背景
-            LinearGradient(
-                colors: doneToday
-                    ? [Color(hex: "#E8F4FF"), Color.white]
-                    : [Color(hex: "#F0FFF4"), Color.white],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            LinearGradient(colors: mode.backgroundColors, startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // ── ストリーク ──────────────────────────────────────────────
-                HStack(spacing: 6) {
-                    Text("🔥").font(.system(size: 18))
-                    Text("\(streak)日連続")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundColor(.duoDark)
+
+                // ── ストリーク + モードバッジ ────────────────────────────
+                VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text("🔥").font(.system(size: 18))
+                        Text("\(streak)日連続")
+                            .font(.system(size: 15, weight: .black))
+                            .foregroundColor(.duoDark)
+                    }
+                    Text(mode.modeBadge)
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 4)
+                        .background(Capsule().fill(accent))
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 10)
 
-                // ── GIF（スクワット以外・コンパクト・タップで切替）────────
-                // .drawingGroup() は GIF アニメーションを止めるため使用しない
+                // ── コンテンツエリア（FIT: GIF / FOOD・EDU: 絵文字イラスト）──
                 ZStack(alignment: .bottomTrailing) {
-                    GIFAnimationView(
-                        gifName: exerciseGifs[gifIndex % exerciseGifs.count],
-                        contentMode: .scaleAspectFit,
-                        maxFrames: 20
-                    )
-                    .id(gifIndex)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 140)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    if mode == .fit && !exerciseGifs.isEmpty {
+                        GIFAnimationView(
+                            gifName: exerciseGifs[gifIndex % exerciseGifs.count],
+                            contentMode: .scaleAspectFit,
+                            maxFrames: 20
+                        )
+                        .id(gifIndex)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 130)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    // 切替インジケータ
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(accentColor.opacity(0.7))
-                        .padding(8)
-                }
-                .padding(.horizontal, 28)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        gifIndex = (gifIndex + 1) % exerciseGifs.count
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(accent.opacity(0.7))
+                            .padding(8)
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(accent.opacity(0.08))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 130)
+                            Text(mode.illustrationEmoji)
+                                .font(.system(size: 72))
+                        }
                     }
                 }
+                .padding(.horizontal, 28)
 
-                Spacer().frame(height: 18)
+                Spacer().frame(height: 14)
 
-                // ── 大きなタグライン ──────────────────────────────────────
-                Text("今度こそ、続く。")
-                    .font(.system(size: 32, weight: .black, design: .rounded))
-                    .foregroundColor(accentColor)
-                    .shadow(color: accentColor.opacity(0.15), radius: 4, y: 2)
+                // ── タグライン ─────────────────────────────────────────────
+                Text(mode.tagline)
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundColor(accent)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
 
-                Spacer().frame(height: 20)
+                Spacer().frame(height: 16)
 
-                // ── メインスタートボタン（Fitingo全面）────────────────────
+                // ── メインボタン（Fitingo全面）─────────────────────────────
                 Button(action: {
                     withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { showBurst = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         showBurst = false
-                        onStart()
+                        onAction()
                     }
                 }) {
                     ZStack {
-                        // グロー
                         Circle()
-                            .fill(accentColor.opacity(0.15))
+                            .fill(accent.opacity(0.15))
                             .frame(width: 200 + buttonGlow, height: 200 + buttonGlow)
-
-                        // メイン円
                         Circle()
-                            .fill(accentColor)
+                            .fill(accent)
                             .frame(width: 180, height: 180)
-                            .shadow(color: accentColor.opacity(0.4), radius: 16, y: 6)
+                            .shadow(color: accent.opacity(0.4), radius: 16, y: 6)
                             .scaleEffect(showBurst ? 0.92 : pulseScale)
-
-                        // Fitingo 画像をボタン全面に大きく配置
                         Image("fitingo_button_mascot")
                             .resizable().scaledToFit()
                             .frame(width: 158, height: 158)
@@ -898,20 +1136,20 @@ struct NinetySecondModeView: View {
 
                 Spacer().frame(height: 14)
 
-                // ── ボタン下テキスト ──────────────────────────────────────
-                Text(doneToday ? "もう1セットやる ▶" : "今日の90秒、それだけ")
+                // ── サブテキスト ───────────────────────────────────────────
+                Text(doneToday ? "もう1回やる ▶" : mode.actionSubtitle)
                     .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundColor(doneToday ? accentColor : .duoDark)
+                    .foregroundColor(.duoDark)
 
                 Spacer()
 
-                // ── 7日進捗ドット ────────────────────────────────────────
+                // ── 7日進捗ドット ──────────────────────────────────────────
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
                         ForEach(0..<7, id: \.self) { i in
                             ZStack {
                                 Circle()
-                                    .fill(i < activeDays ? Color.duoGreen : Color(.systemGray5))
+                                    .fill(i < activeDays ? accent : Color(.systemGray5))
                                     .frame(width: 14, height: 14)
                                 if i < activeDays {
                                     Image(systemName: "checkmark")
@@ -921,7 +1159,9 @@ struct NinetySecondModeView: View {
                             }
                         }
                     }
-                    Text(graduated ? "🎉 7日続きました！全機能が開放されました！" : "あと\(max(0, 7 - activeDays))日で全機能が開放")
+                    Text(graduated
+                         ? "🎉 7日続きました！全機能が開放されました！"
+                         : "あと\(max(0, 7 - activeDays))日で全機能が開放")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
                 }
@@ -955,12 +1195,112 @@ struct NinetySecondModeView: View {
                 .padding(.bottom, 20)
             }
         }
-        .task {
-            await timeSlotMgr.loadTodayProgress()
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulseScale = 1.04
+                buttonGlow = 18
+            }
         }
-        // ライフサイクル管理された非同期タスクで GIF & アニメーションを駆動
+    }
+}
+
+// MARK: - 90秒モードハブ（FIT / FOOD / EDU を横スワイプで切替）
+// 5タブ・機能説明を見せず「今日の90秒」だけに絞る。初回起動から60秒以内に
+// 最初の1セットを完了させることが目的（docs/SamBezThieMuskJobs_plan.md Musk 案2 / Jobs 5-4）。
+// 7活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
+
+struct NinetySecondModeView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var timeSlotMgr: TimeSlotManager
+    let installedAt: Date
+    let onStart: () -> Void
+    let onExit: () -> Void
+    /// 設定画面からのプレビュー表示時は true（firstSetSeconds 計測を行わない）
+    var isPreview: Bool = false
+
+    @State private var selectedPage: Int = 0
+    @State private var gifIndex: Int = 0
+    @State private var showFoodLog    = false
+    @State private var showEduLog     = false
+    @State private var showDietSheet  = false
+    @State private var showDietPhoto  = false
+
+    private let exerciseGifs: [String] = [
+        "fItingo_wo_pushups",
+        "fitingo_wo_legs",
+        "fitingo_wo_burpee",
+        "fitingo_wo_range",
+    ]
+
+    private var todayTraining: Int {
+        TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
+    }
+    private var doneToday: Bool  { todayTraining > 0 }
+    private var activeDays: Int  { RetentionTracker.shared.localActiveDayCount }
+    private var graduated: Bool  { activeDays >= 7 }
+    private var streak: Int      { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
+
+    var body: some View {
+        TabView(selection: $selectedPage) {
+            // ── FIT ────────────────────────────────────────────
+            NinetySecondModeCard(
+                mode: .fit,
+                doneToday: doneToday,
+                streak: streak,
+                activeDays: activeDays,
+                graduated: graduated,
+                gifIndex: gifIndex,
+                exerciseGifs: exerciseGifs,
+                onAction: onStart,
+                onExit: onExit
+            )
+            .tag(0)
+
+            // ── FOOD ───────────────────────────────────────────
+            NinetySecondModeCard(
+                mode: .food,
+                doneToday: doneToday,
+                streak: streak,
+                activeDays: activeDays,
+                graduated: graduated,
+                gifIndex: 0,
+                exerciseGifs: [],
+                onAction: { showFoodLog = true },
+                onExit: onExit
+            )
+            .tag(1)
+
+            // ── EDU ────────────────────────────────────────────
+            NinetySecondModeCard(
+                mode: .edu,
+                doneToday: doneToday,
+                streak: streak,
+                activeDays: activeDays,
+                graduated: graduated,
+                gifIndex: 0,
+                exerciseGifs: [],
+                onAction: { showEduLog = true },
+                onExit: onExit
+            )
+            .tag(2)
+
+            // ── DIET ───────────────────────────────────────────
+            NinetySecondModeCard(
+                mode: .diet,
+                doneToday: doneToday,
+                streak: streak,
+                activeDays: activeDays,
+                graduated: graduated,
+                gifIndex: 0,
+                exerciseGifs: [],
+                onAction: { showDietSheet = true },
+                onExit: onExit
+            )
+            .tag(3)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .task { await timeSlotMgr.loadTodayProgress() }
         .task(id: "gifRotation") {
-            // GIF 自動切替（12秒ごと）
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 12_000_000_000)
                 withAnimation(.easeInOut(duration: 0.25)) {
@@ -968,16 +1308,43 @@ struct NinetySecondModeView: View {
                 }
             }
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
-                pulseScale = 1.04
-                buttonGlow = 18
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
             if !isPreview && todayTraining > 0 {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)
             }
+        }
+        // ── FOOD: フォトログを全画面表示 ──────────────────────────
+        .fullScreenCover(isPresented: $showFoodLog) {
+            PhotoLogView()
+        }
+        // ── EDU: 語学フォトログシートを表示 ──────────────────────
+        .sheet(isPresented: $showEduLog) {
+            EduPhotoLogSheet(
+                nodeEmoji: "📚",
+                nodeName: "語学",
+                onComplete: { _, _, _, _ in
+                    showEduLog = false
+                }
+            )
+        }
+        // ── DIET: 体重記録シートを表示 ────────────────────────────
+        .sheet(isPresented: $showDietSheet) {
+            Diet90sWeightSheet(
+                onPhoto: { showDietPhoto = true }
+            )
+            .environmentObject(HealthKitManager.shared)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        // ── DIET 写真: 体重フォトログ ──────────────────────────────
+        .sheet(isPresented: $showDietPhoto) {
+            EduPhotoLogSheet(
+                nodeEmoji: "⚖️",
+                nodeName: "体重ログ",
+                onComplete: { _, _, _, _ in
+                    showDietPhoto = false
+                }
+            )
         }
     }
 }

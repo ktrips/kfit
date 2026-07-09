@@ -1693,6 +1693,29 @@ final class HealthKitManager: ObservableObject {
 
     // MARK: - 摂取記録の書き込み
 
+    /// 体重（kg）を Apple Health に記録する。
+    /// DIET 90秒モードの手入力から呼ばれる。
+    @discardableResult
+    func saveBodyMass(kg: Double, timestamp: Date = Date()) async -> Bool {
+        guard isAvailable, isAuthorized else {
+            dlog("[HealthKit] ⚠️ Not authorized - skipping body mass save")
+            return false
+        }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return false }
+        let quantity = HKQuantity(unit: .gramUnit(with: .kilo), doubleValue: kg)
+        let sample   = HKQuantitySample(type: type, quantity: quantity,
+                                        start: timestamp, end: timestamp)
+        do {
+            try await store.save(sample)
+            await MainActor.run { self.latestBodyMass = kg }
+            dlog("[HealthKit] ✅ Body mass saved: \(String(format: "%.1f", kg)) kg")
+            return true
+        } catch {
+            dlog("[HealthKit] ⚠️ Body mass save failed: \(error)")
+            return false
+        }
+    }
+
     /// 食事カロリーを Apple Health に記録
     @discardableResult
     func saveDietaryEnergy(calories: Double, timestamp: Date, metadata: [String: Any]? = nil) async -> Bool {

@@ -360,6 +360,7 @@ struct FoodView: View {
         let sugar: Double
         let sodium: Double
         let source: String  // "クイック" | "フォト" | "HealthKit"
+        var photoLogItem: PhotoLogHistoryItem? = nil  // フォトログ由来の場合に原本を保持
 
         var slotLabel: String {
             let h = Calendar.current.component(.hour, from: time)
@@ -424,7 +425,8 @@ struct FoodView: View {
                 carbs: n.carbs,
                 sugar: n.sugar,
                 sodium: n.sodium,
-                source: "フォト"
+                source: "フォト",
+                photoLogItem: item  // 詳細シートで PhotoFeedDetailSheet と統一するために保持
             ))
         }
 
@@ -526,16 +528,15 @@ struct FoodView: View {
                     } else {
                         TabView {
                             ForEach(displayEntries) { entry in
-                                ScrollView {
-                                    VStack(spacing: 0) {
-                                        // ── 画像 or 絵文字アイコン ────────────────
-                                        Group {
-                                            if let img = entry.image {
-                                                Image(uiImage: img)
-                                                    .resizable()
-                                                    .scaledToFit()
-                                                    .cornerRadius(20)
-                                            } else {
+                                Group {
+                                    if let photoItem = entry.photoLogItem {
+                                        // フォトログ由来 → TOMO と共通の PhotoFeedDetailSheet を埋め込み
+                                        PhotoFeedDetailSheet(item: photoItem, embedded: true)
+                                    } else {
+                                        // クイックログ / HealthKit 由来 → シンプル表示
+                                        ScrollView {
+                                            VStack(spacing: 0) {
+                                                // ── 画像 or 絵文字アイコン ────────────────
                                                 ZStack {
                                                     RoundedRectangle(cornerRadius: 20)
                                                         .fill(
@@ -553,96 +554,80 @@ struct FoodView: View {
                                                             .padding(.horizontal, 16)
                                                     }
                                                 }
+                                                .frame(maxWidth: .infinity)
                                                 .frame(height: 200)
-                                            }
-                                        }
-                                        .frame(maxHeight: entry.image != nil ? 300 : 200)
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 10)
+                                                .padding(.horizontal, 16)
+                                                .padding(.top, 10)
 
-                                        // ── 時間帯ヘッダー（大きく目立つ）─────────
-                                        VStack(spacing: 6) {
-                                            // 時間帯ラベル（特大）
-                                            HStack(spacing: 10) {
-                                                Text(entry.slotEmoji)
-                                                    .font(.system(size: 28))
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(entry.slotLabel)
-                                                        .font(.system(size: 22, weight: .black))
-                                                        .foregroundColor(Color.duoOrange)
-                                                    Text(Self.timeFmt.string(from: entry.time))
-                                                        .font(.system(size: 15, weight: .bold, design: .monospaced))
-                                                        .foregroundColor(Color.duoOrange.opacity(0.75))
+                                                // ── 時間帯ヘッダー ────────────────────
+                                                HStack(spacing: 10) {
+                                                    Text(entry.slotEmoji).font(.system(size: 28))
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text(entry.slotLabel)
+                                                            .font(.system(size: 22, weight: .black))
+                                                            .foregroundColor(Color.duoOrange)
+                                                        Text(Self.timeFmt.string(from: entry.time))
+                                                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                                            .foregroundColor(Color.duoOrange.opacity(0.75))
+                                                    }
+                                                    Spacer()
+                                                    Text(entry.source)
+                                                        .font(.system(size: 11, weight: .bold))
+                                                        .foregroundColor(.secondary)
+                                                        .padding(.horizontal, 9).padding(.vertical, 4)
+                                                        .background(Color(.systemGray5))
+                                                        .clipShape(Capsule())
                                                 }
-                                                Spacer()
-                                                // ソースバッジ
-                                                Text(entry.source)
-                                                    .font(.system(size: 11, weight: .bold))
-                                                    .foregroundColor(.secondary)
-                                                    .padding(.horizontal, 9).padding(.vertical, 4)
-                                                    .background(Color(.systemGray5))
-                                                    .clipShape(Capsule())
-                                            }
-                                            .padding(.horizontal, 20)
+                                                .padding(.horizontal, 20)
+                                                .padding(.top, 14)
+                                                .padding(.bottom, 4)
 
-                                            // 食品名（画像ありの場合のみ表示）
-                                            if entry.image != nil {
-                                                Text(entry.name)
-                                                    .font(.system(size: 16, weight: .black))
-                                                    .foregroundColor(Color.duoDark)
-                                                    .multilineTextAlignment(.center)
-                                                    .padding(.horizontal, 20)
-                                            }
-                                        }
-                                        .padding(.top, 14)
-                                        .padding(.bottom, 4)
-
-                                        // ── カロリー大表示 ────────────────────────
-                                        if entry.calories > 0 {
-                                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                                Text("🔥")
-                                                    .font(.system(size: 26))
-                                                Text("\(entry.calories)")
-                                                    .font(.system(size: 44, weight: .black, design: .rounded))
-                                                    .foregroundColor(Color.duoOrange)
-                                                Text("kcal")
-                                                    .font(.system(size: 18, weight: .bold))
-                                                    .foregroundColor(Color.duoOrange.opacity(0.75))
-                                                    .padding(.bottom, 4)
-                                            }
-                                            .padding(.vertical, 10)
-                                            .frame(maxWidth: .infinity)
-                                            .background(Color.duoOrange.opacity(0.06))
-                                            .cornerRadius(16)
-                                            .padding(.horizontal, 16)
-                                        }
-
-                                        // ── P/F/C チップ ──────────────────────────
-                                        let hasDetail = entry.protein > 0 || entry.fat > 0 || entry.carbs > 0
-                                        if hasDetail {
-                                            HStack(spacing: 10) {
-                                                MacroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: Color.duoRed)
-                                                MacroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
-                                                MacroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.top, 10)
-                                        }
-
-                                        if entry.sugar > 0 || entry.sodium > 0 {
-                                            HStack(spacing: 10) {
-                                                if entry.sugar > 0 {
-                                                    MacroChip(label: "🍬 糖質", value: String(format: "%.1fg", entry.sugar), color: Color(hex: "#A78BFA"))
+                                                // ── カロリー大表示 ────────────────────
+                                                if entry.calories > 0 {
+                                                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                                        Text("🔥").font(.system(size: 26))
+                                                        Text("\(entry.calories)")
+                                                            .font(.system(size: 44, weight: .black, design: .rounded))
+                                                            .foregroundColor(Color.duoOrange)
+                                                        Text("kcal")
+                                                            .font(.system(size: 18, weight: .bold))
+                                                            .foregroundColor(Color.duoOrange.opacity(0.75))
+                                                            .padding(.bottom, 4)
+                                                    }
+                                                    .padding(.vertical, 10)
+                                                    .frame(maxWidth: .infinity)
+                                                    .background(Color.duoOrange.opacity(0.06))
+                                                    .cornerRadius(16)
+                                                    .padding(.horizontal, 16)
                                                 }
-                                                if entry.sodium > 0 {
-                                                    MacroChip(label: "🧂 塩分", value: String(format: "%.2fg", entry.sodium), color: Color(hex: "#1CB0F6"))
-                                                }
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.top, 6)
-                                        }
 
-                                        Spacer(minLength: 32)
+                                                // ── P/F/C チップ ──────────────────────
+                                                if entry.protein > 0 || entry.fat > 0 || entry.carbs > 0 {
+                                                    HStack(spacing: 10) {
+                                                        MacroChip(label: "P タンパク質", value: String(format: "%.1fg", entry.protein), color: Color.duoRed)
+                                                        MacroChip(label: "F 脂質",       value: String(format: "%.1fg", entry.fat),     color: Color(hex: "#F5A623"))
+                                                        MacroChip(label: "C 炭水化物",   value: String(format: "%.1fg", entry.carbs),   color: Color(hex: "#58CC02"))
+                                                    }
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.top, 10)
+                                                }
+
+                                                if entry.sugar > 0 || entry.sodium > 0 {
+                                                    HStack(spacing: 10) {
+                                                        if entry.sugar > 0 {
+                                                            MacroChip(label: "🍬 糖質", value: String(format: "%.1fg", entry.sugar), color: Color(hex: "#A78BFA"))
+                                                        }
+                                                        if entry.sodium > 0 {
+                                                            MacroChip(label: "🧂 塩分", value: String(format: "%.2fg", entry.sodium), color: Color(hex: "#1CB0F6"))
+                                                        }
+                                                    }
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.top, 6)
+                                                }
+
+                                                Spacer(minLength: 32)
+                                            }
+                                        }
                                     }
                                 }
                                 .tag(entry.id)

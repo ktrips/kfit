@@ -795,6 +795,16 @@ enum NinetySecondModeType: Int, CaseIterable {
         }
     }
 
+    /// バッジ（ボタン）の直後に続くメッセージ。例: 「FIT 90秒」＋「を押して始める、それだけ」
+    var actionMessageSuffix: String {
+        switch self {
+        case .fit:  return "を押して始める、それだけ"
+        case .diet: return "を押して計測する、それだけ"
+        case .food: return "を押して撮る、それだけ"
+        case .edu:  return "を押して記録する、それだけ"
+        }
+    }
+
     var accentColor: Color {
         switch self {
         case .fit:  return Color.duoGreen
@@ -1111,16 +1121,28 @@ struct NinetySecondModeCard: View {
 
                 Spacer().frame(height: 14)
 
-                // ── モードバッジ + サブテキスト ─────────────────────────────
-                VStack(spacing: 8) {
-                    Text(mode.modeBadge)
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 4)
-                        .background(Capsule().fill(accent))
-                    Text(doneToday ? "もう1回やる ▶" : "ボタンを押して始める、それだけ")
+                // ── モードバッジ（ボタン）+ メッセージ ─────────────────────
+                // 例: [FIT 90秒] を押して始める、それだけ（バッジ自体がアクショントリガー）
+                if doneToday {
+                    Text("もう1回やる ▶")
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundColor(.duoDark)
+                } else {
+                    HStack(spacing: 6) {
+                        Button(action: triggerAction) {
+                            Text(mode.modeBadge)
+                                .font(.system(size: 15, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 5)
+                                .background(Capsule().fill(accent))
+                                .scaleEffect(showBurst ? 0.92 : 1.0)
+                                .shadow(color: accent.opacity(0.35), radius: 6, y: 3)
+                        }
+                        .buttonStyle(.plain)
+                        Text(mode.actionMessageSuffix)
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .foregroundColor(.duoDark)
+                    }
                 }
 
                 Spacer()
@@ -1179,7 +1201,7 @@ struct NinetySecondModeCard: View {
     @ViewBuilder private var contentArea: some View {
         switch mode {
         case .fit:
-            // GIF（高さ 156 = 旧 130 の 20%増）
+            // GIF（高さ 156 = 旧 130 の 20%増）。窓全体がアクショントリガー
             ZStack(alignment: .bottomTrailing) {
                 GIFAnimationView(
                     gifName: exerciseGifs[gifIndex % max(1, exerciseGifs.count)],
@@ -1191,14 +1213,17 @@ struct NinetySecondModeCard: View {
                 .frame(height: 156)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundColor(accent.opacity(0.7))
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(accent)
                     .padding(8)
             }
+            .contentShape(Rectangle())
+            .scaleEffect(showBurst ? 0.97 : 1.0)
+            .onTapGesture { triggerAction() }
 
         case .food:
-            // 直近フォトのスライドショー
+            // 直近フォトのスライドショー。窓全体がアクショントリガー（スワイプはページ送り）
             ZStack {
                 if photoThumbnails.isEmpty {
                     RoundedRectangle(cornerRadius: 16)
@@ -1234,6 +1259,9 @@ struct NinetySecondModeCard: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .scaleEffect(showBurst ? 0.97 : 1.0)
+            .onTapGesture { triggerAction() }
 
         case .edu:
             // 大きな EDU アイコンボタン（コンテンツエリアがそのままボタン）
@@ -1256,6 +1284,7 @@ struct NinetySecondModeCard: View {
             .buttonStyle(.plain)
 
         case .diet:
+            // 窓全体がアクショントリガー
             ZStack {
                 RoundedRectangle(cornerRadius: 20)
                     .fill(accent.opacity(0.08))
@@ -1264,6 +1293,9 @@ struct NinetySecondModeCard: View {
                 Text("⚖️")
                     .font(.system(size: 80))
             }
+            .contentShape(Rectangle())
+            .scaleEffect(showBurst ? 0.97 : 1.0)
+            .onTapGesture { triggerAction() }
         }
     }
 

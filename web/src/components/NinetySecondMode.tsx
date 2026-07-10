@@ -38,12 +38,12 @@ function recordToday(): string[] {
 
 // ─── モード定義 ──────────────────────────────────────────────────────────────
 
-const ACTION_MESSAGE = 'ボタンを押して始める、それだけ';
-
 interface ModeConfig {
   id: string;
   badge: string;
   tagline: string;
+  /** バッジ（ボタン）の直後に続くメッセージ。例: [FIT 90秒]＋「を押して始める、それだけ」 */
+  actionSuffix: string;
   accent: string;
   accentDark: string;
   accentLight: string;
@@ -56,6 +56,7 @@ const MODES: ModeConfig[] = [
     id: 'fit',
     badge: 'FIT 90秒',
     tagline: '今度こそ、続く「筋トレ」',
+    actionSuffix: 'を押して始める、それだけ',
     accent: '#58CC02',
     accentDark: '#46A302',
     accentLight: 'rgba(88,204,2,0.1)',
@@ -66,6 +67,7 @@ const MODES: ModeConfig[] = [
     id: 'diet',
     badge: 'DIET 90秒',
     tagline: '今度こそ、続く「ダイエット」',
+    actionSuffix: 'を押して計測する、それだけ',
     accent: '#CE82FF',
     accentDark: '#9C5CC9',
     accentLight: 'rgba(206,130,255,0.1)',
@@ -76,6 +78,7 @@ const MODES: ModeConfig[] = [
     id: 'food',
     badge: 'FOOD 90秒',
     tagline: '今度こそ、続く「食事ログ」',
+    actionSuffix: 'を押して撮る、それだけ',
     accent: '#FF9600',
     accentDark: '#CC7700',
     accentLight: 'rgba(255,150,0,0.1)',
@@ -86,6 +89,7 @@ const MODES: ModeConfig[] = [
     id: 'edu',
     badge: 'EDU 90秒',
     tagline: '今度こそ、続く「語学」',
+    actionSuffix: 'を押して記録する、それだけ',
     accent: '#1CB0F6',
     accentDark: '#1090CC',
     accentLight: 'rgba(28,176,246,0.1)',
@@ -300,46 +304,45 @@ const ModeCard: React.FC<CardProps> = ({
           className="relative mx-6 mt-4 overflow-hidden rounded-2xl shadow-md"
           style={{ width: 'calc(100vw - 48px)', maxWidth: 400, height: 156 }}
         >
-          {/* コンテンツ本体 */}
+          {/* コンテンツ本体（窓全体がアクショントリガー）*/}
           {mode.emoji === null ? (
-            // FIT: GIF
-            <img
-              key={gifIdx}
-              src={GIFS[gifIdx % GIFS.length]}
-              alt="exercise"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
+            // FIT: GIF（クリックで開始）
+            <button
+              onClick={onAction}
+              style={{
+                width: '100%', height: '100%',
+                border: 'none', padding: 0, cursor: 'pointer',
+                background: 'transparent', display: 'block',
+              }}
+              aria-label="タップして始める"
+            >
+              <img
+                key={gifIdx}
+                src={GIFS[gifIdx % GIFS.length]}
+                alt="exercise"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </button>
           ) : (
-            // FOOD / EDU / DIET: 絵文字 + ラベル
-            mode.id === 'edu' ? (
-              // EDU: 窓全体をボタン
-              <button
-                onClick={onAction}
-                style={{
-                  width: '100%', height: '100%',
-                  background: accentLight,
-                  border: 'none', cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}
-              >
-                <span style={{ fontSize: 64 }}>📚</span>
+            // FOOD / EDU / DIET: 絵文字ボタン
+            <button
+              onClick={onAction}
+              style={{
+                width: '100%', height: '100%',
+                background: accentLight,
+                border: 'none', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+              aria-label="タップして始める"
+            >
+              <span style={{ fontSize: 64 }}>{mode.emoji}</span>
+              {mode.id === 'edu' && (
                 <span className="text-sm font-black" style={{ color: accent }}>
                   タップして語学を記録
                 </span>
-              </button>
-            ) : (
-              <div
-                style={{
-                  width: '100%', height: '100%',
-                  background: accentLight,
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 4,
-                }}
-              >
-                <span style={{ fontSize: 64 }}>{mode.emoji}</span>
-              </div>
-            )
+              )}
+            </button>
           )}
 
           {/* 隠すボタン（右上）*/}
@@ -450,7 +453,7 @@ const ModeCard: React.FC<CardProps> = ({
             transition: 'transform 1.6s ease-in-out',
             filter: `drop-shadow(0 8px 16px ${accent}55)`,
           }}
-          aria-label={doneToday ? 'もう1セット' : ACTION_MESSAGE}
+          aria-label={doneToday ? 'もう1セット' : `${mode.badge}${mode.actionSuffix}`}
         >
           <img
             src="/mascot.png"
@@ -460,16 +463,31 @@ const ModeCard: React.FC<CardProps> = ({
         </button>
       )}
 
-      {/* ── モードバッジ + サブテキスト ──────────────────────────────── */}
-      <span
-        className="mt-4 text-xs font-black px-4 py-1 rounded-full text-white"
-        style={{ background: accent }}
-      >
-        {mode.badge}
-      </span>
-      <p className="mt-2 text-sm font-semibold" style={{ color: '#999' }}>
-        {doneToday ? 'もう1セットやる ▶' : ACTION_MESSAGE}
-      </p>
+      {/* ── モードバッジ（ボタン）+ メッセージ ─────────────────────────── */}
+      {/* 例: [FIT 90秒] を押して始める、それだけ（バッジ自体がアクショントリガー）*/}
+      {doneToday ? (
+        <p className="mt-4 text-sm font-semibold" style={{ color: '#999' }}>
+          もう1セットやる ▶
+        </p>
+      ) : (
+        <div className="mt-4 flex items-center gap-1.5 flex-wrap justify-center px-4">
+          <button
+            onClick={onAction}
+            className="text-xs font-black px-4 py-1.5 rounded-full text-white"
+            style={{
+              background: accent,
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: `0 2px 8px ${accent}55`,
+            }}
+          >
+            {mode.badge}
+          </button>
+          <span className="text-sm font-bold" style={{ color: '#666' }}>
+            {mode.actionSuffix}
+          </span>
+        </div>
+      )}
 
       {/* ── Tips ─────────────────────────────────────────────────────── */}
       <div className="mt-4 flex items-center gap-2 px-6" style={{ maxWidth: 380 }}>

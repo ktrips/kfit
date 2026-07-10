@@ -259,10 +259,124 @@ export const NinetySecondMode: React.FC<Props> = ({
           alignItems: 'center',
           paddingBottom: 40,
           paddingTop: 16,
-          gap: 8,
+          gap: 10,
           background: 'transparent',
         }}
       >
+        {/* ── 7日達成 SNS 共有カード ───────────────────────────────── */}
+        {graduated && (
+          <div
+            style={{
+              width: 'calc(100vw - 48px)',
+              maxWidth: 380,
+              borderRadius: 22,
+              border: '2px solid #58CC02',
+              background: 'linear-gradient(135deg, #F0FFF4 0%, #DCFCE7 100%)',
+              padding: '22px 22px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 44 }}>🎉</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#1f1f1f', lineHeight: 1.2 }}>
+              7日、続きました。
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#46A302' }}>
+              今度こそ、続く。
+            </div>
+            <div style={{ display: 'flex', gap: 10, fontSize: 26, margin: '2px 0' }}>
+              {['💪', '⚖️', '🍱', '📚'].map((e) => <span key={e}>{e}</span>)}
+            </div>
+            <div style={{ fontSize: 12, color: '#777', fontWeight: 500 }}>
+              仲間に広めて、一緒に始めよう
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('7日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く')}&url=${encodeURIComponent('https://kfitapp.web.app')}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 999,
+                  background: '#000',
+                  color: '#fff',
+                  fontWeight: 900,
+                  fontSize: 13,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                𝕏 でシェア
+              </a>
+              <a
+                href={`https://line.me/R/msg/text/?${encodeURIComponent('7日続けました！\n今度こそ、続く。\n#Fitingo\nhttps://kfitapp.web.app')}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 999,
+                  background: '#06C755',
+                  color: '#fff',
+                  fontWeight: 900,
+                  fontSize: 13,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                LINE でシェア
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Loss Aversion バナー（7日達成後のみ表示）*/}
+        {graduated && (
+          <div
+            style={{
+              width: 'calc(100vw - 48px)',
+              maxWidth: 380,
+              padding: '14px 18px',
+              borderRadius: 16,
+              border: '1.5px solid #FF8C0066',
+              background: 'rgba(255,140,0,0.07)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#CC5500' }}>
+              ⚠️ この記録は30日後に削除されます
+            </div>
+            <div style={{ fontSize: 12, color: '#666', fontWeight: 500, lineHeight: 1.5 }}>
+              Fitingo Plus で永久保存 + AI週次分析 + 広告なし。
+              月額 <span style={{ fontWeight: 900, color: '#FF8C00' }}>480円</span>で続けた実績を守ろう。
+            </div>
+            <button
+              onClick={onExit}
+              style={{
+                alignSelf: 'flex-start',
+                padding: '8px 18px',
+                borderRadius: 999,
+                fontWeight: 900,
+                fontSize: 13,
+                color: '#fff',
+                background: '#FF8C00',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Plus で記録を守る →
+            </button>
+          </div>
+        )}
+
         {graduated && (
           <button
             onClick={onExit}
@@ -530,7 +644,7 @@ const ModeCard: React.FC<CardProps> = ({
           >
             {mode.badge}
           </button>
-          <span style={{ color: '#333', fontWeight: 900, fontSize: 18 }}>
+          <span style={{ color: '#333', fontWeight: 900, fontSize: 22 }}>
             {mode.actionSuffix}
           </span>
         </div>
@@ -548,8 +662,15 @@ const ModeCard: React.FC<CardProps> = ({
         </p>
       </div>
 
-      {/* ── 7日進捗ドット（ドット → 🔥連続 → あと◯日）──────────────── */}
+      {/* ── 7日進捗ドット（🔥連続 → ドット → あと◯日）──────────────── */}
       <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 6 }}>
+        {/* 🔥◯日連続 をドットの上に表示 */}
+        <div className="flex items-center" style={{ gap: 4 }}>
+          <span style={{ fontSize: 14 }}>🔥</span>
+          <span style={{ fontSize: 14, fontWeight: 900, color: '#1f1f1f' }}>
+            {streak}日連続
+          </span>
+        </div>
         <div className="flex" style={{ gap: 10 }}>
           {Array.from({ length: MAX_DAYS }).map((_, i) => (
             <div
@@ -565,13 +686,6 @@ const ModeCard: React.FC<CardProps> = ({
               )}
             </div>
           ))}
-        </div>
-        {/* 🔥◯日連続（あと◯日の上に表示）*/}
-        <div className="flex items-center" style={{ gap: 4 }}>
-          <span style={{ fontSize: 14 }}>🔥</span>
-          <span style={{ fontSize: 14, fontWeight: 900, color: '#1f1f1f' }}>
-            {streak}日連続
-          </span>
         </div>
         <p style={{ fontSize: 12, fontWeight: 700, color: graduated ? '#FF9600' : '#afafaf', margin: 0 }}>
           {graduated

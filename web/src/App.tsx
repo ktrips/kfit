@@ -103,10 +103,10 @@ function App() {
           setExercises(exercisesList);
           const { view: initView } = getInitialViewFromPath();
           if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport' && initView !== 'ninety') {
-            // LandingPage からモード選択でログインした場合 → 7日未満なら90秒モードへ
+            // 7日未達成ユーザーはデフォルトで90秒モードへ（毎回起動時）
             const savedMode = localStorage.getItem(NS90_MODE_KEY) as Mode90 | null;
-            if (savedMode && getActiveDays().length < 7) {
-              setNinetyMode(savedMode);
+            if (getActiveDays().length < 7) {
+              setNinetyMode(savedMode ?? 'fit');
               setCurrentView('ninety');
             } else {
               setCurrentView('dashboard');

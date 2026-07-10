@@ -105,12 +105,14 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
-    // ── 90秒モード（新規ユーザー向け 1 画面オンボーディング）──
-    // 5タブを見せず「今日の90秒」だけの画面で開始し、7活動日で全機能を開放する。
-    // 既存ユーザー（XP/ストリークあり）には初期化時に無効化する。
+    // ── 90秒モード（7日未達成ユーザーのデフォルト画面）──
+    // 7活動日を達成するまで毎回起動時に90秒モードで開始。
+    // 7日達成後はダッシュボードをデフォルトにする。
+    // 既存ユーザー（RetentionTracker 計測前から使用 = points>0 & activeDays==0）は除外。
     @AppStorage("simpleMode.enabled")     private var simpleModeEnabled = false
-    @AppStorage("simpleMode.initialized") private var simpleModeInitialized = false
     @AppStorage("simpleMode.installedAt") private var simpleModeInstalledAt = 0.0  // timeIntervalSince1970
+    /// セッション中に初期化済みかどうか（@State = 再起動でリセット）
+    @State private var sessionInitialized = false
 
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
@@ -169,15 +171,24 @@ struct MainTabView: View {
 
     // ── 90秒モード ──────────────────────────────────────────
 
-    /// 初回起動時のみ判定: 実績のない新規ユーザーだけ 90秒モードで開始する
+    /// 起動毎に1回だけ判定: 7日未達成ユーザーはデフォルトで90秒モードを表示する
     private func initializeSimpleModeIfNeeded() {
-        guard !simpleModeInitialized else { return }
+        guard !sessionInitialized else { return }
         guard let profile = authManager.userProfile else { return } // プロフィール取得後に再判定
-        simpleModeInitialized = true
-        simpleModeInstalledAt = Date().timeIntervalSince1970
-        let isExistingUser = profile.totalPoints > 0 || profile.streak > 0
-            || RetentionTracker.shared.localActiveDayCount > 0
-        simpleModeEnabled = !isExistingUser
+        sessionInitialized = true
+        if simpleModeInstalledAt == 0 { simpleModeInstalledAt = Date().timeIntervalSince1970 }
+
+        let activeDays = RetentionTracker.shared.localActiveDayCount
+        let hasRetentionData = activeDays > 0
+        let isPreExistingUser = (profile.totalPoints > 0 || profile.streak > 0) && !hasRetentionData
+
+        if isPreExistingUser {
+            // RetentionTracker 導入前から使っている既存ユーザーは強制しない
+            simpleModeEnabled = false
+        } else {
+            // 7日未達成なら90秒モード、達成済みならダッシュボード
+            simpleModeEnabled = activeDays < 7
+        }
     }
 
     private var simpleModeContent: some View {
@@ -1043,6 +1054,7 @@ struct NinetySecondModeCard: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var showBurst = false
     @State private var slideIndex: Int = 0
+    @State private var showPlusFromLoss = false
 
     private var accent: Color { mode.accentColor }
 
@@ -1131,7 +1143,7 @@ struct NinetySecondModeCard: View {
                         }
                         .buttonStyle(.plain)
                         Text(mode.actionMessageSuffix)
-                            .font(.system(size: 19, weight: .black, design: .rounded))
+                            .font(.system(size: 22, weight: .black, design: .rounded))
                             .foregroundColor(.duoDark)
                     }
                     .multilineTextAlignment(.center)
@@ -1146,6 +1158,38 @@ struct NinetySecondModeCard: View {
                 Spacer().frame(height: 12)
 
                 if graduated {
+                    // ── Loss Aversion バナー ────────────────────────────────
+                    VStack(spacing: 8) {
+                        Text("⚠️ この記録は30日後に削除されます")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color(hex: "#CC5500"))
+                            .multilineTextAlignment(.center)
+                        Text("Fitingo Plus で永久保存 + AI週次分析。\n月額480円で続けた実績を守ろう。")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.duoSubtitle)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
+                        Button {
+                            showPlusFromLoss = true
+                        } label: {
+                            Text("Plus で記録を守る →")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20).padding(.vertical, 9)
+                                .background(Capsule().fill(Color(hex: "#FF8C00")))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color(hex: "#FF8C00").opacity(0.08))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#FF8C00").opacity(0.3), lineWidth: 1.5))
+                    )
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+
                     Button(action: onExit) {
                         HStack(spacing: 6) {
                             Text("全機能を開く")
@@ -1189,6 +1233,7 @@ struct NinetySecondModeCard: View {
                 }
             }
         }
+        .sheet(isPresented: $showPlusFromLoss) { PlusView() }
     }
 
     // MARK: コンテンツエリア（モード別）
@@ -1458,6 +1503,13 @@ struct NinetySecondModeCard: View {
     // MARK: 7日進捗ドット（ストリーク → あと◯日 の順）
     private var progressDots: some View {
         VStack(spacing: 6) {
+            // 🔥◯日連続 をドットの上に表示
+            HStack(spacing: 4) {
+                Text("🔥").font(.system(size: 14))
+                Text("\(streak)日連続")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundColor(.duoDark)
+            }
             HStack(spacing: 10) {
                 ForEach(0..<7, id: \.self) { i in
                     ZStack {
@@ -1471,13 +1523,6 @@ struct NinetySecondModeCard: View {
                         }
                     }
                 }
-            }
-            // 🔥◯日連続 → あと◯日で全機能解放 の順で縦並び
-            HStack(spacing: 4) {
-                Text("🔥").font(.system(size: 14))
-                Text("\(streak)日連続")
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundColor(.duoDark)
             }
             Text(graduated
                  ? "🎉 7日続きました！全機能が開放されました！"
@@ -1519,6 +1564,8 @@ struct NinetySecondModeView: View {
     @State private var showEduLog     = false
     @State private var showDietSheet  = false
     @State private var showDietPhoto  = false
+    @State private var showGraduationCard = false
+    @AppStorage("ninety.graduationCardShown") private var graduationCardShown = false
 
     /// 直近 5 件の食事フォト（スライド用に高解像度）
     private var recentFoodThumbnails: [UIImage] {
@@ -1640,6 +1687,12 @@ struct NinetySecondModeView: View {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)
             }
         }
+        // 7日達成時に1回だけ共有カードを表示
+        .onAppear { checkGraduationCard() }
+        .onChange(of: graduated) { _, newValue in if newValue { checkGraduationCard() } }
+        .sheet(isPresented: $showGraduationCard) {
+            GraduationShareSheet(onExit: onExit)
+        }
         // ── FOOD: フォトログを全画面表示 ──────────────────────────
         .fullScreenCover(isPresented: $showFoodLog) {
             PhotoLogView()
@@ -1675,4 +1728,151 @@ struct NinetySecondModeView: View {
         }
         } // VStack
     }
+
+    private func checkGraduationCard() {
+        guard graduated, !graduationCardShown, !isPreview else { return }
+        graduationCardShown = true
+        // 少し遅延してシートを表示（TabView 初期化と競合しないよう）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            showGraduationCard = true
+        }
+    }
+}
+
+// MARK: - 7日達成 共有カード シート
+
+/// 7日連続達成時に一度だけ表示される共有シート。
+/// カード画像を ImageRenderer で生成し UIActivityViewController で共有する。
+struct GraduationShareSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onExit: () -> Void
+
+    @State private var showShareVC = false
+    @State private var renderedImage: UIImage? = nil
+
+    private let lpURL = "https://kfitapp.web.app"
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer().frame(height: 4)
+
+                cardView
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .shadow(color: .black.opacity(0.10), radius: 20, y: 8)
+                    .padding(.horizontal, 28)
+
+                Text("仲間に広めて、一緒に始めよう")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.duoSubtitle)
+
+                Button {
+                    renderAndShare()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .bold))
+                        Text("SNSでシェアする")
+                            .font(.system(size: 17, weight: .black))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Capsule().fill(Color(hex: "#58CC02")))
+                    .shadow(color: Color(hex: "#46A302").opacity(0.35), radius: 8, y: 4)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 28)
+
+                Button {
+                    dismiss()
+                    onExit()
+                } label: {
+                    Text("全機能を開く →")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.duoOrange)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
+            .navigationTitle("7日達成！🎉")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { dismiss() }
+                        .font(.system(size: 15, weight: .semibold))
+                }
+            }
+        }
+        .sheet(isPresented: $showShareVC) {
+            if let img = renderedImage {
+                GradShareActivityVC(items: [img, shareText])
+            }
+        }
+    }
+
+    private var shareText: String {
+        "7日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く\n\(lpURL)"
+    }
+
+    // MARK: カードビュー（ImageRenderer でも同じビューを使用）
+
+    private var cardView: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#F0FFF4"), Color(hex: "#DCFCE7")],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            VStack(spacing: 16) {
+                Text("🎉")
+                    .font(.system(size: 64))
+                VStack(spacing: 6) {
+                    Text("7日、続きました。")
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundColor(Color(hex: "#1f1f1f"))
+                    Text("今度こそ、続く。")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                }
+                HStack(spacing: 14) {
+                    ForEach(["💪", "⚖️", "🍱", "📚"], id: \.self) { e in
+                        Text(e).font(.system(size: 28))
+                    }
+                }
+                .padding(.top, 4)
+                Divider().padding(.horizontal, 32)
+                VStack(spacing: 2) {
+                    Text("Fitingo")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                    Text("kfitapp.web.app")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#999999"))
+                }
+            }
+            .padding(36)
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(4/5, contentMode: .fit)
+    }
+
+    private func renderAndShare() {
+        let renderer = ImageRenderer(
+            content: cardView.frame(width: 360, height: 450)
+        )
+        renderer.scale = 3.0
+        guard let img = renderer.uiImage else { return }
+        renderedImage = img
+        showShareVC = true
+    }
+}
+
+private struct GradShareActivityVC: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

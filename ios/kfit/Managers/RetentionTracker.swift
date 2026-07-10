@@ -99,6 +99,11 @@ final class RetentionTracker {
                 try await ref.setData(["firstActiveDay": firstActiveDay], merge: true)
                 try await ref.updateData(data)
                 dlog("[RetentionTracker] ✅ marked active: \(today)")
+
+                // LP ライブカウンター（stats/live）を加算
+                // LandingPage の「今日 XX 人が挑戦中」に反映される
+                let liveRef = Firestore.firestore().document("stats/live")
+                try? await liveRef.setData(["count_\(today)": FieldValue.increment(Int64(1))], merge: true)
             } catch {
                 // 失敗時は次回の記録で再試行できるようフラグとカウントを戻す
                 UserDefaults.standard.removeObject(forKey: lastMarkedKey)

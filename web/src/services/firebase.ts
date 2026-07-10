@@ -907,3 +907,27 @@ export const getDailyCalorieGoal = async (userId: string): Promise<DailyCalorieG
     percentAchieved,
   };
 };
+
+// ─── ライブカウンター（LP「今日 XX 人が挑戦中」）────────────────────────────
+
+const todayKey = () => `count_${new Date().toISOString().slice(0, 10)}`;
+
+/**
+ * stats/live ドキュメントをリアルタイム購読し、今日の参加者数をコールバックに渡す。
+ * 返り値のクリーンアップ関数を useEffect の return で呼ぶこと。
+ */
+export const subscribeLiveCount = (callback: (count: number) => void): (() => void) => {
+  const ref = doc(db, 'stats', 'live');
+  return onSnapshot(ref, (snap) => {
+    const data = snap.data();
+    callback(data?.[todayKey()] ?? 0);
+  }, () => callback(0));
+};
+
+/**
+ * 今日の参加者数を 1 増やす。ログイン成功後に呼ぶ（重複防止は呼び出し側で管理）。
+ */
+export const incrementLiveCount = async (): Promise<void> => {
+  const ref = doc(db, 'stats', 'live');
+  await setDoc(ref, { [todayKey()]: increment(1) }, { merge: true });
+};

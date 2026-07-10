@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { signInWithGoogle } from '../services/firebase';
+import React, { useState, useEffect, useRef } from 'react';
+import { signInWithGoogle, subscribeLiveCount, incrementLiveCount } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
@@ -65,6 +65,14 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
   const setUser = useAppStore((s) => s.setUser);
   const setError = useAppStore((s) => s.setError);
   const [loadingMode, setLoadingMode] = useState<Mode90 | null>(null);
+  const [liveCount, setLiveCount] = useState<number>(0);
+  const incrementedRef = useRef(false);
+
+  // ライブカウンター購読（未認証でも読める）
+  useEffect(() => {
+    const unsub = subscribeLiveCount(setLiveCount);
+    return unsub;
+  }, []);
 
   // Googleログイン + モード指定
   const handleSelectMode = async (mode: Mode90) => {
@@ -73,6 +81,11 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
     try {
       const user = await signInWithGoogle();
       setUser(user);
+      // ログイン成功後に今日の参加数を 1 加算（二重カウント防止）
+      if (!incrementedRef.current) {
+        incrementedRef.current = true;
+        incrementLiveCount().catch(() => {});
+      }
       onAuthenticated(mode);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ログインに失敗しました');
@@ -118,9 +131,28 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
       >
         今度こそ、<br />続く。
       </h1>
-      <p className="text-base font-semibold text-center mb-10" style={{ color: '#777' }}>
+      <p className="text-base font-semibold text-center mb-4" style={{ color: '#777' }}>
         何を続ける？ 7日間だけ試してみよう。
       </p>
+
+      {/* ── ライブカウンター ────────────────────────────────────── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 24,
+          padding: '8px 20px',
+          borderRadius: 999,
+          background: 'rgba(88,204,2,0.10)',
+          border: '1.5px solid rgba(88,204,2,0.25)',
+        }}
+      >
+        <span style={{ fontSize: 10, width: 8, height: 8, borderRadius: '50%', background: '#58CC02', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 0 3px rgba(88,204,2,0.25)' }} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: '#1f1f1f' }}>
+          今日{liveCount > 0 ? ` ${liveCount.toLocaleString()} 人` : ''}が挑戦中
+        </span>
+      </div>
 
       {/* ── 4モードボタン ──────────────────────────────────────── */}
       <div className="flex flex-col gap-4 w-full px-6" style={{ maxWidth: 420 }}>

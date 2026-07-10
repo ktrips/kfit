@@ -780,9 +780,9 @@ enum NinetySecondModeType: Int, CaseIterable {
     var modeBadge: String {
         switch self {
         case .fit:  return "FIT 90秒"
-        case .food: return "FOOD 90秒"
-        case .edu:  return "EDU 90秒"
-        case .diet: return "DIET 90秒"
+        case .food: return "FOOD"
+        case .edu:  return "EDU"
+        case .diet: return "DIET"
         }
     }
 
@@ -795,13 +795,13 @@ enum NinetySecondModeType: Int, CaseIterable {
         }
     }
 
-    /// バッジ（ボタン）の直後に続くメッセージ。例: 「FIT 90秒」＋「を押して始める、それだけ」
+    /// バッジ（ボタン）の直後に続くメッセージ。例: 「FIT 90秒」＋「で始める、それだけ」
     var actionMessageSuffix: String {
         switch self {
-        case .fit:  return "を押して始める、それだけ"
-        case .diet: return "を押して計測する、それだけ"
-        case .food: return "を押して撮る、それだけ"
-        case .edu:  return "を押して記録する、それだけ"
+        case .fit:  return "で始める、それだけ"
+        case .diet: return "ボタンで計測、それだけ"
+        case .food: return "ボタンで撮る、それだけ"
+        case .edu:  return "ボタンで例文、それだけ"
         }
     }
 
@@ -1054,16 +1054,6 @@ struct NinetySecondModeCard: View {
 
             VStack(spacing: 0) {
 
-                // ── ストリーク ──────────────────────────────────────────
-                HStack(spacing: 6) {
-                    Text("🔥").font(.system(size: 18))
-                    Text("\(streak)日連続")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundColor(.duoDark)
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 10)
-
                 // ── コンテンツエリア（表示/非表示トグル付き）───────────────
                 if topWindowVisible {
                     ZStack(alignment: .topTrailing) {
@@ -1083,6 +1073,7 @@ struct NinetySecondModeCard: View {
                         .padding(8)
                     }
                     .padding(.horizontal, 28)
+                    .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 } else {
                     // 表示ボタン（コンパクト）
@@ -1122,27 +1113,29 @@ struct NinetySecondModeCard: View {
                 Spacer().frame(height: 14)
 
                 // ── モードバッジ（ボタン）+ メッセージ ─────────────────────
-                // 例: [FIT 90秒] を押して始める、それだけ（バッジ自体がアクショントリガー）
+                // 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）
                 if doneToday {
                     Text("もう1回やる ▶")
-                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .font(.system(size: 20, weight: .black, design: .rounded))
                         .foregroundColor(.duoDark)
                 } else {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Button(action: triggerAction) {
                             Text(mode.modeBadge)
-                                .font(.system(size: 15, weight: .black))
+                                .font(.system(size: 17, weight: .black))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 14).padding(.vertical, 5)
+                                .padding(.horizontal, 16).padding(.vertical, 7)
                                 .background(Capsule().fill(accent))
                                 .scaleEffect(showBurst ? 0.92 : 1.0)
                                 .shadow(color: accent.opacity(0.35), radius: 6, y: 3)
                         }
                         .buttonStyle(.plain)
                         Text(mode.actionMessageSuffix)
-                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .font(.system(size: 19, weight: .black, design: .rounded))
                             .foregroundColor(.duoDark)
                     }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
                 }
 
                 Spacer()
@@ -1462,9 +1455,9 @@ struct NinetySecondModeCard: View {
         }
     }
 
-    // MARK: 7日進捗ドット
+    // MARK: 7日進捗ドット（ストリーク → あと◯日 の順）
     private var progressDots: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             HStack(spacing: 10) {
                 ForEach(0..<7, id: \.self) { i in
                     ZStack {
@@ -1478,6 +1471,13 @@ struct NinetySecondModeCard: View {
                         }
                     }
                 }
+            }
+            // 🔥◯日連続 → あと◯日で全機能解放 の順で縦並び
+            HStack(spacing: 4) {
+                Text("🔥").font(.system(size: 14))
+                Text("\(streak)日連続")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundColor(.duoDark)
             }
             Text(graduated
                  ? "🎉 7日続きました！全機能が開放されました！"
@@ -1544,8 +1544,29 @@ struct NinetySecondModeView: View {
     private var graduated: Bool  { activeDays >= 7 }
     private var streak: Int      { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
 
+    // モード選択カスタムドット（TabViewの標準ドットとボタンの重なりを防ぐため独立配置）
+    private var modePageDots: some View {
+        HStack(spacing: 8) {
+            ForEach(NinetySecondModeType.allCases, id: \.rawValue) { m in
+                let isSelected = m.rawValue == selectedPage
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isSelected
+                          ? NinetySecondModeType(rawValue: selectedPage)!.accentColor
+                          : Color(.systemGray4))
+                    .frame(width: isSelected ? 28 : 8, height: 8)
+                    .animation(.easeInOut(duration: 0.25), value: selectedPage)
+                    .onTapGesture { withAnimation { selectedPage = m.rawValue } }
+            }
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+    }
+
     var body: some View {
-        TabView(selection: $selectedPage) {
+        VStack(spacing: 0) {
+            modePageDots
+
+            TabView(selection: $selectedPage) {
             // ── FIT ────────────────────────────────────────────
             NinetySecondModeCard(
                 mode: .fit,
@@ -1603,8 +1624,8 @@ struct NinetySecondModeView: View {
                 onExit: onExit
             )
             .tag(3)
-        }
-        .tabViewStyle(.page(indexDisplayMode: .always))
+            }
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .task { await timeSlotMgr.loadTodayProgress() }
         .task(id: "gifRotation") {
             while !Task.isCancelled {
@@ -1652,5 +1673,6 @@ struct NinetySecondModeView: View {
                 }
             )
         }
+        } // VStack
     }
 }

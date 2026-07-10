@@ -56,7 +56,7 @@ const MODES: ModeConfig[] = [
     id: 'fit',
     badge: 'FIT 90秒',
     tagline: '今度こそ、続く「筋トレ」',
-    actionSuffix: 'を押して始める、それだけ',
+    actionSuffix: 'で始める、それだけ',
     accent: '#58CC02',
     accentDark: '#46A302',
     accentLight: 'rgba(88,204,2,0.1)',
@@ -65,9 +65,9 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'diet',
-    badge: 'DIET 90秒',
+    badge: 'DIET',
     tagline: '今度こそ、続く「ダイエット」',
-    actionSuffix: 'を押して計測する、それだけ',
+    actionSuffix: 'ボタンで計測、それだけ',
     accent: '#CE82FF',
     accentDark: '#9C5CC9',
     accentLight: 'rgba(206,130,255,0.1)',
@@ -76,9 +76,9 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'food',
-    badge: 'FOOD 90秒',
+    badge: 'FOOD',
     tagline: '今度こそ、続く「食事ログ」',
-    actionSuffix: 'を押して撮る、それだけ',
+    actionSuffix: 'ボタンで撮る、それだけ',
     accent: '#FF9600',
     accentDark: '#CC7700',
     accentLight: 'rgba(255,150,0,0.1)',
@@ -87,9 +87,9 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'edu',
-    badge: 'EDU 90秒',
+    badge: 'EDU',
     tagline: '今度こそ、続く「語学」',
-    actionSuffix: 'を押して記録する、それだけ',
+    actionSuffix: 'ボタンで例文、それだけ',
     accent: '#1CB0F6',
     accentDark: '#1090CC',
     accentLight: 'rgba(28,176,246,0.1)',
@@ -199,7 +199,7 @@ export const NinetySecondMode: React.FC<Props> = ({
     <div className="min-h-screen overflow-hidden" style={{ background: mode.bg }}>
 
       {/* ── ページインジケータ（モード切替ドット）─────────────────────── */}
-      <div className="flex justify-center gap-2 pt-5 pb-1">
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, paddingTop: 16, paddingBottom: 4 }}>
         {MODES.map((m, i) => (
           <button
             key={m.id}
@@ -251,21 +251,48 @@ export const NinetySecondMode: React.FC<Props> = ({
         ))}
       </div>
 
-      {/* ── 全機能ボタン ─────────────────────────────────────────────── */}
-      <div className="flex flex-col items-center pb-10 gap-2" style={{ marginTop: -8 }}>
+      {/* ── 全機能ボタン（ポチポチと重ならないよう独立セクションに）──── */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingBottom: 40,
+          paddingTop: 16,
+          gap: 8,
+          background: 'transparent',
+        }}
+      >
         {graduated && (
           <button
             onClick={onExit}
-            className="px-7 py-3 rounded-full font-black text-white shadow-lg"
-            style={{ background: '#FF9600', boxShadow: '0 4px 0 #cc7a00' }}
+            style={{
+              padding: '12px 28px',
+              borderRadius: 999,
+              fontWeight: 900,
+              fontSize: 15,
+              color: '#fff',
+              background: '#FF9600',
+              boxShadow: '0 4px 0 #cc7a00',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             全機能を開く →
           </button>
         )}
         <button
           onClick={onExit}
-          className="text-xs font-semibold underline"
-          style={{ color: '#afafaf' }}
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: '#afafaf',
+            textDecoration: 'underline',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 8px',
+          }}
         >
           すべての機能を見る
         </button>
@@ -310,13 +337,6 @@ const ModeCard: React.FC<CardProps> = ({
         paddingBottom: 16,
       }}
     >
-      {/* ── ストリーク ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 mt-3">
-        <span className="text-xl">🔥</span>
-        <span className="text-base font-black" style={{ color: '#1f1f1f' }}>
-          {streak}日連続
-        </span>
-      </div>
 
       {/* ── コンテンツ窓（表示 / 非表示）────────────────────────────── */}
       {topVisible ? (
@@ -484,26 +504,33 @@ const ModeCard: React.FC<CardProps> = ({
       )}
 
       {/* ── モードバッジ（ボタン）+ メッセージ ─────────────────────────── */}
-      {/* 例: [FIT 90秒] を押して始める、それだけ（バッジ自体がアクショントリガー）*/}
+      {/* 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）*/}
       {doneToday ? (
-        <p className="mt-4 text-sm font-semibold" style={{ color: '#999' }}>
+        <p className="mt-4 font-black" style={{ color: '#1f1f1f', fontSize: 18 }}>
           もう1セットやる ▶
         </p>
       ) : (
-        <div className="mt-4 flex items-center gap-1.5 flex-wrap justify-center px-4">
+        <div
+          className="mt-4 flex items-center flex-wrap justify-center"
+          style={{ gap: 8, padding: '0 16px' }}
+        >
           <button
             onClick={onAction}
-            className="text-xs font-black px-4 py-1.5 rounded-full text-white"
             style={{
               background: accent,
               border: 'none',
               cursor: 'pointer',
-              boxShadow: `0 2px 8px ${accent}55`,
+              borderRadius: 999,
+              color: '#fff',
+              fontWeight: 900,
+              fontSize: 16,
+              padding: '7px 20px',
+              boxShadow: `0 3px 10px ${accent}55`,
             }}
           >
             {mode.badge}
           </button>
-          <span className="text-sm font-bold" style={{ color: '#666' }}>
+          <span style={{ color: '#333', fontWeight: 900, fontSize: 18 }}>
             {mode.actionSuffix}
           </span>
         </div>
@@ -521,9 +548,9 @@ const ModeCard: React.FC<CardProps> = ({
         </p>
       </div>
 
-      {/* ── 7日進捗ドット ──────────────────────────────────────────────── */}
-      <div className="mt-5 flex flex-col items-center gap-2">
-        <div className="flex gap-2.5">
+      {/* ── 7日進捗ドット（ドット → 🔥連続 → あと◯日）──────────────── */}
+      <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 6 }}>
+        <div className="flex" style={{ gap: 10 }}>
           {Array.from({ length: MAX_DAYS }).map((_, i) => (
             <div
               key={i}
@@ -539,7 +566,14 @@ const ModeCard: React.FC<CardProps> = ({
             </div>
           ))}
         </div>
-        <p className="text-xs font-bold" style={{ color: graduated ? '#FF9600' : '#afafaf' }}>
+        {/* 🔥◯日連続（あと◯日の上に表示）*/}
+        <div className="flex items-center" style={{ gap: 4 }}>
+          <span style={{ fontSize: 14 }}>🔥</span>
+          <span style={{ fontSize: 14, fontWeight: 900, color: '#1f1f1f' }}>
+            {streak}日連続
+          </span>
+        </div>
+        <p style={{ fontSize: 12, fontWeight: 700, color: graduated ? '#FF9600' : '#afafaf', margin: 0 }}>
           {graduated
             ? '🎉 7日続きました！全機能が開放されています！'
             : `あと${MAX_DAYS - activeDays.length}日で全機能が開放`}

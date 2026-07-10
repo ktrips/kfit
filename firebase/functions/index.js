@@ -423,7 +423,7 @@ exports.computeRetentionStats = functions.pubsub
 // WeeklyReportView（iOS）から呼ばれ、結果は shared-reports ドキュメントにも保存される。
 // 認証必須・Plus クォータ（AI_QUOTA）を消費しない（週1回の軽量呼び出しのため無料扱い）。
 exports.generateWeeklyReport = functions
-  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .runWith({ timeoutSeconds: 60, memory: '256MB', secrets: ['OPENAI_API_KEY'] })
   .https.onCall(async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
@@ -431,7 +431,7 @@ exports.generateWeeklyReport = functions
 
     const { streak = 0, weekSets = 0, weekXP = 0, avgHRV, sleepScore } = data || {};
 
-    const apiKey = (functions.config().ai || {}).openai_key;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       // API キー未設定時はルールベースのコメントを返す（フォールバック）
       return { comment: generateRuleBasedComment(streak, weekSets, weekXP), aiGenerated: false };
@@ -503,15 +503,15 @@ function generateRuleBasedComment(streak, weekSets, _weekXP) {
 //   Free: 5 回（オンボーディングで「写真だけで記録」を体験させる）
 //   Plus: 300 回
 //
-// API キーの設定:
-//   firebase functions:config:set ai.openai_key="sk-..."
+// API キーの設定（Secret Manager）:
+//   firebase functions:secrets:set OPENAI_API_KEY
 // Plus 判定:
 //   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
 const AI_QUOTA = { free: 5, plus: 300 };
 const AI_DEFAULT_MODEL = 'gpt-5.4-mini';
 
 exports.aiProxy = functions
-  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .runWith({ timeoutSeconds: 60, memory: '256MB', secrets: ['OPENAI_API_KEY'] })
   .https.onCall(async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
@@ -540,8 +540,8 @@ exports.aiProxy = functions
       );
     }
 
-    // ── OpenAI 呼び出し（サーバー側キー） ────────────────────
-    const apiKey = (functions.config().ai || {}).openai_key;
+    // ── OpenAI 呼び出し（サーバー側キー: Secret Manager） ────
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new functions.https.HttpsError('failed-precondition', 'AI プロキシが未設定です');
     }

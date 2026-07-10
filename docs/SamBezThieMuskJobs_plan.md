@@ -33,7 +33,7 @@
 |---|---|---|
 | /release-check skill | ✅ | .claude/skills/release-check |
 | 継続コホート計測（7/30/90日） | ✅ | データ収集 + 週次集計 Functions すべて稼働（Blaze移行済み 2026-07-08） |
-| AI APIキー廃止（サーバー代理） | 🚧 | `aiProxy` + `generateWeeklyReport` Functions 実装済み。**`firebase functions:config:set ai.openai_key="sk-..."` → `firebase deploy --only functions` が残** |
+| AI APIキー廃止（サーバー代理） | 🚧 | `aiProxy` + `generateWeeklyReport` Functions 実装済み（Secret Manager 方式に移行済み）。**`firebase functions:secrets:set OPENAI_API_KEY` → `firebase deploy --only functions` が残** |
 
 ### P1 — 今月
 
@@ -60,7 +60,7 @@
 ### 次のアクション（上から順に）
 
 1. ~~**Firebase を Blaze プランへアップグレード**~~ → ✅ 完了（2026-07-08）
-2. **`firebase functions:config:set ai.openai_key="sk-..."` → `firebase deploy --only functions`**（AI コメント・コホート集計・aiProxy 全開放）
+2. **`firebase functions:secrets:set OPENAI_API_KEY` → `firebase deploy --only functions`**（AI コメント・コホート集計・aiProxy 全開放）
 3. App Store Connect にストア文言を反映
 4. 90秒モードを TestFlight で 3〜5 人に配布 → firstSetSeconds で 120 秒判定
 5. チャレンジ LP を SNS に 2 投稿 → 登録率 5% 判定

@@ -11,7 +11,13 @@ final class PlusManager: ObservableObject {
     static let shared = PlusManager()
 
     // MARK: - Published（MainThread で更新）
-    @Published var isPlus: Bool = false
+    /// Plus 状態。変化時に Firestore users/{uid}.isPlus へ同期する
+    /// （aiProxy がサーバー側で Plus クォータを判定するため — docs/ai_proxy_plan.md）
+    @Published var isPlus: Bool = false {
+        didSet {
+            if oldValue != isPlus { syncPlusFlagToFirestore() }
+        }
+    }
     @Published var isAdmin: Bool = false
     @Published var secretCode: String = "kfit5526"
     @Published var availableProducts: [Product] = []
@@ -49,6 +55,22 @@ final class PlusManager: ObservableObject {
         await fetchSecretCode()
         await checkSubscription()
         await loadProducts()
+
+        // ログイン後の初回 setup で必ずサーバーに現在値を反映
+        // （didSet は値が変化した時しか発火しないため）
+        syncPlusFlagToFirestore()
+    }
+
+    // MARK: - Firestore 同期
+
+    /// users/{uid}.isPlus をサーバーに反映（ログイン前の変化は次回 setup() 時に反映される）
+    private func syncPlusFlagToFirestore() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        db.collection("users").document(uid).setData(["isPlus": isPlus], merge: true) { error in
+            if let error {
+                dlog("[PlusManager] isPlus sync failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Admin

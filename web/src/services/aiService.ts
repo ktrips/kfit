@@ -5,7 +5,7 @@ export type AIProvider = 'openai' | 'gemini' | 'anthropic';
 export interface AISettings {
   provider: AIProvider;
   apiKey: string;
-  /** OpenAI: gpt-4o / gpt-4o-mini, Gemini: gemini-2.0-flash, Anthropic: claude-3-5-haiku */
+  /** OpenAI: gpt-5.4-mini, Gemini: gemini-3.1-flash-lite, Anthropic: claude-haiku-4-5 */
   model?: string;
 }
 
@@ -32,9 +32,9 @@ export function clearAISettings(): void {
 // ── デフォルトモデル ───────────────────────────────────────────────────────────
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-  openai:    'gpt-4o-mini',
-  gemini:    'gemini-2.0-flash',
-  anthropic: 'claude-3-5-haiku-20241022',
+  openai:    'gpt-5.4-mini',
+  gemini:    'gemini-3.1-flash-lite',
+  anthropic: 'claude-haiku-4-5',
 };
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {

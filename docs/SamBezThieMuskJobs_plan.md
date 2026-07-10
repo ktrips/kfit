@@ -15,7 +15,7 @@
 
 ---
 
-## 実施状況ダッシュボード（最終更新: 2026-07-08 Blaze対応）
+## 実施状況ダッシュボード（最終更新: 2026-07-10 aiProxy本番稼働）
 
 > 更新方法: `/plan-status` スキルで表示・更新。凡例: ✅完了 / 🚧実装済み・展開待ち / ⬜未着手
 
@@ -33,14 +33,14 @@
 |---|---|---|
 | /release-check skill | ✅ | .claude/skills/release-check |
 | 継続コホート計測（7/30/90日） | ✅ | データ収集 + 週次集計 Functions すべて稼働（Blaze移行済み 2026-07-08） |
-| AI APIキー廃止（サーバー代理） | 🚧 | `aiProxy` + `generateWeeklyReport` Functions 実装済み（Secret Manager 方式に移行済み）。**`firebase functions:secrets:set OPENAI_API_KEY` → `firebase deploy --only functions` が残** |
+| AI APIキー廃止（サーバー代理） | ✅ | サーバー本番稼働 + iOS を aiProxy 経由に切替（キー未設定がデフォルト経路）+ isPlus を Firestore 同期 + 設定UIを「設定不要・上級者はキー可」に降格 + Web モデルID更新（2026-07-10） |
 
 ### P1 — 今月
 
 | 施策 | 状況 | 備考 |
 |---|---|---|
-| 週次 AI レポート → 共有カード（URL 付き Web 閲覧） | ✅ | カード+共有リンク+AI コメント（`generateWeeklyReport`）実装済み。Functions デプロイ後に AI コメントが有効化 |
-| 90秒モード正式実装 | ✅ | 新規ユーザー自動有効・7日で開放・設定トグルあり |
+| 週次 AI レポート → 共有カード（URL 付き Web 閲覧） | ✅ | カード+共有リンク+AI コメント（`generateWeeklyReport`）本番稼働（APIキー設定済み 2026-07-10） |
+| 90秒モード正式実装 | ✅ | FIT→DIET→FOOD→EDU 4モードスワイプ・バッジ+「ボタンを押して始める、それだけ」統一・GIF高速化（iOS/Web、2026-07-10 hosting 反映済み） |
 | ストア文言のニッチ化 | 🚧 | appstore_metadata.md 書き換え済み。App Store Connect 反映が未実施 |
 | /port-feature skill | ✅ | .claude/skills/port-feature |
 
@@ -60,12 +60,14 @@
 ### 次のアクション（上から順に）
 
 1. ~~**Firebase を Blaze プランへアップグレード**~~ → ✅ 完了（2026-07-08）
-2. **`firebase functions:secrets:set OPENAI_API_KEY` → `firebase deploy --only functions`**（AI コメント・コホート集計・aiProxy 全開放）
-3. App Store Connect にストア文言を反映
+2. ~~**OPENAI_API_KEY 設定 → functions デプロイ**~~ → ✅ 完了（2026-07-10、aiProxy 本番稼働）
+3. ~~**iOS の AI 呼び出しを aiProxy 経由に切替 + Web モデルID更新**~~ → ✅ 完了（2026-07-10）
 4. 90秒モードを TestFlight で 3〜5 人に配布 → firstSetSeconds で 120 秒判定
 5. チャレンジ LP を SNS に 2 投稿 → 登録率 5% 判定
+6. App Store Connect にストア文言を反映
 
-※ rules + hosting は 2026-07-08 デプロイ済み（Web 同期修正・/r/{id}・戦略プラン公開・LP 継続率バッジすべて本番反映）
+※ rules + hosting は 2026-07-10 デプロイ済み（90秒モード新 UI・/r/{id}・LP すべて本番反映）
+※ aiProxy 切替を含む iOS ビルド（この変更）は次回 TestFlight/App Store 提出で配布される
 
 ---
 

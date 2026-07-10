@@ -30,16 +30,17 @@
 - ✅ `aiProxy` callable 関数（firebase/functions/index.js）
   - 認証必須 / users/{uid}.isPlus で Plus 判定 / users/{uid}/ai-usage/{YYYY-MM} で月次カウント
   - 画像（base64）+ プロンプトを受け、OpenAI chat/completions を代理呼び出し
-  - キー設定: `firebase functions:config:set ai.openai_key="sk-..."` → `firebase deploy --only functions`
+  - キー設定（Secret Manager 方式・2026-07-10 移行）: `firebase functions:secrets:set OPENAI_API_KEY` → `firebase deploy --only functions`
+  - ✅ 本番稼働確認（2026-07-10、Secret v1 が aiProxy/generateWeeklyReport にアタッチ済み）
 
 ## 残タスク（iOS 側の移行）
 
-1. **isPlus の Firestore 書き込み**: PlusManager の購入/復元成功時に `users/{uid}.isPlus` を更新（サーバーが Plus を判定できるようにする）
-2. **呼び出しの切り替え**: DuolingoTextExtractor / AuthenticationManager の直接 API 呼び出しを `Functions.functions().httpsCallable("aiProxy")` に置換
-   - ユーザー API キーが設定済みの既存ユーザーは従来経路を維持（後方互換）、未設定ユーザーはプロキシ経路
-3. **設定 UI の変更**: SETTINGS → LLM 設定の「API キー入力」を「上級者向け（自分のキーを使う）」に降格。デフォルトは設定不要
-4. **クォータ UI**: 残回数表示と、Free 枠消費時の Plus 誘導（`resource-exhausted` エラーの文言をそのまま表示）
-5. monetization_plan.md / 付録A の「※別途 API キー要」注記を削除
+1. ✅ **isPlus の Firestore 書き込み**: PlusManager の `isPlus` didSet + setup() 完了時に `users/{uid}.isPlus` を同期（2026-07-10）
+2. ✅ **呼び出しの切り替え**: API キー未設定時は `AIProxyClient`（callable REST を FirebaseFunctions SDK 非依存で叩く軽量クライアント）経由に置換。キー設定済みユーザーは従来経路を維持（2026-07-10）
+   - ※ SDK を使わない理由: AuthenticationManager/DuolingoTextExtractor は kedu ターゲットにもソース共有されており、kedu は FirebaseFunctions pod を持たないため
+3. ✅ **設定 UI の変更**: LLMSettingsView を「設定不要（サーバー経由）」の説明 + Free/Plus クォータ表示に刷新し、キー入力欄は「🔧 上級者向け」の折りたたみに降格（2026-07-10）
+4. **クォータ UI**: 残回数の常時表示は未実装（`resource-exhausted` のエラー文言表示のみ）
+5. monetization_plan.md / 付録A の「※別途 API キー要」注記の削除 ← 未確認
 
 ## セキュリティ
 

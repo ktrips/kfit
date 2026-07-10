@@ -296,6 +296,7 @@ struct LLMSettingsView: View {
     @StateObject private var authManager = AuthenticationManager.shared
     @State private var settings = LLMSettings.defaultSettings
     @State private var showSaveConfirmation = false
+    @State private var showAdvanced = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -305,10 +306,8 @@ struct LLMSettingsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     headerSection
-                    providerSection
-                    apiKeySection
-                    modelSection
-                    saveButton
+                    proxySection
+                    advancedSection
 
                     Spacer(minLength: 40)
                 }
@@ -317,13 +316,90 @@ struct LLMSettingsView: View {
                 .padding(.bottom, 20)
             }
         }
-        .navigationTitle("LLM設定")
+        .navigationTitle("フォトログAI")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             settings = await authManager.getLLMSettings()
+            // 自分のキーを使っている既存ユーザーには上級者設定を開いた状態で見せる
+            showAdvanced = !settings.apiKey.isEmpty
         }
         .alert("保存しました", isPresented: $showSaveConfirmation) {
             Button("OK", role: .cancel) { }
+        }
+    }
+
+    // MARK: - サーバー代理（デフォルト経路）の説明
+
+    private var proxySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundColor(Color.duoGreen)
+                Text("APIキーの設定は不要です")
+                    .font(.subheadline).fontWeight(.black)
+                    .foregroundColor(Color.duoDark)
+            }
+            Text("Fitingo のサーバーが代理で AI を呼び出すので、そのまま写真を撮るだけで使えます。")
+                .font(.caption)
+                .foregroundColor(Color.duoSubtitle)
+            HStack(spacing: 12) {
+                quotaChip(label: "Free", value: "月5回")
+                quotaChip(label: "Plus", value: "月300回")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.duoGreen.opacity(0.08))
+        .cornerRadius(12)
+    }
+
+    private func quotaChip(label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2).fontWeight(.black)
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(Capsule().fill(label == "Plus" ? Color.duoOrange : Color.duoGreen))
+            Text(value)
+                .font(.caption).fontWeight(.bold)
+                .foregroundColor(Color.duoDark)
+        }
+    }
+
+    // MARK: - 上級者向け（自分のキーを使う）
+
+    private var advancedSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showAdvanced.toggle() }
+            } label: {
+                HStack {
+                    Text("🔧").font(.subheadline)
+                    Text("上級者向け: 自分のAPIキーを使う")
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Image(systemName: showAdvanced ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+
+            if showAdvanced {
+                Text("キーを設定すると、月間回数の制限なくご自身のアカウントで直接 AI を呼び出します。空欄に戻すとサーバー経由に戻ります。")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+                    .padding(.horizontal, 4)
+                providerSection
+                apiKeySection
+                modelSection
+                saveButton
+            }
         }
     }
 

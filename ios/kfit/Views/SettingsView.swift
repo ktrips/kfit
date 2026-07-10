@@ -2031,9 +2031,9 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     Text("🤖").font(.title3).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("LLM設定")
+                        Text("フォトログAI")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("OpenAI, Anthropic, Google")
+                        Text("設定不要（サーバー経由）・上級者はAPIキーも可")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()

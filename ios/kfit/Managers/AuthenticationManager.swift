@@ -2620,10 +2620,6 @@ class PhotoLogManager: ObservableObject {
         isAnalyzing = true
         defer { isAnalyzing = false }
 
-        guard !settings.apiKey.isEmpty else {
-            throw PhotoLogError.noAPIKey
-        }
-
         // 画像をAPI送信用に縮小・圧縮してBase64エンコード
         guard let imageData = compressForAPI(image) else {
             throw PhotoLogError.invalidImage
@@ -2633,7 +2629,13 @@ class PhotoLogManager: ObservableObject {
         // プロンプト作成
         let prompt = createAnalysisPrompt(comment: comment)
 
-        // プロバイダーに応じてAPIを呼び出し
+        // ユーザー API キー未設定時はサーバー代理（aiProxy）経由 — 設定ゼロで動くデフォルト経路
+        guard !settings.apiKey.isEmpty else {
+            let text = try await AIProxyClient.call(prompt: prompt, imageBase64: base64Image)
+            return try parseNutritionJSON(text)
+        }
+
+        // 自分のキーを設定している上級者は従来どおり直接呼び出し（後方互換）
         switch settings.provider {
         case .openAI:
             return try await analyzeWithOpenAI(base64Image: base64Image, prompt: prompt, settings: settings)
@@ -3014,6 +3016,56 @@ class PhotoLogManager: ObservableObject {
         dlog("[PhotoLog] Successfully parsed nutrition: \(nutrition.calories)kcal")
 
         return nutrition
+    }
+}
+
+// MARK: - AI プロキシクライアント（サーバー代理呼び出し）
+
+/// Cloud Functions の aiProxy callable を REST プロトコルで直接呼ぶ軽量クライアント。
+/// FirebaseFunctions SDK に依存しない（kedu など SDK を持たないターゲットとソース共有するため）。
+/// ユーザーが自分の API キーを設定していない場合のデフォルト経路（docs/ai_proxy_plan.md 方式B）。
+enum AIProxyClient {
+    struct ProxyError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    /// aiProxy を呼び出してモデルの応答テキストを返す。
+    /// クォータ超過時はサーバーの日本語メッセージ（Plus 誘導文言）をそのまま throw する。
+    static func call(prompt: String, imageBase64: String? = nil) async throws -> String {
+        guard let user = Auth.auth().currentUser else {
+            throw ProxyError(message: "AI解析にはログインが必要です")
+        }
+        guard let projectID = FirebaseApp.app()?.options.projectID,
+              let url = URL(string: "https://us-central1-\(projectID).cloudfunctions.net/aiProxy") else {
+            throw ProxyError(message: "AIプロキシのURLを構成できません")
+        }
+        let token = try await user.getIDToken()
+
+        var payload: [String: Any] = ["prompt": prompt]
+        if let imageBase64 { payload["imageBase64"] = imageBase64 }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["data": payload])
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        if let status = (response as? HTTPURLResponse)?.statusCode, status != 200 {
+            // callable のエラー形式: { "error": { "message": "...", "status": "RESOURCE_EXHAUSTED" } }
+            let message = ((json?["error"] as? [String: Any])?["message"] as? String)
+                ?? "AI解析に失敗しました (HTTP \(status))"
+            throw ProxyError(message: message)
+        }
+        guard let result = json?["result"] as? [String: Any],
+              let text = result["text"] as? String, !text.isEmpty else {
+            throw ProxyError(message: "AI応答の形式が想定外です")
+        }
+        return text
     }
 }
 

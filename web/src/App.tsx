@@ -105,7 +105,7 @@ function App() {
           if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport' && initView !== 'ninety') {
             // 7日未達成ユーザーはデフォルトで90秒モードへ（毎回起動時）
             const savedMode = localStorage.getItem(NS90_MODE_KEY) as Mode90 | null;
-            if (getActiveDays().length < 7) {
+            if (getActiveDays().length < 5) {
               setNinetyMode(savedMode ?? 'fit');
               setCurrentView('ninety');
             } else {
@@ -344,7 +344,7 @@ function App() {
             onDietLog={()  => navigate(user ? 'dietGoal' : 'login')}
             onExit={() => {
               // 7日以上なら全機能解放（dashboard）、未満なら landing へ
-              if (user && getActiveDays().length >= 7) {
+              if (user && getActiveDays().length >= 5) {
                 navigate('dashboard');
               } else {
                 navigate(user ? 'dashboard' : 'login');
@@ -364,7 +364,7 @@ function App() {
           <LandingPage
             onAuthenticated={(mode) => {
               setNinetyMode(mode);
-              if (getActiveDays().length < 7) {
+              if (getActiveDays().length < 5) {
                 navigate('ninety');
               } else {
                 navigate('dashboard');

@@ -105,12 +105,13 @@ struct MainTabView: View {
     @AppStorage(MainMenuTabPreferences.defaultTabKey) private var defaultTabRaw = MainMenuTab.fit.rawValue
     @AppStorage(MainMenuTabPreferences.orderKey) private var tabOrderRaw = MainMenuTabPreferences.storedOrder(from: MainMenuTabPreferences.defaultOrder)
 
-    // ── 90秒モード（7日未達成ユーザーのデフォルト画面）──
-    // 7活動日を達成するまで毎回起動時に90秒モードで開始。
-    // 7日達成後はダッシュボードをデフォルトにする。
+    // ── 90秒モード（5日未達成ユーザーのデフォルト画面）──
+    // 5活動日を達成するまで毎回起動時に90秒モードで開始。
+    // 5日達成後はダッシュボードをデフォルトにする。
     // 既存ユーザー（RetentionTracker 計測前から使用 = points>0 & activeDays==0）は除外。
-    @AppStorage("simpleMode.enabled")     private var simpleModeEnabled = false
-    @AppStorage("simpleMode.installedAt") private var simpleModeInstalledAt = 0.0  // timeIntervalSince1970
+    @AppStorage("simpleMode.enabled")           private var simpleModeEnabled = false
+    @AppStorage("simpleMode.installedAt")       private var simpleModeInstalledAt = 0.0  // timeIntervalSince1970
+    @AppStorage("simpleMode.selectedModeIndex") private var selectedModeIndex = 0        // LoginView で選択したモード
     /// セッション中に初期化済みかどうか（@State = 再起動でリセット）
     @State private var sessionInitialized = false
 
@@ -171,7 +172,7 @@ struct MainTabView: View {
 
     // ── 90秒モード ──────────────────────────────────────────
 
-    /// 起動毎に1回だけ判定: 7日未達成ユーザーはデフォルトで90秒モードを表示する
+    /// 起動毎に1回だけ判定: 5日未達成ユーザーはデフォルトで90秒モードを表示する
     private func initializeSimpleModeIfNeeded() {
         guard !sessionInitialized else { return }
         guard let profile = authManager.userProfile else { return } // プロフィール取得後に再判定
@@ -186,8 +187,8 @@ struct MainTabView: View {
             // RetentionTracker 導入前から使っている既存ユーザーは強制しない
             simpleModeEnabled = false
         } else {
-            // 7日未達成なら90秒モード、達成済みならダッシュボード
-            simpleModeEnabled = activeDays < 7
+            // 5日未達成なら90秒モード、達成済みならダッシュボード
+            simpleModeEnabled = activeDays < 5
         }
     }
 
@@ -200,7 +201,8 @@ struct MainTabView: View {
             },
             onExit: {
                 withAnimation(.easeInOut(duration: 0.3)) { simpleModeEnabled = false }
-            }
+            },
+            initialPage: selectedModeIndex
         )
         .fullScreenCover(isPresented: $showTrainingTracker) {
             ExerciseTrackerView(isPresented: $showTrainingTracker)
@@ -1152,7 +1154,7 @@ struct NinetySecondModeCard: View {
 
                 Spacer()
 
-                // ── 7日進捗ドット ──────────────────────────────────────────
+                // ── 5日進捗ドット ──────────────────────────────────────────
                 progressDots
 
                 Spacer().frame(height: 12)
@@ -1500,35 +1502,38 @@ struct NinetySecondModeCard: View {
         }
     }
 
-    // MARK: 7日進捗ドット（ストリーク → あと◯日 の順）
+    // MARK: 5日進捗ドット（ストリーク → あと◯日 の順）
     private var progressDots: some View {
-        VStack(spacing: 6) {
-            // 🔥◯日連続 をドットの上に表示
-            HStack(spacing: 4) {
-                Text("🔥").font(.system(size: 14))
+        VStack(spacing: 8) {
+            // 🔥◯日連続
+            HStack(spacing: 5) {
+                Text("🔥").font(.system(size: 22))
                 Text("\(streak)日連続")
-                    .font(.system(size: 14, weight: .black))
+                    .font(.system(size: 22, weight: .black))
                     .foregroundColor(.duoDark)
             }
-            HStack(spacing: 10) {
-                ForEach(0..<7, id: \.self) { i in
+            // ドット
+            HStack(spacing: 12) {
+                ForEach(0..<5, id: \.self) { i in
                     ZStack {
                         Circle()
                             .fill(i < activeDays ? accent : Color(.systemGray5))
-                            .frame(width: 14, height: 14)
+                            .frame(width: 20, height: 20)
+                            .shadow(color: i < activeDays ? accent.opacity(0.4) : .clear, radius: 4, y: 2)
                         if i < activeDays {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 7, weight: .black))
+                                .font(.system(size: 10, weight: .black))
                                 .foregroundColor(.white)
                         }
                     }
                 }
             }
+            // あと◯日
             Text(graduated
-                 ? "🎉 7日続きました！全機能が開放されました！"
-                 : "あと\(max(0, 7 - activeDays))日で全機能が開放")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
+                 ? "🎉 5日続きました！全機能が開放されました！"
+                 : "あと\(max(0, 5 - activeDays))日で全機能が開放")
+                .font(.system(size: 16, weight: .black))
+                .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
         }
     }
 
@@ -1545,7 +1550,7 @@ struct NinetySecondModeCard: View {
 // MARK: - 90秒モードハブ（FIT / DIET / FOOD / EDU を横スワイプで切替）
 // 5タブ・機能説明を見せず「今日の90秒」だけに絞る。初回起動から60秒以内に
 // 最初の1セットを完了させることが目的（docs/SamBezThieMuskJobs_plan.md Musk 案2 / Jobs 5-4）。
-// 7活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
+// 5活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
 
 struct NinetySecondModeView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -1557,6 +1562,8 @@ struct NinetySecondModeView: View {
     let onExit: () -> Void
     /// 設定画面からのプレビュー表示時は true（firstSetSeconds 計測を行わない）
     var isPreview: Bool = false
+    /// LoginView で選択したモードのインデックス（0=FIT, 1=DIET, 2=FOOD, 3=EDU）
+    var initialPage: Int = 0
 
     @State private var selectedPage: Int = 0
     @State private var gifIndex: Int = 0
@@ -1588,7 +1595,7 @@ struct NinetySecondModeView: View {
     }
     private var doneToday: Bool  { todayTraining > 0 }
     private var activeDays: Int  { RetentionTracker.shared.localActiveDayCount }
-    private var graduated: Bool  { activeDays >= 7 }
+    private var graduated: Bool  { activeDays >= 5 }
     private var streak: Int      { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
 
     // モード選択カスタムドット（TabViewの標準ドットとボタンの重なりを防ぐため独立配置）
@@ -1687,8 +1694,11 @@ struct NinetySecondModeView: View {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)
             }
         }
-        // 7日達成時に1回だけ共有カードを表示
-        .onAppear { checkGraduationCard() }
+        // 選択したモードのページから開始
+        .onAppear {
+            selectedPage = initialPage
+            checkGraduationCard()
+        }
         .onChange(of: graduated) { _, newValue in if newValue { checkGraduationCard() } }
         .sheet(isPresented: $showGraduationCard) {
             GraduationShareSheet(onExit: onExit)
@@ -1739,9 +1749,9 @@ struct NinetySecondModeView: View {
     }
 }
 
-// MARK: - 7日達成 共有カード シート
+// MARK: - 5日達成 共有カード シート
 
-/// 7日連続達成時に一度だけ表示される共有シート。
+/// 5日連続達成時に一度だけ表示される共有シート。
 /// カード画像を ImageRenderer で生成し UIActivityViewController で共有する。
 struct GraduationShareSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -1797,7 +1807,7 @@ struct GraduationShareSheet: View {
 
                 Spacer()
             }
-            .navigationTitle("7日達成！🎉")
+            .navigationTitle("5日達成！🎉")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -1814,7 +1824,7 @@ struct GraduationShareSheet: View {
     }
 
     private var shareText: String {
-        "7日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く\n\(lpURL)"
+        "5日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く\n\(lpURL)"
     }
 
     // MARK: カードビュー（ImageRenderer でも同じビューを使用）
@@ -1829,7 +1839,7 @@ struct GraduationShareSheet: View {
                 Text("🎉")
                     .font(.system(size: 64))
                 VStack(spacing: 6) {
-                    Text("7日、続きました。")
+                    Text("5日、続きました。")
                         .font(.system(size: 30, weight: .black, design: .rounded))
                         .foregroundColor(Color(hex: "#1f1f1f"))
                     Text("今度こそ、続く。")

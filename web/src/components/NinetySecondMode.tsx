@@ -17,7 +17,7 @@ const TIPS: Record<string, string[]> = {
   diet: ['⚖️ 毎朝の計測が成功の鍵', '📉 記録するだけで体重が落ちる', '🎯 数値を見ると行動が変わる', '🌟 小さな変化を見逃さないで！'],
 };
 
-const MAX_DAYS = 7;
+const MAX_DAYS = 5;
 const NS90_KEY = 'ns90.activeDates';
 const NS90_TOP = 'ns90.topVisible';
 
@@ -263,7 +263,7 @@ export const NinetySecondMode: React.FC<Props> = ({
           background: 'transparent',
         }}
       >
-        {/* ── 7日達成 SNS 共有カード ───────────────────────────────── */}
+        {/* ── 5日達成 SNS 共有カード ───────────────────────────────── */}
         {graduated && (
           <div
             style={{
@@ -282,7 +282,7 @@ export const NinetySecondMode: React.FC<Props> = ({
           >
             <div style={{ fontSize: 44 }}>🎉</div>
             <div style={{ fontSize: 24, fontWeight: 900, color: '#1f1f1f', lineHeight: 1.2 }}>
-              7日、続きました。
+              5日、続きました。
             </div>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#46A302' }}>
               今度こそ、続く。
@@ -295,7 +295,7 @@ export const NinetySecondMode: React.FC<Props> = ({
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
               <a
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('7日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く')}&url=${encodeURIComponent('https://kfitapp.web.app')}`}
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent('5日続けました！\n今度こそ、続く。\n#Fitingo #今度こそ続く')}&url=${encodeURIComponent('https://kfitapp.web.app')}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -314,7 +314,7 @@ export const NinetySecondMode: React.FC<Props> = ({
                 𝕏 でシェア
               </a>
               <a
-                href={`https://line.me/R/msg/text/?${encodeURIComponent('7日続けました！\n今度こそ、続く。\n#Fitingo\nhttps://kfitapp.web.app')}`}
+                href={`https://line.me/R/msg/text/?${encodeURIComponent('5日続けました！\n今度こそ、続く。\n#Fitingo\nhttps://kfitapp.web.app')}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -336,7 +336,7 @@ export const NinetySecondMode: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Loss Aversion バナー（7日達成後のみ表示）*/}
+        {/* Loss Aversion バナー（5日達成後のみ表示）*/}
         {graduated && (
           <div
             style={{
@@ -662,34 +662,37 @@ const ModeCard: React.FC<CardProps> = ({
         </p>
       </div>
 
-      {/* ── 7日進捗ドット（🔥連続 → ドット → あと◯日）──────────────── */}
-      <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 6 }}>
-        {/* 🔥◯日連続 をドットの上に表示 */}
-        <div className="flex items-center" style={{ gap: 4 }}>
-          <span style={{ fontSize: 14 }}>🔥</span>
-          <span style={{ fontSize: 14, fontWeight: 900, color: '#1f1f1f' }}>
+      {/* ── 5日進捗ドット（🔥連続 → ドット → あと◯日）──────────────── */}
+      <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 8 }}>
+        {/* 🔥◯日連続 */}
+        <div className="flex items-center" style={{ gap: 5 }}>
+          <span style={{ fontSize: 22 }}>🔥</span>
+          <span style={{ fontSize: 22, fontWeight: 900, color: '#1f1f1f', letterSpacing: '-0.5px' }}>
             {streak}日連続
           </span>
         </div>
-        <div className="flex" style={{ gap: 10 }}>
+        {/* ドット */}
+        <div className="flex" style={{ gap: 12 }}>
           {Array.from({ length: MAX_DAYS }).map((_, i) => (
             <div
               key={i}
               style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 20, height: 20, borderRadius: '50%',
                 background: i < activeDays.length ? accent : '#e5e5e5',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: i < activeDays.length ? `0 2px 6px ${accent}66` : 'none',
               }}
             >
               {i < activeDays.length && (
-                <span style={{ color: '#fff', fontSize: 8, fontWeight: 900, lineHeight: 1 }}>✓</span>
+                <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>
               )}
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 12, fontWeight: 700, color: graduated ? '#FF9600' : '#afafaf', margin: 0 }}>
+        {/* あと◯日 */}
+        <p style={{ fontSize: 16, fontWeight: 900, color: graduated ? '#FF9600' : '#555', margin: 0, letterSpacing: '-0.3px' }}>
           {graduated
-            ? '🎉 7日続きました！全機能が開放されています！'
+            ? '🎉 5日続きました！全機能が開放されています！'
             : `あと${MAX_DAYS - activeDays.length}日で全機能が開放`}
         </p>
       </div>

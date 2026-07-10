@@ -1186,7 +1186,8 @@ struct NinetySecondModeCard: View {
         }
         // FOOD: 5秒ごとにフォトスライド
         .task(id: "photoSlide_\(mode.rawValue.description)") {
-            guard mode == .food, !photoThumbnails.isEmpty else { return }
+            // FOOD と EDU どちらも 5 秒スライド
+            guard (mode == .food || mode == .edu), !photoThumbnails.isEmpty else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !photoThumbnails.isEmpty else { continue }
@@ -1264,24 +1265,41 @@ struct NinetySecondModeCard: View {
             .onTapGesture { triggerAction() }
 
         case .edu:
-            // 大きな EDU アイコンボタン（コンテンツエリアがそのままボタン）
-            Button(action: triggerAction) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
+            // 直近 Duolingo 投稿のスライドショー（FOOD と同じ構造）
+            ZStack {
+                if photoThumbnails.isEmpty {
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(accent.opacity(0.08))
                         .frame(maxWidth: .infinity)
                         .frame(height: 156)
-                    VStack(spacing: 6) {
-                        Text("📚")
-                            .font(.system(size: 72))
-                        Text("タップして語学を記録")
-                            .font(.system(size: 13, weight: .black))
-                            .foregroundColor(accent)
+                        .overlay(Text("📚").font(.system(size: 64)))
+                } else {
+                    TabView(selection: $slideIndex) {
+                        ForEach(Array(photoThumbnails.enumerated()), id: \.offset) { i, img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 156)
+                                .clipped()
+                                .tag(i)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 156)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(alignment: .bottomTrailing) {
+                        HStack(spacing: 4) {
+                            ForEach(0..<photoThumbnails.count, id: \.self) { i in
+                                Circle()
+                                    .fill(i == slideIndex ? Color.white : Color.white.opacity(0.4))
+                                    .frame(width: 5, height: 5)
+                            }
+                        }
+                        .padding(8)
                     }
                 }
-                .scaleEffect(showBurst ? 0.96 : 1.0)
             }
-            .buttonStyle(.plain)
 
         case .diet:
             // 窓全体がアクショントリガー
@@ -1315,38 +1333,132 @@ struct NinetySecondModeCard: View {
             .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
 
         case .food:
-            // AI食事フォトログ 大型ボタン
+            // AI食事フォトログ（Routine の photoLogButton スタイル）
             Button(action: triggerAction) {
                 HStack(spacing: 16) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(.system(size: 36, weight: .semibold))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("AI食事フォトログ")
-                            .font(.system(size: 22, weight: .black, design: .rounded))
-                        Text("写真を撮るだけでカロリー自動記録")
-                            .font(.system(size: 12, weight: .semibold))
-                            .opacity(0.85)
+                    // 最近の写真サムネイル or カメラアイコン
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(0.22))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
+                            )
+                            .frame(width: 76, height: 76)
+                        if let firstPhoto = photoThumbnails.first {
+                            Image(uiImage: firstPhoto)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 76, height: 76)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        } else {
+                            VStack(spacing: 3) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text("AI")
+                                    .font(.system(size: 10, weight: .black))
+                                    .foregroundColor(.white.opacity(0.95))
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("📸 AI食事フォトログ")
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        if photoThumbnails.isEmpty {
+                            Text("写真を撮ってAIカロリー計算")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
+                        } else {
+                            Text("最近の記録 \(photoThumbnails.count)件")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
+                        }
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 18, weight: .bold))
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 22)
                 .background(
-                    RoundedRectangle(cornerRadius: 22)
-                        .fill(accent)
-                        .shadow(color: accent.opacity(0.45), radius: 18, y: 8)
+                    Color.instagramGradient
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
                 )
-                .padding(.horizontal, 16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+                .shadow(color: Color.orange.opacity(0.35), radius: 14, y: 6)
+                .padding(.horizontal, 20)
                 .scaleEffect(showBurst ? 0.96 : 1.0)
             }
             .buttonStyle(.plain)
 
         case .edu:
-            // EDU はコンテンツエリアがボタンなのでここは非表示
-            EmptyView()
+            // Duolingo 記録ボタン（例文作成 + 発話）
+            Button(action: triggerAction) {
+                HStack(spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(0.22))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
+                            )
+                            .frame(width: 76, height: 76)
+                        if let firstThumb = photoThumbnails.first {
+                            Image(uiImage: firstThumb)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 76, height: 76)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        } else {
+                            Text("📚")
+                                .font(.system(size: 38))
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("📚 Duolingo記録")
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        if photoThumbnails.isEmpty {
+                            Text("スクショをアップしてAI例文 & 発話")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
+                        } else {
+                            Text("最近の記録 \(photoThumbnails.count)件")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.92))
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "waveform")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 22)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#1CB0F6"), Color(hex: "#0D8EC9")],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                )
+                .shadow(color: Color.duoBlue.opacity(0.4), radius: 14, y: 6)
+                .padding(.horizontal, 20)
+                .scaleEffect(showBurst ? 0.96 : 1.0)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -1394,6 +1506,7 @@ struct NinetySecondModeView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var timeSlotMgr: TimeSlotManager
     @StateObject private var photoLogMgr = PhotoLogManager.shared
+    @StateObject private var eduLogMgr   = EduLogManager.shared
     let installedAt: Date
     let onStart: () -> Void
     let onExit: () -> Void
@@ -1407,9 +1520,13 @@ struct NinetySecondModeView: View {
     @State private var showDietSheet  = false
     @State private var showDietPhoto  = false
 
-    /// 直近 5 件の食事フォトサムネイル
+    /// 直近 5 件の食事フォト（スライド用に高解像度）
     private var recentFoodThumbnails: [UIImage] {
-        photoLogMgr.history.prefix(5).compactMap { $0.smallThumbnail }
+        photoLogMgr.history.prefix(5).compactMap { $0.thumbnail }
+    }
+    /// 直近 5 件の EDU（Duolingo）投稿サムネイル
+    private var recentEduThumbnails: [UIImage] {
+        eduLogMgr.history.prefix(5).compactMap { $0.thumbnail }
     }
 
     private let exerciseGifs: [String] = [
@@ -1481,6 +1598,7 @@ struct NinetySecondModeView: View {
                 graduated: graduated,
                 gifIndex: 0,
                 exerciseGifs: [],
+                photoThumbnails: recentEduThumbnails,
                 onAction: { showEduLog = true },
                 onExit: onExit
             )

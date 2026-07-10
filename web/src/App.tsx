@@ -155,7 +155,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-duo-gray-light">
-      {user && (
+      {user && currentView !== 'ninety' && (
         <nav className="bg-white sticky top-0 z-50" style={{ borderBottom: '2px solid #e5e5e5' }}>
           <div className="max-w-4xl mx-auto px-3 py-2 flex justify-between items-center gap-2">
             {/* Logo */}
@@ -325,7 +325,10 @@ function App() {
         {/* ── 90秒チャレンジモード（ログイン不要） ── */}
         {currentView === 'ninety' && (
           <NinetySecondMode
-            onStart={() => navigate(user ? 'workout' : 'login')}
+            onStart={()    => navigate(user ? 'workout'  : 'login')}
+            onFoodLog={()  => navigate(user ? 'food'     : 'login')}
+            onEduLog={()   => navigate(user ? 'mind'     : 'login')}
+            onDietLog={()  => navigate(user ? 'dietGoal' : 'login')}
             onExit={() => navigate(user ? 'dashboard' : 'login')}
             doneToday={false}
           />

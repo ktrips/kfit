@@ -1033,15 +1033,19 @@ struct NinetySecondModeCard: View {
     let graduated: Bool
     let gifIndex: Int
     let exerciseGifs: [String]
+    /// FOOD モード用：直近フォト（外から注入）
+    var photoThumbnails: [UIImage] = []
     let onAction: () -> Void
     let onExit: () -> Void
 
+    @AppStorage("ninety.topWindowVisible") private var topWindowVisible: Bool = true
     @State private var pulseScale: CGFloat = 1.0
-    @State private var buttonGlow: CGFloat = 0.0
     @State private var showBurst = false
+    @State private var slideIndex: Int = 0
 
     private var accent: Color { mode.accentColor }
 
+    // MARK: body
     var body: some View {
         ZStack {
             LinearGradient(colors: mode.backgroundColors, startPoint: .top, endPoint: .bottom)
@@ -1066,73 +1070,60 @@ struct NinetySecondModeCard: View {
                 .padding(.top, 16)
                 .padding(.bottom, 10)
 
-                // ── コンテンツエリア（FIT: GIF / FOOD・EDU: 絵文字イラスト）──
-                ZStack(alignment: .bottomTrailing) {
-                    if mode == .fit && !exerciseGifs.isEmpty {
-                        GIFAnimationView(
-                            gifName: exerciseGifs[gifIndex % exerciseGifs.count],
-                            contentMode: .scaleAspectFit,
-                            maxFrames: 20
-                        )
-                        .id(gifIndex)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 130)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(accent.opacity(0.7))
-                            .padding(8)
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(accent.opacity(0.08))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 130)
-                            Text(mode.illustrationEmoji)
-                                .font(.system(size: 72))
+                // ── コンテンツエリア（表示/非表示トグル付き）───────────────
+                if topWindowVisible {
+                    ZStack(alignment: .topTrailing) {
+                        contentArea
+                        // 隠すボタン
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                topWindowVisible = false
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.white, accent.opacity(0.6))
+                                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
                         }
+                        .buttonStyle(.plain)
+                        .padding(8)
                     }
+                    .padding(.horizontal, 28)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                } else {
+                    // 表示ボタン（コンパクト）
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            topWindowVisible = true
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.down.circle.fill")
+                                .font(.system(size: 16))
+                            Text("動画を表示")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Capsule().fill(accent.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .padding(.horizontal, 28)
 
                 Spacer().frame(height: 14)
 
-                // ── タグライン ─────────────────────────────────────────────
+                // ── タグライン（30px / 20%大型化）─────────────────────────
                 Text(mode.tagline)
-                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundColor(accent)
                     .multilineTextAlignment(.center)
                     .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
 
                 Spacer().frame(height: 16)
 
-                // ── メインボタン（Fitingo全面）─────────────────────────────
-                Button(action: {
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { showBurst = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        showBurst = false
-                        onAction()
-                    }
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(accent.opacity(0.15))
-                            .frame(width: 200 + buttonGlow, height: 200 + buttonGlow)
-                        Circle()
-                            .fill(accent)
-                            .frame(width: 180, height: 180)
-                            .shadow(color: accent.opacity(0.4), radius: 16, y: 6)
-                            .scaleEffect(showBurst ? 0.92 : pulseScale)
-                        Image("fitingo_button_mascot")
-                            .resizable().scaledToFit()
-                            .frame(width: 158, height: 158)
-                            .scaleEffect(showBurst ? 0.92 : pulseScale)
-                    }
-                }
-                .buttonStyle(.plain)
-                .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
-                .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: buttonGlow)
+                // ── メインアクションボタン ─────────────────────────────────
+                mainActionButton
 
                 Spacer().frame(height: 14)
 
@@ -1144,27 +1135,7 @@ struct NinetySecondModeCard: View {
                 Spacer()
 
                 // ── 7日進捗ドット ──────────────────────────────────────────
-                VStack(spacing: 8) {
-                    HStack(spacing: 10) {
-                        ForEach(0..<7, id: \.self) { i in
-                            ZStack {
-                                Circle()
-                                    .fill(i < activeDays ? accent : Color(.systemGray5))
-                                    .frame(width: 14, height: 14)
-                                if i < activeDays {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 7, weight: .black))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                    }
-                    Text(graduated
-                         ? "🎉 7日続きました！全機能が開放されました！"
-                         : "あと\(max(0, 7 - activeDays))日で全機能が開放")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
-                }
+                progressDots
 
                 Spacer().frame(height: 12)
 
@@ -1198,8 +1169,195 @@ struct NinetySecondModeCard: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
                 pulseScale = 1.04
-                buttonGlow = 18
             }
+        }
+        // FOOD: 5秒ごとにフォトスライド
+        .task(id: "photoSlide_\(mode.rawValue.description)") {
+            guard mode == .food, !photoThumbnails.isEmpty else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !photoThumbnails.isEmpty else { continue }
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    slideIndex = (slideIndex + 1) % photoThumbnails.count
+                }
+            }
+        }
+    }
+
+    // MARK: コンテンツエリア（モード別）
+    @ViewBuilder private var contentArea: some View {
+        switch mode {
+        case .fit:
+            // GIF（高さ 156 = 旧 130 の 20%増）
+            ZStack(alignment: .bottomTrailing) {
+                GIFAnimationView(
+                    gifName: exerciseGifs[gifIndex % max(1, exerciseGifs.count)],
+                    contentMode: .scaleAspectFit,
+                    maxFrames: 20
+                )
+                .id(gifIndex)
+                .frame(maxWidth: .infinity)
+                .frame(height: 156)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(accent.opacity(0.7))
+                    .padding(8)
+            }
+
+        case .food:
+            // 直近フォトのスライドショー
+            ZStack {
+                if photoThumbnails.isEmpty {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(accent.opacity(0.08))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 156)
+                        .overlay(Text("📷").font(.system(size: 64)))
+                } else {
+                    TabView(selection: $slideIndex) {
+                        ForEach(Array(photoThumbnails.enumerated()), id: \.offset) { i, img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 156)
+                                .clipped()
+                                .tag(i)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 156)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    // スライドカウンターインジケータ
+                    .overlay(alignment: .bottomTrailing) {
+                        HStack(spacing: 4) {
+                            ForEach(0..<photoThumbnails.count, id: \.self) { i in
+                                Circle()
+                                    .fill(i == slideIndex ? Color.white : Color.white.opacity(0.4))
+                                    .frame(width: 5, height: 5)
+                            }
+                        }
+                        .padding(8)
+                    }
+                }
+            }
+
+        case .edu:
+            // 大きな EDU アイコンボタン（コンテンツエリアがそのままボタン）
+            Button(action: triggerAction) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(accent.opacity(0.08))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 156)
+                    VStack(spacing: 6) {
+                        Text("📚")
+                            .font(.system(size: 72))
+                        Text("タップして語学を記録")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundColor(accent)
+                    }
+                }
+                .scaleEffect(showBurst ? 0.96 : 1.0)
+            }
+            .buttonStyle(.plain)
+
+        case .diet:
+            ZStack {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(accent.opacity(0.08))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 156)
+                Text("⚖️")
+                    .font(.system(size: 80))
+            }
+        }
+    }
+
+    // MARK: メインアクションボタン（モード別）
+    @ViewBuilder private var mainActionButton: some View {
+        switch mode {
+        case .fit, .diet:
+            // Fitingo 画像のみ（丸バック不要）・190px（旧158の20%増）
+            Button(action: triggerAction) {
+                Image("fitingo_button_mascot")
+                    .resizable().scaledToFit()
+                    .frame(width: 190, height: 190)
+                    .scaleEffect(showBurst ? 0.92 : pulseScale)
+                    .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
+            }
+            .buttonStyle(.plain)
+            .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
+
+        case .food:
+            // AI食事フォトログ 大型ボタン
+            Button(action: triggerAction) {
+                HStack(spacing: 16) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 36, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("AI食事フォトログ")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                        Text("写真を撮るだけでカロリー自動記録")
+                            .font(.system(size: 12, weight: .semibold))
+                            .opacity(0.85)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 18, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(accent)
+                        .shadow(color: accent.opacity(0.45), radius: 18, y: 8)
+                )
+                .padding(.horizontal, 16)
+                .scaleEffect(showBurst ? 0.96 : 1.0)
+            }
+            .buttonStyle(.plain)
+
+        case .edu:
+            // EDU はコンテンツエリアがボタンなのでここは非表示
+            EmptyView()
+        }
+    }
+
+    // MARK: 7日進捗ドット
+    private var progressDots: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                ForEach(0..<7, id: \.self) { i in
+                    ZStack {
+                        Circle()
+                            .fill(i < activeDays ? accent : Color(.systemGray5))
+                            .frame(width: 14, height: 14)
+                        if i < activeDays {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 7, weight: .black))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+            }
+            Text(graduated
+                 ? "🎉 7日続きました！全機能が開放されました！"
+                 : "あと\(max(0, 7 - activeDays))日で全機能が開放")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(graduated ? .duoOrange : .duoSubtitle)
+        }
+    }
+
+    // MARK: トリガーヘルパー
+    private func triggerAction() {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) { showBurst = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            showBurst = false
+            onAction()
         }
     }
 }
@@ -1212,6 +1370,7 @@ struct NinetySecondModeCard: View {
 struct NinetySecondModeView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var timeSlotMgr: TimeSlotManager
+    @StateObject private var photoLogMgr = PhotoLogManager.shared
     let installedAt: Date
     let onStart: () -> Void
     let onExit: () -> Void
@@ -1224,6 +1383,11 @@ struct NinetySecondModeView: View {
     @State private var showEduLog     = false
     @State private var showDietSheet  = false
     @State private var showDietPhoto  = false
+
+    /// 直近 5 件の食事フォトサムネイル
+    private var recentFoodThumbnails: [UIImage] {
+        photoLogMgr.history.prefix(5).compactMap { $0.smallThumbnail }
+    }
 
     private let exerciseGifs: [String] = [
         "fItingo_wo_pushups",
@@ -1265,6 +1429,7 @@ struct NinetySecondModeView: View {
                 graduated: graduated,
                 gifIndex: 0,
                 exerciseGifs: [],
+                photoThumbnails: recentFoodThumbnails,
                 onAction: { showFoodLog = true },
                 onExit: onExit
             )

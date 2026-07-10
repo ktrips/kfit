@@ -57,6 +57,7 @@ struct SettingsView: View {
     @State private var showIntakeSettings = false
     @State private var showDietGoalSettings = false
     @State private var showLLMSettings = false
+    @State private var showAPIKeySheet = false
     @State private var showAddCustomGoal = false
     @State private var newGoalName = ""
     @State private var newGoalEmoji = "⭐"
@@ -2023,17 +2024,18 @@ struct SettingsView: View {
     // MARK: - LLMセクション
 
     private var llmSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "brain.head.profile", title: "フォトログAI",
-                          subtitle: "写真から栄養素を分析")
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader(icon: "brain.head.profile", title: "AI設定",
+                          subtitle: "クォータ・APIキー管理")
 
+            // ─ 詳細設定（既存）
             Button { showLLMSettings = true } label: {
                 HStack(spacing: 12) {
                     Text("🤖").font(.title3).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("フォトログAI")
+                        Text("フォトログAI詳細設定")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("設定不要（サーバー経由）・上級者はAPIキーも可")
+                        Text("モデル・プロバイダー選択（上級者向け）")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
@@ -2047,6 +2049,51 @@ struct SettingsView: View {
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
             }
             .buttonStyle(.plain)
+
+            // ─ カスタム API キー
+            Button { showAPIKeySheet = true } label: {
+                HStack(spacing: 12) {
+                    Text("🔑").font(.title3).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("自分のAPIキーを登録")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        if AIQuotaManager.shared.hasCustomKey {
+                            Label("登録済み（無制限利用）", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundColor(.green)
+                        } else {
+                            Text("登録でAI利用が無制限に（自己負担）")
+                                .font(.caption).foregroundColor(Color.duoSubtitle)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+
+            // ─ クォータ説明
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AI利用上限")
+                    .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                Text("• 5日チャレンジ中: 全カテゴリ合計 1回/日")
+                    .font(.caption2).foregroundColor(Color.duoSubtitle)
+                Text("• 無料: 1回/日・カテゴリ（食事AI・語学AI）")
+                    .font(.caption2).foregroundColor(Color.duoSubtitle)
+                Text("• Plus: 3回/日・カテゴリ")
+                    .font(.caption2).foregroundColor(Color.duoSubtitle)
+                Text("• APIキー登録: 無制限（自己負担）")
+                    .font(.caption2).foregroundColor(Color.duoSubtitle)
+            }
+            .padding(.horizontal, 4)
+        }
+        .sheet(isPresented: $showAPIKeySheet) {
+            CustomAPIKeySheet()
         }
     }
 
@@ -2545,6 +2592,97 @@ struct SensitivityRowEditor: View {
     }
     private func sensitivityLabel(_ threshold: Double) -> String {
         switch threshold { case 0...0.05: return "最高"; case 0.05...0.08: return "高"; case 0.08...0.12: return "中"; case 0.12...0.16: return "低"; default: return "最低" }
+    }
+}
+
+// MARK: - カスタム API キー設定シート
+
+struct CustomAPIKeySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var quota = AIQuotaManager.shared
+    @State private var keyInput: String = ""
+    @State private var errorMsg: String? = nil
+    @State private var saved = false
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("OpenAI API キーを登録すると、食事AI・語学AIが無制限で使えます（OpenAIへの料金はご自身の負担です）。")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Link("APIキーを取得する →", destination: URL(string: "https://platform.openai.com/api-keys")!)
+                            .font(.subheadline)
+                    }
+                    .padding(.vertical, 4)
+                } header: { Text("OpenAI APIキー") }
+
+                Section {
+                    SecureField("sk-...", text: $keyInput)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .font(.system(.body, design: .monospaced))
+
+                    if let err = errorMsg {
+                        Text(err).font(.caption).foregroundColor(.red)
+                    }
+
+                    if quota.hasCustomKey && keyInput.isEmpty {
+                        HStack {
+                            Label("現在登録済み", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundColor(.green)
+                            Spacer()
+                            Button("削除", role: .destructive) {
+                                Task {
+                                    try? await quota.clearCustomAPIKey()
+                                    dismiss()
+                                }
+                            }
+                            .font(.caption)
+                        }
+                    }
+                } header: { Text("キーを入力") }
+
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("利用制限のまとめ").font(.caption).fontWeight(.bold)
+                        ForEach([
+                            "5日チャレンジ中: 全カテゴリ合計 1回/日",
+                            "無料: 食事AI・語学AI それぞれ 1回/日",
+                            "Plus: 食事AI・語学AI それぞれ 3回/日",
+                            "APIキー登録: 無制限（自己負担）",
+                        ], id: \.self) { line in
+                            Text("• \(line)").font(.caption2).foregroundColor(.secondary)
+                        }
+                    }
+                } header: { Text("クォータ") }
+            }
+            .navigationTitle("AIキー設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        guard keyInput.hasPrefix("sk-") || keyInput.isEmpty else {
+                            errorMsg = "OpenAI APIキーは sk- で始まります"
+                            return
+                        }
+                        Task {
+                            do {
+                                try await quota.saveCustomAPIKey(keyInput)
+                                dismiss()
+                            } catch {
+                                errorMsg = "保存に失敗しました: \(error.localizedDescription)"
+                            }
+                        }
+                    }
+                    .disabled(quota.isSavingKey)
+                }
+            }
+        }
     }
 }
 

@@ -507,7 +507,12 @@ function generateRuleBasedComment(streak, weekSets, _weekXP) {
 //   firebase functions:secrets:set OPENAI_API_KEY
 // Plus 判定:
 //   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
-const AI_QUOTA = { free: 5, plus: 300 };
+// 日次・カテゴリ別クォータ
+// 90秒モード中: 全カテゴリ合計 1/日
+// フリー:       1/日・カテゴリ
+// Plus:          3/日・カテゴリ
+// カスタムAPIキー登録済み: 無制限（自己負担）
+const AI_QUOTA = { ninety: 1, free: 1, plus: 3 };
 const AI_DEFAULT_MODEL = 'gpt-5.4-mini';
 
 exports.aiProxy = functions
@@ -518,30 +523,61 @@ exports.aiProxy = functions
     }
     const uid = context.auth.uid;
     const prompt = (data && data.prompt) || '';
-    const imageBase64 = data && data.imageBase64; // 任意（食事写真解析用）
+    const imageBase64 = data && data.imageBase64;
+    // category: 'food' | 'edu' | 'diet' | 'general'
+    const category = (data && data.category) || 'general';
+    // 90秒モード中か（クライアント申告、全カテゴリ合計 1/日 に絞る）
+    const isNinetyMode = !!(data && data.isNinetyMode);
+
     if (!prompt || typeof prompt !== 'string' || prompt.length > 8000) {
       throw new functions.https.HttpsError('invalid-argument', 'prompt が不正です');
     }
 
-    // ── Plus 判定 + 月次クォータ ─────────────────────────────
+    // ── ユーザー情報取得（Plus 判定 + カスタム API キー）──────────
     const userSnap = await db.collection('users').doc(uid).get();
-    const isPlus = !!(userSnap.data() || {}).isPlus;
-    const quota = isPlus ? AI_QUOTA.plus : AI_QUOTA.free;
+    const userData = userSnap.data() || {};
+    const isPlus = !!userData.isPlus;
 
-    const monthKey = new Date().toISOString().slice(0, 7); // "2026-07"
+    // カスタム API キー（Firestore: users/{uid}/settings.openaiApiKey）
+    const settingsSnap = await db.collection('users').doc(uid)
+      .collection('settings').doc('ai').get();
+    const customApiKey = (settingsSnap.data() || {}).openaiApiKey || '';
+    const usingCustomKey = customApiKey.length > 0;
+
+    // ── 日次クォータチェック（カスタムキーがあれば無制限）────────
+    const today = new Date().toISOString().slice(0, 10); // "2026-07-11"
     const usageRef = db.collection('users').doc(uid)
-      .collection('ai-usage').doc(monthKey);
-    const usageSnap = await usageRef.get();
-    const used = (usageSnap.data() || {}).count || 0;
-    if (used >= quota) {
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        isPlus ? '今月のAI利用上限に達しました' : 'AI解析の無料枠を使い切りました。Plusで月300回まで使えます'
-      );
+      .collection('ai-usage').doc(`daily-${today}`);
+
+    if (!usingCustomKey) {
+      const usageSnap = await usageRef.get();
+      const usageData = usageSnap.data() || {};
+
+      if (isNinetyMode) {
+        // 90秒モード: 全カテゴリ合計で 1/日
+        const totalToday = Object.entries(usageData)
+          .filter(([k]) => k !== 'updatedAt')
+          .reduce((sum, [, v]) => sum + (typeof v === 'number' ? v : 0), 0);
+        if (totalToday >= AI_QUOTA.ninety) {
+          throw new functions.https.HttpsError(
+            'resource-exhausted',
+            'QUOTA_NINETY|今日のAI枠を使いました。明日また試してね！\nAPIキーを登録すると何度でも使えます'
+          );
+        }
+      } else {
+        const categoryCount = usageData[category] || 0;
+        const limit = isPlus ? AI_QUOTA.plus : AI_QUOTA.free;
+        if (categoryCount >= limit) {
+          const msg = isPlus
+            ? `QUOTA_PLUS|今日の${category === 'food' ? '食事AI' : '語学AI'}の上限（${limit}回）に達しました。明日またどうぞ！`
+            : `QUOTA_FREE|今日の${category === 'food' ? '食事AI' : '語学AI'}の無料枠（${limit}回）を使い切りました。\nPlusなら1日${AI_QUOTA.plus}回、APIキー登録で無制限に使えます`;
+          throw new functions.https.HttpsError('resource-exhausted', msg);
+        }
+      }
     }
 
-    // ── OpenAI 呼び出し（サーバー側キー: Secret Manager） ────
-    const apiKey = process.env.OPENAI_API_KEY;
+    // ── OpenAI 呼び出し ────────────────────────────────────────
+    const apiKey = usingCustomKey ? customApiKey : process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new functions.https.HttpsError('failed-precondition', 'AI プロキシが未設定です');
     }
@@ -573,11 +609,16 @@ exports.aiProxy = functions
     const json = await res.json();
     const text = (((json.choices || [])[0] || {}).message || {}).content || '';
 
-    // 使用量を記録（失敗時はカウントしない）
-    await usageRef.set(
-      { count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true }
-    );
+    // 使用量を記録（カスタムキー使用時はカウントしない）
+    if (!usingCustomKey) {
+      await usageRef.set(
+        {
+          [category]: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
 
-    return { text, used: used + 1, quota, isPlus };
+    return { text, usingCustomKey, isPlus };
   });

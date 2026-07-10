@@ -4,20 +4,20 @@ import {
   getWeekLabel, getActiveDaysElapsed,
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
-import { getGlobalProgress } from '../services/timeSlotService';
-import { getDietGoalSettings } from '../services/wellnessService';
+import { getGlobalProgress, recordDrinkLog } from '../services/timeSlotService';
+import { getDietGoalSettings, getTodayIntakeSummary, recordDrinkIntake } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
+import { getCurrentTimeSlot } from '../types/timeSlot';
 import type { GlobalProgress } from '../services/timeSlotService';
-import type { DietGoalSettings } from '../types/wellness';
+import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
   onLogWorkout?: () => void;
   onWeeklyGoal?: () => void;
   onWorkoutPlan?: () => void;
-
   onDietGoal?: () => void;
-
+  onFoodView?: () => void;
 }
 
 const EXERCISE_EMOJI: Record<string, string> = {
@@ -59,7 +59,7 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal, onFoodView }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
   const setStoreWeeklyGoals = useAppStore((s) => s.setWeeklyGoals);
@@ -77,17 +77,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [dietGoal, setDietGoal] = useState<DietGoalSettings | null>(null);
   const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [intake, setIntake] = useState<IntakeSummary | null>(null);
+  const [addingDrink, setAddingDrink] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, global, diet] = await Promise.all([
+        const [dashboard, global, diet, intakeSummary] = await Promise.all([
           getDashboardData(user.uid),
           getGlobalProgress(user.uid),
           getDietGoalSettings(user.uid),
+          getTodayIntakeSummary(user.uid),
         ]);
+        if (!cancelled) setIntake(intakeSummary);
         if (cancelled) return;
         const exercises = dashboard.todayExercises;
         setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
@@ -568,6 +572,178 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <span className="text-duo-gray text-lg">›</span>
           </div>
         </button>
+
+        {/* ── FOOD サマリーカード ────────────────────────────────── */}
+        {(() => {
+          const calorieGoal = dietGoal?.dailyIntakeKcalGoal || 2000;
+          const calories    = intake?.calories  ?? 0;
+          const waterMl     = intake?.waterMl   ?? 0;
+          const mealCount   = intake?.mealCount ?? 0;
+          const calPct      = Math.min(100, Math.round((calories / calorieGoal) * 100));
+          const waterPct    = Math.min(100, Math.round((waterMl / 2000) * 100));
+          const calColor    = calPct >= 100 ? '#FF4B4B' : calPct >= 70 ? '#FF9600' : '#58CC02';
+          const waterColor  = waterPct >= 100 ? '#58CC02' : waterPct >= 50 ? '#1CB0F6' : '#9BB3CC';
+
+          const MEALS_DEF = [
+            { id: 'breakfast', emoji: '🌅', label: '朝' },
+            { id: 'lunch',     emoji: '🍱', label: '昼' },
+            { id: 'dinner',    emoji: '🌙', label: '夕' },
+            { id: 'snack',     emoji: '🍪', label: '間食' },
+          ];
+          const recordedMeals = new Set(
+            (intake?.logs ?? [])
+              .filter(l => l.type === 'meal')
+              .map(l => l.label)
+          );
+
+          const handleQuickDrink = async (drinkType: 'water' | 'coffee') => {
+            if (!user || addingDrink) return;
+            setAddingDrink(drinkType);
+            try {
+              const slot = getCurrentTimeSlot();
+              const newLog = await recordDrinkIntake(user.uid, drinkType, drinkType === 'water' ? 250 : 180, slot);
+              await recordDrinkLog(user.uid, slot, drinkType === 'water' ? 250 : 180);
+              setIntake(prev => prev ? {
+                ...prev,
+                waterMl: prev.waterMl + (newLog.waterMl ?? 0),
+                caffeineMg: prev.caffeineMg + (newLog.caffeineMg ?? 0),
+                drinkCount: prev.drinkCount + 1,
+                logs: [newLog, ...prev.logs],
+              } : prev);
+            } finally {
+              setAddingDrink(null);
+            }
+          };
+
+          return (
+            <div
+              className="duo-card overflow-hidden"
+              style={{ border: '2px solid #FFD0A0', boxShadow: '0 4px 0 #F0B070' }}
+            >
+              {/* ヘッダー */}
+              <div
+                className="flex items-center justify-between px-5 py-3"
+                style={{ background: 'linear-gradient(90deg, #FF9600 0%, #FFB84D 100%)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🍽️</span>
+                  <span className="text-white font-black text-base">今日の食事</span>
+                  {mealCount > 0 && (
+                    <span className="text-white/80 font-bold text-xs">{mealCount}回記録</span>
+                  )}
+                </div>
+                <button
+                  onClick={onFoodView}
+                  className="text-white font-black text-sm flex items-center gap-1 opacity-90 hover:opacity-100"
+                >
+                  詳細 <span>›</span>
+                </button>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                {/* カロリー & 水分バー */}
+                <div className="space-y-3">
+                  {/* カロリー */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-duo-dark">🔥 摂取カロリー</span>
+                      <span className="text-xs font-black" style={{ color: calColor }}>
+                        {calories} / {calorieGoal} kcal
+                      </span>
+                    </div>
+                    <div className="bg-gray-100 rounded-full" style={{ height: 8 }}>
+                      <div
+                        className="rounded-full transition-all duration-500"
+                        style={{ height: 8, width: `${calPct}%`, background: calColor }}
+                      />
+                    </div>
+                  </div>
+                  {/* 水分 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-duo-dark">💧 水分</span>
+                      <span className="text-xs font-black" style={{ color: waterColor }}>
+                        {waterMl} / 2,000 ml
+                      </span>
+                    </div>
+                    <div className="bg-gray-100 rounded-full" style={{ height: 8 }}>
+                      <div
+                        className="rounded-full transition-all duration-500"
+                        style={{ height: 8, width: `${waterPct}%`, background: waterColor }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 食事チェック */}
+                <div className="flex gap-2">
+                  {MEALS_DEF.map(m => {
+                    const done = [...recordedMeals].some(r => r.includes(m.label)) || mealCount > MEALS_DEF.indexOf(m);
+                    return (
+                      <div
+                        key={m.id}
+                        className="flex-1 flex flex-col items-center gap-1 rounded-xl py-2"
+                        style={{
+                          background: done ? '#FFF3E0' : '#F7F7F7',
+                          border: `1.5px solid ${done ? '#FFB84D' : '#E5E5E5'}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 18, opacity: done ? 1 : 0.35 }}>{m.emoji}</span>
+                        <span className="text-[10px] font-black" style={{ color: done ? '#CC7700' : '#aaa' }}>
+                          {m.label}
+                        </span>
+                        {done && (
+                          <span className="text-[9px] font-black" style={{ color: '#58CC02' }}>✓</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* クイック記録ボタン */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleQuickDrink('water')}
+                    disabled={!!addingDrink}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 font-black text-sm transition-opacity"
+                    style={{
+                      background: '#E8F4FF',
+                      border: '1.5px solid #1CB0F6',
+                      color: '#1090CC',
+                      opacity: addingDrink === 'water' ? 0.6 : 1,
+                    }}
+                  >
+                    {addingDrink === 'water' ? '…' : '💧 水 +250ml'}
+                  </button>
+                  <button
+                    onClick={() => handleQuickDrink('coffee')}
+                    disabled={!!addingDrink}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 font-black text-sm transition-opacity"
+                    style={{
+                      background: '#FFF4E8',
+                      border: '1.5px solid #CC7700',
+                      color: '#CC7700',
+                      opacity: addingDrink === 'coffee' ? 0.6 : 1,
+                    }}
+                  >
+                    {addingDrink === 'coffee' ? '…' : '☕ コーヒー'}
+                  </button>
+                  <button
+                    onClick={onFoodView}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 font-black text-sm"
+                    style={{
+                      background: '#FF9600',
+                      color: '#fff',
+                      boxShadow: '0 3px 0 #CC7700',
+                    }}
+                  >
+                    🍽️ 食事記録
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── プロモーションカード ── */}
         <div className="pt-2">

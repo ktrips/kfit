@@ -379,6 +379,7 @@ function App() {
             onWeeklyGoal={() => navigate('weekly')}
             onWorkoutPlan={() => navigate('plan')}
             onDietGoal={() => navigate('dietGoal')}
+            onFoodView={() => navigate('food')}
           />
         )}
         {currentView === 'workout' && (

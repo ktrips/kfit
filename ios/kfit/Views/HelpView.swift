@@ -183,7 +183,7 @@ private let helpItems: [HelpItem] = [
         title: "フォトログ（AI食事分析、Plus限定・APIキー必要）",
         content: """
         食事の写真を撮影またはライブラリから選択すると、AIが自動でカロリーとPFCを分析します。
-        ※ Plus プランで利用可能。別途 SETTINGS → LLM設定 でAPIキーの設定が必要です。
+        ※ APIキー不要で1日1回無料。Plus は3回/日。APIキー登録で無制限（自己負担）。
         1. FOODページ または ROUTINページ の「AI食事フォトログ」ボタンをタップ
         2. カメラで撮影 または 写真ライブラリから選択
         3. AIが食品を認識してカロリー・PFCを推定
@@ -194,7 +194,7 @@ private let helpItems: [HelpItem] = [
         • Google Gemini 2.5 Flash
         設定画面からAPIキーとモデルを選択できます。
         【注意】
-        AI機能はFitingo Plus のサブスクリプションとは別に、ご自身のAPIキーが必要です。
+        AI機能は誰でも1日1回無料。Plus は3回/日。APIキー（設定画面で登録）で無制限に使えます。
         """
     ),
     HelpItem(

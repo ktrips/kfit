@@ -103,7 +103,7 @@ function App() {
           setExercises(exercisesList);
           const { view: initView } = getInitialViewFromPath();
           if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport' && initView !== 'ninety') {
-            // 7日未達成ユーザーはデフォルトで90秒モードへ（毎回起動時）
+            // 5日未達成ユーザーはデフォルトで90秒モードへ（毎回起動時）
             const savedMode = localStorage.getItem(NS90_MODE_KEY) as Mode90 | null;
             if (getActiveDays().length < 5) {
               setNinetyMode(savedMode ?? 'fit');
@@ -343,7 +343,7 @@ function App() {
             onEduLog={()   => navigate(user ? 'mind'     : 'login')}
             onDietLog={()  => navigate(user ? 'dietGoal' : 'login')}
             onExit={() => {
-              // 7日以上なら全機能解放（dashboard）、未満なら landing へ
+              // 5日以上なら全機能解放（dashboard）、未満なら landing へ
               if (user && getActiveDays().length >= 5) {
                 navigate('dashboard');
               } else {

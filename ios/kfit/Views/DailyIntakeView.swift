@@ -477,6 +477,7 @@ struct PhotoLogView: View {
     @State private var showManageView = false
     @State private var markAsFavorite = true   // FOODページへの保存（常にtrue）
     @State private var isPublicPost = false   // TOMOフィードへの公開（デフォルトOff）
+    @State private var showPlusUpsell = false  // 10日以降フリーユーザーへのPlus誘導シート
 
     var body: some View {
         NavigationStack {
@@ -521,9 +522,7 @@ struct PhotoLogView: View {
                     if selectedImage != nil || (fromHistory && analyzedNutrition != nil) {
                         VStack(spacing: 10) {
                             if !fromHistory && analyzedNutrition == nil && !photoLogManager.isAnalyzing {
-                                if llmSettings.apiKey.isEmpty {
-                                    LLMAPIKeyNotice()
-                                }
+                                LLMAPIKeyNotice()
                                 analyzeButton
                             }
                             if analyzedNutrition != nil {
@@ -782,6 +781,9 @@ struct PhotoLogView: View {
             .sheet(isPresented: $showManageView) {
                 PhotoLogManageView()
             }
+            .sheet(isPresented: $showPlusUpsell) {
+                AIRequiresPlusSheet()
+            }
 
             Text("食べ物や飲み物の写真を撮影すると、AIが自動で栄養素を分析します")
                 .font(.caption)
@@ -870,7 +872,6 @@ struct PhotoLogView: View {
             .shadow(color: Color.duoGreen.opacity(0.3), radius: 6, y: 2)
         }
         .buttonStyle(.plain)
-        .disabled(llmSettings.apiKey.isEmpty)
     }
 
     // MARK: - Analysis Error
@@ -1083,18 +1084,34 @@ struct PhotoLogView: View {
 
         errorMessage = ""
 
-        if llmSettings.apiKey.isEmpty {
-            errorMessage = "APIキーが設定されていません。設定画面からLLM設定を行ってください。"
-            showError = true
+        // 10日以降のフリーユーザーはAI停止 → Plus誘導シートを直接表示
+        let activeDayCount = RetentionTracker.shared.localActiveDayCount
+        let hasCustomKey = AIQuotaManager.shared.hasCustomKey
+        let isPlus = PurchaseManager.shared.isPlus
+        if activeDayCount >= AI_FREE_MAX_DAYS && !isPlus && !hasCustomKey {
+            showPlusUpsell = true
             return
         }
 
         do {
+            // APIキー未設定でもサーバー経由（1日1回無料）で解析
             analyzedNutrition = try await photoLogManager.analyzePhoto(image, comment: comment, settings: llmSettings)
         } catch {
-            errorMessage = error.localizedDescription
-            if comment.count > 80 {
-                errorMessage += "\n\n💡 コメントを少し短くして再分析してみてください。"
+            let raw = error.localizedDescription
+            // 10日以降のPlus必須エラー
+            if raw.contains("QUOTA_REQUIRE_PLUS") {
+                showPlusUpsell = true
+                return
+            }
+            // クォータ超過メッセージをフレンドリーに整形（"|" 区切りのプレフィックスを除去）
+            if raw.contains("QUOTA_") || raw.contains("今日のAI枠") || raw.contains("無料枠") || raw.contains("上限") {
+                let msg = raw.components(separatedBy: "|").last ?? raw
+                errorMessage = "⏰ \(msg)\n\n設定画面でAPIキーを登録すると無制限に使えます。"
+            } else {
+                errorMessage = raw
+                if comment.count > 80 {
+                    errorMessage += "\n\n💡 コメントを少し短くして再分析してみてください。"
+                }
             }
         }
     }

@@ -127,9 +127,9 @@ class EduLogManager: ObservableObject {
                     || capturedComment.contains("他の文章"))
                     && !capturedComment.contains("例文")
 
+                // APIキー未設定でもサーバー経由（1日1回無料）でAI利用可能
                 let needsLLM = (llmWantsGrammar || llmWantsExamples || llmWantsMistake
                              || llmWantsRelatedWords || llmWantsRelatedSentences)
-                              && !llmSettings.apiKey.isEmpty
 
                 // 並列 LLM 呼び出し（async let）
                 async let grammarTask: String? = needsLLM && llmWantsGrammar

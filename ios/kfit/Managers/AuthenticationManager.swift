@@ -2631,12 +2631,14 @@ class PhotoLogManager: ObservableObject {
 
         // ユーザー API キー未設定時はサーバー代理（aiProxy）経由 — 設定ゼロで動くデフォルト経路
         guard !settings.apiKey.isEmpty else {
-            let isNinety = RetentionTracker.shared.localActiveDayCount < 5
+            let activeDayCount = RetentionTracker.shared.localActiveDayCount
+            let isNinety = activeDayCount < 5
             let text = try await AIProxyClient.call(
                 prompt: prompt,
                 imageBase64: base64Image,
                 category: "food",
-                isNinetyMode: isNinety
+                isNinetyMode: isNinety,
+                activeDays: activeDayCount
             )
             return try parseNutritionJSON(text)
         }
@@ -3042,7 +3044,8 @@ enum AIProxyClient {
         prompt: String,
         imageBase64: String? = nil,
         category: String = "general",
-        isNinetyMode: Bool = false
+        isNinetyMode: Bool = false,
+        activeDays: Int = 0
     ) async throws -> String {
         guard let user = Auth.auth().currentUser else {
             throw ProxyError(message: "AI解析にはログインが必要です")
@@ -3057,6 +3060,7 @@ enum AIProxyClient {
             "prompt": prompt,
             "category": category,
             "isNinetyMode": isNinetyMode,
+            "activeDays": activeDays,
         ]
         if let imageBase64 { payload["imageBase64"] = imageBase64 }
 

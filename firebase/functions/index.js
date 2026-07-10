@@ -508,11 +508,13 @@ function generateRuleBasedComment(streak, weekSets, _weekXP) {
 // Plus 判定:
 //   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
 // 日次・カテゴリ別クォータ
-// 90秒モード中: 全カテゴリ合計 1/日
-// フリー:       1/日・カテゴリ
-// Plus:          3/日・カテゴリ
-// カスタムAPIキー登録済み: 無制限（自己負担）
+// 90秒モード中（activeDays < 5）: 全カテゴリ合計 1/日
+// 5〜9日（Free）:               カテゴリ別 1/日
+// 10日以降（Free）:              AI停止 → Plus誘導
+// Plus:                         カテゴリ別 3/日
+// カスタムAPIキー登録済み:        無制限（自己負担）
 const AI_QUOTA = { ninety: 1, free: 1, plus: 3 };
+const AI_FREE_MAX_DAYS = 10;  // これ以降は Free ユーザーの AI 利用停止
 const AI_DEFAULT_MODEL = 'gpt-5.4-mini';
 
 exports.aiProxy = functions
@@ -526,8 +528,10 @@ exports.aiProxy = functions
     const imageBase64 = data && data.imageBase64;
     // category: 'food' | 'edu' | 'diet' | 'general'
     const category = (data && data.category) || 'general';
-    // 90秒モード中か（クライアント申告、全カテゴリ合計 1/日 に絞る）
+    // 90秒モード中か（activeDays < 5、クライアント申告）
     const isNinetyMode = !!(data && data.isNinetyMode);
+    // 連続活動日数（クライアント申告: RetentionTracker.localActiveDayCount / getActiveDays().length）
+    const activeDays = typeof (data && data.activeDays) === 'number' ? data.activeDays : 0;
 
     if (!prompt || typeof prompt !== 'string' || prompt.length > 8000) {
       throw new functions.https.HttpsError('invalid-argument', 'prompt が不正です');
@@ -552,9 +556,10 @@ exports.aiProxy = functions
     if (!usingCustomKey) {
       const usageSnap = await usageRef.get();
       const usageData = usageSnap.data() || {};
+      const catLabel = category === 'food' ? '食事AI' : category === 'edu' ? '語学AI' : 'AI';
 
       if (isNinetyMode) {
-        // 90秒モード: 全カテゴリ合計で 1/日
+        // 90秒モード（0〜4日）: 全カテゴリ合計 1/日
         const totalToday = Object.entries(usageData)
           .filter(([k]) => k !== 'updatedAt')
           .reduce((sum, [, v]) => sum + (typeof v === 'number' ? v : 0), 0);
@@ -564,13 +569,20 @@ exports.aiProxy = functions
             'QUOTA_NINETY|今日のAI枠を使いました。明日また試してね！\nAPIキーを登録すると何度でも使えます'
           );
         }
+      } else if (!isPlus && activeDays >= AI_FREE_MAX_DAYS) {
+        // 10日以降のFreeユーザー: AI停止 → Plus誘導
+        throw new functions.https.HttpsError(
+          'resource-exhausted',
+          `QUOTA_REQUIRE_PLUS|${activeDays}日連続、すごい！\n${catLabel}をもっと使うには Fitingo Plus へ。\nPlusなら毎日3回使えます`
+        );
       } else {
+        // 5〜9日（Free: 1/日）または Plus（3/日）
         const categoryCount = usageData[category] || 0;
         const limit = isPlus ? AI_QUOTA.plus : AI_QUOTA.free;
         if (categoryCount >= limit) {
           const msg = isPlus
-            ? `QUOTA_PLUS|今日の${category === 'food' ? '食事AI' : '語学AI'}の上限（${limit}回）に達しました。明日またどうぞ！`
-            : `QUOTA_FREE|今日の${category === 'food' ? '食事AI' : '語学AI'}の無料枠（${limit}回）を使い切りました。\nPlusなら1日${AI_QUOTA.plus}回、APIキー登録で無制限に使えます`;
+            ? `QUOTA_PLUS|今日の${catLabel}の上限（${limit}回）に達しました。明日またどうぞ！`
+            : `QUOTA_FREE|今日の${catLabel}の無料枠（${limit}回）を使い切りました。\nPlusなら1日${AI_QUOTA.plus}回、APIキー登録で無制限に使えます`;
           throw new functions.https.HttpsError('resource-exhausted', msg);
         }
       }

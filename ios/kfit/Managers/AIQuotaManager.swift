@@ -2,12 +2,17 @@ import Foundation
 import FirebaseFirestore
 import FirebaseAuth
 
+// MARK: - 定数
+
+/// フリーユーザーのAI無料利用期間（これ以上の連続日数で停止 → Plus誘導）
+let AI_FREE_MAX_DAYS = 10
+
 // MARK: - AI カテゴリ
 
 enum AICategory: String {
-    case food   = "food"
-    case edu    = "edu"
-    case diet   = "diet"
+    case food    = "food"
+    case edu     = "edu"
+    case diet    = "diet"
     case general = "general"
 
     var displayName: String {
@@ -25,10 +30,12 @@ enum AICategory: String {
 enum AIQuotaError: LocalizedError {
     /// 90秒モード中（全カテゴリ合計 1/日 超過）
     case ninetyModeExceeded
-    /// フリーユーザーの日次カテゴリ上限
+    /// フリーユーザーの日次カテゴリ上限（5〜9日）
     case freeExceeded(category: AICategory)
     /// Plusユーザーの日次カテゴリ上限
     case plusExceeded(category: AICategory)
+    /// 10日以降フリーユーザー → Plus必須
+    case requiresPlus(category: AICategory, activeDays: Int)
 
     var errorDescription: String? {
         switch self {
@@ -38,13 +45,23 @@ enum AIQuotaError: LocalizedError {
             return "\(cat.displayName)の無料枠（1回/日）を使いました。\nPlusなら3回/日、APIキー登録で無制限になります"
         case .plusExceeded(let cat):
             return "\(cat.displayName)の今日の上限（3回/日）に達しました。\nAPIキーを登録すると無制限に使えます"
+        case .requiresPlus(let cat, let days):
+            return "\(days)日連続、すごい！\n\(cat.displayName)をもっと使うには Fitingo Plus へ。\nPlusなら毎日3回使えます"
         }
     }
 
-    /// Plusへのアップセルが適切か
-    var shouldOfferPlus: Bool {
-        if case .freeExceeded = self { return true }
+    /// Plus へのアップセルを強く促すか
+    var requiresPlusUpgrade: Bool {
+        if case .requiresPlus = self { return true }
         return false
+    }
+
+    /// Plus へのアップセルが適切か（弱い誘導も含む）
+    var shouldOfferPlus: Bool {
+        switch self {
+        case .freeExceeded, .requiresPlus: return true
+        default: return false
+        }
     }
 
     /// APIキー登録を促すか
@@ -76,9 +93,20 @@ final class AIQuotaManager: ObservableObject {
     // MARK: - クォータチェック（サーバー問い合わせ）
 
     /// AI 呼び出し前に使用量をチェックする。
-    /// 超過時は AIQuotaError を throw、通過時は nil を返す。
+    /// 超過時は AIQuotaError を throw。
     /// カスタムキーが設定されている場合は常に通過する。
-    func checkQuota(category: AICategory, isNinetyMode: Bool, isPlus: Bool) async throws {
+    ///
+    /// - Parameters:
+    ///   - category:     AIカテゴリ
+    ///   - isNinetyMode: 90秒モード中か（activeDays < 5）
+    ///   - isPlus:       Plus会員か
+    ///   - activeDays:   連続活動日数（RetentionTracker.localActiveDayCount）
+    func checkQuota(
+        category: AICategory,
+        isNinetyMode: Bool,
+        isPlus: Bool,
+        activeDays: Int = 0
+    ) async throws {
         guard customAPIKey.isEmpty else { return } // カスタムキーがあれば無制限
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -91,10 +119,14 @@ final class AIQuotaManager: ObservableObject {
         let data = snap.data() ?? [:]
 
         if isNinetyMode {
-            // 全カテゴリ合計
+            // 0〜4日（90秒モード）: 全カテゴリ合計 1/日
             let total = data.values.compactMap { $0 as? Int }.reduce(0, +)
             if total >= ninetyDailyLimit { throw AIQuotaError.ninetyModeExceeded }
+        } else if !isPlus && activeDays >= AI_FREE_MAX_DAYS {
+            // 10日以降のFreeユーザー: AI停止 → Plus誘導
+            throw AIQuotaError.requiresPlus(category: category, activeDays: activeDays)
         } else {
+            // 5〜9日（Free: 1/日）または Plus（3/日）
             let count = (data[category.rawValue] as? Int) ?? 0
             let limit = isPlus ? plusDailyLimit : freeDailyLimit
             if count >= limit {

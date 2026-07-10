@@ -274,7 +274,7 @@ struct PlusView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color.duoBlue)
                 }
-                Text("AI機能（栄養解析・コーチング・提案）はPlusプランでご利用可能ですが、\nSETTINGS > LLM設定 から別途APIキーの設定が必要です。")
+                Text("AI機能（栄養解析・コーチング・提案）は誰でも1日1回無料。\nPlusなら3回/日、APIキー登録で無制限（自己負担）。")
                     .font(.system(size: 11))
                     .foregroundColor(Color.duoSubtitle)
                     .fixedSize(horizontal: false, vertical: true)

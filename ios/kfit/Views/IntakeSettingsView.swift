@@ -597,21 +597,25 @@ struct LLMSettingsView: View {
     }
 }
 
-/// AI機能を使う画面で、APIキー未設定時に表示する案内バナー
+/// AI機能を使う画面で表示するクォータ案内バナー
+/// APIキー未設定でも1日1回（Plusは3回）無料で利用可能なことを伝える
 struct LLMAPIKeyNotice: View {
+    private let activeDays = RetentionTracker.shared.localActiveDayCount
+    private let isPlus = PurchaseManager.shared.isPlus
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "key.fill")
+            Image(systemName: "sparkles")
                 .font(.system(size: 14 * UIScale.font, weight: .bold))
-                .foregroundColor(Color.duoOrange)
+                .foregroundColor(noticeColor)
                 .frame(width: 30, height: 30)
-                .background(Color.duoOrange.opacity(0.14))
+                .background(noticeColor.opacity(0.14))
                 .clipShape(Circle())
             VStack(alignment: .leading, spacing: 3) {
-                Text("AI機能を使うにはAPIキーが必要です")
+                Text(titleText)
                     .font(.system(size: 13 * UIScale.font, weight: .black))
                     .foregroundColor(Color.duoDark)
-                Text("SETUP ＞ LLM設定 からAPIキーをセットすると使えるようになります")
+                Text(subtitleText)
                     .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
                     .fixedSize(horizontal: false, vertical: true)
@@ -619,12 +623,33 @@ struct LLMAPIKeyNotice: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(Color.duoOrange.opacity(0.10))
+        .background(noticeColor.opacity(0.08))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.duoOrange.opacity(0.30), lineWidth: 1)
+                .stroke(noticeColor.opacity(0.25), lineWidth: 1)
         )
         .cornerRadius(12)
+    }
+
+    private var noticeColor: Color {
+        if !isPlus && activeDays >= AI_FREE_MAX_DAYS { return Color.orange }
+        return Color.duoGreen
+    }
+
+    private var titleText: String {
+        if isPlus { return "Plus: AI 3回/日・全カテゴリ使い放題" }
+        if activeDays >= AI_FREE_MAX_DAYS {
+            return "\(activeDays)日連続！AIはPlusで毎日3回使えます"
+        }
+        return "APIキー不要・1日1回無料で利用できます（〜9日）"
+    }
+
+    private var subtitleText: String {
+        if isPlus { return "APIキー登録でさらに無制限（自己負担）" }
+        if activeDays >= AI_FREE_MAX_DAYS {
+            return "Plusなら食事AI・語学AI 毎日3回 ・ APIキー登録: 無制限"
+        }
+        return "10日以降はPlusへ（3回/日）・ APIキー登録: 無制限（自己負担）"
     }
 }
 

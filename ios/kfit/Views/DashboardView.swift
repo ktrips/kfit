@@ -7992,6 +7992,7 @@ struct EduPhotoLogSheet: View {
     @State private var saveToFeed: Bool = true
     @State private var isPublic: Bool = true
     @State private var showPhotoPicker = false
+    @State private var showPlusUpsell = false   // 10日以降フリーユーザーへのPlus誘導
 
     var body: some View {
         VStack(spacing: 0) {
@@ -8101,6 +8102,14 @@ struct EduPhotoLogSheet: View {
 
                     // 記録ボタン
                     Button {
+                        // 10日以降のフリーユーザーはAI処理前にPlus誘導
+                        let activeDayCount = RetentionTracker.shared.localActiveDayCount
+                        let isPlus = PurchaseManager.shared.isPlus
+                        let hasCustomKey = AIQuotaManager.shared.hasCustomKey
+                        if activeDayCount >= AI_FREE_MAX_DAYS && !isPlus && !hasCustomKey && selectedImage != nil {
+                            showPlusUpsell = true
+                            return
+                        }
                         if let onCompleteWithLink {
                             onCompleteWithLink(saveToFeed, isPublic, selectedImage, comment, linkInput)
                         } else {
@@ -8123,6 +8132,7 @@ struct EduPhotoLogSheet: View {
                 .padding(.horizontal, 20).padding(.vertical, 16)
             }
         }
+        .sheet(isPresented: $showPlusUpsell) { AIRequiresPlusSheet() }
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItem, matching: .images)
         .onAppear {
             // シート表示直後にブランク画面を挟まず、すぐ写真選択を開く

@@ -526,7 +526,7 @@ struct UserStatusSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 11)).foregroundColor(Color.duoBlue)
-                Text("AI機能はSETTINGS > LLM設定でAPIキーを設定すると利用できます")
+                Text("APIキー不要で1日1回無料・Plusは3回/日・APIキー登録で無制限")
                     .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -761,6 +761,114 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             await MainActor.run {
                 image = loaded
                 isLoading = false
+            }
+        }
+    }
+}
+
+// MARK: - AIRequiresPlusSheet
+
+/// 10日以降のフリーユーザーに表示するPlus誘導シート。
+/// AI利用を試みた際に自動的にプレゼントする。
+struct AIRequiresPlusSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var showPlus = false
+
+    private let activeDays = RetentionTracker.shared.localActiveDayCount
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 28) {
+                // アイコン + メッセージ
+                VStack(spacing: 14) {
+                    Text("🎉")
+                        .font(.system(size: 56))
+                    Text("\(activeDays)日連続達成！")
+                        .font(.title2).fontWeight(.black)
+                        .foregroundColor(Color.duoDark)
+                    Text("ここまで続けたあなたはすごい！\nAIをもっと使うには\nFitingo Plusがおすすめです。")
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+
+                // 比較カード
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Free").font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                            Text("AI機能なし\n（10日以降）")
+                                .font(.subheadline)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(14)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 4) {
+                                Text("Plus").font(.caption).fontWeight(.bold)
+                                    .foregroundColor(Color.duoGreen)
+                                Image(systemName: "star.fill")
+                                    .font(.caption2).foregroundColor(Color.duoGreen)
+                            }
+                            Text("食事AI・語学AI\n毎日3回ずつ")
+                                .font(.subheadline).fontWeight(.semibold)
+                                .foregroundColor(Color.duoDark)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.duoGreen.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.duoGreen, lineWidth: 1.5)
+                        )
+                        .cornerRadius(14)
+                    }
+
+                    Text("または自分のOpenAI APIキーを登録すると無制限に使えます")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 4)
+
+                // CTAボタン
+                Button {
+                    showPlus = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill")
+                        Text("Fitingo Plus を見る")
+                            .fontWeight(.black)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.duoGreen)
+                    .foregroundColor(.white)
+                    .cornerRadius(16)
+                }
+                .buttonStyle(.plain)
+
+                Button("あとで") { dismiss() }
+                    .font(.subheadline)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(24)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }
+            .sheet(isPresented: $showPlus) {
+                PlusView()
             }
         }
     }

@@ -1087,7 +1087,7 @@ struct PhotoLogView: View {
         // 10日以降のフリーユーザーはAI停止 → Plus誘導シートを直接表示
         let activeDayCount = RetentionTracker.shared.localActiveDayCount
         let hasCustomKey = AIQuotaManager.shared.hasCustomKey
-        let isPlus = PurchaseManager.shared.isPlus
+        let isPlus = PlusManager.shared.isPlus
         if activeDayCount >= AI_FREE_MAX_DAYS && !isPlus && !hasCustomKey {
             showPlusUpsell = true
             return

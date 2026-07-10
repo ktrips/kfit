@@ -601,7 +601,7 @@ struct LLMSettingsView: View {
 /// APIキー未設定でも1日1回（Plusは3回）無料で利用可能なことを伝える
 struct LLMAPIKeyNotice: View {
     private let activeDays = RetentionTracker.shared.localActiveDayCount
-    private let isPlus = PurchaseManager.shared.isPlus
+    private let isPlus = PlusManager.shared.isPlus
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {

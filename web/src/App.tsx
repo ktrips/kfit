@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { onAuthChange, getExercises, getUserProfile, subscribeToUserProfile } from './services/firebase';
 import { useAppStore } from './store/appStore';
-import { LoginView } from './components/LoginView';
+// LoginView は LandingPage に置き換えたため未使用（将来の参照用に残す）
+// import { LoginView } from './components/LoginView';
 import { DashboardView } from './components/DashboardView';
 import { ExerciseTrackerView } from './components/ExerciseTrackerView';
 import { WeeklyGoalView } from './components/WeeklyGoalView';
@@ -24,6 +25,7 @@ import { PlusView } from './components/PlusView';
 import { ChallengeLP } from './components/challenge/ChallengeLP';
 import { SharedReportView } from './components/SharedReportView';
 import { NinetySecondMode } from './components/NinetySecondMode';
+import { LandingPage, getActiveDays, NS90_MODE_KEY, type Mode90 } from './components/LandingPage';
 
 type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge' | 'sharedReport' | 'ninety';
 
@@ -77,6 +79,11 @@ function App() {
   const [selectedBookId, setSelectedBookId] = useState<BookId | undefined>(initial.bookId);
   const [sharedReportId] = useState<string | undefined>(initial.shareId);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** LandingPage で選択した 90秒モード */
+  const [ninetyMode, setNinetyMode] = useState<Mode90 | undefined>(() => {
+    const saved = localStorage.getItem(NS90_MODE_KEY);
+    return (saved as Mode90) ?? undefined;
+  });
 
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
@@ -94,10 +101,16 @@ function App() {
           ]);
           if (profile) setUserProfile(profile);
           setExercises(exercisesList);
-          // /books・/challenge-90 にいる場合はそのまま
           const { view: initView } = getInitialViewFromPath();
           if (!initView.startsWith('book') && initView !== 'challenge' && initView !== 'sharedReport' && initView !== 'ninety') {
-            setCurrentView('dashboard');
+            // LandingPage からモード選択でログインした場合 → 7日未満なら90秒モードへ
+            const savedMode = localStorage.getItem(NS90_MODE_KEY) as Mode90 | null;
+            if (savedMode && getActiveDays().length < 7) {
+              setNinetyMode(savedMode);
+              setCurrentView('ninety');
+            } else {
+              setCurrentView('dashboard');
+            }
           }
           // Real-time listener: Cloud Function updates totalPoints/streak after each exercise
           profileUnsub = subscribeToUserProfile(firebaseUser.uid, setUserProfile);
@@ -329,8 +342,16 @@ function App() {
             onFoodLog={()  => navigate(user ? 'food'     : 'login')}
             onEduLog={()   => navigate(user ? 'mind'     : 'login')}
             onDietLog={()  => navigate(user ? 'dietGoal' : 'login')}
-            onExit={() => navigate(user ? 'dashboard' : 'login')}
+            onExit={() => {
+              // 7日以上なら全機能解放（dashboard）、未満なら landing へ
+              if (user && getActiveDays().length >= 7) {
+                navigate('dashboard');
+              } else {
+                navigate(user ? 'dashboard' : 'login');
+              }
+            }}
             doneToday={false}
+            initialMode={ninetyMode}
           />
         )}
 
@@ -340,10 +361,15 @@ function App() {
         )}
 
         {currentView === 'login' && (
-          <LoginView
-            onOpenBooks={() => navigate('books')}
-            onStartWorkout={() => navigate('workout')}
-            onNinetySecond={() => navigate('ninety')}
+          <LandingPage
+            onAuthenticated={(mode) => {
+              setNinetyMode(mode);
+              if (getActiveDays().length < 7) {
+                navigate('ninety');
+              } else {
+                navigate('dashboard');
+              }
+            }}
           />
         )}
         {currentView === 'dashboard' && user && (

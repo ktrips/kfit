@@ -107,14 +107,22 @@ interface Props {
   onDietLog?:   () => void;  // DIET: 体重記録
   onExit:       () => void;
   doneToday?:   boolean;
+  /** 最初に表示するモード（LandingPage から渡す） */
+  initialMode?: string;
 }
 
 // ─── メインコンポーネント ───────────────────────────────────────────────────────
 
 export const NinetySecondMode: React.FC<Props> = ({
-  onStart, onFoodLog, onEduLog, onDietLog, onExit, doneToday = false,
+  onStart, onFoodLog, onEduLog, onDietLog, onExit, doneToday = false, initialMode,
 }) => {
-  const [activePage, setActivePage] = useState(0);
+  const [activePage, setActivePage] = useState(() => {
+    if (initialMode) {
+      const idx = MODES.findIndex((m) => m.id === initialMode);
+      return idx >= 0 ? idx : 0;
+    }
+    return 0;
+  });
   const [gifIdx, setGifIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
@@ -126,6 +134,18 @@ export const NinetySecondMode: React.FC<Props> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const graduated = activeDays.length >= MAX_DAYS;
   const mode = MODES[activePage];
+
+  // ── 初期モードへのスクロール ────────────────────────────────────────────────
+  useEffect(() => {
+    if (activePage === 0) return;
+    // マウント後に初期ページへスクロール（scroll-snap が機能するため即時）
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollLeft = activePage * scrollRef.current.clientWidth;
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── スクロール → ページ同期 ─────────────────────────────────────────────────
   const handleScroll = useCallback(() => {

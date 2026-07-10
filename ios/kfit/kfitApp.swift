@@ -795,15 +795,6 @@ enum NinetySecondModeType: Int, CaseIterable {
         }
     }
 
-    var actionSubtitle: String {
-        switch self {
-        case .fit:  return "今日の90秒、それだけ"
-        case .food: return "今日の1枚、それだけ"
-        case .edu:  return "今日の1問、それだけ"
-        case .diet: return "今日の1計測、それだけ"
-        }
-    }
-
     var accentColor: Color {
         switch self {
         case .fit:  return Color.duoGreen
@@ -1053,19 +1044,12 @@ struct NinetySecondModeCard: View {
 
             VStack(spacing: 0) {
 
-                // ── ストリーク + モードバッジ ────────────────────────────
-                VStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text("🔥").font(.system(size: 18))
-                        Text("\(streak)日連続")
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundColor(.duoDark)
-                    }
-                    Text(mode.modeBadge)
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 4)
-                        .background(Capsule().fill(accent))
+                // ── ストリーク ──────────────────────────────────────────
+                HStack(spacing: 6) {
+                    Text("🔥").font(.system(size: 18))
+                    Text("\(streak)日連続")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundColor(.duoDark)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 10)
@@ -1127,10 +1111,17 @@ struct NinetySecondModeCard: View {
 
                 Spacer().frame(height: 14)
 
-                // ── サブテキスト ───────────────────────────────────────────
-                Text(doneToday ? "もう1回やる ▶" : mode.actionSubtitle)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundColor(.duoDark)
+                // ── モードバッジ + サブテキスト ─────────────────────────────
+                VStack(spacing: 8) {
+                    Text(mode.modeBadge)
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 4)
+                        .background(Capsule().fill(accent))
+                    Text(doneToday ? "もう1回やる ▶" : "ボタンを押して始める、それだけ")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .foregroundColor(.duoDark)
+                }
 
                 Spacer()
 
@@ -1193,7 +1184,7 @@ struct NinetySecondModeCard: View {
                 GIFAnimationView(
                     gifName: exerciseGifs[gifIndex % max(1, exerciseGifs.count)],
                     contentMode: .scaleAspectFit,
-                    maxFrames: 20
+                    maxFrames: 48
                 )
                 .id(gifIndex)
                 .frame(maxWidth: .infinity)
@@ -1362,7 +1353,7 @@ struct NinetySecondModeCard: View {
     }
 }
 
-// MARK: - 90秒モードハブ（FIT / FOOD / EDU を横スワイプで切替）
+// MARK: - 90秒モードハブ（FIT / DIET / FOOD / EDU を横スワイプで切替）
 // 5タブ・機能説明を見せず「今日の90秒」だけに絞る。初回起動から60秒以内に
 // 最初の1セットを完了させることが目的（docs/SamBezThieMuskJobs_plan.md Musk 案2 / Jobs 5-4）。
 // 7活動日で全機能を開放。右下のリンクからいつでも全機能に切り替え可能。
@@ -1420,6 +1411,20 @@ struct NinetySecondModeView: View {
             )
             .tag(0)
 
+            // ── DIET ───────────────────────────────────────────
+            NinetySecondModeCard(
+                mode: .diet,
+                doneToday: doneToday,
+                streak: streak,
+                activeDays: activeDays,
+                graduated: graduated,
+                gifIndex: 0,
+                exerciseGifs: [],
+                onAction: { showDietSheet = true },
+                onExit: onExit
+            )
+            .tag(1)
+
             // ── FOOD ───────────────────────────────────────────
             NinetySecondModeCard(
                 mode: .food,
@@ -1433,7 +1438,7 @@ struct NinetySecondModeView: View {
                 onAction: { showFoodLog = true },
                 onExit: onExit
             )
-            .tag(1)
+            .tag(2)
 
             // ── EDU ────────────────────────────────────────────
             NinetySecondModeCard(
@@ -1445,20 +1450,6 @@ struct NinetySecondModeView: View {
                 gifIndex: 0,
                 exerciseGifs: [],
                 onAction: { showEduLog = true },
-                onExit: onExit
-            )
-            .tag(2)
-
-            // ── DIET ───────────────────────────────────────────
-            NinetySecondModeCard(
-                mode: .diet,
-                doneToday: doneToday,
-                streak: streak,
-                activeDays: activeDays,
-                graduated: graduated,
-                gifIndex: 0,
-                exerciseGifs: [],
-                onAction: { showDietSheet = true },
                 onExit: onExit
             )
             .tag(3)

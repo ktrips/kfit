@@ -508,7 +508,7 @@ function generateRuleBasedComment(streak, weekSets, _weekXP) {
 // Plus 判定:
 //   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
 const AI_QUOTA = { free: 5, plus: 300 };
-const AI_DEFAULT_MODEL = 'gpt-4o-mini';
+const AI_DEFAULT_MODEL = 'gpt-5.4-mini';
 
 exports.aiProxy = functions
   .runWith({ timeoutSeconds: 60, memory: '256MB' })

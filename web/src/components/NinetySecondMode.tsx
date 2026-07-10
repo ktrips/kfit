@@ -38,11 +38,12 @@ function recordToday(): string[] {
 
 // ─── モード定義 ──────────────────────────────────────────────────────────────
 
+const ACTION_MESSAGE = 'ボタンを押して始める、それだけ';
+
 interface ModeConfig {
   id: string;
   badge: string;
   tagline: string;
-  subtitle: string;
   accent: string;
   accentDark: string;
   accentLight: string;
@@ -55,7 +56,6 @@ const MODES: ModeConfig[] = [
     id: 'fit',
     badge: 'FIT 90秒',
     tagline: '今度こそ、続く「筋トレ」',
-    subtitle: '今日の90秒、それだけ',
     accent: '#58CC02',
     accentDark: '#46A302',
     accentLight: 'rgba(88,204,2,0.1)',
@@ -63,10 +63,19 @@ const MODES: ModeConfig[] = [
     emoji: null,
   },
   {
+    id: 'diet',
+    badge: 'DIET 90秒',
+    tagline: '今度こそ、続く「ダイエット」',
+    accent: '#CE82FF',
+    accentDark: '#9C5CC9',
+    accentLight: 'rgba(206,130,255,0.1)',
+    bg: 'linear-gradient(180deg,#F8F0FF 0%,#fff 100%)',
+    emoji: '⚖️',
+  },
+  {
     id: 'food',
     badge: 'FOOD 90秒',
     tagline: '今度こそ、続く「食事ログ」',
-    subtitle: '今日の1枚、それだけ',
     accent: '#FF9600',
     accentDark: '#CC7700',
     accentLight: 'rgba(255,150,0,0.1)',
@@ -77,23 +86,11 @@ const MODES: ModeConfig[] = [
     id: 'edu',
     badge: 'EDU 90秒',
     tagline: '今度こそ、続く「語学」',
-    subtitle: '今日の1レッスン、それだけ',
     accent: '#1CB0F6',
     accentDark: '#1090CC',
     accentLight: 'rgba(28,176,246,0.1)',
     bg: 'linear-gradient(180deg,#F0F8FF 0%,#fff 100%)',
     emoji: '📚',
-  },
-  {
-    id: 'diet',
-    badge: 'DIET 90秒',
-    tagline: '今度こそ、続く「ダイエット」',
-    subtitle: '今日の1計測、それだけ',
-    accent: '#CE82FF',
-    accentDark: '#9C5CC9',
-    accentLight: 'rgba(206,130,255,0.1)',
-    bg: 'linear-gradient(180deg,#F8F0FF 0%,#fff 100%)',
-    emoji: '⚖️',
   },
 ];
 
@@ -195,16 +192,6 @@ export const NinetySecondMode: React.FC<Props> = ({
             }}
           />
         ))}
-      </div>
-
-      {/* ── モードラベル ─────────────────────────────────────────────── */}
-      <div className="flex justify-center mt-2">
-        <span
-          className="text-xs font-black px-4 py-1 rounded-full text-white"
-          style={{ background: mode.accent }}
-        >
-          {mode.badge}
-        </span>
       </div>
 
       {/* ── 水平スクロール カルーセル ──────────────────────────────────── */}
@@ -463,7 +450,7 @@ const ModeCard: React.FC<CardProps> = ({
             transition: 'transform 1.6s ease-in-out',
             filter: `drop-shadow(0 8px 16px ${accent}55)`,
           }}
-          aria-label={doneToday ? 'もう1セット' : mode.subtitle}
+          aria-label={doneToday ? 'もう1セット' : ACTION_MESSAGE}
         >
           <img
             src="/mascot.png"
@@ -473,9 +460,15 @@ const ModeCard: React.FC<CardProps> = ({
         </button>
       )}
 
-      {/* ── サブテキスト ──────────────────────────────────────────────── */}
-      <p className="mt-3 text-sm font-semibold" style={{ color: '#999' }}>
-        {doneToday ? 'もう1セットやる ▶' : mode.subtitle}
+      {/* ── モードバッジ + サブテキスト ──────────────────────────────── */}
+      <span
+        className="mt-4 text-xs font-black px-4 py-1 rounded-full text-white"
+        style={{ background: accent }}
+      >
+        {mode.badge}
+      </span>
+      <p className="mt-2 text-sm font-semibold" style={{ color: '#999' }}>
+        {doneToday ? 'もう1セットやる ▶' : ACTION_MESSAGE}
       </p>
 
       {/* ── Tips ─────────────────────────────────────────────────────── */}

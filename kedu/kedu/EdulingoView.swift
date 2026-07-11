@@ -78,6 +78,17 @@ struct EdulingoView: View {
     // 一覧カードの単体 TTS 再生中 ID
     @State private var speakingCardId: String? = nil
 
+    // 再生によって更新されたハートカウント（item.id → likeCount）
+    @State private var playLikeCounts: [String: Int] = [:]
+    // 今日の再生ポイント合計（表示用）
+    @State private var todayPlayPoints: Int = 0
+    // 今週の再生ポイント累計（セッション内）
+    @State private var weekPlayPoints: Int = 0
+    // Firestore から取得したトータル EDU ポイント
+    @State private var totalEduPoints: Int = 0
+    // ポイントサマリーシートの表示
+    @State private var showPointsSheet = false
+
     // Edulingo 専用クイックレコード（教育 4 種）
     private let eduQuickRecords: [TomoQuickRecord] = [
         TomoQuickRecord(id: "duolingo", label: "Duolingo", emoji: "🦉", color: Color(hex: "#58CC02"), isFood: false),
@@ -105,6 +116,87 @@ struct EdulingoView: View {
         f.dateFormat = "M/d(E)"
         return f
     }()
+
+    // MARK: - 再生記録（ハート+1 & 10ポイント付与）
+
+    /// 投稿の再生ボタンを押したときに呼ぶ。
+    /// - 投稿の likeCount を Firestore で +1（ハートカウントとして扱う）
+    /// - 再生を行ったユーザーに 10 ポイントを付与
+    private func recordPlay(item: EduLogHistoryItem) {
+        let db = Firestore.firestore()
+        guard let currentUID = Auth.auth().currentUser?.uid else { return }
+
+        // ── 投稿ドキュメントのパスを item.id から解決 ──────────────────────
+        // friend_{authorUID}_{docID}  → publicProfiles/{authorUID}/posts/{docID}
+        // own_{docID}                → publicProfiles/{currentUID}/posts/{docID}
+        // {localUUID}（ローカル自分投稿）→ publicProfiles/{currentUID}/posts/{localUUID}
+        let authorUID: String
+        let postDocID: String
+        if item.id.hasPrefix("friend_") {
+            // "friend_<uid>_<docId>" → split で uid と docId を取り出す
+            let stripped = String(item.id.dropFirst("friend_".count))
+            // uid は 28文字の Firebase UID（英数字）
+            if let underscoreRange = stripped.range(of: "_") {
+                authorUID = String(stripped[stripped.startIndex..<underscoreRange.lowerBound])
+                postDocID = String(stripped[underscoreRange.upperBound...])
+            } else {
+                authorUID = currentUID
+                postDocID = item.id
+            }
+        } else if item.id.hasPrefix("own_") {
+            authorUID = currentUID
+            postDocID = String(item.id.dropFirst("own_".count))
+        } else {
+            authorUID = currentUID
+            postDocID = item.id
+        }
+
+        // ── Firestore: 投稿の likeCount を +1 ────────────────────────────
+        let postRef = db
+            .collection("publicProfiles").document(authorUID)
+            .collection("posts").document(postDocID)
+        postRef.updateData(["likeCount": FieldValue.increment(Int64(1))]) { err in
+            if let err { print("[recordPlay] likeCount update failed: \(err)") }
+        }
+
+        // ── ローカル状態を即時反映（UXのため楽観的更新） ─────────────────
+        let currentCount = playLikeCounts[item.id]
+            ?? (EduLogManager.shared.history.first { $0.id == item.id }?.likeCount ?? item.likeCount)
+        playLikeCounts[item.id] = currentCount + 1
+
+        // 自分の投稿ならローカル履歴にも反映
+        if !item.id.hasPrefix("friend_") {
+            let baseId = item.id.hasPrefix("own_") ? String(item.id.dropFirst(4)) : item.id
+            if let idx = EduLogManager.shared.history.firstIndex(where: { $0.id == baseId }) {
+                EduLogManager.shared.history[idx].likeCount += 1
+            }
+        }
+
+        // ── Firestore: 再生ポイント +10（今日 & トータル & 今週）──────────
+        let userRef = db.collection("users").document(currentUID)
+        userRef.setData(["eduPlayPoints": FieldValue.increment(Int64(10))], merge: true) { err in
+            if let err { print("[recordPlay] points update failed: \(err)") }
+        }
+        // 今週の再生ポイント（Firestore: users/{uid}/weeklyEduStats/{YYYY-WW}）
+        let weekKey = currentWeekKey()
+        db.collection("users").document(currentUID)
+            .collection("weeklyEduStats").document(weekKey)
+            .setData(["playPoints": FieldValue.increment(Int64(10))], merge: true) { _ in }
+
+        todayPlayPoints += 10
+        weekPlayPoints += 10
+        totalEduPoints += 10
+    }
+
+    /// 現在の週を "YYYY-WW" 形式で返す（月曜始まり）
+    private func currentWeekKey() -> String {
+        var cal = Calendar(identifier: .iso8601)
+        cal.locale = Locale(identifier: "ja_JP")
+        let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        let y = comps.yearForWeekOfYear ?? 2025
+        let w = comps.weekOfYear ?? 1
+        return String(format: "%04d-%02d", y, w)
+    }
 
     // MARK: - 教育コンテンツ判定
 
@@ -389,7 +481,8 @@ struct EdulingoView: View {
 
         var entries: [EduRankEntry] = []
         entries.append(EduRankEntry(uid: myUID, username: myName, photoURL: myPhotoURL,
-                                    weeklyPostCount: myCount, isMe: true, streak: myStreak))
+                                    weeklyPostCount: myCount, weeklyPlayPoints: weekPlayPoints,
+                                    isMe: true, streak: myStreak))
 
         for friendEntry in manager.entries.filter({ !$0.isMe }) {
             let fid = friendEntry.id
@@ -400,10 +493,11 @@ struct EdulingoView: View {
             let streak = calcStreak(posts: friendPosts)
             entries.append(EduRankEntry(uid: fid, username: friendEntry.username,
                                         photoURL: friendEntry.photoURL,
-                                        weeklyPostCount: count, isMe: false, streak: streak))
+                                        weeklyPostCount: count, weeklyPlayPoints: 0,
+                                        isMe: false, streak: streak))
         }
 
-        entries.sort { $0.weeklyPostCount > $1.weeklyPostCount }
+        entries.sort { $0.weeklyTotalPt > $1.weeklyTotalPt }
         for i in entries.indices { entries[i].rank = i + 1 }
         return entries
     }
@@ -450,6 +544,13 @@ struct EdulingoView: View {
             _ = await (a, b)
             rebuildEduCache()
             WatchEduSender.shared.sendEduItemsDebounced(cachedEduItemsUnfiltered)
+            // トータル EDU ポイントを Firestore から取得
+            if let uid = Auth.auth().currentUser?.uid {
+                let snap = try? await Firestore.firestore().collection("users").document(uid).getDocument()
+                if let data = snap?.data() {
+                    totalEduPoints = data["eduPlayPoints"] as? Int ?? 0
+                }
+            }
             // 既存のローカル履歴を全件 Firebase に同期（バックフィル）
             EduLogManager.shared.syncAllPublicPosts()
             // 90秒ごとに友達フィードを再取得して最新投稿を反映
@@ -457,6 +558,13 @@ struct EdulingoView: View {
                 await fetchMyOwnPosts()
                 await manager.load(force: true)
             }
+        }
+        .sheet(isPresented: $showPointsSheet) {
+            EduPointsSummarySheet(
+                todayPoints: todayPlayPoints,
+                weekPoints: (weeklyEduRanking.first(where: { $0.isMe })?.weeklyTotalPt ?? 0),
+                totalPoints: totalEduPoints
+            )
         }
         .onReceive(manager.$friendFeedItems) { _ in
             rebuildEduCache()
@@ -684,14 +792,24 @@ struct EdulingoView: View {
                         .foregroundColor(.white)
                 }
 
-                // 右端：ユーザーアイコン（タップでハンバーガーメニュー）
-                Button { showHamburgerMenu = true } label: {
-                    EduUserAvatar(
-                        photoURL: Auth.auth().currentUser?.photoURL?.absoluteString ?? "",
-                        name: auth.userProfile?.username ?? "",
-                        size: 30
-                    )
-                    .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
+                // 右端：ユーザーアイコン（タップでポイントサマリー表示）
+                Button { showPointsSheet = true } label: {
+                    ZStack(alignment: .topTrailing) {
+                        EduUserAvatar(
+                            photoURL: Auth.auth().currentUser?.photoURL?.absoluteString ?? "",
+                            name: auth.userProfile?.username ?? "",
+                            size: 30
+                        )
+                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
+                        // 🏆 バッジ
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundColor(Color(hex: "#FFD700"))
+                            .frame(width: 14, height: 14)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .offset(x: 3, y: -3)
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -816,7 +934,7 @@ struct EdulingoView: View {
 
                                 // EDU pt + 展開矢印
                                 HStack(spacing: 4) {
-                                    Text("\(entry.weeklyPostCount * 10)pt")
+                                    Text("\(entry.weeklyTotalPt)pt")
                                         .font(.system(size: 12 * UIScale.font, weight: .black))
                                         .foregroundColor(Color(hex: "#58CC02"))
                                         .minimumScaleFactor(0.7)
@@ -1374,26 +1492,24 @@ struct EdulingoView: View {
         let isFav      = isFavoriteItem(item)
 
         return VStack(alignment: .leading, spacing: 0) {
-            // ── ヘッダー（アバター・名前・ハート・言語バッジ・再生ボタン・カテゴリ・メニュー）──────────
+            // ── ヘッダー（アバター・名前・言語バッジ・再生ボタン・カテゴリ・メニュー）──────────
             HStack(spacing: 6) {
-                EduUserAvatar(
-                    photoURL: item.authorPhotoURL.isEmpty
-                        ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
-                        : item.authorPhotoURL,
-                    name: item.authorFirstName,
-                    size: 24
-                )
+                // 左アバター（タップでポイントサマリー）
+                Button { showPointsSheet = true } label: {
+                    EduUserAvatar(
+                        photoURL: item.authorPhotoURL.isEmpty
+                            ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
+                            : item.authorPhotoURL,
+                        name: item.authorFirstName,
+                        size: 24
+                    )
+                }
+                .buttonStyle(.plain)
+
                 Text(isOwnPost(item) ? "YOU" : item.authorFirstName)
                     .font(.system(size: 11 * UIScale.font, weight: .black))
                     .foregroundColor(isOwnPost(item) ? Color(hex: "#58CC02") : Color.duoDark)
                     .lineLimit(1)
-
-                // お気に入りハートアイコン
-                if isFav {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 10 * UIScale.font))
-                        .foregroundColor(Color(hex: "#FF4B4B"))
-                }
 
                 // 言語バッジ + 再生ボタン（Duolingo 投稿のみ・名前の右）
                 if isDuo && !langCode.isEmpty {
@@ -1424,6 +1540,8 @@ struct EdulingoView: View {
                                     ttsEngine.speakSequence(queue) {
                                         DispatchQueue.main.async { speakingCardId = nil }
                                     }
+                                    // 再生 = ハート +1 & 自分に 10pt
+                                    recordPlay(item: item)
                                 }
                             } label: {
                                 Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
@@ -1434,6 +1552,19 @@ struct EdulingoView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
+
+                            // ハートカウント（再生回数）
+                            let likeCount = playLikeCounts[item.id] ?? item.likeCount
+                            if likeCount > 0 {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Color(hex: "#FF4B4B"))
+                                    Text("\(likeCount)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(Color(hex: "#FF4B4B"))
+                                }
+                            }
                         }
                     }
                 }
@@ -1942,6 +2073,89 @@ private struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
+// MARK: - EduPointsSummarySheet
+
+struct EduPointsSummarySheet: View {
+    let todayPoints: Int
+    let weekPoints: Int
+    let totalPoints: Int
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // ヘッダー
+                VStack(spacing: 4) {
+                    Text("🏆").font(.system(size: 44))
+                    Text("EDU ポイント")
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                    Text("投稿×10pt ＋ 再生×10pt で獲得")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.gray)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .background(
+                    LinearGradient(
+                        colors: [Color(hex: "#58CC02").opacity(0.08), Color(hex: "#1CB0F6").opacity(0.05)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+
+                // ポイント3段表示
+                VStack(spacing: 12) {
+                    pointRow(icon: "sun.max.fill",    color: Color(hex: "#FF9500"), label: "今日",   pt: todayPoints)
+                    Divider().padding(.horizontal, 16)
+                    pointRow(icon: "calendar.badge.clock", color: Color(hex: "#1CB0F6"), label: "今週", pt: weekPoints)
+                    Divider().padding(.horizontal, 16)
+                    pointRow(icon: "star.fill",       color: Color(hex: "#FFD700"), label: "累計",   pt: totalPoints)
+                }
+                .padding(.vertical, 20)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .padding(16)
+
+                Spacer()
+
+                // ヒント
+                Text("💡 再生するたびに EDU ポイントが増え\n週間ランキングにも加算されます")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 20)
+            }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("閉じる") { dismiss() }
+                        .fontWeight(.bold)
+                        .foregroundColor(Color(hex: "#58CC02"))
+                }
+            }
+        }
+    }
+
+    private func pointRow(icon: String, color: Color, label: String, pt: Int) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(color)
+                .frame(width: 36)
+            Text(label)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color(.label))
+            Spacer()
+            Text("\(pt) pt")
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .foregroundColor(color)
+        }
+        .padding(.horizontal, 20)
+    }
+}
+
 // MARK: - EduRankEntry
 
 struct EduRankEntry: Identifiable {
@@ -1949,16 +2163,21 @@ struct EduRankEntry: Identifiable {
     let username: String
     let photoURL: String
     let weeklyPostCount: Int
+    var weeklyPlayPoints: Int = 0   // 今週の再生ポイント
     let isMe: Bool
     var rank: Int = 0
     var streak: Int = 0     // 連続投稿日数（1日1投稿以上）
 
+    /// 合計週間 EDU pt（投稿 × 10pt ＋ 再生ポイント）
+    var weeklyTotalPt: Int { weeklyPostCount * 10 + weeklyPlayPoints }
+
     init(uid: String, username: String, photoURL: String,
-         weeklyPostCount: Int, isMe: Bool, streak: Int = 0) {
+         weeklyPostCount: Int, weeklyPlayPoints: Int = 0, isMe: Bool, streak: Int = 0) {
         self.id = uid
         self.username = username
         self.photoURL = photoURL
         self.weeklyPostCount = weeklyPostCount
+        self.weeklyPlayPoints = weeklyPlayPoints
         self.isMe = isMe
         self.streak = streak
     }

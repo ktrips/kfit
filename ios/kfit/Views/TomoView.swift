@@ -1580,6 +1580,8 @@ struct TomoView: View {
                                     guard !phrases.isEmpty else { return }
                                     speakingItemID = item.id
                                     speakingExampleKey = nil
+                                    // 再生 = ハート+1 & マインドポイント +10
+                                    recordMindPlay(item: item)
                                     ttsEngine.speakSequence(phrases) {
                                         DispatchQueue.main.async { speakingItemID = nil }
                                     }
@@ -2154,6 +2156,40 @@ struct TomoView: View {
     /// 言語コードに対応した Edulingo 準拠のバッジ背景色
     private func tomoLangColor(_ code: String) -> Color { languageBadgeColor(code) }
 
+    /// フィード内で再生ボタンを押したときに呼ぶ。
+    /// 投稿の likeCount を Firestore で +1（ハートカウント）し、マインドポイント +10 を付与する。
+    private func recordMindPlay(item: EduLogHistoryItem) {
+        let db = Firestore.firestore()
+        guard let currentUID = Auth.auth().currentUser?.uid else { return }
+
+        let authorUID: String
+        let postDocID: String
+        if item.id.hasPrefix("friend_") {
+            let stripped = String(item.id.dropFirst("friend_".count))
+            if let range = stripped.range(of: "_") {
+                authorUID = String(stripped[stripped.startIndex..<range.lowerBound])
+                postDocID = String(stripped[range.upperBound...])
+            } else { authorUID = currentUID; postDocID = item.id }
+        } else if item.id.hasPrefix("own_") {
+            authorUID = currentUID
+            postDocID = String(item.id.dropFirst("own_".count))
+        } else {
+            authorUID = currentUID; postDocID = item.id
+        }
+
+        db.collection("publicProfiles").document(authorUID)
+            .collection("posts").document(postDocID)
+            .updateData(["likeCount": FieldValue.increment(Int64(1))]) { _ in }
+
+        let baseId = item.id.hasPrefix("own_") ? String(item.id.dropFirst(4)) : item.id
+        if let idx = EduLogManager.shared.history.firstIndex(where: { $0.id == item.id || $0.id == baseId }) {
+            EduLogManager.shared.history[idx].likeCount += 1
+        }
+
+        db.collection("users").document(currentUID)
+            .setData(["mindPlayPoints": FieldValue.increment(Int64(10))], merge: true) { _ in }
+    }
+
     private func relativeTimeString(_ date: Date) -> String {
         let diff = Int(Date().timeIntervalSince(date))
         if diff < 60 { return "たった今" }
@@ -2725,6 +2761,9 @@ struct SwipeableTomoDetailSheet: View {
     @State private var deleteConfirmItem: EduLogHistoryItem? = nil
     @Environment(\.dismiss) private var dismiss
 
+    // 再生によって更新されたハートカウント（item.id → likeCount）
+    @State private var playLikeCounts: [String: Int] = [:]
+
     private static let hhmm: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP"); f.dateFormat = "M月d日 HH:mm"; return f
     }()
@@ -2808,50 +2847,66 @@ struct SwipeableTomoDetailSheet: View {
         }
     }
 
+    /// 写真右上にオーバーレイするハート（お気に入り＋再生カウント）＋編集ボタン
     @ViewBuilder
-    private var detailLeadingButtons: some View {
-        let currentItem = selection < items.count ? items[selection] : nil
-        let isOwn = currentItem.map { isOwnItem($0) } ?? false
-        let isFav = currentItem.flatMap { liveItem(for: $0) }?.isFavorite ?? false
+    private func photoActionButtons(item: EduLogHistoryItem) -> some View {
+        let isOwn = isOwnItem(item)
+        let isFav = (liveItem(for: item)?.isFavorite ?? false)
+        let likeCount = playLikeCounts[item.id] ?? item.likeCount
 
-        HStack(spacing: 12) {
-            // お気に入り（自分の投稿のみ）
-            if isOwn {
+        VStack(spacing: 6) {
+            // ── ハート（お気に入り表示＋再生カウント）──
+            VStack(spacing: 2) {
                 Button {
-                    if let it = currentItem {
-                        // "own_xxx" プレフィックスを除去して toggleFavorite を呼ぶ
-                        let targetId = it.id.hasPrefix("own_") ? String(it.id.dropFirst(4)) : it.id
-                        // ローカル履歴に存在すれば通常通りトグル
-                        if EduLogManager.shared.history.contains(where: { $0.id == targetId || $0.id == it.id }) {
-                            EduLogManager.shared.toggleFavorite(id: targetId)
-                        } else {
-                            // ローカル履歴にない場合: 現アイテムをローカルに取り込んでからお気に入りに
-                            var localCopy = it
-                            localCopy.id = targetId
-                            localCopy.isFavorite = true
-                            EduLogManager.shared.importAndFavorite(localCopy)
+                    guard isOwn else { return }
+                    let targetId = item.id.hasPrefix("own_") ? String(item.id.dropFirst(4)) : item.id
+                    if EduLogManager.shared.history.contains(where: { $0.id == targetId || $0.id == item.id }) {
+                        EduLogManager.shared.toggleFavorite(id: targetId)
+                    } else {
+                        var localCopy = item
+                        localCopy.id = targetId
+                        localCopy.isFavorite = true
+                        EduLogManager.shared.importAndFavorite(localCopy)
+                    }
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: isFav ? "heart.fill" : "heart")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(isFav ? Color(hex: "#FF4B4B") : .white)
+                        if likeCount > 0 {
+                            Text("\(likeCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
                         }
                     }
-                } label: {
-                    Image(systemName: isFav ? "heart.fill" : "heart")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(isFav ? Color(hex: "#FF4B4B") : Color.duoSubtitle)
+                    .frame(width: 40, height: likeCount > 0 ? 48 : 40)
+                    .background(Color.black.opacity(0.45))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
+            }
 
-                // 編集
+            // ── 編集（自分の投稿のみ）──
+            if isOwn {
                 Button {
-                    if let it = currentItem {
-                        editingItem = liveItem(for: it) ?? it
-                    }
+                    editingItem = liveItem(for: item) ?? item
                 } label: {
                     Image(systemName: "pencil")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: "#1CB0F6"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
             }
         }
+        .padding(10)
+    }
+
+    @ViewBuilder
+    private var detailLeadingButtons: some View {
+        EmptyView()
     }
 
     @ViewBuilder
@@ -2900,6 +2955,59 @@ struct SwipeableTomoDetailSheet: View {
         // ローカル履歴にない自分の投稿（"own_" プレフィックス付き）→ item 自体を返す
         if item.id.hasPrefix("own_") { return item }
         return nil
+    }
+
+    /// 再生ボタンを押したときに呼ぶ。
+    /// - 投稿の likeCount を Firestore で +1（ハートカウント）
+    /// - 再生した自分に EDU/マインドポイント +10 を付与
+    private func recordPlay(item: EduLogHistoryItem) {
+        let db = Firestore.firestore()
+        guard let currentUID = Auth.auth().currentUser?.uid else { return }
+
+        // ── 投稿ドキュメントのパスを item.id から解決 ──
+        // friend_{authorUID}_{docID} → publicProfiles/{authorUID}/posts/{docID}
+        // own_{docID} / ローカルUUID → publicProfiles/{currentUID}/posts/{docID}
+        let authorUID: String
+        let postDocID: String
+        if item.id.hasPrefix("friend_") {
+            let stripped = String(item.id.dropFirst("friend_".count))
+            if let range = stripped.range(of: "_") {
+                authorUID = String(stripped[stripped.startIndex..<range.lowerBound])
+                postDocID = String(stripped[range.upperBound...])
+            } else {
+                authorUID = currentUID; postDocID = item.id
+            }
+        } else if item.id.hasPrefix("own_") {
+            authorUID = currentUID
+            postDocID = String(item.id.dropFirst("own_".count))
+        } else if item.id.hasPrefix("food_") {
+            authorUID = currentUID
+            postDocID = item.id
+        } else {
+            authorUID = currentUID; postDocID = item.id
+        }
+
+        // Firestore: 投稿の likeCount を +1
+        db.collection("publicProfiles").document(authorUID)
+            .collection("posts").document(postDocID)
+            .updateData(["likeCount": FieldValue.increment(Int64(1))]) { _ in }
+
+        // ローカル楽観的更新
+        let current = playLikeCounts[item.id]
+            ?? (EduLogManager.shared.history.first { $0.id == item.id }?.likeCount ?? item.likeCount)
+        playLikeCounts[item.id] = current + 1
+
+        // 自分の投稿ならローカル履歴にも反映
+        if !item.id.hasPrefix("friend_") {
+            let baseId = item.id.hasPrefix("own_") ? String(item.id.dropFirst(4)) : item.id
+            if let idx = EduLogManager.shared.history.firstIndex(where: { $0.id == baseId }) {
+                EduLogManager.shared.history[idx].likeCount += 1
+            }
+        }
+
+        // Firestore: EDU/マインドポイント +10
+        db.collection("users").document(currentUID)
+            .setData(["mindPlayPoints": FieldValue.increment(Int64(10))], merge: true) { _ in }
     }
 
     @ViewBuilder
@@ -3088,6 +3196,13 @@ struct SwipeableTomoDetailSheet: View {
                         }
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    // 写真右上: ハート（お気に入り＋再生カウント）＋編集
+                    let hasPhoto = !(item.sharedUrl != nil && thumb == nil && item.weightKg == nil)
+                    if hasPhoto {
+                        photoActionButtons(item: item)
+                    }
+                }
 
                 // ── FIT: 体重・体脂肪メトリクス（WeightFeedDetailSheet と同じ）
                 if isFit {
@@ -3157,24 +3272,6 @@ struct SwipeableTomoDetailSheet: View {
 
                 // ── アクションボタン行（いいね・コメント・シェア）──────────
                 HStack(spacing: 0) {
-                    // いいね
-                    Button {
-                        onLike?(item)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: item.isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 20 * UIScale.font, weight: .regular))
-                                .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
-                            if item.likeCount > 0 {
-                                Text("\(item.likeCount)")
-                                    .font(.system(size: 13 * UIScale.font, weight: .bold))
-                                    .foregroundColor(item.isLiked ? Color(hex: "#ED4956") : Color.duoDark)
-                            }
-                        }
-                        .padding(.horizontal, 14).padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-
                     // コメント
                     Button {
                         onComment?(item)

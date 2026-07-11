@@ -507,6 +507,13 @@ struct EdulingoView: View {
         calcStreak(posts: myOwnPosts.filter { isEduItem($0) })
     }
 
+    /// 今日の投稿によるポイント（投稿数 × 10pt）
+    private var todayPostPoints: Int {
+        let start = Calendar.current.startOfDay(for: Date())
+        let count = myOwnPosts.filter { isEduItem($0) && $0.timestamp >= start }.count
+        return count * 10
+    }
+
     // MARK: - ボディ
 
     var body: some View {
@@ -544,11 +551,28 @@ struct EdulingoView: View {
             _ = await (a, b)
             rebuildEduCache()
             WatchEduSender.shared.sendEduItemsDebounced(cachedEduItemsUnfiltered)
-            // トータル EDU ポイントを Firestore から取得
+            // トータル・今週 EDU ポイントを Firestore から取得
             if let uid = Auth.auth().currentUser?.uid {
-                let snap = try? await Firestore.firestore().collection("users").document(uid).getDocument()
-                if let data = snap?.data() {
-                    totalEduPoints = data["eduPlayPoints"] as? Int ?? 0
+                let db = Firestore.firestore()
+
+                // ユーザードキュメントから累計再生ポイントを取得
+                let userSnap = try? await db.collection("users").document(uid).getDocument()
+                if let data = userSnap?.data() {
+                    // Firestore の increment は Int64 で返るため NSNumber 経由でキャスト
+                    let playPt = (data["eduPlayPoints"] as? NSNumber)?.intValue ?? 0
+                    let postPt = myOwnPosts.filter { isEduItem($0) }.count * 10
+                    totalEduPoints = playPt + postPt
+                }
+
+                // 今週の再生ポイントを Firestore から取得
+                let weekKey  = currentWeekKey()
+                let weekSnap = try? await db.collection("users").document(uid)
+                    .collection("weeklyEduStats").document(weekKey).getDocument()
+                if let wData = weekSnap?.data() {
+                    let fetchedWeekPt = (wData["playPoints"] as? NSNumber)?.intValue ?? 0
+                    if fetchedWeekPt > weekPlayPoints {
+                        weekPlayPoints = fetchedWeekPt
+                    }
                 }
             }
             // 既存のローカル履歴を全件 Firebase に同期（バックフィル）
@@ -561,7 +585,7 @@ struct EdulingoView: View {
         }
         .sheet(isPresented: $showPointsSheet) {
             EduPointsSummarySheet(
-                todayPoints: todayPlayPoints,
+                todayPoints: todayPostPoints + todayPlayPoints,
                 weekPoints: (weeklyEduRanking.first(where: { $0.isMe })?.weeklyTotalPt ?? 0),
                 totalPoints: totalEduPoints
             )
@@ -697,10 +721,15 @@ struct EdulingoView: View {
 
         // ハンバーガーメニューシート
         .sheet(isPresented: $showHamburgerMenu) {
-            KeduMenuSheet(showInviteSheet: $showInviteSheet)
-                .environmentObject(auth)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+            KeduMenuSheet(
+                showInviteSheet: $showInviteSheet,
+                todayPoints: todayPostPoints + todayPlayPoints,
+                weekPoints: weeklyEduRanking.first(where: { $0.isMe })?.weeklyTotalPt ?? 0,
+                totalPoints: totalEduPoints
+            )
+            .environmentObject(auth)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
 
         // 削除確認
@@ -792,8 +821,8 @@ struct EdulingoView: View {
                         .foregroundColor(.white)
                 }
 
-                // 右端：ユーザーアイコン（タップでポイントサマリー表示）
-                Button { showPointsSheet = true } label: {
+                // 右端：ユーザーアイコン（タップでハンバーガーメニュー＋ポイント）
+                Button { showHamburgerMenu = true } label: {
                     ZStack(alignment: .topTrailing) {
                         EduUserAvatar(
                             photoURL: Auth.auth().currentUser?.photoURL?.absoluteString ?? "",
@@ -801,7 +830,6 @@ struct EdulingoView: View {
                             size: 30
                         )
                         .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1.5))
-                        // 🏆 バッジ
                         Image(systemName: "star.fill")
                             .font(.system(size: 8, weight: .black))
                             .foregroundColor(Color(hex: "#FFD700"))
@@ -1494,8 +1522,8 @@ struct EdulingoView: View {
         return VStack(alignment: .leading, spacing: 0) {
             // ── ヘッダー（アバター・名前・言語バッジ・再生ボタン・カテゴリ・メニュー）──────────
             HStack(spacing: 6) {
-                // 左アバター（タップでポイントサマリー）
-                Button { showPointsSheet = true } label: {
+                // 左アバター（タップでメニュー＆ポイントサマリー）
+                Button { showHamburgerMenu = true } label: {
                     EduUserAvatar(
                         photoURL: item.authorPhotoURL.isEmpty
                             ? (UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? "")
@@ -1966,6 +1994,9 @@ struct EdulingoRecordSheet: View {
 struct KeduMenuSheet: View {
     @EnvironmentObject private var auth: AuthenticationManager
     @Binding var showInviteSheet: Bool
+    var todayPoints: Int = 0
+    var weekPoints: Int = 0
+    var totalPoints: Int = 0
     @Environment(\.dismiss) private var dismiss
     @AppStorage("keduColorScheme") private var colorSchemePref: String = "auto"
 
@@ -2000,6 +2031,19 @@ struct KeduMenuSheet: View {
                         }
                     }
                     .padding(.vertical, 4)
+                }
+
+                // ── EDU ポイントサマリー ──────────────────────────────────────
+                Section(header: Label("EDU ポイント", systemImage: "star.fill").foregroundColor(Color(hex: "#FFD700"))) {
+                    HStack {
+                        pointCell(icon: "sun.max.fill",            color: Color(hex: "#FF9500"), label: "今日",  pt: todayPoints)
+                        Divider()
+                        pointCell(icon: "calendar.badge.clock",    color: Color(hex: "#1CB0F6"), label: "今週",  pt: weekPoints)
+                        Divider()
+                        pointCell(icon: "star.fill",               color: Color(hex: "#FFD700"), label: "累計",  pt: totalPoints)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
                 }
 
                 Section("Edulingo") {
@@ -2060,6 +2104,24 @@ struct KeduMenuSheet: View {
                 }
             }
         }
+    }
+
+    private func pointCell(icon: String, color: Color, label: String, pt: Int) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(color)
+            Text("\(pt)")
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+            Text("pt")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(color.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

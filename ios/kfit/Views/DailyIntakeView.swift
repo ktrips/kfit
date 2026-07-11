@@ -1119,30 +1119,30 @@ struct PhotoLogView: View {
     private func savePhotoLog() async {
         guard let nutrition = analyzedNutrition else { return }
 
-        // MealNutritionに変換してHealthKitに保存
-        let mealNutrition = MealNutrition(
-            calories: nutrition.calories,
-            protein: nutrition.protein,
-            fat: nutrition.fat,
-            carbs: nutrition.carbs,
-            sugar: nutrition.sugar,
-            fiber: nutrition.fiber,
-            sodium: nutrition.sodium
-        )
+        // 履歴からの再利用時は savePhotoLogWithoutHistory() が HealthKit 保存を行わないため、
+        // ここで直接保存する。新規アップロード時は photoLogManager.savePhotoLog() が
+        // 保存を担当する（AuthenticationManager.swift）ため、ここでは呼ばない
+        // ── 二重登録防止 ──。
+        if fromHistory {
+            let mealNutrition = MealNutrition(
+                calories: nutrition.calories,
+                protein: nutrition.protein,
+                fat: nutrition.fat,
+                carbs: nutrition.carbs,
+                sugar: nutrition.sugar,
+                fiber: nutrition.fiber,
+                sodium: nutrition.sodium
+            )
+            await healthKit.saveMealNutrition(mealNutrition)
 
-        await healthKit.saveMealNutrition(mealNutrition)
-
-        // 水分
-        if nutrition.water > 0 {
-            await healthKit.saveWaterIntake(amountMl: Double(nutrition.water), timestamp: Date())
+            if nutrition.water > 0 {
+                await healthKit.saveWaterIntake(amountMl: Double(nutrition.water), timestamp: Date())
+            }
+            if nutrition.caffeine > 0 {
+                await healthKit.saveCaffeineIntake(caffeineMg: Double(nutrition.caffeine), timestamp: Date())
+            }
+            // TODO: アルコールの保存
         }
-
-        // カフェイン
-        if nutrition.caffeine > 0 {
-            await healthKit.saveCaffeineIntake(caffeineMg: Double(nutrition.caffeine), timestamp: Date())
-        }
-
-        // TODO: アルコールの保存
 
         // フォトログを保存（履歴からの場合は履歴への再追加をスキップ）
         var entry = PhotoLogEntry()

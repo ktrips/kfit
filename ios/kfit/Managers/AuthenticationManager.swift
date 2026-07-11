@@ -2631,7 +2631,7 @@ class PhotoLogManager: ObservableObject {
 
         // ユーザー API キー未設定時はサーバー代理（aiProxy）経由 — 設定ゼロで動くデフォルト経路
         guard !settings.apiKey.isEmpty else {
-            let activeDayCount = RetentionTracker.shared.localActiveDayCount
+            let activeDayCount = UserDefaults.standard.integer(forKey: "retention.activeDayCount")
             let isNinety = activeDayCount < 5
             let text = try await AIProxyClient.call(
                 prompt: prompt,

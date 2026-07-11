@@ -600,7 +600,7 @@ struct LLMSettingsView: View {
 /// AI機能を使う画面で表示するクォータ案内バナー
 /// APIキー未設定でも1日1回（Plusは3回）無料で利用可能なことを伝える
 struct LLMAPIKeyNotice: View {
-    private let activeDays = RetentionTracker.shared.localActiveDayCount
+    private let activeDays = UserDefaults.standard.integer(forKey: "retention.activeDayCount")
     private let isPlus = PlusManager.shared.isPlus
 
     var body: some View {

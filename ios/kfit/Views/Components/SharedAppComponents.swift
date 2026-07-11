@@ -774,7 +774,7 @@ struct AIRequiresPlusSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showPlus = false
 
-    private let activeDays = RetentionTracker.shared.localActiveDayCount
+    private let activeDays = UserDefaults.standard.integer(forKey: "retention.activeDayCount")
 
     var body: some View {
         NavigationStack {

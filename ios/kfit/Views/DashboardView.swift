@@ -8103,7 +8103,7 @@ struct EduPhotoLogSheet: View {
                     // 記録ボタン
                     Button {
                         // 10日以降のフリーユーザーはAI処理前にPlus誘導
-                        let activeDayCount = RetentionTracker.shared.localActiveDayCount
+                        let activeDayCount = UserDefaults.standard.integer(forKey: "retention.activeDayCount")
                         let isPlus = PlusManager.shared.isPlus
                         let hasCustomKey = AIQuotaManager.shared.hasCustomKey
                         if activeDayCount >= AI_FREE_MAX_DAYS && !isPlus && !hasCustomKey && selectedImage != nil {

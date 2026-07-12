@@ -343,8 +343,8 @@ struct LLMSettingsView: View {
                 .font(.caption)
                 .foregroundColor(Color.duoSubtitle)
             HStack(spacing: 12) {
-                quotaChip(label: "Free", value: "月5回")
-                quotaChip(label: "Plus", value: "月300回")
+                quotaChip(label: "Free", value: "1日1回（開始10日間）")
+                quotaChip(label: "Plus", value: "1日3回")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

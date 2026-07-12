@@ -354,47 +354,6 @@ export const NinetySecondMode: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Loss Aversion バナー（5日達成後のみ表示）*/}
-        {graduated && (
-          <div
-            style={{
-              width: 'calc(100vw - 48px)',
-              maxWidth: 380,
-              padding: '14px 18px',
-              borderRadius: 16,
-              border: '1.5px solid #FF8C0066',
-              background: 'rgba(255,140,0,0.07)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#CC5500' }}>
-              ⚠️ この記録は30日後に削除されます
-            </div>
-            <div style={{ fontSize: 12, color: '#666', fontWeight: 500, lineHeight: 1.5 }}>
-              Fitingo Plus で永久保存 + AI週次分析 + 広告なし。
-              月額 <span style={{ fontWeight: 900, color: '#FF8C00' }}>480円</span>で続けた実績を守ろう。
-            </div>
-            <button
-              onClick={onExit}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '8px 18px',
-                borderRadius: 999,
-                fontWeight: 900,
-                fontSize: 13,
-                color: '#fff',
-                background: '#FF8C00',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              Plus で記録を守る →
-            </button>
-          </div>
-        )}
-
         {graduated && (
           <button
             onClick={onExit}
@@ -413,21 +372,24 @@ export const NinetySecondMode: React.FC<Props> = ({
             全機能を開く →
           </button>
         )}
-        <button
-          onClick={onExit}
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: '#afafaf',
-            textDecoration: 'underline',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '4px 8px',
-          }}
-        >
-          すべての機能を見る
-        </button>
+        {/* 卒業後は「全機能を開く」ボタンがあるためリンクは非表示（表示の重複を避ける） */}
+        {!graduated && (
+          <button
+            onClick={onExit}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#afafaf',
+              textDecoration: 'underline',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 8px',
+            }}
+          >
+            すべての機能を見る
+          </button>
+        )}
       </div>
     </div>
   );
@@ -639,7 +601,7 @@ const ModeCard: React.FC<CardProps> = ({
       {/* 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）*/}
       {doneToday ? (
         <p className="mt-4 font-black" style={{ color: '#1f1f1f', fontSize: 18 }}>
-          もう1セットやる ▶
+          ✅ 今日は完了！
         </p>
       ) : (
         <div
@@ -668,17 +630,19 @@ const ModeCard: React.FC<CardProps> = ({
         </div>
       )}
 
-      {/* ── Tips ─────────────────────────────────────────────────────── */}
-      <div className="mt-4 flex items-center gap-2 px-6" style={{ maxWidth: 380 }}>
-        <img
-          src="/mascot.png"
-          alt="Fitingo"
-          style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-        />
-        <p className="text-sm font-semibold" style={{ color: '#999' }}>
-          {tipList[tipIdx % tipList.length]}
-        </p>
-      </div>
+      {/* ── Tips（実施後はシンプルにするため非表示）──────────────────── */}
+      {!doneToday && (
+        <div className="mt-4 flex items-center gap-2 px-6" style={{ maxWidth: 380 }}>
+          <img
+            src="/mascot.png"
+            alt="Fitingo"
+            style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+          />
+          <p className="text-sm font-semibold" style={{ color: '#999' }}>
+            {tipList[tipIdx % tipList.length]}
+          </p>
+        </div>
+      )}
 
       {/* ── 5日進捗ドット（🔥連続 → ドット → あと◯日）──────────────── */}
       <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 8 }}>

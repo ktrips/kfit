@@ -1,21 +1,26 @@
 # kfit Project - Complete Development Summary
 
-**Project:** kfit - Duolingo-like Fitness Habit App  
-**Created:** April 2026  
-**Repository:** https://github.com/ktrips/kfit  
-**Status:** MVP Complete - Ready for Testing & Deployment
+**Project:** kfit（Fitingo）- "今度こそ、続く。" 記録ゼロ秒の90秒習慣化アプリ
+**Created:** April 2026
+**Repository:** https://github.com/ktrips/kfit
+**Status:** 本番稼働中（2026-07時点）— Web/iOS/Watch 全プラットフォームでライブ、Fitingo Plus 課金導入済み
+
+> 📌 このセクション以降は初期MVP構築時（2026年4月）の開発記録です。現在の実装状況は
+> [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) と [PLATFORM_FEATURES.md](PLATFORM_FEATURES.md) を参照してください。
 
 ---
 
 ## 📋 Project Overview
 
-kfit is a cross-platform fitness habit-building app inspired by Duolingo. Users track exercise reps (push-ups, squats, sit-ups) using motion sensors on iPhone and Apple Watch, earn points based on form quality, build streaks, and unlock achievements.
+kfit（ブランド名: Fitingo）は「今度こそ、続く」をコンセプトにした習慣化アプリです。腕立て・スクワットのモーション自動カウントに加え、写真だけで完結するAI食事解析、Duolingoスクリーンショットから始める語学記録、体重管理、睡眠・HRVストレス分析まで、「記録ゼロ秒」を軸に日々の習慣を支えます。新規ユーザーは90秒モード（FIT/DIET/FOOD/EDU）から始まり、7日継続で全機能が解放されます。
 
 ### Core Value Proposition
-- **Motion Sensor Rep Counting** - Automatic rep detection via accelerometer/gyroscope
-- **Form Quality Scoring** - Real-time feedback on exercise form (0-100%)
-- **Habit Building** - Streaks, daily goals, 3-month challenges
-- **Gamification** - Points, achievements, weekly leaderboards
+- **記録ゼロ秒** - モーションセンサーの自動カウント、AIフォトログ（APIキー不要）、HealthKit自動連携で入力の手間をゼロに
+- **90秒モードによる低摩擦オンボーディング** - 最初の目標は1日90秒。5タブ・機能一覧は最初は見せない
+- **Habit Building** - ストリーク、90日チャレンジ、時間帯別目標、継続コホート計測
+- **Gamification** - ポイント、アチーブメント、週間リーダーボード
+- **プライバシー配慮ソーシャル（TOMO）** - 「今日やった」ことだけを友達と共有
+- **フリーミアム** - Fitingo Plus（¥480/月）でAIクォータ拡大・MIND全機能・広告非表示
 - **Cross-Platform** - Web, iOS, Apple Watch with real-time sync
 
 ---
@@ -185,7 +190,7 @@ kfit/
 │   └── SETUP.md                       # Backend setup guide
 │
 ├── .firebaserc                        # Firebase projects
-│   └── default: airgo-trip
+│   └── default: kfitapp
 │
 ├── firebase.json                      # Hosting + Functions config
 │   ├── hosting: web/dist
@@ -375,58 +380,21 @@ Daily Goal Completion:
 
 ---
 
-## 🚀 Deployment Status
+## 🚀 Deployment Status（2026-07時点・最新）
 
-### ✅ Complete
-- Firebase project setup (airgo-trip)
-- Firestore database & rules
-- Cloud Functions deployed
-- Web app built & ready
-- iOS app compiled
-- Watch app compiled
-- Documentation complete
+### ✅ 本番稼働中
+- Firebase project（kfitapp）: Firestore, Hosting, Cloud Functions, Secret Manager すべて稼働
+- Web: https://kfitapp.web.app / https://fit.ktrips.net で公開中
+- iOS/Watchアプリ: 開発ビルドで実機動作確認済み
+- Fitingo Plus 課金（StoreKit 2）実装済み
+- 90秒モード・AIフォトログ（aiProxy）・TOMOフィード・週次レポート共有カード・90日再検査チャレンジLP・継続コホート計測: すべて本番反映済み
 
 ### ⏳ Pending
-- Deploy Web app to fit.ktrips.net
-- Firebase Hosting custom domain
-- iOS TestFlight submission
-- App Store review & approval
-- Watch app TestFlight
+- iOS TestFlight配布（3〜5人への先行配布を予定）
+- App Store審査提出・ストア文言のApp Store Connect反映（`docs/appstore_metadata.md`は準備済み）
+- Watch版90秒モード対応
 
-### 🔄 Current
-- Local development: http://localhost:5173/
-- Testing on physical devices
-- Firebase Firestore real-time sync
-- Watch Connectivity testing
-
----
-
-## 🧪 Testing Checklist
-
-### Web App
-- [ ] Google Sign-in works
-- [ ] Dashboard loads correctly
-- [ ] Exercise logging records to Firestore
-- [ ] Points calculated correctly
-- [ ] Real-time sync visible
-- [ ] Responsive design on mobile
-
-### iOS App
-- [ ] Google Sign-in works
-- [ ] Motion detection detects reps
-- [ ] Form score updates
-- [ ] Haptic feedback triggers
-- [ ] Dashboard shows logged workouts
-- [ ] Cross-device sync works
-
-### Apple Watch App
-- [ ] App launches on watch
-- [ ] Motion detection works
-- [ ] Rep counting accurate
-- [ ] Haptic feedback triggers
-- [ ] Calibration completes
-- [ ] Sync to iPhone works
-- [ ] Battery reasonable (6+ hours)
+詳細な残タスクは [docs/SamBezThieMuskJobs_plan.md](docs/SamBezThieMuskJobs_plan.md) の「次のアクション」を参照。
 
 ---
 
@@ -512,40 +480,36 @@ Daily Goal Completion:
 
 ---
 
-## 🔄 Next Steps
+## 🔄 Next Steps（2026-07時点）
 
-### Short Term (1-2 weeks)
-1. Deploy Web app to fit.ktrips.net
-2. Test iOS app on physical device
-3. Test Watch app on real watch
-4. Verify real-time sync works
-5. Collect user feedback
+最新の優先順位は [docs/SamBezThieMuskJobs_plan.md](docs/SamBezThieMuskJobs_plan.md) の「次のアクション」で管理しています。要点:
 
-### Medium Term (1 month)
-1. Submit iOS to TestFlight
-2. Fix bugs from testing
-3. Optimize motion detection
-4. Improve form scoring
-5. Add push notifications
+### 短期
+1. 90秒モードをTestFlightで3〜5人に配布 → 初回セットまでの時間を検証
+2. 90日再検査チャレンジLPをSNSに投稿 → 登録率を検証
+3. App Store Connectにストア文言を反映
 
-### Long Term (3+ months)
-1. Advanced ML-based form analysis
-2. Social features (friends, challenges)
-3. More exercise types
-4. Video coaching
-5. Android app
+### 中期
+1. 90日再検査チャレンジの同期コホート機能とアプリ接続
+2. 健診ニッチ向けコンテンツ量産
+3. iOS/Watchアチーブメント・リーダーボードUI
+
+### 長期
+1. 隣接ニッチ拡張（産後・単身赴任・更年期）
+2. 法人プラン（健康経営・ジム向け）
+3. UGCマーケットプレイス / KFitCore化
 
 ---
 
 ## 📞 Contact & Resources
 
 - **Repository:** https://github.com/ktrips/kfit
-- **Live App:** https://fit.ktrips.net/ (coming soon)
-- **Firebase Project:** airgo-trip
+- **Live App:** https://kfitapp.web.app / https://fit.ktrips.net
+- **Firebase Project:** kfitapp
 - **Author:** @ktrips
 
 ---
 
-**Project Status:** ✅ MVP Complete & Ready for Testing  
-**Last Updated:** April 25, 2026  
+**Project Status:** ✅ 本番稼働中（Web/iOS/Watch、Fitingo Plus課金導入済み）
+**Last Updated:** 2026-07-11  
 **Version:** 1.0.0

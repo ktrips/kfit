@@ -1,133 +1,146 @@
-# kfit 実装完了サマリー
+# kfit（Fitingo）実装状況サマリー
 
-## 実装完了日: 2026-05-09
+最終更新: 2026-07-12
 
-### 完了した機能
+このドキュメントは kfit（Fitingo）の現時点での実装状況をまとめたものです。個別のUP DATE履歴は [README.md の「最近の主なアップデート」](README.md#-最近の主なアップデート) を参照してください。
 
-#### 1. カロリー目標トラッキング（全プラットフォーム）
-- **iOS**: カロリー目標カード + 編集モーダル
-- **Watch**: カロリー進捗表示（iOSから同期）
-- **Web**: カロリー目標カード + インライン編集
-- **ロジック**:
-  1. カスタム設定（ユーザーが手動設定）
-  2. 週間目標から自動計算（`dailyReps × 0.5 kcal/rep`）
-  3. デフォルト 500kcal
+---
 
-#### 2. Watch HealthKit連携
-- **実装ファイル**: `ios/kfitWatch/Managers/WatchHealthKitManager.swift`
-- **表示データ**: 歩数、心拍数、消費カロリー、睡眠時間
-- **統合**: WatchDashboardViewに健康データカード追加
-- **権限**: kfitWatch.entitlementsにHealthKit capability設定
+## プロダクトの現在地
 
-#### 3. Webダッシュボード完全実装
-- **今日のセット詳細**: 折りたたみ可能なアコーディオン形式
-- **健康データカード**: プレースホルダー表示（iOS/Watch実装済み）
-- **90日チャレンジ**: 進捗バーと達成表示
+**「今度こそ、続く。」** — 記録ゼロ秒・90秒から始める習慣化アプリとして、2026年7月時点で以下がすべて本番稼働しています。
 
-#### 4. Webトレーニング記録入力UI強化
-- **キーボードショートカット**: ↑/↓/+/-/Enter
-- **直接入力**: 数値フィールドで直接入力可能
-- **戻るボタン**: ダッシュボードへの簡単な戻り
+1. **90秒モード**: 新規ユーザーは5タブを見せず、FIT/DIET/FOOD/EDUの4モードを横スワイプする1画面から開始。7日連続活動で全機能が解放される
+2. **AIフォトログ（サーバー代理）**: Cloud Functions `aiProxy` がサーバー側APIキーで代理呼び出し。ユーザーはAPIキー設定不要で登録直後からAI食事解析・語学記録が使える
+3. **TOMOフィード**: 「今日やった」ことだけを友達と共有するプライバシー配慮型ソーシャル機能。投稿の再生でハート+1・再生側にポイント+10
+4. **週次AIレポート共有カード**: `fit.ktrips.net/r/{id}` で未ログインでも閲覧できるURL付き共有
+5. **90日再検査チャレンジ**: 健康診断で「要改善」だった人向けの未ログイン登録・PV計測LP
+6. **Fitingo Plus**: ¥480/月・¥3,800/年のサブスクリプションで、AIクォータ拡大・MIND全機能・広告非表示等を提供
+7. **Good Job! 称賛演出**: 禁酒・勉強・語学などその日のタスク完了時にマスコット + 称賛メッセージで動機を維持（iOS/Web）
+8. **ヘルプ内PR/FAQ**: 「Fitingoの約束」ブランドメッセージと購入前FAQ 10問をアプリ内から参照可能
 
-#### 5. アチーブメントシステム（Web）
-- **実装ファイル**: `web/src/components/AchievementsView.tsx`
-- **バッジ種類**: 11種類（Bronze/Silver/Gold/Platinum）
-- **表示**: 獲得済み/未獲得セクション + 進捗バー
+---
 
-#### 6. リーダーボード（Web）
-- **実装ファイル**: `web/src/components/LeaderboardView.tsx`
-- **表示**: 週間ランキング（トップ3表彰台 + 残りのエントリ）
-- **機能**: 自分の順位ハイライト、ワークアウト回数・連続日数表示
-
-### プラットフォーム機能対応表
+## プラットフォーム機能対応表
 
 | 機能 | iOS | Watch | Web | 備考 |
 |------|-----|-------|-----|------|
-| カロリー目標表示 | ✅ | ✅ | ✅ | 全プラットフォーム対応 |
-| カロリー目標編集 | ✅ | - | ✅ | Watchはビューアのみ |
-| 今日のセット状況 | ✅ | ✅ | ✅ | 件数ベース表示 |
-| 週間セット目標 | ✅ | - | ✅ | 進捗バー + 達成率 |
-| 今日の記録詳細 | ✅ | ✅ | ✅ | セット単位の折りたたみ |
-| 健康データ表示 | ✅ | ✅ | ✅* | *Webはプレースホルダー |
-| 90日チャレンジ | ✅ | - | ✅ | 連続日数トラッキング |
-| トレーニング入力 | ✅ | ✅ | ✅ | 手動 + モーションセンサー |
-| アチーブメント | - | - | ✅ | 11種類のバッジ |
+| 90秒モード（FIT/DIET/FOOD/EDU） | ✅ | - | ✅ | WebのEDUはMINDへ暫定遷移 |
+| モーション自動カウント | ✅ | ✅ | - | 手動記録は全プラットフォーム対応 |
+| AIフォトログ（食事） | ✅ | - | - | `aiProxy`経由、APIキー不要 |
+| AI語学記録（Duolingoスクショ） | ✅ | - | - | Web未実装 |
+| MIND（睡眠・HRVストレス） | ✅ | 一部 | ✅ | Free=概要のみ、Plus=詳細分析 |
+| Diet Goal（体重・カロリー計画） | ✅ | - | ✅ | |
+| TOMOフィード | ✅ | - | ✅ | |
+| 週次AIレポート共有カード | ✅ | - | ✅ | 発行はiOS、閲覧は未ログインWeb |
+| 90日再検査チャレンジLP | - | - | ✅ | 未ログイン登録・PV計測 |
+| 継続コホート計測（7/30/90日） | ✅ | - | ✅ | Cloud Functionsで集計 |
+| アチーブメント | - | - | ✅ | 7種類のバッジ |
 | リーダーボード | - | - | ✅ | 週間ランキング |
+| Fitingo Plus（課金） | ✅ | - | ✅ | StoreKit 2（iOS）/ Web版はビュー連携 |
+| HealthKit連携 | ✅ | ✅ | - | |
 
-### 技術スタック
+---
 
-#### iOS/Watch
+## 技術スタック
+
+### iOS/Watch
 - **言語**: Swift 5.9+
-- **フレームワーク**: SwiftUI, HealthKit, WatchConnectivity, Core Motion
-- **バックエンド**: Firebase Firestore
+- **フレームワーク**: SwiftUI, HealthKit, WatchConnectivity, Core Motion, StoreKit 2
+- **AI/OCR**: Vision, NaturalLanguage, AVSpeechSynthesizer
+- **バックエンド**: Firebase Firestore, Cloud Functions（callable）
 - **認証**: Firebase Authentication
 
-#### Web
+### Web
 - **言語**: TypeScript
 - **フレームワーク**: React 18, Vite
 - **状態管理**: Zustand
-- **スタイル**: Tailwind CSS + Custom Duo Design System
+- **スタイル**: Tailwind CSS
 - **バックエンド**: Firebase Firestore
 - **認証**: Firebase Authentication (Google Sign-In)
 
-### Firebase Firestoreデータ構造
+### バックエンド（Cloud Functions）
+- `aiProxy`: AI代理呼び出し（食事フォトログ・語学記録）。日次・カテゴリ別クォータ管理
+- `generateWeeklyReport`: 週次AIコーチングコメント生成
+- `computeRetentionStats`: 7/30/90日継続率の集計（毎週スケジュール実行）
+- `calculatePoints` / `updateStreaks` / `checkAchievements` / `generateWeeklyLeaderboard`: ポイント・ストリーク・アチーブメント・週間ランキング
+- Secret Manager: `OPENAI_API_KEY` を管理（`functions:config`廃止対応済み）
+
+---
+
+## Firestoreデータ構造
 
 ```
 users/{userId}/
-├── profile                          # ユーザープロフィール
+├── profile                          # ユーザープロフィール、totalPoints、streak、isPlus
 ├── completed-exercises/             # 個別エクササイズ記録
 ├── completed-sets/                  # セット完了記録
-├── daily-goals/                     # 日次目標
-├── weekly-goals/{weekId}            # 週間目標
+├── ai-usage/{daily-YYYY-MM-DD}      # AIクォータ使用量（カテゴリ別）
 ├── settings/
+│   ├── ai                          # カスタムAPIキー（自己登録時）
 │   └── calorie-goal                # カロリー目標設定
-├── achievements/                    # 獲得バッジ
-└── statistics/                      # 集計データ
+└── achievements/                    # 獲得バッジ
 
-leaderboards/{weekId}/
-└── entries/                         # 週間ランキング
+shared-reports/{shareId}             # 週次レポート共有カード
+challenge_registrations/{docId}      # 90日再検査チャレンジ登録
+challenge_analytics/{docId}          # チャレンジPV・登録数
+public-stats/{docId}                 # 公開継続率統計
+leaderboards/{weekId}/entries/       # 週間ランキング
 ```
 
-### Xcodeプロジェクト設定（修正済み）
+---
 
-**問題**: `Cannot find 'WatchHealthKitManager' in scope`
+## AIクォータ設計（`aiProxy`）
 
-**解決方法**:
-1. `WatchHealthKitManager.swift` をkfitWatchターゲットに追加
-2. `kfitWatch.entitlements` をプロジェクトに追加
-3. kfitWatchターゲットのビルド設定に `CODE_SIGN_ENTITLEMENTS = kfitWatch/kfitWatch.entitlements` を追加
+| 利用者 | クォータ | 判定基準 |
+|---|---|---|
+| 90秒モード中（活動0〜4日） | 全カテゴリ合計 1回/日 | クライアント申告の `activeDays` |
+| Free（活動5〜9日） | カテゴリ別 1回/日 | `users/{uid}.isPlus == false` |
+| Free（活動10日以降） | AI停止 → Plus誘導 | `AI_FREE_MAX_DAYS = 10` |
+| Fitingo Plus | カテゴリ別 3回/日 | `users/{uid}.isPlus == true` |
+| カスタムAPIキー登録済み | 無制限（自己負担） | `users/{uid}/settings/ai.openaiApiKey` |
 
-**確認コマンド**:
+デフォルトモデル: `gpt-5.4-mini`（OpenAI）。
+
+---
+
+## デプロイ状況
+
+### 本番稼働中
+- Firebase Hosting（Web） — https://kfitapp.web.app / https://fit.ktrips.net
+- Cloud Functions（aiProxy, generateWeeklyReport, computeRetentionStats 等）
+- Firestore rules・indexes
+- Secret Manager（OPENAI_API_KEY）
+
+### 未実施
+- iOS App Store 提出（現在TestFlight配布前段階）
+- App Store Connect へのストア文言反映（`docs/appstore_metadata.md` は準備済み）
+
+---
+
+## デプロイ手順
+
+### Web
 ```bash
-grep "WatchHealthKitManager" ios/kfit.xcodeproj/project.pbxproj
-grep "CODE_SIGN_ENTITLEMENTS" ios/kfit.xcodeproj/project.pbxproj
+cd web
+npm run build
+firebase deploy --only hosting
 ```
 
-### 今後の拡張候補
+### Cloud Functions
+```bash
+firebase functions:secrets:set OPENAI_API_KEY   # 初回のみ
+firebase deploy --only functions
+```
 
-1. **Webプラットフォームの健康データ連携**
-   - Web Bluetooth API経由でウェアラブルデバイス連携
-   - Google Fit / Apple Health Web API統合
+### iOS
+1. Xcodeで `ios/kfit.xcworkspace` を開く
+2. Product → Archive
+3. Distribute App → App Store Connect / TestFlight
 
-2. **ソーシャル機能**
-   - フレンド機能
-   - グループチャレンジ
-   - コメント・いいね機能
+---
 
-3. **AI機能**
-   - フォーム分析（カメラ + ML Kit）
-   - パーソナライズされた目標提案
-   - チャットボットによるモチベーション支援
-
-4. **アチーブメント拡張（iOS/Watch）**
-   - 現在Web版のみ実装
-   - iOS/Watch版への移植
-
-5. **オフライン対応強化**
-   - IndexedDB（Web）とCore Data（iOS）のより堅牢な同期
-   - コンフリクト解決ロジック
-
-### 開発環境
+## 開発環境
 
 - **Xcode**: 15.0+
 - **Node.js**: 18+
@@ -135,35 +148,21 @@ grep "CODE_SIGN_ENTITLEMENTS" ios/kfit.xcodeproj/project.pbxproj
 - **watchOS Deployment Target**: 11.6+
 - **Web Browsers**: Chrome/Safari/Firefox（最新版）
 
-### デプロイ
+---
 
-#### Web
-```bash
-cd web
-npm run build
-firebase deploy --only hosting
-```
+## 今後の拡張候補
 
-#### iOS
-1. Xcodeで `kfit.xcworkspace` を開く
-2. Product → Archive
-3. Distribute App → App Store Connect
+戦略的な優先順位は [docs/SamBezThieMuskJobs_plan.md](docs/SamBezThieMuskJobs_plan.md) の「次のアクション」を参照。技術的な残タスクは以下の通り:
 
-### コミット履歴（最新5件）
-
-```
-2352fd4 feat: Add achievements, leaderboard, and customizable calorie goals
-3b92fed feat: Enhance Web training input UI with keyboard shortcuts and direct input
-585d263 feat: Complete Web dashboard with today's sets and health data
-d0d2c10 feat: Add HealthKit integration to Apple Watch app
-cb71af7 feat: Add daily calorie goal tracking to Web platform
-```
-
-### 連絡先
-
-プロジェクト管理者: kenichi.yoshida
-リポジトリ: https://github.com/ktrips/kfit
+1. **AIクォータ残回数の常時表示UI**（現状はエラー時のPlus誘導文言のみ）
+2. **Web版EDU語学記録**（現状MINDへの暫定遷移を解消）
+3. **iOS/Watchアチーブメント・リーダーボードUI**（現状Web版のみ）
+4. **90日再検査チャレンジの同期コホート機能とアプリ接続**
+5. **法人プラン**（健康経営・ジム向け一括契約）
 
 ---
 
-**実装完了**: 全ての計画機能が実装され、動作確認済みです。
+## 連絡先
+
+プロジェクト管理者: kenichi.yoshida
+リポジトリ: https://github.com/ktrips/kfit

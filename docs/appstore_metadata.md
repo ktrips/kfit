@@ -56,49 +56,50 @@ AIコーチ・詳細分析付きのkfit Plusは月額480円（7日間無料ト�
 
 ## 説明文【English】（4,000 chars or less）
 
-kfit turns your daily habits — exercise, meals, sleep, and mindfulness —
-into a beautiful glowing spiral that grows as you achieve your goals.
+The gym didn't work. The tracking apps didn't work either — you quit after three days.
+That's not because you lack willpower. It's because logging things is annoying.
 
-【🌀 Visualize Habits with the ROUTIN Spiral】
-The signature ROUTIN Spiral screen shows today's progress at a glance.
-Set goals for morning, noon, afternoon, and evening — each achievement lights up the spiral.
-See exactly how much you've accomplished, all in one view.
+kfit is built to finally make it stick.
 
-【💪 Track Training & Mindfulness】
-• Full Apple Watch integration — workouts sync automatically to HealthKit.
-• Log push-ups, squats, sit-ups and more for home workouts.
-• Run guided breathing and mindfulness sessions directly in the app.
-• 20-minute Pomodoro sessions count toward your mindfulness minutes.
+Your iPhone and Apple Watch do the counting and the logging. All you do is
+5 squats tomorrow morning. You won't type a single word.
 
-【🍽 AI-Powered Meal Logging】
-• Just take a photo — AI instantly analyzes calories and macros (P/F/C).
-• Track water, caffeine, and alcohol intake.
-• Syncs seamlessly with Apple Health.
+【Why it finally sticks — zero-second logging】
+• Push-ups, squats, and sit-ups are counted automatically by motion sensors.
+• Just snap a photo of your meal — AI instantly reads calories and macros (P/F/C).
+• Steps, sleep, and heart rate sync automatically from Apple Health.
+• There's nothing to "remember to log," so there's nothing to quit.
 
-【🏅 Stay Motivated with Gamification】
-• Earn XP points, build streaks, and unlock achievement badges.
-• Duolingo-style rewards make building habits genuinely fun.
-• Weekly rankings show your progress over time.
+【Start with just 90 seconds a day】
+• Big goals are why habits fail. Start with one set (about 90 seconds).
+• Every completion grows your spiral — on your wrist, and on your lock screen.
+• On a rough day, we suggest the smallest possible action: "just 5 squats."
+• Streaks have a 3-day grace period. One missed day won't reset everything.
 
-【👥 The TOMO Social Feed】
-• Add friends via Gmail and see each other's public posts.
-• Share meal logs, workout photos, Duolingo progress, and diary entries.
-• Like and comment to encourage each other.
+【Got a "needs improvement" result at your health checkup?】
+• Blood sugar, triglycerides, blood pressure — what changes them isn't a special
+  workout, it's 90 seconds every day.
+• Track weekly weight and body-fat trends and see your progress toward your next checkup.
 
-【⌚ Apple Watch App Included】
-• Record sets and reps directly from your wrist.
-• Real-time sync with iPhone via HealthKit.
-• Home screen widget shows weekly XP and daily progress.
+【You don't have to do it alone — the TOMO feed】
+• Only "did it today" is shared. Your weight and meal details stay private.
+• No friends yet? No problem — join others who started around the same time.
+• Like and comment to keep each other going.
 
-【📊 Deep Apple Health Integration】
-• Automatically reads steps, heart rate, sleep, and Activity rings.
-• Weekly body weight and body fat trend charts.
-• All data stored securely in HealthKit.
+【Even more hands-free with Apple Watch】
+• Log a full workout from your wrist alone — even offline.
+• A watch face complication keeps today's progress always in view.
 
----
+【Language learning, one screenshot at a time (EDU)】
+• Screenshot a phrase from Duolingo and kfit extracts it, generates example
+  sentences and grammar notes, and reads it aloud for you.
 
-Just 3 minutes a day — fill the spiral with green.
-Your habits will change, one day at a time.
+Every day you keep going becomes a spiral and a streak — a record you can point to.
+If you've been a three-day-quitter for ten years, kfit is here to help you get
+through your first 90 seconds.
+
+Free to start today.
+kfit Plus — with expanded AI usage and full MIND analysis — is ¥480/month (7-day free trial).
 
 ---
 

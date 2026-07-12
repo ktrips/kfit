@@ -104,6 +104,9 @@ enum MainMenuTabPreferences {
 extension Notification.Name {
     static let requestStartTraining   = Notification.Name("requestStartTraining")
     static let requestStartMindfulness = Notification.Name("requestStartMindfulness")
+    /// その日のタスク（禁酒・勉強・語学など）を完了した時に発火。
+    /// userInfo: ["name": String, "emoji": String] — Good Job! 演出（kfitApp.swift）が受信する
+    static let dailyTaskCompleted = Notification.Name("dailyTaskCompleted")
 }
 
 // MARK: - FitingoDeepLink

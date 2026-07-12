@@ -694,28 +694,36 @@ class TimeSlotManager: ObservableObject {
     /// カスタム目標の達成状態をトグル
     func toggleCustomGoal(id: String) async {
         var updatedProgress = progress
+        var justCompleted = false
         if updatedProgress.globalProgress.completedCustomGoalIds.contains(id) {
             updatedProgress.globalProgress.completedCustomGoalIds.removeAll { $0 == id }
         } else {
             updatedProgress.globalProgress.completedCustomGoalIds.append(id)
+            justCompleted = true
         }
         updatedProgress.globalProgress.lastUpdated = Date()
         progress = updatedProgress
         // UserDefaults に即時保存（Firestore 書き込み中の競合を防ぐ）
         saveCustomGoalIdsToCache(progress.globalProgress.completedCustomGoalIds)
         await saveTodayProgress()
+
+        if justCompleted {
+            let info = customGoalDisplayInfo(for: id)
+            postTaskCompletedCelebration(name: info.name, emoji: info.emoji)
+        }
     }
 
     /// 時間帯別カスタム活動の達成状態をトグル
     func toggleCustomActivity(id: String, at timeSlot: TimeSlot) async {
         if var prog = progress.progressFor(timeSlot) {
             let wasCompleted = prog.completedActivityIds.contains(id)
+            let activity = settings.goalFor(timeSlot)?.customActivities.first { $0.id == id }
             if wasCompleted {
                 prog.completedActivityIds.remove(id)
             } else {
                 prog.completedActivityIds.insert(id)
                 // 歯磨き・フロスをHealthKitに記録
-                let activityName = settings.goalFor(timeSlot)?.customActivities.first { $0.id == id }?.name ?? ""
+                let activityName = activity?.name ?? ""
                 if activityName.contains("歯磨き") {
                     await HealthKitManager.shared.saveToothbrushing(durationSeconds: 60, timestamp: Date())
                 }
@@ -725,7 +733,68 @@ class TimeSlotManager: ObservableObject {
             updatedProgress.updateProgress(prog)
             progress = updatedProgress
             await saveTodayProgress()
+
+            if !wasCompleted {
+                postTaskCompletedCelebration(
+                    name: activity?.name ?? "今日の目標",
+                    emoji: activity?.emoji ?? "🎯"
+                )
+            }
         }
+    }
+
+    // MARK: - Good Job! 演出（タスク完了時）
+
+    /// タスク完了を通知し、Good Job! 演出（kfitApp.swift の overlay）を発火させる
+    private func postTaskCompletedCelebration(name: String, emoji: String) {
+        NotificationCenter.default.post(
+            name: .dailyTaskCompleted,
+            object: nil,
+            userInfo: ["name": name, "emoji": emoji]
+        )
+    }
+
+    /// カスタム目標 ID から表示名と絵文字を解決する。
+    /// WeekdayGoal 型は kedu と共有されない SettingsView.swift 定義のため、
+    /// UserDefaults の JSON を型非依存（JSONSerialization）で読む。
+    private func customGoalDisplayInfo(for id: String) -> (name: String, emoji: String) {
+        if id.hasPrefix("wd_study_")     { return ("勉強", "📖") }
+        if id.hasPrefix("wd_noalcohol_") { return ("禁酒", "🚫") }
+
+        // 曜日別カスタム目標: wd_{UUID}（weekdayGoals_v1）
+        if id.hasPrefix("wd_") {
+            let uuid = String(id.dropFirst(3)).lowercased()
+            if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
+               let goals = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                for wg in goals {
+                    for cg in (wg["customGoals"] as? [[String: Any]]) ?? []
+                    where (cg["id"] as? String)?.lowercased() == uuid {
+                        return (cg["name"] as? String ?? "今日の目標",
+                                cg["emoji"] as? String ?? "🎯")
+                    }
+                }
+            }
+        }
+
+        // 毎日の固定カスタム目標: daily_custom_{UUID}（dailyFixedGoals_v1）
+        if id.hasPrefix("daily_custom_") {
+            let uuid = String(id.dropFirst("daily_custom_".count)).lowercased()
+            if let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                for cg in (obj["customGoals"] as? [[String: Any]]) ?? []
+                where (cg["id"] as? String)?.lowercased() == uuid {
+                    return (cg["name"] as? String ?? "今日の目標",
+                            cg["emoji"] as? String ?? "🎯")
+                }
+            }
+        }
+
+        // 1日全体のカスタム目標（settings.globalGoals.customGoals、ID そのまま）
+        if let cg = settings.globalGoals.customGoals.first(where: { $0.id == id }) {
+            return (cg.name, cg.emoji)
+        }
+
+        return ("今日の目標", "🎯")
     }
 
     // MARK: - グローバル食事・水分目標をスロットに反映

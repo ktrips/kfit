@@ -18,12 +18,33 @@ import {
 import TimeSlotCard from './TimeSlotCard';
 import TimeSlotEditModal from './TimeSlotEditModal';
 
+// Good Job! 演出の称賛メッセージ（ランダム表示）
+const PRAISE_LINES = [
+  'その調子！継続は力なり💪',
+  '小さな一歩が大きな変化に！',
+  '今日もえらい！明日も会おうね',
+  'できたね！この積み重ねが実績になる',
+  'ナイス！やる気が続く人はこうやって作られる',
+  '完璧！今日のあなたは昨日より強い',
+];
+
 const TimeSlotGoals: React.FC = () => {
   const user = useAppStore((state) => state.user);
   const [settings, setSettings] = useState<DailyTimeSlotSettings | null>(null);
   const [progress, setProgress] = useState<DailyTimeSlotProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingSlot, setEditingSlot] = useState<TimeSlot | null>(null);
+  // Good Job! 演出（禁酒・勉強・語学などのタスク完了時）
+  const [celebration, setCelebration] = useState<{ emoji: string; title: string; praise: string } | null>(null);
+
+  const showCelebration = (emoji: string, title: string) => {
+    setCelebration({
+      emoji,
+      title,
+      praise: PRAISE_LINES[Math.floor(Math.random() * PRAISE_LINES.length)],
+    });
+    window.setTimeout(() => setCelebration(null), 2400);
+  };
 
   useEffect(() => {
     loadData();
@@ -128,8 +149,14 @@ const TimeSlotGoals: React.FC = () => {
               }}
               onToggleCustomActivity={async (activityId) => {
                 if (!user) return;
+                // 未完了 → 完了 への遷移なら Good Job! 演出を出す
+                const wasCompleted = (prog.completedActivityIds || []).includes(activityId);
                 await toggleCustomActivity(user.uid, slot, activityId);
                 await loadData();
+                if (!wasCompleted) {
+                  const activity = goal.customActivities?.find(a => a.id === activityId);
+                  showCelebration(activity?.emoji ?? '🎯', activity?.title ?? '今日の目標');
+                }
               }}
             />
           );
@@ -145,6 +172,39 @@ const TimeSlotGoals: React.FC = () => {
             loadData();
           }}
         />
+      )}
+
+      {/* Good Job! 演出（タスク完了時） */}
+      {celebration && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.35)' }}
+          onClick={() => setCelebration(null)}
+        >
+          <div
+            className="bg-white rounded-3xl px-8 py-7 mx-10 text-center"
+            style={{ boxShadow: '0 12px 40px rgba(88,204,2,0.35)', animation: 'goodjob-pop 0.35s ease-out' }}
+          >
+            <img
+              src="/mascot.png"
+              alt="Fitingo"
+              style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', margin: '0 auto' }}
+            />
+            <p className="mt-3 text-3xl font-black" style={{ color: '#58CC02' }}>Good Job!</p>
+            <p className="mt-2 text-lg font-black text-duo-dark">
+              {celebration.emoji} {celebration.title} 完了！
+            </p>
+            <p className="mt-2 text-sm font-bold" style={{ color: '#999' }}>
+              {celebration.praise}
+            </p>
+          </div>
+          <style>{`
+            @keyframes goodjob-pop {
+              0% { transform: scale(0.7); opacity: 0; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
       )}
     </div>
   );

@@ -115,6 +115,10 @@ struct MainTabView: View {
     /// セッション中に初期化済みかどうか（@State = 再起動でリセット）
     @State private var sessionInitialized = false
 
+    // ── Good Job! 演出の状態 ──
+    @State private var taskCelebration: (name: String, emoji: String)? = nil
+    @State private var celebrationDismissWork: DispatchWorkItem? = nil
+
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
     private static let endOfDayTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -127,6 +131,23 @@ struct MainTabView: View {
                 decoratedContent
             }
         }
+            // ── Good Job! 演出（禁酒・勉強・語学などのタスク完了時）──
+            .overlay {
+                if let celebration = taskCelebration {
+                    GoodJobCelebrationView(
+                        name: celebration.name,
+                        emoji: celebration.emoji,
+                        onDismiss: { dismissCelebration() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    .zIndex(99)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .dailyTaskCompleted)) { note in
+                let name  = note.userInfo?["name"]  as? String ?? "今日の目標"
+                let emoji = note.userInfo?["emoji"] as? String ?? "🎯"
+                showCelebration(name: name, emoji: emoji)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .requestStartTraining)) { _ in
                 selectedTab = MainMenuTab.fit.rawValue
                 showTrainingTracker = true
@@ -168,6 +189,28 @@ struct MainTabView: View {
             .onChange(of: goalingoVisible) { _, _ in normalizeSelection() }
             .onChange(of: defaultTabRaw)   { _, _ in normalizeSelection() }
             .onChange(of: tabOrderRaw)     { _, _ in normalizeSelection() }
+    }
+
+    // ── Good Job! 演出 ────────────────────────────────────────
+
+    private func showCelebration(name: String, emoji: String) {
+        celebrationDismissWork?.cancel()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            taskCelebration = (name: name, emoji: emoji)
+        }
+        // 2.4秒後に自動で閉じる
+        let work = DispatchWorkItem { dismissCelebration() }
+        celebrationDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+    }
+
+    private func dismissCelebration() {
+        celebrationDismissWork?.cancel()
+        celebrationDismissWork = nil
+        withAnimation(.easeOut(duration: 0.25)) {
+            taskCelebration = nil
+        }
     }
 
     // ── 90秒モード ──────────────────────────────────────────
@@ -591,6 +634,74 @@ struct MainTabView: View {
         }
     }
 }
+
+// MARK: - GoodJobCelebrationView
+// 禁酒・勉強・語学などその日のタスクを完了した時に表示する称賛オーバーレイ。
+// TimeSlotManager が .dailyTaskCompleted を post → MainTabView の overlay が表示する。
+
+struct GoodJobCelebrationView: View {
+    let name: String
+    let emoji: String
+    let onDismiss: () -> Void
+
+    @State private var mascotScale: CGFloat = 0.5
+    @State private var praiseLine: String = GoodJobCelebrationView.praises.randomElement() ?? ""
+
+    private static let praises = [
+        "その調子！継続は力なり💪",
+        "小さな一歩が大きな変化に！",
+        "今日もえらい！明日も会おうね",
+        "できたね！この積み重ねが実績になる",
+        "ナイス！やる気が続く人はこうやって作られる",
+        "完璧！今日のあなたは昨日より強い",
+    ]
+
+    var body: some View {
+        ZStack {
+            // 背景（タップで即閉じ）
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 14) {
+                Image("fitingo_button_mascot")
+                    .resizable().scaledToFit()
+                    .frame(width: 110, height: 110)
+                    .scaleEffect(mascotScale)
+
+                Text("Good Job!")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+
+                HStack(spacing: 6) {
+                    Text(emoji).font(.system(size: 22))
+                    Text("\(name) 完了！")
+                        .font(.system(size: 19, weight: .black, design: .rounded))
+                        .foregroundColor(.duoDark)
+                }
+
+                Text(praiseLine)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.duoSubtitle)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 28)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.duoGreen.opacity(0.35), radius: 24, y: 10)
+            )
+            .padding(.horizontal, 40)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55).delay(0.05)) {
+                mascotScale = 1.0
+            }
+        }
+    }
+}
+
 // HeaderNavigationMenu, UserStatusSheet
 // → Views/Components/SharedAppComponents.swift に移動済み
 
@@ -1056,7 +1167,6 @@ struct NinetySecondModeCard: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var showBurst = false
     @State private var slideIndex: Int = 0
-    @State private var showPlusFromLoss = false
 
     private var accent: Color { mode.accentColor }
 
@@ -1129,7 +1239,8 @@ struct NinetySecondModeCard: View {
                 // ── モードバッジ（ボタン）+ メッセージ ─────────────────────
                 // 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）
                 if doneToday {
-                    Text("もう1回やる ▶")
+                    // 実施後はシンプルな完了メッセージだけ（中心ボタンでもう1回できる）
+                    Text("✅ 今日は完了！")
                         .font(.system(size: 20, weight: .black, design: .rounded))
                         .foregroundColor(.duoDark)
                 } else {
@@ -1160,38 +1271,6 @@ struct NinetySecondModeCard: View {
                 Spacer().frame(height: 12)
 
                 if graduated {
-                    // ── Loss Aversion バナー ────────────────────────────────
-                    VStack(spacing: 8) {
-                        Text("⚠️ この記録は30日後に削除されます")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Color(hex: "#CC5500"))
-                            .multilineTextAlignment(.center)
-                        Text("Fitingo Plus で永久保存 + AI週次分析。\n月額480円で続けた実績を守ろう。")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.duoSubtitle)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(2)
-                        Button {
-                            showPlusFromLoss = true
-                        } label: {
-                            Text("Plus で記録を守る →")
-                                .font(.system(size: 13, weight: .black))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20).padding(.vertical, 9)
-                                .background(Capsule().fill(Color(hex: "#FF8C00")))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color(hex: "#FF8C00").opacity(0.08))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#FF8C00").opacity(0.3), lineWidth: 1.5))
-                    )
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 8)
-
                     Button(action: onExit) {
                         HStack(spacing: 6) {
                             Text("全機能を開く")
@@ -1208,14 +1287,19 @@ struct NinetySecondModeCard: View {
                     .padding(.bottom, 8)
                 }
 
-                Button(action: onExit) {
-                    Text("すべての機能を見る")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.duoSubtitle)
-                        .underline()
+                // 卒業後は「全機能を開く」ボタンがあるためリンクは非表示（表示の重複を避ける）
+                if !graduated {
+                    Button(action: onExit) {
+                        Text("すべての機能を見る")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.duoSubtitle)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 20)
+                } else {
+                    Spacer().frame(height: 20)
                 }
-                .buttonStyle(.plain)
-                .padding(.bottom, 20)
             }
         }
         .onAppear {
@@ -1235,7 +1319,6 @@ struct NinetySecondModeCard: View {
                 }
             }
         }
-        .sheet(isPresented: $showPlusFromLoss) { PlusView() }
     }
 
     // MARK: コンテンツエリア（モード別）

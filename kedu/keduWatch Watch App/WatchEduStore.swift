@@ -108,13 +108,8 @@ class WatchEduStore: NSObject, ObservableObject {
         let existing = items.filter { !newIds.contains($0.id) }
         merged += existing
 
-        // タイムスタンプ降順、フレーズあり優先
-        merged.sort {
-            let aHas = !$0.phrase.isEmpty
-            let bHas = !$1.phrase.isEmpty
-            if aHas != bHas { return aHas }
-            return $0.timestamp > $1.timestamp
-        }
+        // 純粋にタイムスタンプ降順（直近の投稿を常に先頭に表示）
+        merged.sort { $0.timestamp > $1.timestamp }
         merged = Array(merged.prefix(50))
 
         items = merged

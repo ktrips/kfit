@@ -17,6 +17,12 @@ final class WatchEduSender: NSObject {
     private var debounceTask: Task<Void, Never>?
     private var historyObserver: AnyCancellable?
 
+    /// これまでに送信した全アイテムの union（id で重複排除）。
+    /// 送信経路が複数あるため（EdulingoView のフィード込み完全版 / ローカル履歴のみ）、
+    /// 狭いペイロードが applicationContext の完全版を上書きして
+    /// 「直近の投稿が Watch から消える」問題を防ぐ。
+    private var mergedItems: [String: EduLogHistoryItem] = [:]
+
     // MARK: - アクティベート
 
     func activate() {
@@ -66,12 +72,19 @@ final class WatchEduSender: NSObject {
 
     func sendEduItems(_ items: [EduLogHistoryItem]) {
         guard let session, session.activationState == .activated else { return }
+        guard !items.isEmpty else { return }
 
-        // フレーズあり優先、最大 20 件に制限（ペイロードサイズ抑制）
-        let sorted     = items.sorted { $0.timestamp > $1.timestamp }
-        let withPhrase = sorted.filter { !($0.extractedPhrase ?? "").isEmpty }
-        let others     = sorted.filter {  ($0.extractedPhrase ?? "").isEmpty }
-        let combined   = Array((withPhrase + others).prefix(20))
+        // 既送信分と union マージ（同じ id は新しい timestamp を優先）。
+        // これでローカル履歴のみの送信でも、フィード由来の直近投稿が消えない。
+        for item in items {
+            if let existing = mergedItems[item.id], existing.timestamp >= item.timestamp {
+                continue
+            }
+            mergedItems[item.id] = item
+        }
+
+        // 純粋に新しい順で最大 20 件（「直近の投稿」を最優先で届ける）
+        let combined = Array(mergedItems.values.sorted { $0.timestamp > $1.timestamp }.prefix(20))
         guard !combined.isEmpty else { return }
 
         let slimDicts = makeSlimDicts(from: combined)
@@ -180,8 +193,16 @@ extension WatchEduSender: WCSessionDelegate {
 // MARK: - キャッシュ再送
 
 extension WatchEduSender {
-    /// EduLogManager のローカル履歴を Watch へ送信
+    /// キャッシュ済みアイテムを Watch へ送信。
+    /// フィード込みの完全版（mergedItems）があればそれを優先し、
+    /// 無ければローカル履歴 → UserDefaults の順にフォールバックする。
     func sendCachedItems() {
+        if !mergedItems.isEmpty {
+            // sendEduItems は mergedItems と union するので空配列でなければ何でもよいが、
+            // 明示的に現在の union 全体を渡して最新順の上位20件を再送する
+            sendEduItems(Array(mergedItems.values))
+            return
+        }
         let live = EduLogManager.shared.history
         if !live.isEmpty {
             sendEduItems(live)

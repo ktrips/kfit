@@ -264,6 +264,21 @@ struct WatchEdulingoView: View {
                     .padding(.horizontal, 4)
                 }
 
+                // ── 直近の投稿（フレーズ有無に関わらず新しい順） ──────────
+                if !store.items.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("直近の投稿")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(Array(store.items.prefix(5))) { item in
+                            recentPostRow(item)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
+                }
+
                 // 同期ボタン（画面内）
                 Button { store.requestSync() } label: {
                     HStack(spacing: 4) {
@@ -283,6 +298,56 @@ struct WatchEdulingoView: View {
             }
             .padding(.vertical, 8)
         }
+    }
+
+    // MARK: - 直近の投稿 行
+
+    /// フレーズ付きはタップで再生。フレーズ無し（読書・勉強など）もタイトルを表示して確認できる。
+    private func recentPostRow(_ item: WatchEduItem) -> some View {
+        let title: String = {
+            if !item.phrase.isEmpty { return item.phrase }
+            if let shared = item.sharedTitle, !shared.isEmpty { return shared }
+            return item.activityName
+        }()
+        return Button {
+            if !item.phrase.isEmpty {
+                speakingID = item.id
+                engine.speak(item)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(item.phrase.isEmpty ? "📝" : item.langFlag)
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(relativeTime(item.timestamp))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if !item.phrase.isEmpty {
+                    Image(systemName: speakingID == item.id ? "speaker.wave.2.fill" : "play.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(Color.white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Unix timestamp を「◯分前 / ◯時間前 / ◯日前」表記にする
+    private func relativeTime(_ unixTime: Double) -> String {
+        let seconds = max(0, Date().timeIntervalSince1970 - unixTime)
+        if seconds < 60 { return "たった今" }
+        if seconds < 3600 { return "\(Int(seconds / 60))分前" }
+        if seconds < 86400 { return "\(Int(seconds / 3600))時間前" }
+        return "\(Int(seconds / 86400))日前"
     }
 
     // MARK: - フィード（言語選択後）

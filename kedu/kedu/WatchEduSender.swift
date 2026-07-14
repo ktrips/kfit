@@ -2,6 +2,8 @@ import Foundation
 import WatchConnectivity
 import UIKit
 import Combine
+import FirebaseAuth
+import FirebaseFirestore
 
 /// kedu iOS → keduWatch データ送信（WatchConnectivity）
 /// タイムアウト対策：
@@ -196,24 +198,81 @@ extension WatchEduSender {
     /// キャッシュ済みアイテムを Watch へ送信。
     /// フィード込みの完全版（mergedItems）があればそれを優先し、
     /// 無ければローカル履歴 → UserDefaults の順にフォールバックする。
+    /// さらに Firestore から直近の自分の投稿を取得して補完する
+    /// （kfit で投稿したものはローカル履歴に無いため — Watch 同期の生命線）。
     func sendCachedItems() {
         if !mergedItems.isEmpty {
             // sendEduItems は mergedItems と union するので空配列でなければ何でもよいが、
             // 明示的に現在の union 全体を渡して最新順の上位20件を再送する
             sendEduItems(Array(mergedItems.values))
-            return
+        } else {
+            let live = EduLogManager.shared.history
+            if !live.isEmpty {
+                sendEduItems(live)
+            } else {
+                // in-memory が空なら UserDefaults から復元
+                let cacheKey = "eduLogHistory_v1"
+                if let data = UserDefaults.standard.data(forKey: cacheKey),
+                   let history = try? JSONDecoder().decode([EduLogHistoryItem].self, from: data),
+                   !history.isEmpty {
+                    sendEduItems(history)
+                }
+            }
         }
-        let live = EduLogManager.shared.history
-        if !live.isEmpty {
-            sendEduItems(live)
-            return
-        }
-        // in-memory が空なら UserDefaults から復元
-        let cacheKey = "eduLogHistory_v1"
-        if let data = UserDefaults.standard.data(forKey: cacheKey),
-           let history = try? JSONDecoder().decode([EduLogHistoryItem].self, from: data),
-           !history.isEmpty {
-            sendEduItems(history)
+        // ローカルの状態に関わらず、Firestore の直近投稿でも補完する
+        fetchRemotePostsAndSend()
+    }
+
+    /// Firestore（publicProfiles/{uid}/posts）から直近の自分の EDU 投稿を取得して送信する。
+    /// EdulingoView の画面表示・フィード読込に依存しないため、
+    /// バックグラウンド起動や Watch からのリクエスト時にも最新投稿を届けられる。
+    func fetchRemotePostsAndSend() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        Task { @MainActor in
+            let db = Firestore.firestore()
+            guard let snap = try? await db
+                .collection(FirestoreCollections.publicProfiles).document(uid)
+                .collection(FirestoreCollections.posts)
+                .order(by: "timestamp", descending: true)
+                .limit(to: 30)
+                .getDocuments() else { return }
+
+            let fetched: [EduLogHistoryItem] = snap.documents.compactMap { doc in
+                let data = doc.data()
+                let name = (data["activityName"] as? String ?? "")
+                    .trimmingCharacters(in: .whitespaces)
+                // 教育コンテンツのみ（EdulingoView.fetchMyOwnPosts と同じ判定）
+                let isEdu = name.localizedCaseInsensitiveContains("Duolingo")
+                    || name == "読書" || name == "勉強" || name == "語学"
+                    || name.contains("語学")
+                guard isEdu else { return nil }
+
+                var item = EduLogHistoryItem(
+                    activityName: name,
+                    activityEmoji: data["activityEmoji"] as? String ?? "",
+                    comment: data["comment"] as? String ?? "",
+                    authorName: data["authorName"] as? String ?? "",
+                    isPublic: true
+                )
+                let baseId = (data["id"] as? String) ?? doc.documentID
+                item.id = "own_\(baseId)"
+                item.timestamp = (data["timestamp"] as? Timestamp)?.dateValue() ?? Date()
+                item.extractedPhrase = data["extractedPhrase"] as? String
+                item.extractedLanguageCode = data["extractedLanguageCode"] as? String
+                item.translationJA = data["translationJA"] as? String
+                item.exampleSentences = {
+                    guard let raw = data["exampleSentences"] as? [[String: Any]],
+                          let d = try? JSONSerialization.data(withJSONObject: raw),
+                          let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
+                    else { return nil }
+                    return decoded
+                }()
+                item.sharedTitle = data["sharedTitle"] as? String
+                item.sharedUrl   = data["sharedUrl"]   as? String
+                return item
+            }
+            guard !fetched.isEmpty else { return }
+            self.sendEduItems(fetched)
         }
     }
 }

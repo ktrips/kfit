@@ -27,6 +27,12 @@ struct keduApp: App {
 
     init() {
         FirebaseApp.configure()
+        // WatchConnectivity を起動直後に確立する。
+        // Watch からの sendMessage でバックグラウンド起動された場合、
+        // WindowGroup の .task は実行されないことがあるため、ここで delegate を立てる。
+        Task { @MainActor in
+            WatchEduSender.shared.activate()
+        }
     }
 
     // WatchConnectivity セッションをアプリ起動直後に確立（EdulingoView 表示前に送信できるよう）

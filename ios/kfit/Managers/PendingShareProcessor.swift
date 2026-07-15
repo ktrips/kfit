@@ -43,8 +43,10 @@ private func detectCategory(comment: String, sourceApp: String) -> ShareCategory
     }
 
     // ── 読書 ──────────────────────────────────────────────────────────────
+    // "audible" 等はキーワードとして sourceApp（読書系アプリのバンドルID文字列）にも
+    // マッチするため、Audible からの画像共有等の判定漏れに対する安全網となる。
     let readingKeywords = ["読書", "読んだ", "reading", "book", "本", "小説", "マンガ", "漫画",
-                           "kindl", "電子書籍"]
+                           "kindl", "電子書籍", "audible", "libby", "overdrive", "kobo"]
     if readingKeywords.contains(where: { text.contains($0) }) {
         return ShareCategory(activityName: "読書", activityEmoji: "📖", isDuolingo: false)
     }

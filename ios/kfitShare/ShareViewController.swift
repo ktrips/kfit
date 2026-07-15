@@ -212,6 +212,7 @@ class ShareViewController: SLComposeServiceViewController {
                                 savedImage = true
                                 self.saveImage(img, comment: userComment,
                                                isDuolingo: isDuolingo, isDuolingoSrc: isDuolingoSrc,
+                                               isReadingShare: isReadingShare,
                                                sharedUrl: urlStr)
                             }
                         }
@@ -236,6 +237,7 @@ class ShareViewController: SLComposeServiceViewController {
                         guard let img = obj as? UIImage else { return }
                         self.saveImage(img, comment: userComment,
                                        isDuolingo: isDuolingo, isDuolingoSrc: isDuolingoSrc,
+                                       isReadingShare: isReadingShare,
                                        sharedUrl: nil)
                         savedCount2 += 1
                     }
@@ -260,6 +262,7 @@ class ShareViewController: SLComposeServiceViewController {
                     guard let data = imageData, let img = UIImage(data: data) else { return }
                     self.saveImage(img, comment: userComment,
                                    isDuolingo: isDuolingo, isDuolingoSrc: isDuolingoSrc,
+                                   isReadingShare: isReadingShare,
                                    sharedUrl: nil)
                     savedCount2 += 1
                 }
@@ -294,6 +297,7 @@ class ShareViewController: SLComposeServiceViewController {
 
     private func saveImage(_ img: UIImage, comment: String,
                            isDuolingo: Bool, isDuolingoSrc: Bool,
+                           isReadingShare: Bool = false,
                            sharedUrl: String?) {
         guard let data = img.jpegData(compressionQuality: 0.85),
               let containerURL = FileManager.default
@@ -313,6 +317,11 @@ class ShareViewController: SLComposeServiceViewController {
             "isDuolingo": isDuolingo
         ]
         if let url = sharedUrl { entry["urlString"] = url }
+        if isDuolingo {
+            entry["category"] = "duolingo"
+        } else if isReadingShare {
+            entry["category"] = "reading"
+        }
         pending.append(entry)
         defaults?.set(pending, forKey: pendingSharesKey)
         defaults?.synchronize()

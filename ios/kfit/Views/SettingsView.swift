@@ -1726,7 +1726,7 @@ struct SettingsView: View {
     private var addActivitySheet: some View {
         let activityPresets: [CustomActivity] = [
             .duolingo, .reading, .meditation, .stretching,
-            .toothbrushing, .coffee, .study,
+            .toothbrushing, .coffee, .study, .webPost,
             CustomActivity(name: "ジョギング", emoji: "🏃"),
             CustomActivity(name: "日記",       emoji: "📓"),
         ]

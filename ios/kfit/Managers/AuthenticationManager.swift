@@ -1958,7 +1958,8 @@ class AuthenticationManager: ObservableObject {
         return summary
     }
 
-    func performEndOfDayCalorieTopUpIfNeeded(now: Date = Date(), targetCalories: Int = 2000) async {
+    func performEndOfDayCalorieTopUpIfNeeded(now: Date = Date(), targetCalories: Int? = nil) async {
+        let targetCalories = targetCalories ?? DietGoalManager.shared.settings.dailyIntakeGoal
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
         let todayComponents = calendar.dateComponents([.hour, .minute], from: now)
@@ -1994,6 +1995,52 @@ class AuthenticationManager: ObservableObject {
                 "kfitAutoCalorieTopUp": true,
                 "kfitTargetCalories": targetCalories,
                 "kfitAppleHealthCaloriesBeforeTopUp": currentAppleHealthCalories,
+                "kfitDay": dayKey
+            ]
+        )
+        if saved {
+            UserDefaults.standard.set(true, forKey: defaultsKey)
+            await healthKit.fetchIntakeHealth(force: true)
+        }
+    }
+
+    func performEndOfDayWaterTopUpIfNeeded(now: Date = Date(), targetWaterMl: Int? = nil) async {
+        let targetWaterMl = targetWaterMl ?? TimeSlotManager.shared.settings.globalGoals.dailyDrinkMl
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: now)
+        let todayComponents = calendar.dateComponents([.hour, .minute], from: now)
+        let isEndOfToday = (todayComponents.hour ?? 0) > 23
+            || ((todayComponents.hour ?? 0) == 23 && (todayComponents.minute ?? 0) >= 59)
+        guard isEndOfToday else { return }
+
+        let dayKey = Self.yyyyMMddFmt.string(from: startOfToday)
+        let defaultsKey = "healthKit.endOfDayWaterTopUp.\(dayKey)"
+        guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
+
+        let healthKit = HealthKitManager.shared
+        guard healthKit.isAvailable else { return }
+        if !healthKit.isAuthorized {
+            await healthKit.requestAuthorization()
+        }
+        guard healthKit.isAuthorized else { return }
+
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
+        let currentAppleHealthWaterMl = Int(await healthKit.fetchDietaryWater(start: startOfToday, end: min(now, endOfToday)).rounded())
+        let gapWaterMl = targetWaterMl - currentAppleHealthWaterMl
+        guard gapWaterMl > 0 else {
+            UserDefaults.standard.set(true, forKey: defaultsKey)
+            return
+        }
+
+        let timestamp = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: startOfToday)
+            ?? endOfToday.addingTimeInterval(-60)
+        let saved = await healthKit.saveWaterIntake(
+            amountMl: Double(gapWaterMl),
+            timestamp: timestamp,
+            metadata: [
+                "kfitAutoWaterTopUp": true,
+                "kfitTargetWaterMl": targetWaterMl,
+                "kfitAppleHealthWaterBeforeTopUp": currentAppleHealthWaterMl,
                 "kfitDay": dayKey
             ]
         )

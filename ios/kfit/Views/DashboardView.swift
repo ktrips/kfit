@@ -503,6 +503,10 @@ struct DashboardView: View {
     @State private var selectedMandalaNode: MandalaNodeData? = nil
     @State private var eduPhotoLogNode: MandalaNodeData? = nil
     @State private var eduPhotoLogLinkMode: Bool = false  // コメント・リンクで記録モード
+    // ウェブ投稿ノード: スパイラルを画像化して共有シートを出す
+    @State private var showWebPostShare = false
+    @State private var webPostShareItems: [Any] = []
+    @State private var pendingWebPostNode: MandalaNodeData? = nil
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -699,6 +703,7 @@ struct DashboardView: View {
                 let matchingEduItem = EduLogManager.shared.history.first(where: {
                     $0.activityName == node.label && $0.timestamp >= today
                 })
+                let isWebPostNode = node.type == .custom && node.label == CustomActivity.webPost.name
                 GoalCompletionSheet(
                     emoji: node.emoji,
                     name: node.label,
@@ -733,15 +738,22 @@ struct DashboardView: View {
                             recordDetailNode = node
                             recordDetailItem = matchingEduItem
                         }
+                    } : nil,
+                    onPostToWeb: isWebPostNode ? {
+                        startWebPostShare(for: node)
                     } : nil
                 )
                 .presentationDetents([.height({
                     var h = 290
                     if node.type == .drink && !node.isCompleted { h = 360 }
                     if isLearningNode { h += 60 }   // コメントボタン分
+                    if isWebPostNode && !node.isCompleted { h += 60 }  // ウェブ投稿ボタン分
                     return CGFloat(h)
                 }())])
                 .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showWebPostShare, onDismiss: handleWebPostShareDismiss) {
+                SystemShareSheet(items: webPostShareItems)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
             .sheet(item: $eduPhotoLogNode) { node in
@@ -6103,6 +6115,42 @@ struct DashboardView: View {
         }
     }
 
+    /// ウェブ投稿ノード: 現在のスパイラルをカード画像にして共有シートを開く。
+    /// 共有シートが閉じたタイミングで自動的にノードを完了扱いにする（handleWebPostShareDismiss）。
+    private func startWebPostShare(for node: MandalaNodeData) {
+        let renderer = ImageRenderer(content:
+            MandalaChartView(
+                settings: timeSlotManager.settings,
+                progress: timeSlotManager.progress,
+                activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal,
+                dailyCalorieDone: dailyCalorieDone,
+                dailyWaterDone: dailyWaterDone,
+                precomputedNodes: cachedMandalaNodes,
+                onTapNode: { _ in },
+                onTapCenter: nil
+            )
+            .frame(width: 360, height: 410)
+            .background(Color.duoBg)
+        )
+        renderer.scale = 3.0
+
+        var items: [Any] = ["1日の習慣を Fit.ktrips.net で記録、継続しよう！"]
+        if let image = renderer.uiImage { items.append(image) }
+        webPostShareItems = items
+        pendingWebPostNode = node
+        selectedMandalaNode = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showWebPostShare = true
+        }
+    }
+
+    /// ウェブ投稿の共有シートが閉じたら、キャンセル/実際の共有を問わず自動完了する。
+    private func handleWebPostShareDismiss() {
+        guard let node = pendingWebPostNode else { return }
+        pendingWebPostNode = nil
+        Task { await handleMandalaComplete(node) }
+    }
+
     /// 飲み物記録時に時間帯の進捗を更新（mlを加算）
     private func updateTimeSlotForDrink(timestamp: Date, ml: Int) async {
         let hour = Calendar.current.component(.hour, from: timestamp)
@@ -8344,6 +8392,7 @@ private struct GoalCompletionSheet: View {
     var isRecordType: Bool = false
     var showPhotoButton: Bool = true
     var onViewRecord: (() -> Void)? = nil        // 登録済み記録へのナビゲーション
+    var onPostToWeb: (() -> Void)? = nil         // ウェブ投稿ノード専用：スパイラルを画像化して共有シートを開く
 
     @State private var pickerItem: PhotosPickerItem? = nil
 
@@ -8438,6 +8487,25 @@ private struct GoalCompletionSheet: View {
                     }
                 }
 
+                // ウェブ投稿ボタン（ウェブ投稿カスタム活動・未完了時のみ）
+                if let onPostToWeb, !isDone {
+                    Button {
+                        onPostToWeb()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.title3)
+                            Text("ウェブに投稿する")
+                                .font(.headline).fontWeight(.black)
+                            Spacer()
+                        }
+                        .foregroundColor(Color(hex: "#1CB0F6"))
+                        .padding(.horizontal, 20).padding(.vertical, 14)
+                        .background(Color(hex: "#1CB0F6").opacity(0.1))
+                        .cornerRadius(14)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 // 写真・コメント・リンクで記録（フォトログ or ライブラリ選択）- 水分ノードでは非表示
                 if showPhotoButton {

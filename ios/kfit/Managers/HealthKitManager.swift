@@ -1737,19 +1737,22 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// 水分摂取を Apple Health に記録
-    func saveWaterIntake(amountMl: Double, timestamp: Date) async {
+    @discardableResult
+    func saveWaterIntake(amountMl: Double, timestamp: Date, metadata: [String: Any]? = nil) async -> Bool {
         guard isAvailable, isAuthorized else {
             dlog("[HealthKit] ⚠️ Not authorized - skipping water save")
-            return
+            return false
         }
-        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return false }
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
-        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp)
+        let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
         do {
             try await store.save(sample)
             dlog("[HealthKit] ✅ Saved water: \(amountMl)ml")
+            return true
         } catch {
             dlog("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1871,11 +1874,16 @@ final class HealthKitManager: ObservableObject {
 
     /// 今日の水分摂取量を取得（ml）
     private func fetchTodayIntakeWater() async -> Double {
-        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return 0 }
         let calendar = Calendar.current
         let now = Date()
         let startOfDay = calendar.startOfDay(for: now)
-        let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+        return await fetchDietaryWater(start: startOfDay, end: now)
+    }
+
+    /// 指定期間の水分摂取量を取得（ml）
+    func fetchDietaryWater(start: Date, end: Date) async -> Double {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return 0 }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
 
         return await withCheckedContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in

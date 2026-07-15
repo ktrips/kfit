@@ -421,6 +421,33 @@ struct TimeSlotGoalsView: View {
             }
 
             if isExpanding {
+                let presets: [CustomActivity] = [
+                    .duolingo, .reading, .meditation, .stretching,
+                    .toothbrushing, .coffee, .study, .webPost,
+                ]
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(presets) { preset in
+                            Button {
+                                newActivityEmoji = preset.emoji
+                                newActivityName  = preset.name
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(preset.emoji).font(.caption)
+                                    Text(preset.name).font(.caption2).fontWeight(.bold)
+                                }
+                                .foregroundColor(Color.duoDark)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(newActivityName == preset.name ? Color.duoGreen.opacity(0.18) : Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 8)
+
                 HStack(spacing: 8) {
                     TextField("絵", text: $newActivityEmoji)
                         .font(.title3).multilineTextAlignment(.center)

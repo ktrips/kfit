@@ -65,6 +65,7 @@ struct kfitApp: App {
                 iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
                 Task {
                     await authManager.performEndOfDayCalorieTopUpIfNeeded()
+                    await authManager.performEndOfDayWaterTopUpIfNeeded()
                     await plusMgr.setup()
                     // Duolingo等からの共有をフォアグラウンド復帰時にも処理する
                     await PendingShareProcessor.shared.processPendingShares()
@@ -631,6 +632,7 @@ struct MainTabView: View {
     private func checkEndOfDayCalorieTopUp() {
         Task {
             await authManager.performEndOfDayCalorieTopUpIfNeeded()
+            await authManager.performEndOfDayWaterTopUpIfNeeded()
         }
     }
 }

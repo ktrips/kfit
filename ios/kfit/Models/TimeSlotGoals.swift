@@ -99,6 +99,10 @@ struct CustomActivity: Codable, Identifiable, Equatable {
     static let toothbrushing = CustomActivity(name: "歯磨き・フロス", emoji: "🦷")
     static let coffee        = CustomActivity(name: "コーヒーを淹れる", emoji: "☕")
     static let study         = CustomActivity(name: "勉強",           emoji: "📖")
+    static let webPost       = CustomActivity(name: "ウェブ投稿",     emoji: "📤")
+
+    /// このカスタム活動が「ウェブ投稿」項目かどうか（名前一致で判定。既存の読書/勉強判定と同様の方式）
+    var isWebPostType: Bool { name == CustomActivity.webPost.name }
 }
 
 // MARK: - ストレッチ・ヨガ目標

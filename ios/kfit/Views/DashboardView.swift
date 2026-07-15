@@ -9402,6 +9402,8 @@ struct DayCarouselSheet: View {
         entry.kind == .foodPhoto ? MainMenuTab.food.rawValue : MainMenuTab.tomo.rawValue
     }
 
+    private let gridColumns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -9418,11 +9420,13 @@ struct DayCarouselSheet: View {
                     } else {
                         ForEach(groupedBySlot, id: \.slot) { group in
                             Section {
-                                ForEach(group.entries) { entry in
-                                    entryCard(entry)
-                                        .padding(.horizontal, 16)
-                                        .padding(.bottom, 10)
+                                LazyVGrid(columns: gridColumns, spacing: 12) {
+                                    ForEach(group.entries) { entry in
+                                        entryCard(entry)
+                                    }
                                 }
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 14)
                             } header: {
                                 slotHeader(group.slot, count: group.entries.count)
                             }
@@ -9476,7 +9480,7 @@ struct DayCarouselSheet: View {
         .background(slot.mandalaColor.opacity(0.22))
     }
 
-    // MARK: - エントリカード（コンパクト）
+    // MARK: - エントリカード（2列グリッド用セル）
 
     @ViewBuilder
     private func entryCard(_ entry: DayCarouselEntry) -> some View {
@@ -9488,200 +9492,157 @@ struct DayCarouselSheet: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                // ── フォト / 絵文字エリア（時間・コメントは写真上に重ねる）──
+                // ── フォト / 絵文字サムネイル（時間・カテゴリは写真上に重ねる）──
                 if let img = entry.image {
-                    photoCard(entry: entry, image: img)
+                    photoThumb(entry: entry, image: img)
                 } else {
-                    emojiCard(entry: entry)
+                    emojiThumb(entry: entry)
+                }
+
+                // ── キャプション（コメント + FOOD カロリー）は写真の下に表示 ──
+                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if !entry.comment.isEmpty {
+                            Text(entry.comment)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
+                        }
+                        if entry.kind == .foodPhoto, entry.calories > 0 {
+                            HStack(spacing: 3) {
+                                Text("🔥").font(.system(size: 11))
+                                Text("\(entry.calories)kcal")
+                                    .font(.system(size: 12, weight: .black, design: .rounded))
+                                    .foregroundColor(entry.slot.mandalaColor)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // ── Duolingo フレーズのみ写真下に表示 ─────────────
                 if let dp = entry.duolingoPhrase {
                     CompactDuolingoRow(data: dp)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
                 }
             }
-            .background(entry.slot.mandalaColor.opacity(0.12))
+            .background(entry.slot.mandalaColor.opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: entry.slot.mandalaColor.opacity(0.20), radius: 6, y: 2)
+            .shadow(color: entry.slot.mandalaColor.opacity(0.18), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - フォトカード（画像あり・220px）
+    // MARK: - フォトサムネイル（時間・カテゴリバッジを写真上に重ねる）
 
-    private func photoCard(entry: DayCarouselEntry, image: UIImage) -> some View {
-        ZStack(alignment: .top) {
-            // 時間帯カラーの薄い背景（写真の後ろ）
-            entry.slot.mandalaColor.opacity(0.18)
-
-            // 写真本体
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 220)
-                .clipped()
-
-            // 上部グラデーション
-            LinearGradient(
-                colors: [.black.opacity(0.65), .black.opacity(0.20), .clear],
-                startPoint: .top, endPoint: .center
-            )
-            // 下部グラデーション
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.60)],
-                startPoint: .center, endPoint: .bottom
-            )
-
-            // ── 上部 3カラムオーバーレイ ─────────────────────────
-            HStack(alignment: .top, spacing: 0) {
-                // 左: 時間
+    private func photoThumb(entry: DayCarouselEntry, image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .clipped()
+            .overlay(alignment: .top) {
+                LinearGradient(
+                    colors: [.black.opacity(0.55), .clear],
+                    startPoint: .top, endPoint: .center
+                )
+                .frame(height: 60)
+            }
+            .overlay(alignment: .topLeading) {
+                // 左上: 時間
                 Text(Self.timeFmt.string(from: entry.time))
-                    .font(.system(size: 15, weight: .black, design: .monospaced))
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
                     .foregroundColor(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 3)
-
-                Spacer()
-
-                // 中央: カテゴリバッジ
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+                    .padding(8)
+            }
+            .overlay(alignment: .top) {
+                // 中央上: カテゴリバッジ
                 categoryBadge(entry)
-
-                Spacer()
-
-                // 右: 言語バッジ
-                if entry.isDuolingo, let lang = entry.extractedLanguageCode {
-                    HStack(spacing: 4) {
-                        Text(languageFlag(lang)).font(.system(size: 14))
-                        Text(languageLabel(lang))
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(languageBadgeColor(lang))
-                    .clipShape(Capsule())
-                }
+                    .padding(.top, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            // ── 下部: コメント + FOOD カロリー ───────────────────
-            VStack(alignment: .leading, spacing: 5) {
-                if !entry.comment.isEmpty {
-                    Text(entry.comment)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .shadow(color: .black.opacity(0.7), radius: 2)
-                }
-                if entry.kind == .foodPhoto, entry.calories > 0 {
-                    HStack(spacing: 4) {
-                        Text("🔥").font(.system(size: 14))
-                        Text("\(entry.calories) kcal")
-                            .font(.system(size: 15, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                    .shadow(color: .black.opacity(0.6), radius: 2)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
-        }
-        .frame(height: 220)
-        .cornerRadius(16)
     }
 
-    // MARK: - 絵文字カード（画像なし・100px）
+    // MARK: - 絵文字サムネイル（画像なし・80pt）
 
-    private func emojiCard(entry: DayCarouselEntry) -> some View {
-        ZStack(alignment: .top) {
-            // 時間帯カラー背景
+    private func emojiThumb(entry: DayCarouselEntry) -> some View {
+        ZStack {
             Rectangle()
                 .fill(entry.slot.mandalaColor.opacity(0.12))
-
-            // 中央: 絵文字 + タイトル
-            VStack(spacing: 4) {
-                Text(entry.emoji).font(.system(size: 40))
+            VStack(spacing: 2) {
+                Text(entry.emoji).font(.system(size: 30))
                 Text(entry.title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(entry.slot.mandalaColor)
                     .lineLimit(1)
             }
-
-            // 上部 3カラムオーバーレイ
-            HStack(alignment: .top, spacing: 0) {
-                Text(Self.timeFmt.string(from: entry.time))
-                    .font(.system(size: 13, weight: .black, design: .monospaced))
-                    .foregroundColor(entry.slot.mandalaColor)
-
-                Spacer()
-
-                categoryBadge(entry)
-
-                Spacer()
-
-                if entry.isDuolingo, let lang = entry.extractedLanguageCode {
-                    HStack(spacing: 4) {
-                        Text(languageFlag(lang)).font(.system(size: 14))
-                        Text(languageLabel(lang))
-                            .font(.system(size: 12, weight: .black))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(languageBadgeColor(lang))
-                    .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            // 下部コメント
-            if !entry.comment.isEmpty {
-                Text(entry.comment)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(entry.slot.mandalaColor.opacity(0.85))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
-            }
         }
-        .frame(height: 100)
-        .cornerRadius(16)
+        .frame(height: 80)
+        .overlay(alignment: .topLeading) {
+            Text(Self.timeFmt.string(from: entry.time))
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundColor(entry.slot.mandalaColor)
+                .padding(8)
+        }
+        .overlay(alignment: .top) {
+            categoryBadge(entry)
+                .padding(.top, 6)
+        }
     }
 
-    // MARK: - カテゴリバッジ（中央上・大きめ）
+    /// 食事写真の時間帯 → Breakfast / Lunch / Dinner / Snack
+    private func mealBadgeLabel(for slot: TimeSlot) -> String {
+        switch slot {
+        case .morning:   return "Breakfast"
+        case .noon:      return "Lunch"
+        case .afternoon: return "Snack"
+        case .evening:   return "Dinner"
+        case .midnight:  return "Snack"
+        }
+    }
+
+    // MARK: - カテゴリバッジ（中央上）
 
     @ViewBuilder
     private func categoryBadge(_ entry: DayCarouselEntry) -> some View {
-        let (label, color): (String, Color) = {
-            if entry.isDuolingo { return ("Duolingo", Color(hex: "#58CC02")) }
+        let (label, color, flag): (String, Color, String?) = {
+            if entry.isDuolingo, let lang = entry.extractedLanguageCode {
+                // 言語名（中国語・スペイン語など）をバッジ本体に表示
+                return (languageLabel(lang), languageBadgeColor(lang), languageFlag(lang))
+            }
             switch entry.kind {
             case .foodPhoto:
-                return ("FOOD", Color.duoOrange)
+                // 時間帯から Breakfast / Lunch / Dinner / Snack を表示
+                return (mealBadgeLabel(for: entry.slot), Color.duoOrange, nil)
             case .activity:
-                return (entry.title.isEmpty ? "FIT" : entry.title, Color.duoGreen)
+                return (entry.title.isEmpty ? "FIT" : entry.title, Color.duoGreen, nil)
             case .photo:
                 // activityName（勉強・読書・語学など）を表示、空の場合のみ「フォト」
                 let t = entry.title.isEmpty ? "フォト" : entry.title
-                return (String(t.prefix(6)), Color.duoPurple)
+                return (String(t.prefix(6)), Color.duoPurple, nil)
             case .link:
                 // activityName を表示、空の場合のみ「リンク」
                 let t = entry.title.isEmpty ? "リンク" : entry.title
-                return (String(t.prefix(6)), Color(hex: "#1CB0F6"))
+                return (String(t.prefix(6)), Color(hex: "#1CB0F6"), nil)
             }
         }()
-        Text(label)
-            .font(.system(size: 12, weight: .black))
-            .foregroundColor(.white)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(color)
-            .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.3), radius: 2)
+        HStack(spacing: 4) {
+            if let flag {
+                Text(flag).font(.system(size: 11))
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .black))
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(color)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.3), radius: 2)
     }
 
     // MARK: - コンパクトフレーズ行

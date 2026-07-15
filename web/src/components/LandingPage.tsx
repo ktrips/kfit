@@ -147,89 +147,89 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
           const isLoading = loadingMode === m.id;
           const isDisabled = loadingMode !== null;
           return (
-            <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* ── Google ログインボタン ─────────────────────────── */}
-              <button
-                onClick={() => handleSelectMode(m.id)}
-                disabled={isDisabled}
+            <div
+              key={m.id}
+              role="button"
+              tabIndex={isDisabled ? -1 : 0}
+              onClick={() => { if (!isDisabled) handleSelectMode(m.id); }}
+              onKeyDown={(e) => {
+                if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) handleSelectMode(m.id);
+              }}
+              style={{
+                width: '100%',
+                padding: '18px 20px',
+                borderRadius: 20,
+                background: isLoading ? m.accentDark : `${m.accent}14`,
+                border: `2px solid ${m.accent}`,
+                cursor: isDisabled ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                opacity: isDisabled && !isLoading ? 0.45 : 1,
+                transition: 'all 0.15s ease',
+                boxShadow: isLoading
+                  ? `0 4px 0 ${m.accentDark}`
+                  : `0 3px 0 ${m.accent}44`,
+                textAlign: 'left',
+              }}
+            >
+              <span
                 style={{
-                  width: '100%',
-                  padding: '18px 20px',
-                  borderRadius: 20,
-                  background: isLoading ? m.accentDark : `${m.accent}14`,
-                  border: `2px solid ${m.accent}`,
-                  cursor: isDisabled ? 'default' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  opacity: isDisabled && !isLoading ? 0.45 : 1,
-                  transition: 'all 0.15s ease',
-                  boxShadow: isLoading
-                    ? `0 4px 0 ${m.accentDark}`
-                    : `0 3px 0 ${m.accent}44`,
-                  textAlign: 'left',
+                  fontSize: 36, width: 52, height: 52,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '50%',
+                  background: isLoading ? 'rgba(255,255,255,0.18)' : `${m.accent}18`,
+                  flexShrink: 0,
                 }}
               >
-                <span
+                {m.emoji}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 21, fontWeight: 900, color: isLoading ? '#fff' : '#1f1f1f' }}>
+                  {m.label}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: isLoading ? 'rgba(255,255,255,0.8)' : '#999', marginTop: 2 }}>
+                  {isLoading ? 'Googleでログイン中…' : m.sublabel}
+                </div>
+              </div>
+              {isLoading ? (
+                <div
                   style={{
-                    fontSize: 36, width: 52, height: 52,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '50%',
-                    background: isLoading ? 'rgba(255,255,255,0.18)' : `${m.accent}18`,
+                    width: 20, height: 20, borderRadius: '50%',
+                    border: '2.5px solid rgba(255,255,255,0.4)',
+                    borderTopColor: '#fff',
+                    animation: 'spin 0.7s linear infinite',
                     flexShrink: 0,
                   }}
+                />
+              ) : (
+                /* ── iOS アプリで開くボタン（右側・シンプル表示）───────── */
+                <button
+                  onClick={(e) => { e.stopPropagation(); openIOS(m.id); }}
+                  disabled={isDisabled}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '9px 14px',
+                    borderRadius: 999,
+                    background: m.accent,
+                    border: 'none',
+                    cursor: isDisabled ? 'default' : 'pointer',
+                    boxShadow: `0 3px 0 ${m.accentDark}`,
+                    color: '#fff',
+                    fontWeight: 900,
+                    fontSize: 13,
+                    flexShrink: 0,
+                    transition: 'opacity 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
-                  {m.emoji}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 21, fontWeight: 900, color: isLoading ? '#fff' : '#1f1f1f' }}>
-                    {m.label}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: isLoading ? 'rgba(255,255,255,0.8)' : '#999', marginTop: 2 }}>
-                    {isLoading ? 'Googleでログイン中…' : m.sublabel}
-                  </div>
-                </div>
-                {isLoading ? (
-                  <div
-                    style={{
-                      width: 20, height: 20, borderRadius: '50%',
-                      border: '2.5px solid rgba(255,255,255,0.4)',
-                      borderTopColor: '#fff',
-                      animation: 'spin 0.7s linear infinite',
-                      flexShrink: 0,
-                    }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 20, color: m.accent, fontWeight: 900, flexShrink: 0 }}>›</span>
-                )}
-              </button>
-
-              {/* ── iOS アプリボタン ──────────────────────────────── */}
-              <button
-                onClick={() => openIOS(m.id)}
-                style={{
-                  width: '100%',
-                  padding: '13px 20px',
-                  borderRadius: 16,
-                  background: m.accent,
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  boxShadow: `0 4px 0 ${m.accentDark}`,
-                  transition: 'opacity 0.15s ease',
-                  color: '#fff',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >
-                <AppleLogo size={17} />
-                <span style={{ fontWeight: 900, fontSize: 15, letterSpacing: '-0.2px' }}>
-                  iOSアプリで{m.label}
-                </span>
-              </button>
+                  <AppleLogo size={13} />
+                  iOS
+                </button>
+              )}
             </div>
           );
         })}

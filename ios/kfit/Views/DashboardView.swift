@@ -9346,6 +9346,7 @@ struct DayCarouselSheet: View {
     let filterSlot: TimeSlot?
     @Binding var selectedTab: Int
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var linkFetcher = LinkMetadataFetcher.shared
 
     @State private var showShare = false
     @State private var shareItems: [Any] = []
@@ -9402,7 +9403,23 @@ struct DayCarouselSheet: View {
         entry.kind == .foodPhoto ? MainMenuTab.food.rawValue : MainMenuTab.tomo.rawValue
     }
 
-    private let gridColumns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    /// 読書・リンク投稿は全幅のリンクカードで単独表示し、それ以外は2件ずつ
+    /// グリッド行にまとめる。ForEach 用に行を [DayCarouselEntry] の配列で返す。
+    private func layoutRows(for entries: [DayCarouselEntry]) -> [[DayCarouselEntry]] {
+        var rows: [[DayCarouselEntry]] = []
+        var buffer: [DayCarouselEntry] = []
+        for entry in entries {
+            if entry.kind == .link {
+                if !buffer.isEmpty { rows.append(buffer); buffer = [] }
+                rows.append([entry])
+            } else {
+                buffer.append(entry)
+                if buffer.count == 2 { rows.append(buffer); buffer = [] }
+            }
+        }
+        if !buffer.isEmpty { rows.append(buffer) }
+        return rows
+    }
 
     var body: some View {
         NavigationView {
@@ -9420,9 +9437,21 @@ struct DayCarouselSheet: View {
                     } else {
                         ForEach(groupedBySlot, id: \.slot) { group in
                             Section {
-                                LazyVGrid(columns: gridColumns, spacing: 12) {
-                                    ForEach(group.entries) { entry in
-                                        entryCard(entry)
+                                VStack(spacing: 12) {
+                                    ForEach(Array(layoutRows(for: group.entries).enumerated()), id: \.offset) { _, row in
+                                        if row.count == 1, row[0].kind == .link {
+                                            linkEntryCard(row[0])
+                                        } else {
+                                            HStack(alignment: .top, spacing: 12) {
+                                                ForEach(row) { entry in
+                                                    entryCard(entry)
+                                                        .frame(maxWidth: .infinity)
+                                                }
+                                                if row.count == 1 {
+                                                    Color.clear.frame(maxWidth: .infinity)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -9492,34 +9521,11 @@ struct DayCarouselSheet: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                // ── フォト / 絵文字サムネイル（時間・カテゴリは写真上に重ねる）──
+                // ── フォト / 絵文字サムネイル（時間・カテゴリ・コメント/カロリーは写真上に重ねる）──
                 if let img = entry.image {
                     photoThumb(entry: entry, image: img)
                 } else {
                     emojiThumb(entry: entry)
-                }
-
-                // ── キャプション（コメント + FOOD カロリー）は写真の下に表示 ──
-                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        if !entry.comment.isEmpty {
-                            Text(entry.comment)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.primary)
-                                .lineLimit(2)
-                        }
-                        if entry.kind == .foodPhoto, entry.calories > 0 {
-                            HStack(spacing: 3) {
-                                Text("🔥").font(.system(size: 11))
-                                Text("\(entry.calories)kcal")
-                                    .font(.system(size: 12, weight: .black, design: .rounded))
-                                    .foregroundColor(entry.slot.mandalaColor)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // ── Duolingo フレーズのみ写真下に表示 ─────────────
@@ -9565,6 +9571,37 @@ struct DayCarouselSheet: View {
                 categoryBadge(entry)
                     .padding(.top, 8)
             }
+            .overlay(alignment: .bottom) {
+                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.65)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            if !entry.comment.isEmpty {
+                                Text(entry.comment)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .shadow(color: .black.opacity(0.7), radius: 2)
+                            }
+                            if entry.kind == .foodPhoto, entry.calories > 0 {
+                                HStack(spacing: 3) {
+                                    Text("🔥").font(.system(size: 11))
+                                    Text("\(entry.calories)kcal")
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundColor(.white)
+                                }
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6)
+                    }
+                    .frame(height: 46)
+                }
+            }
     }
 
     // MARK: - 絵文字サムネイル（画像なし・80pt）
@@ -9592,6 +9629,16 @@ struct DayCarouselSheet: View {
             categoryBadge(entry)
                 .padding(.top, 6)
         }
+        .overlay(alignment: .bottomLeading) {
+            if !entry.comment.isEmpty {
+                Text(entry.comment)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(entry.slot.mandalaColor.opacity(0.85))
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 6)
+            }
+        }
     }
 
     /// 食事写真の時間帯 → Breakfast / Lunch / Dinner / Snack
@@ -9603,6 +9650,135 @@ struct DayCarouselSheet: View {
         case .evening:   return "Dinner"
         case .midnight:  return "Snack"
         }
+    }
+
+    // MARK: - リンクカード（読書・リンク投稿・全幅表示）
+    // Audible/Kindle等の書影・タイトル・説明・引用コメントを1枚のカードで表示する。
+
+    @ViewBuilder
+    private func linkEntryCard(_ entry: DayCarouselEntry) -> some View {
+        if let url = entry.linkURL {
+            let urlStr = url.absoluteString
+            let host = url.host ?? urlStr
+            let svcEmoji = linkServiceEmoji(from: host)
+            let svcName  = linkServiceName(from: host)
+            let svcColor = linkServiceColor(from: host)
+            let fetched  = linkFetcher.meta(for: urlStr)
+            let dispTitle = (fetched?.title ?? entry.linkTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let dispDesc  = (fetched?.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            // ユーザーが写真を添付していればそちらを優先、なければ書影（OG画像）を使う
+            let thumbImage = entry.image ?? fetched?.thumbnailImage
+
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    let tab = tabFor(entry)
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        // 左上: 時間
+                        Text(Self.timeFmt.string(from: entry.time))
+                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 34, alignment: .leading)
+
+                        // 書影 or サービスアイコン
+                        if let img = thumbImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } else {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(svcColor.opacity(0.14))
+                                Text(svcEmoji).font(.system(size: 30))
+                            }
+                            .frame(width: 72, height: 72)
+                        }
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            if !dispTitle.isEmpty {
+                                Text(dispTitle)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+                            }
+                            if !dispDesc.isEmpty {
+                                Text(dispDesc)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(3)
+                            }
+                            HStack(spacing: 4) {
+                                Text(svcEmoji).font(.system(size: 12))
+                                Text(svcName)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(svcColor)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                // ── ユーザーのコメント（あれば・引用スタイル）─────────────
+                if !entry.comment.isEmpty {
+                    Divider().padding(.horizontal, 12)
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "quote.opening")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(svcColor.opacity(0.7))
+                            .padding(.top, 2)
+                        Text(entry.comment)
+                            .font(.system(size: 13))
+                            .foregroundColor(.primary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .background(svcColor.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(svcColor.opacity(0.2), lineWidth: 1))
+            .task(id: urlStr) { linkFetcher.prefetch(urlString: urlStr) }
+        }
+    }
+
+    private func linkServiceName(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "Audible" }
+        if h.contains("amazon") { return "Amazon Books" }
+        if h.contains("kindle") { return "Kindle" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "Libby 図書館" }
+        if h.contains("books.google") { return "Google Play Books" }
+        if h.contains("bookwalker") { return "BookWalker" }
+        if h.contains("kobo") { return "楽天Kobo" }
+        if h.contains("booklive") { return "BookLive" }
+        return "📖 リンクを開く"
+    }
+
+    private func linkServiceEmoji(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "🎧" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "🏛️" }
+        return "📖"
+    }
+
+    private func linkServiceColor(from host: String) -> Color {
+        let h = host.lowercased()
+        if h.contains("audible") { return Color(hex: "#F28C28") }
+        if h.contains("amazon") || h.contains("kindle") { return Color(hex: "#FF9900") }
+        if h.contains("libbyapp") || h.contains("overdrive") { return Color(hex: "#2E86AB") }
+        if h.contains("books.google") { return Color(hex: "#4285F4") }
+        if h.contains("bookwalker") { return Color(hex: "#E4001A") }
+        if h.contains("kobo") { return Color(hex: "#6A0DAD") }
+        return Color(hex: "#5E5CE6")
     }
 
     // MARK: - カテゴリバッジ（中央上）

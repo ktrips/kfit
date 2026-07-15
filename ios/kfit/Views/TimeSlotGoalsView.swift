@@ -729,9 +729,11 @@ struct MandalaChartView: View {
     let onTapNode: (MandalaNodeData) -> Void
     /// スパイラル中心の丸をタップしたときの処理（トレーニング画面起動など）
     var onTapCenter: (() -> Void)? = nil
-    /// ImageRenderer によるオフスクリーン描画用: .onAppear のフェードイン
-    /// アニメーションを待たずに最初から完全表示状態でレンダリングする。
-    var startAppeared: Bool = false
+    /// ImageRenderer によるオフスクリーン画像書き出し用モード。
+    /// - .onAppear のフェードインアニメーションを待たずに最初から完全表示状態にする
+    /// - ノードを Button ではなく非インタラクティブな View で描画する
+    ///   （ImageRenderer は Button でラップされたラベルを描画しないことがあるため）
+    var isSnapshotMode: Bool = false
 
     @State private var appeared = false
     @State private var pulseCenter = false
@@ -1098,13 +1100,19 @@ struct MandalaChartView: View {
                 // ノードボタン
                 ForEach(Array(nodes.enumerated()), id: \.element.id) { index, node in
                     let pos = index < positions.count ? positions[index] : center
-                    MandalaNodeButton(
-                        node: node,
-                        delay: Double(index) * 0.045,
-                        appeared: appeared || startAppeared,
-                        nodeSize: nodeSize,
-                        action: { onTapNode(node) }
-                    )
+                    Group {
+                        if isSnapshotMode {
+                            MandalaNodeSnapshotView(node: node, nodeSize: nodeSize)
+                        } else {
+                            MandalaNodeButton(
+                                node: node,
+                                delay: Double(index) * 0.045,
+                                appeared: appeared,
+                                nodeSize: nodeSize,
+                                action: { onTapNode(node) }
+                            )
+                        }
+                    }
                     .frame(width: nodeSize, height: nodeSize)
                     .position(pos)
                 }
@@ -1334,6 +1342,43 @@ struct MandalaNodeButton: View {
             value: appeared
         )
         // 完了時の外縁グロー
+        .overlay(
+            node.isCompleted
+                ? Circle()
+                    .strokeBorder(nodeColor.opacity(0.55), lineWidth: 3)
+                    .frame(width: glowSize, height: glowSize)
+                : nil
+        )
+    }
+}
+
+// MARK: - Mandala Node Snapshot View
+// ImageRenderer での画像書き出し専用。MandalaNodeButton と見た目は同じだが
+// Button でラップしない（ImageRenderer は Button ラベルを描画できないことがあるため）。
+
+struct MandalaNodeSnapshotView: View {
+    let node: MandalaNodeData
+    var nodeSize: CGFloat = 36
+
+    private var emojiSize: CGFloat { nodeSize * (21.5 / 36.0) }
+    private var glowSize: CGFloat { nodeSize + 14 }
+
+    private var nodeColor: Color {
+        node.slot?.mandalaColor ?? Color(hex: "CE82FF")
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(nodeColor.opacity(node.isCompleted ? 0.88 : 0.07))
+            Circle()
+                .strokeBorder(nodeColor, lineWidth: node.isCompleted ? 2.5 : 1)
+                .opacity(node.isCompleted ? 1.0 : 0.22)
+            Text(node.emoji)
+                .font(.system(size: emojiSize))
+                .opacity(node.isCompleted ? 1.0 : 0.55)
+        }
+        .scaleEffect(node.isCompleted ? 1.1 : 1.0)
         .overlay(
             node.isCompleted
                 ? Circle()

@@ -1364,7 +1364,8 @@ struct DashboardView: View {
                     dailyCalorieDone: dailyCalorieDone,
                     dailyWaterDone: dailyWaterDone,
                     weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
-                    bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil
+                    bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil,
+                    onShareSpiral: { startWebPostShare(for: nil) }
                 )
 
                 compactPointsBar
@@ -6115,22 +6116,33 @@ struct DashboardView: View {
         }
     }
 
-    /// ウェブ投稿ノード: 現在のスパイラルをカード画像にして共有シートを開く。
-    /// 共有シートが閉じたタイミングで自動的にノードを完了扱いにする（handleWebPostShareDismiss）。
-    private func startWebPostShare(for node: MandalaNodeData) {
+    /// 現在のスパイラルをカード画像にして共有シートを開く。
+    /// node が「今日をシェア」ノードの場合は、共有シートが閉じたタイミングで
+    /// 自動的にそのノードを完了扱いにする（handleWebPostShareDismiss）。
+    /// node が nil の場合（スパイラル右上の共有ボタンから）は完了処理を行わない。
+    private func startWebPostShare(for node: MandalaNodeData?) {
+        let dateLabel = Self.mdE.string(from: Date())
         let renderer = ImageRenderer(content:
-            MandalaChartView(
-                settings: timeSlotManager.settings,
-                progress: timeSlotManager.progress,
-                activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal,
-                dailyCalorieDone: dailyCalorieDone,
-                dailyWaterDone: dailyWaterDone,
-                precomputedNodes: cachedMandalaNodes,
-                onTapNode: { _ in },
-                onTapCenter: nil,
-                startAppeared: true
-            )
-            .frame(width: 360, height: 410)
+            VStack(spacing: 14) {
+                MandalaChartView(
+                    settings: timeSlotManager.settings,
+                    progress: timeSlotManager.progress,
+                    activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal,
+                    dailyCalorieDone: dailyCalorieDone,
+                    dailyWaterDone: dailyWaterDone,
+                    precomputedNodes: cachedMandalaNodes,
+                    onTapNode: { _ in },
+                    onTapCenter: nil,
+                    isSnapshotMode: true
+                )
+                .frame(width: 360, height: 410)
+
+                Text("\(dateLabel)のルーティンがんばりました！")
+                    .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoDark)
+                    .padding(.bottom, 18)
+            }
+            .frame(width: 360)
             .background(Color.duoBg)
         )
         renderer.scale = 3.0
@@ -7062,6 +7074,7 @@ private struct DailySetsMandalaSectionView: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
+    var onShareSpiral: () -> Void = {}
 
     var body: some View {
         MandalaSpiralCard(
@@ -7079,7 +7092,8 @@ private struct DailySetsMandalaSectionView: View {
             dailyCalorieDone: dailyCalorieDone,
             dailyWaterDone: dailyWaterDone,
             weightKg: weightKg,
-            bodyFatPercent: bodyFatPercent
+            bodyFatPercent: bodyFatPercent,
+            onShareSpiral: onShareSpiral
         )
         .padding(.top, 8)
         .padding(.bottom, 0)
@@ -7105,6 +7119,7 @@ private struct MandalaSpiralCard: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
+    var onShareSpiral: () -> Void = {}
     @EnvironmentObject private var photoLogManager: PhotoLogManager
 
     // 体重計測ノード: 記録方法の選択 / 写真記録シート
@@ -7132,8 +7147,11 @@ private struct MandalaSpiralCard: View {
             .padding(.bottom, 0)
             .overlay(alignment: .top) { legendOverlay }
             .overlay(alignment: .topTrailing) {
-                settingsButton
-                    .padding(.trailing, 8)
+                HStack(spacing: 6) {
+                    shareButton
+                    settingsButton
+                }
+                .padding(.trailing, 8)
             }
             .sheet(isPresented: $showWeightOptions) {
                 WeightRecordOptionsSheet(
@@ -7218,6 +7236,19 @@ private struct MandalaSpiralCard: View {
             },
             onTapCenter: { showTracker = true }
         )
+    }
+
+    private var shareButton: some View {
+        Button { onShareSpiral() } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 12 * UIScale.font))
+                .foregroundColor(Color(hex: "#1CB0F6"))
+                .padding(7)
+                .background(Color(.systemBackground).opacity(0.88))
+                .clipShape(Circle())
+                .shadow(color: Color.black.opacity(0.08), radius: 2, y: 1)
+        }
+        .padding(.top, 34)
     }
 
     private var settingsButton: some View {
@@ -9292,6 +9323,9 @@ struct DayCarouselSheet: View {
     @Binding var selectedTab: Int
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showShare = false
+    @State private var shareItems: [Any] = []
+
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
@@ -9299,6 +9333,26 @@ struct DayCarouselSheet: View {
     private var displayEntries: [DayCarouselEntry] {
         guard let slot = filterSlot else { return allEntries }
         return allEntries.filter { $0.slot == slot }
+    }
+
+    /// 写真付きの投稿のみ（共有対象）
+    private var photoEntries: [DayCarouselEntry] {
+        displayEntries.filter { $0.image != nil }
+    }
+
+    /// 今日の投稿写真の縮小版を共有シートで開く
+    private func shareTodayPhotos() {
+        let maxDimension: CGFloat = 900
+        let thumbnails: [UIImage] = photoEntries.compactMap { entry in
+            guard let image = entry.image else { return nil }
+            let scale = min(1.0, maxDimension / max(image.size.width, image.size.height))
+            guard scale < 1.0 else { return image }
+            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            return image.resized(to: size)
+        }
+        guard !thumbnails.isEmpty else { return }
+        shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"] + thumbnails
+        showShare = true
     }
 
     // 時間帯ごとにグループ化（時系列順）
@@ -9347,9 +9401,21 @@ struct DayCarouselSheet: View {
             .navigationTitle("今日の投稿 \(displayEntries.count)件")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if !photoEntries.isEmpty {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            shareTodayPhotos()
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("閉じる") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showShare) {
+                SystemShareSheet(items: shareItems)
             }
         }
     }

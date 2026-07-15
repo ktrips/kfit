@@ -1295,68 +1295,11 @@ struct MandalaChartView: View {
     }
 }
 
-// MARK: - Mandala Node Button
+// MARK: - Mandala Node Face
+// ノードの見た目本体（円・絵文字・完了時グロー）。MandalaNodeButton（インタラクティブ）と
+// MandalaNodeSnapshotView（ImageRenderer での画像書き出し用・Button 非使用）の両方で共有する。
 
-struct MandalaNodeButton: View {
-    let node: MandalaNodeData
-    let delay: Double
-    let appeared: Bool
-    var nodeSize: CGFloat = 36
-    let action: () -> Void
-
-    private var emojiSize: CGFloat { nodeSize * (21.5 / 36.0) }
-    private var glowSize: CGFloat { nodeSize + 14 }
-
-    @State private var tapped = false
-
-    private var nodeColor: Color {
-        node.slot?.mandalaColor ?? Color(hex: "CE82FF")
-    }
-
-    var body: some View {
-        Button {
-            withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { tapped = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                tapped = false
-                action()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(nodeColor.opacity(node.isCompleted ? 0.88 : 0.07))
-                Circle()
-                    .strokeBorder(nodeColor, lineWidth: node.isCompleted ? 2.5 : 1)
-                    .opacity(node.isCompleted ? 1.0 : 0.22)
-                Text(node.emoji)
-                    .font(.system(size: emojiSize))
-                    .opacity(node.isCompleted ? 1.0 : 0.55)
-            }
-        }
-        .buttonStyle(.plain)
-        .scaleEffect(node.isCompleted ? 1.1 : 1.0)
-        .scaleEffect(tapped ? 0.82 : 1.0)
-        .scaleEffect(appeared ? 1.0 : 0.0)
-        .opacity(appeared ? 1.0 : 0.0)
-        .animation(
-            .spring(response: 0.44, dampingFraction: 0.68).delay(delay),
-            value: appeared
-        )
-        // 完了時の外縁グロー
-        .overlay(
-            node.isCompleted
-                ? Circle()
-                    .strokeBorder(nodeColor.opacity(0.55), lineWidth: 3)
-                    .frame(width: glowSize, height: glowSize)
-                : nil
-        )
-    }
-}
-
-// MARK: - Mandala Node Snapshot View
-// ImageRenderer での画像書き出し専用。MandalaNodeButton と見た目は同じだが
-// Button でラップしない（ImageRenderer は Button ラベルを描画できないことがあるため）。
-
-struct MandalaNodeSnapshotView: View {
+struct MandalaNodeFace: View {
     let node: MandalaNodeData
     var nodeSize: CGFloat = 36
 
@@ -1379,6 +1322,7 @@ struct MandalaNodeSnapshotView: View {
                 .opacity(node.isCompleted ? 1.0 : 0.55)
         }
         .scaleEffect(node.isCompleted ? 1.1 : 1.0)
+        // 完了時の外縁グロー
         .overlay(
             node.isCompleted
                 ? Circle()
@@ -1386,6 +1330,51 @@ struct MandalaNodeSnapshotView: View {
                     .frame(width: glowSize, height: glowSize)
                 : nil
         )
+    }
+}
+
+// MARK: - Mandala Node Button
+
+struct MandalaNodeButton: View {
+    let node: MandalaNodeData
+    let delay: Double
+    let appeared: Bool
+    var nodeSize: CGFloat = 36
+    let action: () -> Void
+
+    @State private var tapped = false
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.6)) { tapped = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                tapped = false
+                action()
+            }
+        } label: {
+            MandalaNodeFace(node: node, nodeSize: nodeSize)
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(tapped ? 0.82 : 1.0)
+        .scaleEffect(appeared ? 1.0 : 0.0)
+        .opacity(appeared ? 1.0 : 0.0)
+        .animation(
+            .spring(response: 0.44, dampingFraction: 0.68).delay(delay),
+            value: appeared
+        )
+    }
+}
+
+// MARK: - Mandala Node Snapshot View
+// ImageRenderer での画像書き出し専用。MandalaNodeButton と見た目は同じだが
+// Button でラップしない（ImageRenderer は Button ラベルを描画できないことがあるため）。
+
+struct MandalaNodeSnapshotView: View {
+    let node: MandalaNodeData
+    var nodeSize: CGFloat = 36
+
+    var body: some View {
+        MandalaNodeFace(node: node, nodeSize: nodeSize)
     }
 }
 

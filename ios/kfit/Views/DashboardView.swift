@@ -6125,10 +6125,12 @@ struct DashboardView: View {
     private func startWebPostShare(for node: MandalaNodeData?) {
         pendingWebPostNode = node
         selectedMandalaNode = nil
-        // 前のシートの dismiss アニメーションが完了してから ImageRenderer を構築する。
-        // 即座に構築すると、プロセス内で最初の呼び出し時に ImageRenderer が
-        // レイアウト前の空画像を返し、共有シートが画像なしで開いてしまうことがある。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        Task { @MainActor in
+            // 前のシートの dismiss アニメーションが完了してから ImageRenderer を構築する。
+            // 即座に構築すると、プロセス内で最初の呼び出し時に ImageRenderer が
+            // レイアウト前の空画像を返し、共有シートが画像なしで開いてしまうことがある。
+            try? await Task.sleep(nanoseconds: 350_000_000)
+
             let dateLabel = Self.mdE.string(from: Date())
             let renderer = ImageRenderer(content:
                 VStack(spacing: 14) {
@@ -6159,21 +6161,21 @@ struct DashboardView: View {
             // renderer.uiImage はプロセス内で最初に呼ばれた際、レイアウト未完了のまま
             // 空画像を返すことがあるため、nil の場合は同じ renderer に対して少し待って
             // 再試行する（ビューツリーの再構築はしない）。
-            func attemptRead(_ attempt: Int) {
+            var attempt = 0
+            while attempt < 4 {
                 if let image = renderer.uiImage {
                     webPostShareItems = [Self.webPostShareCaption, image]
                     showWebPostShare = true
-                } else if attempt < 3 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        attemptRead(attempt + 1)
-                    }
-                } else {
-                    // 数回試しても画像化に失敗した場合はテキストのみで共有を開く
-                    webPostShareItems = [Self.webPostShareCaption]
-                    showWebPostShare = true
+                    return
+                }
+                attempt += 1
+                if attempt < 4 {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
                 }
             }
-            attemptRead(0)
+            // 数回試しても画像化に失敗した場合はテキストのみで共有を開く
+            webPostShareItems = [Self.webPostShareCaption]
+            showWebPostShare = true
         }
     }
 

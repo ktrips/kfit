@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import { getDietGoalSettings, getTodayIntakeSummary, saveDietGoalSettings } from '../services/wellnessService';
+import { getDietGoalSettings, saveDietGoalSettings, subscribeToTodayIntakeSummary } from '../services/wellnessService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 import { localDateKey } from '../utils/date';
 
@@ -27,10 +27,10 @@ export const DietGoalView: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      getDietGoalSettings(user.uid),
-      getTodayIntakeSummary(user.uid),
-    ]).then(([s, i]) => { setSettings(s); setIntake(i); }).catch(console.error);
+    getDietGoalSettings(user.uid).then(setSettings).catch(console.error);
+    // 摂取カロリー等はリアルタイム購読し、iOS側の記録も含めて即座に反映する
+    const unsubscribe = subscribeToTodayIntakeSummary(user.uid, setIntake);
+    return unsubscribe;
   }, [user]);
 
   const updateNumber = (key: keyof DietGoalSettings, value: string) => {

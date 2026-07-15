@@ -4,10 +4,10 @@ import {
   getDietGoalSettings,
   getDrinkDefaults,
   getMealDefaults,
-  getTodayIntakeSummary,
   recordDrinkIntake,
   recordMealIntake,
   saveDietGoalSettings,
+  subscribeToTodayIntakeSummary,
 } from '../services/wellnessService';
 import { getCurrentTimeSlot } from '../types/timeSlot';
 import { recordDrinkLog, recordMealLog } from '../services/timeSlotService';
@@ -36,23 +36,16 @@ export const IntakeView: React.FC = () => {
   const [goalInputValue, setGoalInputValue] = useState('');
   const [savingGoal, setSavingGoal] = useState(false);
 
-  const load = async () => {
+  useEffect(() => {
     if (!user) return;
     setLoading(true);
-    try {
-      const [summaryData, dietSettings] = await Promise.all([
-        getTodayIntakeSummary(user.uid),
-        getDietGoalSettings(user.uid),
-      ]);
-      setSummary(summaryData);
-      setCalorieGoal(dietSettings.dailyIntakeKcalGoal);
-    } finally {
+    getDietGoalSettings(user.uid).then(d => setCalorieGoal(d.dailyIntakeKcalGoal));
+    // Firestoreをリアルタイム購読し、iOS側の記録も含めて最新値を即座に反映する
+    const unsubscribe = subscribeToTodayIntakeSummary(user.uid, (s) => {
+      setSummary(s);
       setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
+    });
+    return unsubscribe;
   }, [user]);
 
   const handleMeal = async (mealType: MealType) => {

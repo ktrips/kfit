@@ -4,9 +4,9 @@ import {
   getDrinkDefaults,
   getMealDefaults,
   getDietGoalSettings,
-  getTodayIntakeSummary,
   recordDrinkIntake,
   recordMealIntake,
+  subscribeToTodayIntakeSummary,
 } from '../services/wellnessService';
 import { getCurrentTimeSlot } from '../types/timeSlot';
 import { recordDrinkLog, recordMealLog } from '../services/timeSlotService';
@@ -123,22 +123,17 @@ export const FoodView: React.FC = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ key: string; msg: string; action: () => void } | null>(null);
 
-  const load = async () => {
+  useEffect(() => {
     if (!user) return;
     setLoading(true);
-    try {
-      const [s, d] = await Promise.all([
-        getTodayIntakeSummary(user.uid),
-        getDietGoalSettings(user.uid),
-      ]);
+    getDietGoalSettings(user.uid).then(setDietGoal);
+    // Firestoreをリアルタイム購読し、iOS側の記録も含めて最新値を即座に反映する
+    const unsubscribe = subscribeToTodayIntakeSummary(user.uid, (s) => {
       setSummary(s);
-      setDietGoal(d);
-    } finally {
       setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, [user]);
+    });
+    return unsubscribe;
+  }, [user]);
 
   const handleMeal = (mealType: MealType) => {
     const defaults = getMealDefaults(mealType);

@@ -5,7 +5,7 @@ import {
   type WeeklySetProgress, type CompletedSetRecord, type CompletedExercise,
 } from '../services/firebase';
 import { getGlobalProgress, recordDrinkLog } from '../services/timeSlotService';
-import { getDietGoalSettings, getTodayIntakeSummary, recordDrinkIntake } from '../services/wellnessService';
+import { getDietGoalSettings, recordDrinkIntake, subscribeToTodayIntakeSummary } from '../services/wellnessService';
 import { useAppStore } from '../store/appStore';
 import { getCurrentTimeSlot } from '../types/timeSlot';
 import type { GlobalProgress } from '../services/timeSlotService';
@@ -85,13 +85,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     const loadData = async () => {
       if (!user) return;
       try {
-        const [dashboard, global, diet, intakeSummary] = await Promise.all([
+        const [dashboard, global, diet] = await Promise.all([
           getDashboardData(user.uid),
           getGlobalProgress(user.uid),
           getDietGoalSettings(user.uid),
-          getTodayIntakeSummary(user.uid),
         ]);
-        if (!cancelled) setIntake(intakeSummary);
         if (cancelled) return;
         const exercises = dashboard.todayExercises;
         setTotalReps(exercises.reduce((s: number, e: CompletedExercise) => s + (e.reps || 0), 0));
@@ -125,6 +123,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
+
+  // 摂取カロリー等はリアルタイム購読し、iOS側の記録も含めて即座に反映する
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeToTodayIntakeSummary(user.uid, setIntake);
+    return unsubscribe;
+  }, [user]);
 
   if (isLoading) {
     return (

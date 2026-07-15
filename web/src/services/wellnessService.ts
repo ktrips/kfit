@@ -2,13 +2,17 @@ import {
   addDoc,
   collection,
   doc,
+  DocumentData,
   getDoc,
   getDocs,
   increment,
+  onSnapshot,
   orderBy,
   query,
+  QuerySnapshot,
   setDoc,
   Timestamp,
+  Unsubscribe,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -171,19 +175,23 @@ export async function recordDrinkIntake(
   };
 }
 
-export async function getTodayIntakeSummary(userId: string): Promise<IntakeSummary> {
-  const todayRange = (kind: 'meals' | 'water' | 'coffee' | 'alcohol') =>
-    getDocs(query(
-      intakeLogs(userId, kind),
-      where('timestamp', '>=', startOfToday()),
-      where('timestamp', '<=', endOfToday()),
-      orderBy('timestamp', 'desc')
-    ));
+type IntakeKind = 'meals' | 'water' | 'coffee' | 'alcohol';
 
-  const [mealSnap, waterSnap, coffeeSnap, alcoholSnap] = await Promise.all([
-    todayRange('meals'), todayRange('water'), todayRange('coffee'), todayRange('alcohol'),
-  ]);
+function todayIntakeQuery(userId: string, kind: IntakeKind) {
+  return query(
+    intakeLogs(userId, kind),
+    where('timestamp', '>=', startOfToday()),
+    where('timestamp', '<=', endOfToday()),
+    orderBy('timestamp', 'desc')
+  );
+}
 
+function buildIntakeSummary(
+  mealSnap: QuerySnapshot<DocumentData>,
+  waterSnap: QuerySnapshot<DocumentData>,
+  coffeeSnap: QuerySnapshot<DocumentData>,
+  alcoholSnap: QuerySnapshot<DocumentData>,
+): IntakeSummary {
   const logs: IntakeLog[] = [];
 
   mealSnap.docs.forEach(item => {
@@ -246,6 +254,44 @@ export async function getTodayIntakeSummary(userId: string): Promise<IntakeSumma
     drinkCount: logs.filter(log => log.type === 'drink').length,
     logs,
   };
+}
+
+export async function getTodayIntakeSummary(userId: string): Promise<IntakeSummary> {
+  const [mealSnap, waterSnap, coffeeSnap, alcoholSnap] = await Promise.all([
+    getDocs(todayIntakeQuery(userId, 'meals')),
+    getDocs(todayIntakeQuery(userId, 'water')),
+    getDocs(todayIntakeQuery(userId, 'coffee')),
+    getDocs(todayIntakeQuery(userId, 'alcohol')),
+  ]);
+  return buildIntakeSummary(mealSnap, waterSnap, coffeeSnap, alcoholSnap);
+}
+
+/// 今日の摂取サマリーをリアルタイム購読する。
+/// iOS側でHealthKit経由・アプリ内記録どちらでFirestoreに書き込まれても、
+/// Webページを開き直さずに即座に最新値を反映する。
+/// 呼び出し側は返り値の unsubscribe 関数を unmount 時に必ず呼ぶこと。
+export function subscribeToTodayIntakeSummary(
+  userId: string,
+  callback: (summary: IntakeSummary) => void,
+): Unsubscribe {
+  const kinds: IntakeKind[] = ['meals', 'water', 'coffee', 'alcohol'];
+  const snapshots: Partial<Record<IntakeKind, QuerySnapshot<DocumentData>>> = {};
+
+  const emit = () => {
+    if (kinds.some(kind => !snapshots[kind])) return; // 4種すべて初回受信するまで待つ
+    callback(buildIntakeSummary(
+      snapshots.meals!, snapshots.water!, snapshots.coffee!, snapshots.alcohol!,
+    ));
+  };
+
+  const unsubscribers = kinds.map(kind =>
+    onSnapshot(todayIntakeQuery(userId, kind), snap => {
+      snapshots[kind] = snap;
+      emit();
+    })
+  );
+
+  return () => unsubscribers.forEach(unsub => unsub());
 }
 
 export const DEFAULT_DIET_GOAL: DietGoalSettings = {

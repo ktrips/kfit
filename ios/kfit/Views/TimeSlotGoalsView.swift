@@ -729,6 +729,9 @@ struct MandalaChartView: View {
     let onTapNode: (MandalaNodeData) -> Void
     /// スパイラル中心の丸をタップしたときの処理（トレーニング画面起動など）
     var onTapCenter: (() -> Void)? = nil
+    /// ImageRenderer によるオフスクリーン描画用: .onAppear のフェードイン
+    /// アニメーションを待たずに最初から完全表示状態でレンダリングする。
+    var startAppeared: Bool = false
 
     @State private var appeared = false
     @State private var pulseCenter = false
@@ -1098,7 +1101,7 @@ struct MandalaChartView: View {
                     MandalaNodeButton(
                         node: node,
                         delay: Double(index) * 0.045,
-                        appeared: appeared,
+                        appeared: appeared || startAppeared,
                         nodeSize: nodeSize,
                         action: { onTapNode(node) }
                     )

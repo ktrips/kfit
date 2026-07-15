@@ -6127,7 +6127,8 @@ struct DashboardView: View {
                 dailyWaterDone: dailyWaterDone,
                 precomputedNodes: cachedMandalaNodes,
                 onTapNode: { _ in },
-                onTapCenter: nil
+                onTapCenter: nil,
+                startAppeared: true
             )
             .frame(width: 360, height: 410)
             .background(Color.duoBg)

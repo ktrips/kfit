@@ -9363,31 +9363,61 @@ struct DayCarouselSheet: View {
         return allEntries.filter { $0.slot == slot }
     }
 
-    /// 写真付きの投稿のみ（共有対象）
-    private var photoEntries: [DayCarouselEntry] {
-        displayEntries.filter { $0.image != nil }
-    }
-
-    /// 今日の投稿写真の縮小版を共有シートで開く。
-    /// リサイズ処理はメインスレッドをブロックしないようバックグラウンドで行う。
+    /// 今日の投稿（この画面全体）を1枚の画像にまとめて共有シートで開く。
     private func shareTodayPhotos() {
-        guard !isPreparingShare else { return }
+        guard !isPreparingShare, !displayEntries.isEmpty else { return }
         isPreparingShare = true
-        let images = photoEntries.compactMap(\.image)
-        Task.detached(priority: .userInitiated) {
-            let maxDimension: CGFloat = 900
-            let thumbnails: [UIImage] = images.map { image in
-                let scale = min(1.0, maxDimension / max(image.size.width, image.size.height))
-                guard scale < 1.0 else { return image }
-                let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                return image.resized(to: size)
+        Task { @MainActor in
+            // 直前のUI操作（シート表示など）のレイアウトが落ち着くのを少し待つ
+            try? await Task.sleep(nanoseconds: 150_000_000)
+
+            let renderer = ImageRenderer(content:
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(groupedBySlot, id: \.slot) { group in
+                        slotHeader(group.slot, count: group.entries.count)
+                        VStack(spacing: 12) {
+                            ForEach(Array(layoutRows(for: group.entries).enumerated()), id: \.offset) { _, row in
+                                if row.count == 1, row[0].kind == .link {
+                                    linkEntryCard(row[0], isSnapshot: true)
+                                } else {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        ForEach(row) { entry in
+                                            entryCard(entry, isSnapshot: true)
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                        if row.count == 1 {
+                                            Color.clear.frame(maxWidth: .infinity)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 14)
+                    }
+                }
+                .frame(width: 390)
+                .background(Color(.systemGroupedBackground))
+            )
+            renderer.scale = 2.0
+
+            var attempt = 0
+            while attempt < 4 {
+                if let image = renderer.uiImage {
+                    shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸", image]
+                    showShare = true
+                    isPreparingShare = false
+                    return
+                }
+                attempt += 1
+                if attempt < 4 {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
             }
-            await MainActor.run {
-                isPreparingShare = false
-                guard !thumbnails.isEmpty else { return }
-                shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"] + thumbnails
-                showShare = true
-            }
+            // 画像化に失敗した場合はテキストのみで共有を開く
+            shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"]
+            showShare = true
+            isPreparingShare = false
         }
     }
 
@@ -9469,7 +9499,7 @@ struct DayCarouselSheet: View {
             .navigationTitle("今日の投稿 \(displayEntries.count)件")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if !photoEntries.isEmpty {
+                if !displayEntries.isEmpty {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
                             shareTodayPhotos()
@@ -9513,35 +9543,43 @@ struct DayCarouselSheet: View {
 
     // MARK: - エントリカード（2列グリッド用セル）
 
+    /// isSnapshot: true の場合は Button でラップしない
+    /// （ImageRenderer での画像書き出し用。Button ラベルは描画できないことがあるため）。
     @ViewBuilder
-    private func entryCard(_ entry: DayCarouselEntry) -> some View {
-        Button {
-            let tab = tabFor(entry)
-            dismiss()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                selectedTab = tab
+    private func entryCard(_ entry: DayCarouselEntry, isSnapshot: Bool = false) -> some View {
+        let content = VStack(alignment: .leading, spacing: 0) {
+            // ── フォト / 絵文字サムネイル（時間・カテゴリ・コメント/カロリーは写真上に重ねる）──
+            if let img = entry.image {
+                photoThumb(entry: entry, image: img)
+            } else {
+                emojiThumb(entry: entry)
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                // ── フォト / 絵文字サムネイル（時間・カテゴリ・コメント/カロリーは写真上に重ねる）──
-                if let img = entry.image {
-                    photoThumb(entry: entry, image: img)
-                } else {
-                    emojiThumb(entry: entry)
-                }
 
-                // ── Duolingo フレーズのみ写真下に表示 ─────────────
-                if let dp = entry.duolingoPhrase {
-                    CompactDuolingoRow(data: dp)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 8)
-                }
+            // ── Duolingo フレーズのみ写真下に表示 ─────────────
+            if let dp = entry.duolingoPhrase {
+                CompactDuolingoRow(data: dp)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
             }
-            .background(entry.slot.mandalaColor.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: entry.slot.mandalaColor.opacity(0.18), radius: 5, y: 2)
         }
-        .buttonStyle(.plain)
+        .background(entry.slot.mandalaColor.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: entry.slot.mandalaColor.opacity(0.18), radius: 5, y: 2)
+
+        if isSnapshot {
+            content
+        } else {
+            Button {
+                let tab = tabFor(entry)
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    selectedTab = tab
+                }
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // MARK: - フォトサムネイル（時間・カテゴリバッジを写真上に重ねる）
@@ -9657,8 +9695,10 @@ struct DayCarouselSheet: View {
     // MARK: - リンクカード（読書・リンク投稿・全幅表示）
     // Audible/Kindle等の書影・タイトル・説明・引用コメントを1枚のカードで表示する。
 
+    /// isSnapshot: true の場合は Button でラップしない
+    /// （ImageRenderer での画像書き出し用。Button ラベルは描画できないことがあるため）。
     @ViewBuilder
-    private func linkEntryCard(_ entry: DayCarouselEntry) -> some View {
+    private func linkEntryCard(_ entry: DayCarouselEntry, isSnapshot: Bool = false) -> some View {
         if let url = entry.linkURL {
             let urlStr = url.absoluteString
             let host = url.host ?? urlStr
@@ -9671,62 +9711,68 @@ struct DayCarouselSheet: View {
             // ユーザーが写真を添付していればそちらを優先、なければ書影（OG画像）を使う
             let thumbImage = entry.image ?? fetched?.thumbnailImage
 
-            VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    let tab = tabFor(entry)
-                    dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        // 左上: 時間
-                        Text(Self.timeFmt.string(from: entry.time))
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .frame(width: 34, alignment: .leading)
+            let mainContent = HStack(alignment: .top, spacing: 12) {
+                // 左上: 時間
+                Text(Self.timeFmt.string(from: entry.time))
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 34, alignment: .leading)
 
-                        // 書影 or サービスアイコン
-                        if let img = thumbImage {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 72, height: 72)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        } else {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(svcColor.opacity(0.14))
-                                Text(svcEmoji).font(.system(size: 30))
-                            }
-                            .frame(width: 72, height: 72)
-                        }
-
-                        VStack(alignment: .leading, spacing: 5) {
-                            if !dispTitle.isEmpty {
-                                Text(dispTitle)
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(2)
-                            }
-                            if !dispDesc.isEmpty {
-                                Text(dispDesc)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(3)
-                            }
-                            HStack(spacing: 4) {
-                                Text(svcEmoji).font(.system(size: 12))
-                                Text(svcName)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(svcColor)
-                            }
-                        }
+                // 書影 or サービスアイコン
+                if let img = thumbImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(svcColor.opacity(0.14))
+                        Text(svcEmoji).font(.system(size: 30))
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: 72, height: 72)
                 }
-                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    if !dispTitle.isEmpty {
+                        Text(dispTitle)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+                    }
+                    if !dispDesc.isEmpty {
+                        Text(dispDesc)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(3)
+                    }
+                    HStack(spacing: 4) {
+                        Text(svcEmoji).font(.system(size: 12))
+                        Text(svcName)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(svcColor)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if isSnapshot {
+                    mainContent
+                } else {
+                    Button {
+                        let tab = tabFor(entry)
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        mainContent
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 // ── ユーザーのコメント（あれば・引用スタイル）─────────────
                 if !entry.comment.isEmpty {

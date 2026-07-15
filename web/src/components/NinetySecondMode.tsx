@@ -4,6 +4,12 @@ import React, {
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
+const GIFS = [
+  '/fitingo_wo_pushups.gif',
+  '/fitingo_workout.gif',
+  '/fitingo_wo_squat.gif',
+];
+
 const TIPS: Record<string, string[]> = {
   fit:  ['💡 たった5回から始めよう！', '⚡ 90秒で体が変わる！', '🔥 毎日続けると体が軽くなる！', '💪 小さな積み重ねが大きな変化！'],
   food: ['📸 撮るだけで栄養計算！', '🥗 食事の見える化が続く秘訣', '🍱 まず1枚、今日から始めよう', '✨ 記録するだけで意識が変わる！'],
@@ -133,6 +139,7 @@ export const NinetySecondMode: React.FC<Props> = ({
     }
     return 0;
   });
+  const [gifIdx, setGifIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
   const [pulse, setPulse] = useState(false);
@@ -164,6 +171,12 @@ export const NinetySecondMode: React.FC<Props> = ({
   const goToPage = (idx: number) => {
     scrollRef.current?.scrollTo({ left: idx * (scrollRef.current.clientWidth), behavior: 'smooth' });
   };
+
+  // ── GIF ローテーション（10秒）─────────────────────────────────────────────
+  useEffect(() => {
+    const t = setInterval(() => setGifIdx((i) => (i + 1) % GIFS.length), 10_000);
+    return () => clearInterval(t);
+  }, []);
 
   // ── Tips ローテーション（4秒）─────────────────────────────────────────────
   useEffect(() => {
@@ -230,6 +243,7 @@ export const NinetySecondMode: React.FC<Props> = ({
             key={m.id}
             mode={m}
             isActive={idx === activePage}
+            gifIdx={gifIdx}
             tipIdx={tipIdx}
             tipList={TIPS[m.id] ?? TIPS.fit}
             activeDays={activeDays}
@@ -373,6 +387,7 @@ export const NinetySecondMode: React.FC<Props> = ({
 interface CardProps {
   mode: ModeConfig;
   isActive: boolean;
+  gifIdx: number;
   tipIdx: number;
   tipList: string[];
   activeDays: string[];
@@ -384,7 +399,7 @@ interface CardProps {
 }
 
 const ModeCard: React.FC<CardProps> = ({
-  mode, tipIdx, tipList, activeDays, graduated, doneToday,
+  mode, gifIdx, tipIdx, tipList, activeDays, graduated, doneToday,
   pulse, onAction,
 }) => {
   const { accent, accentDark } = mode;
@@ -475,7 +490,7 @@ const ModeCard: React.FC<CardProps> = ({
           <span style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>語学を記録</span>
         </button>
       ) : (
-        // FIT / DIET: Fitingo 画像ボタン（丸バックなし）
+        // FIT: お手本動画をそのままボタンに / DIET: Fitingo 画像ボタン（丸バックなし）
         <button
           onClick={onAction}
           style={{
@@ -490,11 +505,20 @@ const ModeCard: React.FC<CardProps> = ({
           }}
           aria-label={doneToday ? 'もう1セット' : `${mode.badge}${mode.actionSuffix}`}
         >
-          <img
-            src="/mascot.png"
-            alt="Fitingo"
-            style={{ width: 190, height: 190, objectFit: 'contain', borderRadius: '50%' }}
-          />
+          {mode.id === 'fit' ? (
+            <img
+              key={gifIdx}
+              src={GIFS[gifIdx % GIFS.length]}
+              alt="お手本動画"
+              style={{ width: 190, height: 190, objectFit: 'cover', borderRadius: 24 }}
+            />
+          ) : (
+            <img
+              src="/mascot.png"
+              alt="Fitingo"
+              style={{ width: 190, height: 190, objectFit: 'contain', borderRadius: '50%' }}
+            />
+          )}
         </button>
       )}
 
@@ -580,30 +604,29 @@ const ModeCard: React.FC<CardProps> = ({
         </p>
       </div>
 
-      {/* ── iOS アプリ誘導ボタン ──────────────────────────────────────── */}
+      {/* ── iOS アプリ誘導ボタン（コンパクト）──────────────────────────── */}
       <button
         onClick={() => openIOS(mode.id)}
         style={{
-          marginTop: 16,
-          width: 'calc(100% - 48px)',
-          padding: '13px 20px',
-          borderRadius: 16,
+          marginTop: 14,
+          padding: '8px 16px',
+          borderRadius: 999,
           background: accent,
           border: 'none',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 10,
-          boxShadow: `0 4px 0 ${accentDark}`,
+          gap: 6,
+          boxShadow: `0 2px 0 ${accentDark}`,
           color: '#fff',
           transition: 'opacity 0.15s',
         }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
       >
-        <AppleLogo size={17} />
-        <span style={{ fontWeight: 900, fontSize: 15, letterSpacing: '-0.2px' }}>
+        <AppleLogo size={13} />
+        <span style={{ fontWeight: 800, fontSize: 12, letterSpacing: '-0.1px' }}>
           {mode.iosLabel}
         </span>
       </button>

@@ -171,6 +171,27 @@ class PendingShareProcessor {
             let sourceApp    = item["sourceApp"] as? String ?? ""
             let urlString    = item["urlString"] as? String
             let sharedTitle  = item["sharedTitle"] as? String
+            let sharedText   = item["sharedText"] as? String
+
+            // ── プレーンテキスト共有（単語・フレーズ）：画像・URLなし ─────────────
+            // 発音記号・意味・例文（発話）は EduLogManager.addItem 内でLLM生成される
+            if let text = sharedText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                let langCode = DuolingoTextExtractor.shared.detectLanguagePublic(text) ?? "en"
+                let cat = ShareCategory(activityName: "Duolingo", activityEmoji: "🦉", isDuolingo: true)
+
+                EduLogManager.shared.addItem(
+                    activityName:          cat.activityName,
+                    activityEmoji:         cat.activityEmoji,
+                    comment:               "🦉 \(text) を追加",
+                    image:                 nil,
+                    isPublic:              true,
+                    extractedPhrase:       text,
+                    extractedLanguageCode: langCode,
+                    autoGenerateExamples:  true
+                )
+                postNotificationsIfNeeded(cat: cat)
+                continue
+            }
 
             // ── URL-only 共有（画像なし）───────────────────────────────────
             if let urlStr = urlString, item["filename"] == nil {

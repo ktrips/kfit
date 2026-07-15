@@ -2761,15 +2761,7 @@ struct TomoView: View {
         }
     }
 
-    /// スタート日（joinDate）から投稿日までの日数を "Day N" 文字列で返す
-    private func dayLabel(for date: Date) -> String {
-        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: joinDate)
-        let post  = cal.startOfDay(for: date)
-        let days  = cal.dateComponents([.day], from: start, to: post).day ?? 0
-        return "Day \(days + 1)"
-    }
+    // dayLabel(for:) は Views/Components/SharedEduViews.swift の共有関数を使用
 }
 
 // MARK: - スワイプ詳細シート（同一グループ複数投稿を左右スワイプで閲覧）

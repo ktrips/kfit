@@ -2,6 +2,7 @@ import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { signInWithGoogle } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
+import { detectInAppBrowser, openInExternalBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
 
 const APP_STORE_URL = 'https://apps.apple.com/app/fitingo/id000000000';
 
@@ -14,6 +15,7 @@ interface LoginViewProps {
 export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks, onStartWorkout, onNinetySecond }) => {
   const setUser = useAppStore((state) => state.setUser);
   const setError = useAppStore((state) => state.setError);
+  const inAppBrowser = detectInAppBrowser();
 
   const handleGoogleSignIn = async () => {
     try {
@@ -66,9 +68,34 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks,
 
       {/* Login card */}
       <div className="duo-card p-8 w-full max-w-sm">
+        {inAppBrowser && (
+          <div
+            className="rounded-2xl p-4 mb-5"
+            style={{ background: '#FFF7E6', border: '2px solid #FFD37A' }}
+          >
+            <p className="font-black text-sm text-duo-dark mb-1">
+              ⚠️ {IN_APP_BROWSER_LABEL[inAppBrowser]}内ではGoogleログインできません
+            </p>
+            <p className="text-xs text-duo-gray mb-3 leading-snug">
+              Googleのポリシーにより、アプリ内ブラウザからのログインはブロックされます。
+              {inAppBrowser === 'line'
+                ? '下のボタンでブラウザを開いてください。'
+                : '右上の「…」メニューなどから「ブラウザで開く」を選択してください。'}
+            </p>
+            {inAppBrowser === 'line' && (
+              <button
+                onClick={openInExternalBrowser}
+                className="duo-btn-primary w-full text-sm"
+              >
+                ブラウザで開く
+              </button>
+            )}
+          </div>
+        )}
         <button
           onClick={handleGoogleSignIn}
-          className="duo-btn-primary w-full flex items-center justify-center gap-3 text-lg"
+          disabled={!!inAppBrowser}
+          className="duo-btn-primary w-full flex items-center justify-center gap-3 text-lg disabled:opacity-40"
         >
           <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
             <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

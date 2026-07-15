@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { signInWithGoogle, subscribeLiveCount, incrementLiveCount } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
+import { detectInAppBrowser, openInExternalBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 export type Mode90 = 'fit' | 'diet' | 'food' | 'edu';
@@ -47,6 +48,7 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
   const [loadingMode, setLoadingMode] = useState<Mode90 | null>(null);
   const [liveCount, setLiveCount] = useState<number>(0);
   const incrementedRef = useRef(false);
+  const inAppBrowser = detectInAppBrowser();
 
   // ライブカウンター購読（未認証でも読める）
   useEffect(() => {
@@ -129,6 +131,57 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
         </div>
       </div>
 
+      {/* ── アプリ内ブラウザ警告（LINE等） ───────────────────────── */}
+      {inAppBrowser && (
+        <div
+          style={{
+            maxWidth: 440,
+            width: '100%',
+            margin: '0 auto 14px',
+            padding: '0 20px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 16,
+              background: '#FFF7E6',
+              border: '2px solid #FFD37A',
+            }}
+          >
+            <p style={{ fontWeight: 900, fontSize: 14, color: '#1f1f1f', marginBottom: 4 }}>
+              ⚠️ {IN_APP_BROWSER_LABEL[inAppBrowser]}内ではGoogleログインできません
+            </p>
+            <p style={{ fontSize: 12, color: '#888', fontWeight: 600, lineHeight: 1.5, marginBottom: inAppBrowser === 'line' ? 10 : 0 }}>
+              Googleのポリシーにより、アプリ内ブラウザからのログインはブロックされます。
+              {inAppBrowser === 'line'
+                ? '下のボタンでブラウザを開いてください。'
+                : '右上の「…」メニューなどから「ブラウザで開く」を選択してください。'}
+            </p>
+            {inAppBrowser === 'line' && (
+              <button
+                onClick={openInExternalBrowser}
+                style={{
+                  width: '100%',
+                  padding: '10px 0',
+                  borderRadius: 12,
+                  background: '#58CC02',
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: 900,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 0 #46A302',
+                }}
+              >
+                ブラウザで開く
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── 4 モードボタン ───────────────────────────────────────── */}
       <div
         style={{
@@ -145,7 +198,7 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
       >
         {MODES.map((m) => {
           const isLoading = loadingMode === m.id;
-          const isDisabled = loadingMode !== null;
+          const isDisabled = loadingMode !== null || !!inAppBrowser;
           return (
             <div
               key={m.id}

@@ -7348,6 +7348,8 @@ private struct MandalaSpiralCard: View {
                 linkImageURL: item.sharedImageURL,
                 comment: item.comment,
                 kind: kind,
+                weightKg: item.weightKg,
+                bodyFatPercent: item.bodyFatPercent,
                 extractedPhrase: item.extractedPhrase,
                 extractedLanguageCode: item.extractedLanguageCode,
                 translationJA: item.translationJA,
@@ -9296,6 +9298,9 @@ struct DayCarouselEntry: Identifiable {
     var protein: Double = 0
     var fat: Double = 0
     var carbs: Double = 0
+    // 体重ログ情報（体重ログのみ）
+    var weightKg: Double? = nil
+    var bodyFatPercent: Double? = nil
     // Duolingo フレーズ情報（activity/photo のうちDuolingo系のみ）
     var extractedPhrase: String? = nil
     var extractedLanguageCode: String? = nil
@@ -9612,7 +9617,8 @@ struct DayCarouselSheet: View {
                     .padding(.top, 8)
             }
             .overlay(alignment: .bottom) {
-                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) {
+                let hasWeight = entry.weightKg != nil || entry.bodyFatPercent != nil
+                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) || hasWeight {
                     ZStack(alignment: .bottomLeading) {
                         LinearGradient(
                             colors: [.clear, .black.opacity(0.65)],
@@ -9634,6 +9640,10 @@ struct DayCarouselSheet: View {
                                         .foregroundColor(.white)
                                 }
                                 .shadow(color: .black.opacity(0.6), radius: 2)
+                            }
+                            if hasWeight {
+                                WeightFatReadout(weightKg: entry.weightKg, bodyFatPercent: entry.bodyFatPercent)
+                                    .shadow(color: .black.opacity(0.6), radius: 2)
                             }
                         }
                         .padding(.horizontal, 8)
@@ -9869,11 +9879,6 @@ struct DayCarouselSheet: View {
         .shadow(color: .black.opacity(0.3), radius: 2)
     }
 
-    // MARK: - コンパクトフレーズ行
-
-    private func compactPhraseRow(_ dp: DuolingoPhrase) -> some View {
-        CompactDuolingoRow(data: dp)
-    }
 }
 
 // MARK: - コンパクトDuolingo行（DayCarouselSheet専用）
@@ -9929,44 +9934,12 @@ private struct CompactDuolingoRow: View {
             }
 
             // ── 訳 ─────────────────────────────────────────────────
+            // 例文テキストは画面に表示しない。「全再生」ボタンが
+            // phrase＋全例文（画面に表示していない分も含む）をまとめて再生する。
             if let tja = data.translationJA, !tja.isEmpty {
                 Text(tja)
                     .font(.system(size: 12))
                     .foregroundColor(Color.duoSubtitle)
-            }
-
-            // ── 例文（最大2件）─────────────────────────────────────
-            if let examples = data.exampleSentences?.prefix(2), !examples.isEmpty {
-                ForEach(Array(examples.enumerated()), id: \.offset) { idx, ex in
-                    HStack(alignment: .top, spacing: 6) {
-                        Text("\(idx + 1).")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(hex: "#58CC02"))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(ex.text)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Color.duoDark)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if let tr = ex.translationJA, !tr.isEmpty {
-                                Text(tr)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color.duoSubtitle)
-                            }
-                        }
-                        Spacer()
-                        Button {
-                            tts.speak(phrase: ex.text, languageCode: data.languageCode)
-                        } label: {
-                            Image(systemName: "speaker.wave.2.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "#58CC02"))
-                                .frame(width: 22, height: 22)
-                                .background(Color(hex: "#58CC02").opacity(0.12))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
             }
         }
         .padding(10)

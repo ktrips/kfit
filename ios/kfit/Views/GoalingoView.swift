@@ -3748,89 +3748,7 @@ private struct GoalCalorieBalanceBarCard: View {
 
 // MARK: - FITフィード カード（体重計測の写真）
 
-private struct WeightFeedCard: View {
-    let item: EduLogHistoryItem
-
-    private static let mdFmt: DateFormatter = {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d (E)"; return f
-    }()
-
-    /// joinDate からの日数を "Day N" 形式で返す
-    private func dayLabel(for date: Date) -> String {
-        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
-        let cal = Calendar.current
-        let days = cal.dateComponents([.day],
-                                      from: cal.startOfDay(for: joinDate),
-                                      to: cal.startOfDay(for: date)).day ?? 0
-        return "Day \(days + 1)"
-    }
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                if let thumb = item.thumbnail {
-                    Image(uiImage: thumb)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    LinearGradient(colors: [Color(hex: "#1CB0F6"), Color(hex: "#58CC02")],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
-                        .overlay(Text("⚖️").font(.system(size: 44 * UIScale.font)))
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
-            .clipped()
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Text(WeightFeedCard.mdFmt.string(from: item.timestamp))
-                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
-                    Text(dayLabel(for: item.timestamp))
-                        .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.black.opacity(0.45))
-                        .clipShape(Capsule())
-                }
-                .shadow(color: .black.opacity(0.5), radius: 2)
-                HStack(spacing: 6) {
-                    HStack(spacing: 2) {
-                        Text("⚖️").font(.system(size: 10 * UIScale.font))
-                        Text(item.weightKg != nil ? String(format: "%.1f", item.weightKg!) : "—")
-                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                        Text("kg")
-                            .font(.system(size: 8 * UIScale.font, weight: .bold))
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                    if let fat = item.bodyFatPercent {
-                        HStack(spacing: 2) {
-                            Text("📉").font(.system(size: 10 * UIScale.font))
-                            Text(String(format: "%.1f", fat))
-                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                            Text("%")
-                                .font(.system(size: 8 * UIScale.font, weight: .bold))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
-                    }
-                    Spacer()
-                }
-                .shadow(color: .black.opacity(0.5), radius: 2)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(colors: [.clear, Color.black.opacity(0.65)],
-                               startPoint: .top, endPoint: .bottom)
-            )
-        }
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.14), radius: 6, x: 0, y: 3)
-    }
-}
+// WeightFeedCard は Views/Components/SharedEduViews.swift で共有定義（GoalView と共通）
 
 // MARK: - FITフィード 詳細シート
 
@@ -3845,15 +3763,6 @@ struct GoalingoWeightFeedDetailSheet: View {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "yyyy年M月d日 (E) HH:mm"; return f
     }()
-
-    private func dayLabel(for date: Date) -> String {
-        let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
-        let cal = Calendar.current
-        let days = cal.dateComponents([.day],
-                                      from: cal.startOfDay(for: joinDate),
-                                      to: cal.startOfDay(for: date)).day ?? 0
-        return "Day \(days + 1)"
-    }
 
     var body: some View {
         if embedded {

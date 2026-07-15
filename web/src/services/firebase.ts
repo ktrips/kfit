@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
+import { detectInAppBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
 
 interface UserProfile {
   uid: string;
@@ -74,6 +75,14 @@ function invalidateCache(pattern?: string): void {
 const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
+  // LINE等のアプリ内ブラウザ(埋め込みWebView)はGoogleのOAuthポリシーで
+  // disallowed_useragentとしてブロックされるため、事前に検知して分かりやすいエラーを返す
+  const inAppBrowser = detectInAppBrowser();
+  if (inAppBrowser) {
+    throw new Error(
+      `${IN_APP_BROWSER_LABEL[inAppBrowser]}のアプリ内ブラウザではGoogleログインができません。右上のメニューから「他のアプリで開く」または「ブラウザで開く」を選択してください。`
+    );
+  }
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;

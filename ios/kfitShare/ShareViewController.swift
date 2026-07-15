@@ -157,6 +157,20 @@ class ShareViewController: SLComposeServiceViewController {
             }
         }
 
+        // ── プレーンテキスト共有（単語・フレーズ）をチェック ───────────────────
+        var foundText: String? = nil
+        for provider in allProviders {
+            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) ||
+               provider.hasItemConformingToTypeIdentifier("public.plain-text") {
+                group.enter()
+                provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
+                    defer { group.leave() }
+                    if let str = item as? String { foundText = str }
+                }
+                break
+            }
+        }
+
         // タイトルは itemDescription か attributedContentText から取得
         for raw in extensionContext?.inputItems ?? [] {
             if let ext = raw as? NSExtensionItem,
@@ -224,6 +238,21 @@ class ShareViewController: SLComposeServiceViewController {
                 return
             }
 
+            // ── プレーンテキストのみ共有（画像・URLなし）：単語・フレーズ ─────────
+            let hasImageProvider = allProviders.contains { provider in
+                provider.canLoadObject(ofClass: UIImage.self) ||
+                [UTType.png.identifier, UTType.jpeg.identifier, UTType.heic.identifier,
+                 "public.image", "com.apple.uikit.image"].contains {
+                    provider.hasItemConformingToTypeIdentifier($0)
+                }
+            }
+            let sharedWord = (foundText ?? userComment).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !hasImageProvider, !sharedWord.isEmpty {
+                self.saveText(sharedWord, sourceApp: self.sourceAppBundleID)
+                self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                return
+            }
+
             // ── 画像のみ共有 ───────────────────────────────────────────────
             let imgGroup2 = DispatchGroup()
             var savedCount2 = 0
@@ -288,6 +317,22 @@ class ShareViewController: SLComposeServiceViewController {
             "category":    category,
             "sourceApp":   sourceApp,
             "isDuolingo":  category == "duolingo",
+        ])
+        defaults?.set(pending, forKey: pendingSharesKey)
+        defaults?.synchronize()
+    }
+
+    // MARK: - プレーンテキスト（単語・フレーズ）を App Group に保存
+
+    private func saveText(_ text: String, sourceApp: String) {
+        let defaults = UserDefaults(suiteName: appGroupID)
+        var pending  = defaults?.array(forKey: pendingSharesKey) as? [[String: Any]] ?? []
+        pending.append([
+            "sharedText":  text,
+            "timestamp":   Date().timeIntervalSince1970,
+            "sourceApp":   sourceApp,
+            "isDuolingo":  true,
+            "category":    "duolingo",
         ])
         defaults?.set(pending, forKey: pendingSharesKey)
         defaults?.synchronize()

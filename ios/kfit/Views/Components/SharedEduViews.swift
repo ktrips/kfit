@@ -294,6 +294,109 @@ struct DuolingoPhraseView: View {
     }
 }
 
+// MARK: - dayLabel
+// 参加日（joinDate）からの経過日数を "Day N" 形式で返す。
+// GoalView・GoalingoView・TomoView・WeightFeedCard で共有。
+
+func dayLabel(for date: Date) -> String {
+    let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
+    let cal = Calendar.current
+    let days = cal.dateComponents([.day],
+                                  from: cal.startOfDay(for: joinDate),
+                                  to: cal.startOfDay(for: date)).day ?? 0
+    return "Day \(days + 1)"
+}
+
+// MARK: - WeightFatReadout
+// 体重・体脂肪率を絵文字付きで横並び表示する読み取り行（写真オーバーレイ用）。
+// WeightFeedCard・DashboardView（今日の投稿）で共有。
+
+struct WeightFatReadout: View {
+    let weightKg: Double?
+    let bodyFatPercent: Double?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 2) {
+                Text("⚖️").font(.system(size: 10 * UIScale.font))
+                Text(weightKg != nil ? String(format: "%.1f", weightKg!) : "—")
+                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                Text("kg")
+                    .font(.system(size: 8 * UIScale.font, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            if let fat = bodyFatPercent {
+                HStack(spacing: 2) {
+                    Text("📉").font(.system(size: 10 * UIScale.font))
+                    Text(String(format: "%.1f", fat))
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("%")
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - WeightFeedCard
+// 体重ログの写真上に日付・Day番号・体重・体脂肪率を重ねるカード。
+// GoalView・GoalingoView の FIT フィード一覧で共有。
+
+struct WeightFeedCard: View {
+    let item: EduLogHistoryItem
+
+    private static let mdFmt: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d (E)"; return f
+    }()
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(colors: [Color(hex: "#1CB0F6"), Color(hex: "#58CC02")],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .overlay(Text("⚖️").font(.system(size: 44 * UIScale.font)))
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(WeightFeedCard.mdFmt.string(from: item.timestamp))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text(dayLabel(for: item.timestamp))
+                        .font(.system(size: 9 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                }
+                .shadow(color: .black.opacity(0.5), radius: 2)
+                WeightFatReadout(weightKg: item.weightKg, bodyFatPercent: item.bodyFatPercent)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [.clear, Color.black.opacity(0.65)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+        }
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.14), radius: 6, x: 0, y: 3)
+    }
+}
+
 // MARK: - MacroChip
 // PFC 栄養素チップ。FoodView・DashboardView で共有。
 

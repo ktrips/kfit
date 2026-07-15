@@ -80,6 +80,9 @@ class EduLogManager: ObservableObject {
                 var phrase   = extractedPhrase
                 var langCode = extractedLanguageCode ?? "en"
                 var langName = "英語"
+                // テキスト共有（画像なし・単語のみ）の場合、OCRでは得られない
+                // 意味・発音記号をLLMで生成する
+                var needsMeaningGen = false
 
                 if needsOCR, let image {
                     guard let result = await DuolingoTextExtractor.shared.extract(from: image) else { return }
@@ -97,6 +100,7 @@ class EduLogManager: ObservableObject {
                     }
                 } else if let p = phrase {
                     langName = DuolingoTextExtractor.shared.languageDisplayNamePublic(langCode)
+                    needsMeaningGen = translationJA == nil && image == nil
                     let _ = p
                 }
 
@@ -129,7 +133,7 @@ class EduLogManager: ObservableObject {
 
                 // APIキー未設定でもサーバー経由（1日1回無料）でAI利用可能
                 let needsLLM = (llmWantsGrammar || llmWantsExamples || llmWantsMistake
-                             || llmWantsRelatedWords || llmWantsRelatedSentences)
+                             || llmWantsRelatedWords || llmWantsRelatedSentences || needsMeaningGen)
 
                 // 並列 LLM 呼び出し（async let）
                 async let grammarTask: String? = needsLLM && llmWantsGrammar
@@ -154,15 +158,25 @@ class EduLogManager: ObservableObject {
                             phrase: finalPhrase, languageName: langName, languageCode: langCode,
                             mode: .sentences, settings: llmSettings)
                         : nil
+                async let meaningTask: String? = needsMeaningGen
+                    ? DuolingoTextExtractor.shared.generateMeaningJA(
+                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
+                    : nil
+                async let pronunciationTask: String? = needsMeaningGen
+                    ? DuolingoTextExtractor.shared.generatePhoneticPronunciation(
+                        phrase: finalPhrase, languageName: langName, settings: llmSettings)
+                    : nil
 
-                let (grammarNote, examples, mistakeNote, relatedWords) =
-                    await (grammarTask, examplesTask, mistakeTask, relatedWordsTask)
+                let (grammarNote, examples, mistakeNote, relatedWords, meaning, pronunciationText) =
+                    await (grammarTask, examplesTask, mistakeTask, relatedWordsTask, meaningTask, pronunciationTask)
 
                 if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
                     if let g = grammarNote  { self.history[idx].grammarNote      = g }
                     if let e = examples     { self.history[idx].exampleSentences = e }
                     if let m = mistakeNote  { self.history[idx].mistakeNote      = m }
                     if let r = relatedWords { self.history[idx].relatedWords     = r }
+                    if let tr = meaning     { self.history[idx].translationJA    = tr }
+                    if let pr = pronunciationText { self.history[idx].pronunciation = pr }
                     self.persistHistory()
                     PublicFeedPublisher.publishEduDebounced(self.history[idx])
                 }

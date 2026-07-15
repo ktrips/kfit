@@ -298,6 +298,7 @@ struct DuolingoPhraseView: View {
 // 参加日（joinDate）からの経過日数を "Day N" 形式で返す。
 // GoalView・GoalingoView・TomoView・WeightFeedCard で共有。
 
+@MainActor
 func dayLabel(for date: Date) -> String {
     let joinDate = AuthenticationManager.shared.userProfile?.joinDate ?? date
     let cal = Calendar.current

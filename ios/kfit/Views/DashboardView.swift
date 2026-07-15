@@ -693,11 +693,7 @@ struct DashboardView: View {
                 IntakeSettingsView().environmentObject(authManager)
             }
             .sheet(item: $selectedMandalaNode) { node in
-                // 学習系ノード判定（勉強・語学・読書・書評・英語・学習 など）
-                let isLearningNode = node.type == .custom &&
-                    (["読書", "勉強", "語学", "書評", "英語", "学習",
-                      "ライティング", "Writing", "Reading", "Language"].contains(node.label)
-                     || node.id == "wd-study")
+                let isLearningNode = Self.isLearningCustomNode(node)
                 // 今日の EduLog 記録で対応するものを検索（記録確認ナビゲーション用）
                 let today = Calendar.current.startOfDay(for: Date())
                 let matchingEduItem = EduLogManager.shared.history.first(where: {
@@ -731,7 +727,7 @@ struct DashboardView: View {
                         }
                     } : nil,
                     isRecordType: node.type == .meal || node.type == .drink,
-                    showPhotoButton: node.type != .drink,
+                    showPhotoButton: node.type != .drink && !isWebPostNode,
                     onViewRecord: (node.isCompleted && matchingEduItem != nil) ? {
                         selectedMandalaNode = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -747,20 +743,16 @@ struct DashboardView: View {
                     var h = 290
                     if node.type == .drink && !node.isCompleted { h = 360 }
                     if isLearningNode { h += 60 }   // コメントボタン分
-                    if isWebPostNode && !node.isCompleted { h += 60 }  // ウェブ投稿ボタン分
                     return CGFloat(h)
                 }())])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showWebPostShare, onDismiss: handleWebPostShareDismiss) {
-                SystemShareSheet(items: webPostShareItems)
+            .sheet(isPresented: $showWebPostShare) {
+                SystemShareSheet(items: webPostShareItems, onComplete: handleWebPostShareResult)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
             .sheet(item: $eduPhotoLogNode) { node in
-                let isLearningNode = node.type == .custom &&
-                    (["読書", "勉強", "語学", "書評", "英語", "学習",
-                      "ライティング", "Writing", "Reading", "Language"].contains(node.label)
-                     || node.id == "wd-study")
+                let isLearningNode = Self.isLearningCustomNode(node)
                 EduPhotoLogSheet(
                     nodeEmoji: node.emoji,
                     nodeName: node.label,
@@ -2416,6 +2408,14 @@ struct DashboardView: View {
             || name.contains("語学")
             || name == "勉強"
             || name == "読書"
+    }
+
+    /// 学習系カスタムノード判定（勉強・語学・読書・書評・英語・学習 など）
+    private static func isLearningCustomNode(_ node: MandalaNodeData) -> Bool {
+        node.type == .custom &&
+            (["読書", "勉強", "語学", "書評", "英語", "学習",
+              "ライティング", "Writing", "Reading", "Language"].contains(node.label)
+             || node.id == "wd-study")
     }
 
     /// PFC 3プロパティが同時変化しても 0.3s debounce で1回だけ計算
@@ -6116,51 +6116,71 @@ struct DashboardView: View {
         }
     }
 
+    private static let webPostShareCaption = "1日の習慣を Fit.ktrips.net で記録、継続しよう！"
+
     /// 現在のスパイラルをカード画像にして共有シートを開く。
-    /// node が「今日をシェア」ノードの場合は、共有シートが閉じたタイミングで
-    /// 自動的にそのノードを完了扱いにする（handleWebPostShareDismiss）。
+    /// node が「今日をシェア」ノードの場合は、実際に共有が完了したタイミングで
+    /// そのノードを完了扱いにする（handleWebPostShareResult）。キャンセル時は完了にしない。
     /// node が nil の場合（スパイラル右上の共有ボタンから）は完了処理を行わない。
     private func startWebPostShare(for node: MandalaNodeData?) {
-        let dateLabel = Self.mdE.string(from: Date())
-        let renderer = ImageRenderer(content:
-            VStack(spacing: 14) {
-                MandalaChartView(
-                    settings: timeSlotManager.settings,
-                    progress: timeSlotManager.progress,
-                    activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal,
-                    dailyCalorieDone: dailyCalorieDone,
-                    dailyWaterDone: dailyWaterDone,
-                    precomputedNodes: cachedMandalaNodes,
-                    onTapNode: { _ in },
-                    onTapCenter: nil,
-                    isSnapshotMode: true
-                )
-                .frame(width: 360, height: 410)
-
-                Text("\(dateLabel)のルーティンがんばりました！")
-                    .font(.system(size: 17 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(Color.duoDark)
-                    .padding(.bottom, 18)
-            }
-            .frame(width: 360)
-            .background(Color.duoBg)
-        )
-        renderer.scale = 3.0
-
-        var items: [Any] = ["1日の習慣を Fit.ktrips.net で記録、継続しよう！"]
-        if let image = renderer.uiImage { items.append(image) }
-        webPostShareItems = items
         pendingWebPostNode = node
         selectedMandalaNode = nil
+        // 前のシートの dismiss アニメーションが完了してから ImageRenderer を構築する。
+        // 即座に構築すると、プロセス内で最初の呼び出し時に ImageRenderer が
+        // レイアウト前の空画像を返し、共有シートが画像なしで開いてしまうことがある。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            showWebPostShare = true
+            let dateLabel = Self.mdE.string(from: Date())
+            let renderer = ImageRenderer(content:
+                VStack(spacing: 14) {
+                    Text("\(dateLabel)のルーティン！")
+                        .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                        .padding(.top, 18)
+
+                    MandalaChartView(
+                        settings: timeSlotManager.settings,
+                        progress: timeSlotManager.progress,
+                        activityRingsDone: healthKit.activityMoveCalories >= healthKit.activityMoveGoal,
+                        dailyCalorieDone: dailyCalorieDone,
+                        dailyWaterDone: dailyWaterDone,
+                        precomputedNodes: cachedMandalaNodes,
+                        onTapNode: { _ in },
+                        onTapCenter: nil,
+                        isSnapshotMode: true
+                    )
+                    .frame(width: 360, height: 410)
+                    .padding(.bottom, 12)
+                }
+                .frame(width: 360)
+                .background(Color.duoBg)
+            )
+            renderer.scale = 3.0
+
+            // renderer.uiImage はプロセス内で最初に呼ばれた際、レイアウト未完了のまま
+            // 空画像を返すことがあるため、nil の場合は同じ renderer に対して少し待って
+            // 再試行する（ビューツリーの再構築はしない）。
+            func attemptRead(_ attempt: Int) {
+                if let image = renderer.uiImage {
+                    webPostShareItems = [Self.webPostShareCaption, image]
+                    showWebPostShare = true
+                } else if attempt < 3 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        attemptRead(attempt + 1)
+                    }
+                } else {
+                    // 数回試しても画像化に失敗した場合はテキストのみで共有を開く
+                    webPostShareItems = [Self.webPostShareCaption]
+                    showWebPostShare = true
+                }
+            }
+            attemptRead(0)
         }
     }
 
-    /// ウェブ投稿の共有シートが閉じたら、キャンセル/実際の共有を問わず自動完了する。
-    private func handleWebPostShareDismiss() {
-        guard let node = pendingWebPostNode else { return }
-        pendingWebPostNode = nil
+    /// 共有シートが閉じた結果を受けて処理する。実際に共有・保存された場合のみ完了扱いにする。
+    private func handleWebPostShareResult(completed: Bool) {
+        defer { pendingWebPostNode = nil }
+        guard completed, let node = pendingWebPostNode else { return }
         Task { await handleMandalaComplete(node) }
     }
 
@@ -8477,8 +8497,10 @@ private struct GoalCompletionSheet: View {
             Divider()
 
             VStack(spacing: 10) {
-                // 完了ボタン / 記録を確認ボタン（水分ノードで未完了の場合は上の量ボタンで記録するため非表示）
-                if onDrinkComplete == nil || isDone {
+                // 完了ボタン / 記録を確認ボタン
+                // - 水分ノードで未完了の場合は上の量ボタンで記録するため非表示
+                // - ウェブ投稿ノードで未完了の場合は「投稿する」以外で完了させないため非表示
+                if (onDrinkComplete == nil || isDone) && (onPostToWeb == nil || isDone) {
                     if isDone, let onViewRecord {
                         // 登録済みの記録に飛ぶ
                         Button {
@@ -9325,6 +9347,7 @@ struct DayCarouselSheet: View {
 
     @State private var showShare = false
     @State private var shareItems: [Any] = []
+    @State private var isPreparingShare = false
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
@@ -9340,19 +9363,27 @@ struct DayCarouselSheet: View {
         displayEntries.filter { $0.image != nil }
     }
 
-    /// 今日の投稿写真の縮小版を共有シートで開く
+    /// 今日の投稿写真の縮小版を共有シートで開く。
+    /// リサイズ処理はメインスレッドをブロックしないようバックグラウンドで行う。
     private func shareTodayPhotos() {
-        let maxDimension: CGFloat = 900
-        let thumbnails: [UIImage] = photoEntries.compactMap { entry in
-            guard let image = entry.image else { return nil }
-            let scale = min(1.0, maxDimension / max(image.size.width, image.size.height))
-            guard scale < 1.0 else { return image }
-            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-            return image.resized(to: size)
+        guard !isPreparingShare else { return }
+        isPreparingShare = true
+        let images = photoEntries.compactMap(\.image)
+        Task.detached(priority: .userInitiated) {
+            let maxDimension: CGFloat = 900
+            let thumbnails: [UIImage] = images.map { image in
+                let scale = min(1.0, maxDimension / max(image.size.width, image.size.height))
+                guard scale < 1.0 else { return image }
+                let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                return image.resized(to: size)
+            }
+            await MainActor.run {
+                isPreparingShare = false
+                guard !thumbnails.isEmpty else { return }
+                shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"] + thumbnails
+                showShare = true
+            }
         }
-        guard !thumbnails.isEmpty else { return }
-        shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"] + thumbnails
-        showShare = true
     }
 
     // 時間帯ごとにグループ化（時系列順）
@@ -9406,8 +9437,13 @@ struct DayCarouselSheet: View {
                         Button {
                             shareTodayPhotos()
                         } label: {
-                            Image(systemName: "square.and.arrow.up")
+                            if isPreparingShare {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                            }
                         }
+                        .disabled(isPreparingShare)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

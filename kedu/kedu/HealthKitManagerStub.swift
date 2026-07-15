@@ -246,7 +246,9 @@ final class HealthKitManager: ObservableObject {
     func saveExercise(exerciseId: String, reps: Int, startDate: Date, endDate: Date) async {}
     func saveCompletedSet(exercises: [(id: String, name: String, reps: Int)],
                           startDate: Date, setId: String? = nil) async {}
-    func saveWaterIntake(amountMl: Double, timestamp: Date) async {}
+    func fetchDietaryWater(start: Date, end: Date) async -> Double { 0 }
+    @discardableResult
+    func saveWaterIntake(amountMl: Double, timestamp: Date, metadata: [String: Any]? = nil) async -> Bool { false }
     func saveCaffeineIntake(caffeineMg: Double, timestamp: Date) async {}
     func saveAlcoholIntake(amountMl: Double, alcoholG: Double, timestamp: Date) async {}
     func saveToothbrushing(durationSeconds: Double = 60, timestamp: Date = Date()) async {}

@@ -37,6 +37,9 @@ class AuthenticationManager: ObservableObject {
     private let db = Firestore.firestore()
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private var profileListener: ListenerRegistration?
+    /// performEndOfDay*TopUpIfNeeded の多重実行防止（60秒タイマーと scenePhase 切り替えが
+    /// ほぼ同時に発火した場合、UserDefaults フラグの書き込み前に二重実行されるのを防ぐ）
+    private var runningEndOfDayTopUpKeys: Set<String> = []
 
     // パフォーマンス最適化: キャッシュ
     private var cachedTodayExercises: [CompletedExercise] = []
@@ -1970,6 +1973,9 @@ class AuthenticationManager: ObservableObject {
         let dayKey = Self.yyyyMMddFmt.string(from: startOfToday)
         let defaultsKey = "healthKit.endOfDayCalorieTopUp.\(dayKey)"
         guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
+        guard !runningEndOfDayTopUpKeys.contains(defaultsKey) else { return }
+        runningEndOfDayTopUpKeys.insert(defaultsKey)
+        defer { runningEndOfDayTopUpKeys.remove(defaultsKey) }
 
         let healthKit = HealthKitManager.shared
         guard healthKit.isAvailable else { return }
@@ -2005,6 +2011,7 @@ class AuthenticationManager: ObservableObject {
     }
 
     func performEndOfDayWaterTopUpIfNeeded(now: Date = Date(), targetWaterMl: Int? = nil) async {
+        guard TimeSlotManager.shared.settings.globalGoals.drinkEnabled else { return }
         let targetWaterMl = targetWaterMl ?? TimeSlotManager.shared.settings.globalGoals.dailyDrinkMl
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
@@ -2016,6 +2023,9 @@ class AuthenticationManager: ObservableObject {
         let dayKey = Self.yyyyMMddFmt.string(from: startOfToday)
         let defaultsKey = "healthKit.endOfDayWaterTopUp.\(dayKey)"
         guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
+        guard !runningEndOfDayTopUpKeys.contains(defaultsKey) else { return }
+        runningEndOfDayTopUpKeys.insert(defaultsKey)
+        defer { runningEndOfDayTopUpKeys.remove(defaultsKey) }
 
         let healthKit = HealthKitManager.shared
         guard healthKit.isAvailable else { return }

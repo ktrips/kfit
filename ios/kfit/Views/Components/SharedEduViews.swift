@@ -41,9 +41,16 @@ extension EduLogHistoryItem {
 
 struct SystemShareSheet: UIViewControllerRepresentable {
     let items: [Any]
+    /// 共有シートが閉じた時に呼ばれる。`completed` は実際に共有・保存などが
+    /// 行われた場合に true（キャンセルのみの場合は false）。
+    var onComplete: ((Bool) -> Void)? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        vc.completionWithItemsHandler = { _, completed, _, _ in
+            onComplete?(completed)
+        }
+        return vc
     }
 
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}

@@ -187,14 +187,14 @@ function todayIntakeQuery(userId: string, kind: IntakeKind) {
 }
 
 function buildIntakeSummary(
-  mealSnap: QuerySnapshot<DocumentData>,
-  waterSnap: QuerySnapshot<DocumentData>,
-  coffeeSnap: QuerySnapshot<DocumentData>,
-  alcoholSnap: QuerySnapshot<DocumentData>,
+  mealSnap: QuerySnapshot<DocumentData> | undefined,
+  waterSnap: QuerySnapshot<DocumentData> | undefined,
+  coffeeSnap: QuerySnapshot<DocumentData> | undefined,
+  alcoholSnap: QuerySnapshot<DocumentData> | undefined,
 ): IntakeSummary {
   const logs: IntakeLog[] = [];
 
-  mealSnap.docs.forEach(item => {
+  mealSnap?.docs.forEach(item => {
     const data = item.data();
     logs.push({
       id: item.id,
@@ -211,7 +211,7 @@ function buildIntakeSummary(
       timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
     });
   });
-  waterSnap.docs.forEach(item => {
+  waterSnap?.docs.forEach(item => {
     const data = item.data();
     logs.push({
       id: item.id, type: 'drink', label: '水',
@@ -220,7 +220,7 @@ function buildIntakeSummary(
       timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
     });
   });
-  coffeeSnap.docs.forEach(item => {
+  coffeeSnap?.docs.forEach(item => {
     const data = item.data();
     logs.push({
       id: item.id, type: 'drink', label: 'コーヒー',
@@ -229,7 +229,7 @@ function buildIntakeSummary(
       timestamp: data.timestamp ? toDate(data.timestamp) : new Date(),
     });
   });
-  alcoholSnap.docs.forEach(item => {
+  alcoholSnap?.docs.forEach(item => {
     const data = item.data();
     logs.push({
       id: item.id, type: 'drink', label: 'アルコール',
@@ -276,19 +276,33 @@ export function subscribeToTodayIntakeSummary(
 ): Unsubscribe {
   const kinds: IntakeKind[] = ['meals', 'water', 'coffee', 'alcohol'];
   const snapshots: Partial<Record<IntakeKind, QuerySnapshot<DocumentData>>> = {};
+  const settledKinds = new Set<IntakeKind>(); // 受信済み or エラー済み（空扱い）
 
   const emit = () => {
-    if (kinds.some(kind => !snapshots[kind])) return; // 4種すべて初回受信するまで待つ
+    // 初回は4種すべてが受信 or エラーで確定するまで待ってから呼ぶ（ちらつき防止）。
+    // エラーの種類は snapshots が未設定のまま（=空扱い）で buildIntakeSummary に渡る。
+    if (settledKinds.size < kinds.length) return;
     callback(buildIntakeSummary(
-      snapshots.meals!, snapshots.water!, snapshots.coffee!, snapshots.alcohol!,
+      snapshots.meals, snapshots.water, snapshots.coffee, snapshots.alcohol,
     ));
   };
 
   const unsubscribers = kinds.map(kind =>
-    onSnapshot(todayIntakeQuery(userId, kind), snap => {
-      snapshots[kind] = snap;
-      emit();
-    })
+    onSnapshot(
+      todayIntakeQuery(userId, kind),
+      snap => {
+        snapshots[kind] = snap;
+        settledKinds.add(kind);
+        emit();
+      },
+      error => {
+        // Firestoreエラー（権限拒否・オフライン等）でも他の3種の表示をブロックしない。
+        // このkindは空扱いとして確定させ、ローディングが無限に続くのを防ぐ。
+        console.error(`[wellnessService] intake subscription error (${kind}):`, error);
+        settledKinds.add(kind);
+        emit();
+      }
+    )
   );
 
   return () => unsubscribers.forEach(unsub => unsub());

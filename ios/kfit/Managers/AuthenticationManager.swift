@@ -2758,10 +2758,17 @@ class PhotoLogManager: ObservableObject {
         let savedAt = item.timestamp
         Task { @MainActor in
             await HealthKitManager.shared.saveMealNutrition(mealNutrition, date: savedAt)
-            if let idx = self.history.firstIndex(where: { $0.id == itemId }) {
-                self.history[idx].savedToHealthKit = true
-                self.persistHistory()
-            }
+            self.markSavedToHealthKit(itemId: itemId)
+        }
+    }
+
+    /// 履歴アイテムに「HealthKit保存済み」フラグを立てる。
+    /// フォトログ詳細画面から手動で保存した場合など、他の保存経路からも呼べる共通処理。
+    /// これにより同じアイテムを再度保存して二重カウントするのを防ぐ。
+    func markSavedToHealthKit(itemId: String) {
+        if let idx = history.firstIndex(where: { $0.id == itemId }) {
+            history[idx].savedToHealthKit = true
+            persistHistory()
         }
     }
 

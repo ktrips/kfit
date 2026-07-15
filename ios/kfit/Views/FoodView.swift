@@ -2181,7 +2181,11 @@ struct PhotoFeedDetailSheet: View {
         }
         .background(Color.duoBg.ignoresSafeArea())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { isPublicInTomo = item.isPublic }
+        .onAppear {
+            isPublicInTomo = item.isPublic
+            // すでにHealthKitへ保存済みのアイテムを再度記録して二重カウントしないようにする
+            if item.savedToHealthKit { savedOK = true }
+        }
         .alert("食事を記録しますか？", isPresented: $showSaveConfirm) {
             Button("記録する") {
                 Task {
@@ -2421,6 +2425,8 @@ struct PhotoFeedDetailSheet: View {
         if n.caffeine > 0 {
             await healthKit.saveCaffeineIntake(caffeineMg: Double(n.caffeine), timestamp: Date())
         }
+        // 保存済みフラグを永続化し、以後同じアイテムを再度記録して二重カウントしないようにする
+        photoLogManager.markSavedToHealthKit(itemId: item.id)
     }
 
     private var totalCalories: Double { Double(item.analyzedNutrition.calories) }

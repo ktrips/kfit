@@ -871,11 +871,11 @@ struct TomoView: View {
         return f
     }()
 
-    // 写真左上の日付バッジ用（コンパクト表記）
+    // 写真左上の時刻バッジ用（コンパクト表記）
     private static let photoDateFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d"
+        f.dateFormat = "HH:mm"
         return f
     }()
 
@@ -1547,7 +1547,7 @@ struct TomoView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                // 左上: 投稿日
+                // 左上: 投稿時刻
                 .overlay(alignment: .topLeading) {
                     Text(Self.photoDateFmt.string(from: item.timestamp))
                         .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
@@ -1880,10 +1880,10 @@ struct TomoView: View {
                 .clipped()
                 .contentShape(Rectangle())
 
-                // 上部オーバーレイ（左: 日付, 右: 番号バッジ）
+                // 上部オーバーレイ（左: 時刻, 右: 番号バッジ）
                 VStack {
                     HStack(alignment: .top) {
-                        // 左: 投稿日
+                        // 左: 投稿時刻
                         Text(Self.photoDateFmt.string(from: item.timestamp))
                             .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
                             .foregroundColor(.white)

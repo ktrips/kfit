@@ -1123,26 +1123,15 @@ struct PhotoLogView: View {
         // ここで直接保存する。新規アップロード時は photoLogManager.savePhotoLog() が
         // 保存を担当する（AuthenticationManager.swift）ため、ここでは呼ばない
         // ── 二重登録防止 ──。
-        if fromHistory {
-            let mealNutrition = MealNutrition(
-                calories: nutrition.calories,
-                protein: nutrition.protein,
-                fat: nutrition.fat,
-                carbs: nutrition.carbs,
-                sugar: nutrition.sugar,
-                fiber: nutrition.fiber,
-                sodium: nutrition.sodium
-            )
-            await healthKit.saveMealNutrition(mealNutrition)
-
-            if nutrition.water > 0 {
-                await healthKit.saveWaterIntake(amountMl: Double(nutrition.water), timestamp: Date())
-            }
-            if nutrition.caffeine > 0 {
-                await healthKit.saveCaffeineIntake(caffeineMg: Double(nutrition.caffeine), timestamp: Date())
-            }
-            // TODO: アルコールの保存
-        }
+        let mealNutrition = MealNutrition(
+            calories: nutrition.calories,
+            protein: nutrition.protein,
+            fat: nutrition.fat,
+            carbs: nutrition.carbs,
+            sugar: nutrition.sugar,
+            fiber: nutrition.fiber,
+            sodium: nutrition.sodium
+        )
 
         // フォトログを保存（履歴からの場合は履歴への再追加をスキップ）
         var entry = PhotoLogEntry()
@@ -1152,10 +1141,26 @@ struct PhotoLogView: View {
         entry.isFavorite = true          // FOODページへは常に保存
         entry.isPublic   = isPublicPost  // TOMOフィードへの公開はユーザー選択
         if fromHistory {
+            // savePhotoLogWithoutHistory 側はHealthKit保存を行わないため、ここで1回だけ保存
+            await healthKit.saveMealNutrition(mealNutrition)
             photoLogManager.savePhotoLogWithoutHistory(entry)
         } else {
+            // savePhotoLog 側が HealthKit への保存（カロリー等）を内部で1回だけ行うため、
+            // ここで重複して saveMealNutrition を呼ばないこと（二重記録の原因になっていた）
             photoLogManager.savePhotoLog(entry)
         }
+
+        // 水分
+        if nutrition.water > 0 {
+            await healthKit.saveWaterIntake(amountMl: Double(nutrition.water), timestamp: Date())
+        }
+
+        // カフェイン
+        if nutrition.caffeine > 0 {
+            await healthKit.saveCaffeineIntake(caffeineMg: Double(nutrition.caffeine), timestamp: Date())
+        }
+
+        // TODO: アルコールの保存
 
         dismiss()
     }

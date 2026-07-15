@@ -4,12 +4,6 @@ import React, {
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
-const GIFS = [
-  '/fitingo_wo_pushups.gif',
-  '/fitingo_workout.gif',
-  '/fitingo_wo_squat.gif',
-];
-
 const TIPS: Record<string, string[]> = {
   fit:  ['💡 たった5回から始めよう！', '⚡ 90秒で体が変わる！', '🔥 毎日続けると体が軽くなる！', '💪 小さな積み重ねが大きな変化！'],
   food: ['📸 撮るだけで栄養計算！', '🥗 食事の見える化が続く秘訣', '🍱 まず1枚、今日から始めよう', '✨ 記録するだけで意識が変わる！'],
@@ -31,8 +25,6 @@ const AppleLogo: React.FC<{ size?: number }> = ({ size = 16 }) => (
     <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.3-60.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 133.4-317.1 264.11-317.1 70.2 0 128.9 46.5 168.6 46.5 36.5 0 107.1-49 192.5-49 30.8 0 112.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
   </svg>
 );
-const NS90_TOP = 'ns90.topVisible';
-
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 function getActiveDays(): string[] {
@@ -141,13 +133,9 @@ export const NinetySecondMode: React.FC<Props> = ({
     }
     return 0;
   });
-  const [gifIdx, setGifIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
   const [pulse, setPulse] = useState(false);
-  const [topVisible, setTopVisible] = useState(() => {
-    try { return localStorage.getItem(NS90_TOP) !== 'false'; } catch { return true; }
-  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const graduated = activeDays.length >= MAX_DAYS;
@@ -177,12 +165,6 @@ export const NinetySecondMode: React.FC<Props> = ({
     scrollRef.current?.scrollTo({ left: idx * (scrollRef.current.clientWidth), behavior: 'smooth' });
   };
 
-  // ── GIF ローテーション（10秒）─────────────────────────────────────────────
-  useEffect(() => {
-    const t = setInterval(() => setGifIdx((i) => (i + 1) % GIFS.length), 10_000);
-    return () => clearInterval(t);
-  }, []);
-
   // ── Tips ローテーション（4秒）─────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => setTipIdx((i) => (i + 1) % (TIPS[mode.id]?.length ?? 4)), 4_000);
@@ -194,12 +176,6 @@ export const NinetySecondMode: React.FC<Props> = ({
     const t = setInterval(() => setPulse((p) => !p), 1600);
     return () => clearInterval(t);
   }, []);
-
-  // ── トップウィンドウ 永続化 ──────────────────────────────────────────────
-  const toggleTop = (v: boolean) => {
-    setTopVisible(v);
-    try { localStorage.setItem(NS90_TOP, String(v)); } catch {}
-  };
 
   // ── アクション ────────────────────────────────────────────────────────────
   const handleAction = () => {
@@ -254,15 +230,12 @@ export const NinetySecondMode: React.FC<Props> = ({
             key={m.id}
             mode={m}
             isActive={idx === activePage}
-            gifIdx={gifIdx}
             tipIdx={tipIdx}
             tipList={TIPS[m.id] ?? TIPS.fit}
             activeDays={activeDays}
             graduated={graduated}
             doneToday={doneToday}
             pulse={pulse}
-            topVisible={topVisible}
-            onToggleTop={toggleTop}
             onAction={handleAction}
             onExit={onExit}
           />
@@ -400,24 +373,21 @@ export const NinetySecondMode: React.FC<Props> = ({
 interface CardProps {
   mode: ModeConfig;
   isActive: boolean;
-  gifIdx: number;
   tipIdx: number;
   tipList: string[];
   activeDays: string[];
   graduated: boolean;
   doneToday: boolean;
   pulse: boolean;
-  topVisible: boolean;
-  onToggleTop: (v: boolean) => void;
   onAction: () => void;
   onExit: () => void;
 }
 
 const ModeCard: React.FC<CardProps> = ({
-  mode, gifIdx, tipIdx, tipList, activeDays, graduated, doneToday,
-  pulse, topVisible, onToggleTop, onAction,
+  mode, tipIdx, tipList, activeDays, graduated, doneToday,
+  pulse, onAction,
 }) => {
-  const { accent, accentDark, accentLight } = mode;
+  const { accent, accentDark } = mode;
   const streak = activeDays.length;
 
   return (
@@ -432,80 +402,13 @@ const ModeCard: React.FC<CardProps> = ({
       }}
     >
 
-      {/* ── コンテンツ窓（表示 / 非表示）────────────────────────────── */}
-      {topVisible ? (
-        <div
-          className="relative mx-6 mt-4 overflow-hidden rounded-2xl shadow-md"
-          style={{ width: 'calc(100vw - 48px)', maxWidth: 400, height: 156 }}
-        >
-          {/* コンテンツ本体（窓全体がアクショントリガー）*/}
-          {mode.emoji === null ? (
-            // FIT: GIF（クリックで開始）
-            <button
-              onClick={onAction}
-              style={{
-                width: '100%', height: '100%',
-                border: 'none', padding: 0, cursor: 'pointer',
-                background: 'transparent', display: 'block',
-              }}
-              aria-label="タップして始める"
-            >
-              <img
-                key={gifIdx}
-                src={GIFS[gifIdx % GIFS.length]}
-                alt="exercise"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </button>
-          ) : (
-            // FOOD / EDU / DIET: 絵文字ボタン
-            <button
-              onClick={onAction}
-              style={{
-                width: '100%', height: '100%',
-                background: accentLight,
-                border: 'none', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 6,
-              }}
-              aria-label="タップして始める"
-            >
-              <span style={{ fontSize: 64 }}>{mode.emoji}</span>
-              {mode.id === 'edu' && (
-                <span className="text-sm font-black" style={{ color: accent }}>
-                  タップして語学を記録
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* 隠すボタン（右上）*/}
-          <button
-            onClick={() => onToggleTop(false)}
-            style={{
-              position: 'absolute', top: 8, right: 8,
-              background: 'rgba(255,255,255,0.85)',
-              border: 'none', borderRadius: '50%',
-              width: 28, height: 28,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-            }}
-            aria-label="動画を隠す"
-          >
-            <span style={{ fontSize: 13, color: accent, fontWeight: 900 }}>✕</span>
-          </button>
-        </div>
-      ) : (
-        // 表示ボタン（コンパクト）
-        <button
-          onClick={() => onToggleTop(true)}
-          className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-full font-semibold text-sm"
-          style={{ background: accentLight, color: accent, border: 'none', cursor: 'pointer' }}
-        >
-          <span>▼</span>
-          <span>動画を表示</span>
-        </button>
-      )}
+      {/* ── Fitingo アイコン（最上部に小さく表示）───────────────────── */}
+      <img
+        src="/mascot.png"
+        alt="Fitingo"
+        className="mt-4"
+        style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '50%' }}
+      />
 
       {/* ── タグライン ──────────────────────────────────────────────── */}
       <p
@@ -549,30 +452,28 @@ const ModeCard: React.FC<CardProps> = ({
           <span style={{ color: '#fff', fontSize: 18, fontWeight: 900 }}>›</span>
         </button>
       ) : mode.id === 'edu' ? (
-        // EDU: コンテンツ窓が非表示の場合のみボタン（表示時は窓がボタン）
-        !topVisible ? (
-          <button
-            onClick={onAction}
-            style={{
-              marginTop: 20,
-              width: 'calc(100vw - 48px)',
-              maxWidth: 380,
-              padding: '20px 24px',
-              borderRadius: 20,
-              background: accent,
-              boxShadow: `0 6px 0 ${accentDark}`,
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 12,
-            }}
-          >
-            <span style={{ fontSize: 32 }}>📚</span>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>語学を記録</span>
-          </button>
-        ) : null
+        // EDU: 語学記録ボタン（常に表示）
+        <button
+          onClick={onAction}
+          style={{
+            marginTop: 20,
+            width: 'calc(100vw - 48px)',
+            maxWidth: 380,
+            padding: '20px 24px',
+            borderRadius: 20,
+            background: accent,
+            boxShadow: `0 6px 0 ${accentDark}`,
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 32 }}>📚</span>
+          <span style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>語学を記録</span>
+        </button>
       ) : (
         // FIT / DIET: Fitingo 画像ボタン（丸バックなし）
         <button

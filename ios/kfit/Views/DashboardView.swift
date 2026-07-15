@@ -2341,9 +2341,12 @@ struct DashboardView: View {
         cachedMandalaOverallCount = (visible.filter(\.isCompleted).count, visible.count)
     }
 
-    /// 今日の Edu 記録（Duolingo・語学・勉強・読書）が history にあれば
-    /// ① 曜日別 wd_study ゴールを自動完了
-    /// ② スパイラルの各時間帯カスタム活動（名前が一致するもの）も自動完了
+    /// 今日投稿された Edu 記録（共有・写真ログなど）があれば
+    /// ① 語学系（Duolingo・語学・勉強・読書）の投稿があれば曜日別 wd_study ゴールを自動完了
+    /// ② スパイラルの各時間帯カスタム活動を、投稿の activityName と名前照合して自動完了する。
+    ///    読書・勉強に限らず、瞑想・ストレッチ・コーヒーなど、ユーザーが設定した任意の
+    ///    カスタム活動名と一致すれば対応する（PendingShareProcessor 側のカテゴリ判定で
+    ///    activityName が決まるため、Audible等からの共有も「読書」として一致する）。
     /// - Parameter passedHistory: 呼び出し元から渡す history。nil の場合は内部で参照する。
     private func autoCompleteDuolingoIfNeeded(
         using passedHistory: [EduLogHistoryItem]? = nil  // nil = 内部で EduLogManager.shared.history を参照
@@ -2352,24 +2355,22 @@ struct DashboardView: View {
         let cal   = Calendar.current
         let today = cal.startOfDay(for: Date())
 
-        // 今日投稿されたEduアイテムのactivityName一覧を収集
-        let todayEduNames: Set<String> = Set(
-            history
-                .filter { $0.timestamp >= today && Self.isEduItem($0) }
-                .map { $0.activityName }
-        )
-
-        guard !todayEduNames.isEmpty else {
+        let todayItems = history.filter { $0.timestamp >= today }
+        guard !todayItems.isEmpty else {
             recomputeMandalaNodes()
             return
         }
 
-        // ① 曜日別 wd_study ゴールを完了
-        let wd = cal.component(.weekday, from: Date())
-        let weekdayNum = wd == 1 ? 7 : wd - 1
-        await timeSlotManager.completeCustomGoalIfNeeded(id: "wd_study_\(weekdayNum)")
+        // ① 語学系の投稿があれば曜日別 wd_study ゴールを完了
+        if todayItems.contains(where: { Self.isEduItem($0) }) {
+            let wd = cal.component(.weekday, from: Date())
+            let weekdayNum = wd == 1 ? 7 : wd - 1
+            await timeSlotManager.completeCustomGoalIfNeeded(id: "wd_study_\(weekdayNum)")
+        }
 
-        // ② スパイラル各時間帯のカスタム活動（読書・Duolingo・勉強等）を名前照合で自動完了
+        // ② スパイラル各時間帯のカスタム活動を、今日投稿された全アイテムの
+        //    activityName と名前照合して自動完了（カテゴリを限定しない）
+        let todayAllNames: Set<String> = Set(todayItems.map { $0.activityName }).subtracting([""])
         let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
         for slot in activeSlots {
             guard let goal = timeSlotManager.settings.goalFor(slot),
@@ -2377,7 +2378,7 @@ struct DashboardView: View {
             for activity in goal.customActivities where activity.isEnabled {
                 guard !prog.completedActivityIds.contains(activity.id) else { continue }
                 let actName = activity.name
-                let matches = todayEduNames.contains { shared in
+                let matches = todayAllNames.contains { shared in
                     Self.eduActivityNameMatches(shared: shared, spiralName: actName)
                 }
                 if matches {
@@ -2532,14 +2533,15 @@ struct DashboardView: View {
         let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
             && totalMindfulStandActual >= totalMindfulStandGoal
 
-        // 今日の Duolingo / 語学 / 勉強 / 読書 履歴
+        // 今日の Edu 履歴（写真ログ・共有投稿など）
         let eduStart = Calendar.current.startOfDay(for: Date())
-        let todayEduItems = EduLogManager.shared.history.filter {
-            $0.timestamp >= eduStart && Self.isEduItem($0)
-        }
-        let todayEduCount = todayEduItems.count
-        // カスタム活動との照合用: activityName の一覧（例: "Duolingo", "読書", "勉強"）
-        let todayEduActivityNames = Set(todayEduItems.map { $0.activityName })
+        let todayAllEduItems = EduLogManager.shared.history.filter { $0.timestamp >= eduStart }
+        // wd-study（曜日別の勉強目標）は語学・勉強系のみを対象にする
+        let todayEduCount = todayAllEduItems.filter { Self.isEduItem($0) }.count
+        // スパイラルのカスタム活動照合はカテゴリを限定せず、今日投稿された
+        // 全アイテムの activityName と一致すれば完了扱いにする（読書に限らず
+        // 瞑想・ストレッチ・コーヒーなど任意のカスタム活動に対応）
+        let todayEduActivityNames = Set(todayAllEduItems.map { $0.activityName }).subtracting([""])
 
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,

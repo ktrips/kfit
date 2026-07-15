@@ -107,17 +107,20 @@ struct TimeSlotGoalsView: View {
         let activityRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
             && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
 
-        // 今日の Duolingo / 語学 / 勉強 / 読書 履歴
+        // 今日の Edu 履歴（写真ログ・共有投稿など）
         let eduStart = Calendar.current.startOfDay(for: Date())
-        let todayEduItems = EduLogManager.shared.history.filter { item in
-            guard item.timestamp >= eduStart else { return false }
+        let todayAllEduItems = EduLogManager.shared.history.filter { $0.timestamp >= eduStart }
+        // wd-study（曜日別の勉強目標）は語学・勉強系のみを対象にする
+        let todayEduCount = todayAllEduItems.filter { item in
             let name = item.activityName
             return name.localizedCaseInsensitiveContains("Duolingo")
                 || name == "語学" || name.contains("語学")
                 || name == "勉強" || name == "読書"
-        }
-        let todayEduCount = todayEduItems.count
-        let todayEduActivityNames = Set(todayEduItems.map { $0.activityName })
+        }.count
+        // スパイラルのカスタム活動照合はカテゴリを限定せず、今日投稿された
+        // 全アイテムの activityName と一致すれば完了扱いにする（読書に限らず
+        // 瞑想・ストレッチ・コーヒーなど任意のカスタム活動に対応）
+        let todayEduActivityNames = Set(todayAllEduItems.map { $0.activityName }).subtracting([""])
 
         return MandalaChartView.buildNodes(
             settings: timeSlotManager.settings,

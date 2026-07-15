@@ -871,6 +871,14 @@ struct TomoView: View {
         return f
     }()
 
+    // 写真左上の日付バッジ用（コンパクト表記）
+    private static let photoDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d"
+        return f
+    }()
+
     private var oneWeekAgo: Date {
         Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
     }
@@ -1539,8 +1547,18 @@ struct TomoView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                // 左上: FOOD投稿に食事タイムバッジ / Duolingo投稿に言語バッジ
+                // 左上: 投稿日
                 .overlay(alignment: .topLeading) {
+                    Text(Self.photoDateFmt.string(from: item.timestamp))
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                        .padding(8)
+                }
+                // 中央上: FOOD → 食事タイムバッジ / Weight → Day◯バッジ / Duolingo → 言語バッジ
+                .overlay(alignment: .top) {
                     if isFood {
                         Text(mealInfo.label)
                             .font(.system(size: 11 * UIScale.font, weight: .black))
@@ -1548,7 +1566,15 @@ struct TomoView: View {
                             .padding(.horizontal, 9).padding(.vertical, 4)
                             .background(mealInfo.color)
                             .clipShape(Capsule())
-                            .padding(8)
+                            .padding(.top, 8)
+                    } else if item.weightKg != nil {
+                        Text(dayLabel(for: item.timestamp))
+                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.black.opacity(0.52))
+                            .clipShape(Capsule())
+                            .padding(.top, 8)
                     } else if (item.activityEmoji == "🦉"
                                || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
                               let langCode = item.extractedLanguageCode, !langCode.isEmpty {
@@ -1596,20 +1622,12 @@ struct TomoView: View {
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(tomoLangColor(langCode))
                         .clipShape(Capsule())
-                        .padding(8)
+                        .padding(.top, 8)
                     }
                 }
-                // 右上: Weight → Day◯ バッジ / リンクあり → リンクボタン
+                // 右上: リンクあり → リンクボタン
                 .overlay(alignment: .topTrailing) {
-                    if item.weightKg != nil {
-                        Text(dayLabel(for: item.timestamp))
-                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.black.opacity(0.52))
-                            .clipShape(Capsule())
-                            .padding(8)
-                    } else if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
+                    if let urlStr = item.sharedUrl, let url = URL(string: urlStr) {
                         // リンクあり投稿: リンクを一覧から直接開けるボタン
                         Button {
                             UIApplication.shared.open(url)
@@ -1862,16 +1880,47 @@ struct TomoView: View {
                 .clipped()
                 .contentShape(Rectangle())
 
-                // 上部オーバーレイ（左: meal/言語バッジ, 右: Weight Day◯ + 番号バッジ）
+                // 上部オーバーレイ（左: 日付, 右: 番号バッジ）
                 VStack {
                     HStack(alignment: .top) {
-                        // 左: FOOD → meal バッジ / Duolingo → 言語バッジ
+                        // 左: 投稿日
+                        Text(Self.photoDateFmt.string(from: item.timestamp))
+                            .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Capsule())
+                        Spacer()
+                        // 右: 番号バッジ（複数枚時）
+                        if total > 1 {
+                            Text("\(index + 1)/\(total)")
+                                .font(.system(size: 10 * UIScale.font, weight: .black))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(Color.black.opacity(0.55))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .padding(8)
+                    Spacer()
+                }
+
+                // 中央上: FOOD → meal バッジ / Weight → Day◯ バッジ / Duolingo → 言語バッジ
+                VStack {
+                    Group {
                         if isFood {
                             Text(mealInfo.label)
                                 .font(.system(size: 10 * UIScale.font, weight: .black))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(mealInfo.color)
+                                .clipShape(Capsule())
+                        } else if item.weightKg != nil {
+                            Text(dayLabel(for: item.timestamp))
+                                .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.black.opacity(0.52))
                                 .clipShape(Capsule())
                         } else if (item.activityEmoji == "🦉"
                                    || item.activityName.localizedCaseInsensitiveContains("Duolingo")),
@@ -1887,28 +1936,8 @@ struct TomoView: View {
                             .background(tomoLangColor(langCode))
                             .clipShape(Capsule())
                         }
-                        Spacer()
-                        // 右: Weight 投稿のみ Day◯ バッジ + 番号バッジ（複数枚時）
-                        VStack(alignment: .trailing, spacing: 4) {
-                            if item.weightKg != nil {
-                                Text(dayLabel(for: item.timestamp))
-                                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Color.black.opacity(0.52))
-                                    .clipShape(Capsule())
-                            }
-                            if total > 1 {
-                                Text("\(index + 1)/\(total)")
-                                    .font(.system(size: 10 * UIScale.font, weight: .black))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 7).padding(.vertical, 3)
-                                    .background(Color.black.opacity(0.55))
-                                    .clipShape(Capsule())
-                            }
-                        }
                     }
-                    .padding(8)
+                    .padding(.top, 8)
                     Spacer()
                 }
 

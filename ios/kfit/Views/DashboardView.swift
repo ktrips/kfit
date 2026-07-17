@@ -6126,6 +6126,8 @@ struct DashboardView: View {
     }
 
     private static let webPostShareCaption = "1日の習慣を Fit.ktrips.net で記録、継続しよう！"
+    /// ImageRenderer初回呼び出しの白紙画像対策（プロセス内で1回だけ捨て打ちする）
+    private static var hasWarmedUpWebPostRenderer = false
 
     /// 現在のスパイラルをカード画像にして共有シートを開く。
     /// node が「今日をシェア」ノードの場合は、実際に共有が完了したタイミングで
@@ -6140,15 +6142,9 @@ struct DashboardView: View {
             // レイアウト前の空画像を返し、共有シートが画像なしで開いてしまうことがある。
             try? await Task.sleep(nanoseconds: 350_000_000)
 
-            let dateLabel = Self.mdE.string(from: Date())
             let badgeText = "RoutinGo (\(cachedProgressStats.progressPercent)%, \(Self.slashMd.string(from: Date())))"
             let renderer = ImageRenderer(content:
-                VStack(spacing: 14) {
-                    Text("\(dateLabel)のルーティン！")
-                        .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoDark)
-                        .padding(.top, 18)
-
+                VStack(spacing: 0) {
                     MandalaChartView(
                         settings: timeSlotManager.settings,
                         progress: timeSlotManager.progress,
@@ -6161,6 +6157,7 @@ struct DashboardView: View {
                         isSnapshotMode: true
                     )
                     .frame(width: 360, height: 410)
+                    .padding(.top, 8)
                     .overlay(alignment: .bottom) {
                         Text(badgeText)
                             .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
@@ -6176,6 +6173,16 @@ struct DashboardView: View {
                 .background(Color.duoBg)
             )
             renderer.scale = 3.0
+
+            // ImageRenderer はプロセス内で最初に呼ばれた際、nil ではなく
+            // レイアウト未完了の「白紙」画像を返すことがある（2回目以降は正常）。
+            // nil チェックだけでは検知できないため、プロセス内で初回のみ
+            // 1回捨て打ちしてレンダリングパイプラインを温めてから本番取得する。
+            if !Self.hasWarmedUpWebPostRenderer {
+                _ = renderer.uiImage
+                Self.hasWarmedUpWebPostRenderer = true
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
 
             // renderer.uiImage はプロセス内で最初に呼ばれた際、レイアウト未完了のまま
             // 空画像を返すことがあるため、nil の場合は同じ renderer に対して少し待って

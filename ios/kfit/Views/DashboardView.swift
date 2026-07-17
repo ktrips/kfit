@@ -408,11 +408,11 @@ struct DashboardView: View {
         f.dateFormat = "M/d(E)"
         return f
     }()
-    /// スパイラル共有画像の「RoutinGo (xx%, mm/dd)」バッジ用
-    private static let slashMd: DateFormatter = {
+    /// スパイラル共有画像の「RoutinGo (xx%, mm/dd hh:mi)」バッジ用
+    private static let slashMdHm: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d"
+        f.dateFormat = "M/d HH:mm"
         return f
     }()
     private static let slashMdSpaceE: DateFormatter = {
@@ -6142,7 +6142,11 @@ struct DashboardView: View {
             // レイアウト前の空画像を返し、共有シートが画像なしで開いてしまうことがある。
             try? await Task.sleep(nanoseconds: 350_000_000)
 
-            let badgeText = "RoutinGo (\(cachedProgressStats.progressPercent)%, \(Self.slashMd.string(from: Date())))"
+            // スパイラル中央の達成率（centerCircle）と同じ計算方法（完了ノード数 ÷ 全ノード数）
+            let centerTotal = cachedMandalaNodes.count
+            let centerCompleted = cachedMandalaNodes.filter(\.isCompleted).count
+            let centerPercent = centerTotal > 0 ? Int(Double(centerCompleted) / Double(centerTotal) * 100) : 0
+            let badgeText = "RoutinGo (\(centerPercent)%, \(Self.slashMdHm.string(from: Date())))"
             let renderer = ImageRenderer(content:
                 VStack(spacing: 0) {
                     MandalaChartView(

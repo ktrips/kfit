@@ -9895,17 +9895,18 @@ private struct CompactDuolingoRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             // ── フレーズ行 ──────────────────────────────────────────
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(data.phrase)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Color.duoDark)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
 
                 Spacer(minLength: 4)
 
-                // 全再生ボタン
+                // 全再生ボタン（右端に小さく）
                 Button {
                     if isMySeqPlaying {
                         tts.stopSequence()
@@ -9917,20 +9918,21 @@ private struct CompactDuolingoRow: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         Image(systemName: isMySeqPlaying ? "stop.fill" : "play.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 7, weight: .bold))
                         Text(isMySeqPlaying
                              ? "\(tts.sequenceCurrent + 1)/\(tts.sequenceTotal)"
                              : "全再生")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.system(size: 8, weight: .black))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(isMySeqPlaying ? Color.red : Color(hex: "#58CC02"))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .fixedSize()
             }
 
             // ── 訳 ─────────────────────────────────────────────────
@@ -9938,11 +9940,13 @@ private struct CompactDuolingoRow: View {
             // phrase＋全例文（画面に表示していない分も含む）をまとめて再生する。
             if let tja = data.translationJA, !tja.isEmpty {
                 Text(tja)
-                    .font(.system(size: 12))
+                    .font(.system(size: 10))
                     .foregroundColor(Color.duoSubtitle)
+                    .lineLimit(1)
             }
         }
-        .padding(10)
+        .dynamicTypeSize(...DynamicTypeSize.large)
+        .padding(8)
         .background(Color(hex: "#58CC02").opacity(0.07))
         .cornerRadius(10)
         .onChange(of: tts.isSequencePlaying) { playing in

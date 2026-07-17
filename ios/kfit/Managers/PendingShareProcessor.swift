@@ -230,8 +230,19 @@ class PendingShareProcessor {
                   let image     = UIImage(data: imageData) else { continue }
 
             // ── カテゴリ判定（3段階フォールバック）────────────────────────────
+            // Duolingoアプリからの共有（isDuolingo または sourceApp が Duolingo）でも、
+            // コメントに「日記」「写真」「今日」等が含まれる場合は日記として扱う
+            // （ストリーク画面・イベントバナー等、レッスン以外のスクショの誤分類対策）
+            let sourceSignalsDuolingo = item["isDuolingo"] as? Bool == true
+                || sourceApp.lowercased().contains("duolingo")
+            let diaryOverrideKeywords = ["日記", "写真", "今日"]
+            let hasDiaryOverride = sourceSignalsDuolingo
+                && diaryOverrideKeywords.contains { savedComment.contains($0) }
+
             var cat: ShareCategory
-            if item["isDuolingo"] as? Bool == true {
+            if hasDiaryOverride {
+                cat = ShareCategory(activityName: "日記", activityEmoji: "📔", isDuolingo: false)
+            } else if item["isDuolingo"] as? Bool == true {
                 cat = ShareCategory(activityName: "Duolingo", activityEmoji: "🦉", isDuolingo: true)
             } else if let forced = item["category"] as? String {
                 cat = detectCategoryForURL(urlStr: urlString ?? "", comment: savedComment,

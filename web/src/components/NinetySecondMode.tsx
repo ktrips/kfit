@@ -51,7 +51,8 @@ function recordToday(): string[] {
 interface ModeConfig {
   id: string;
   badge: string;
-  tagline: string;
+  /** 見出し「今度こそ、続く」の下に表示するモード名（かっこ書き） */
+  modeName: string;
   /** バッジ（ボタン）の直後に続くメッセージ。例: [FIT 90秒]＋「を押して始める、それだけ」 */
   actionSuffix: string;
   accent: string;
@@ -67,7 +68,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'fit',
     badge: 'FIT 90秒',
-    tagline: '今度こそ、続く「筋トレ」',
+    modeName: '筋トレ',
     actionSuffix: 'で始める、それだけ',
     accent: '#58CC02',
     accentDark: '#46A302',
@@ -79,7 +80,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'diet',
     badge: 'DIET',
-    tagline: '今度こそ、続く「ダイエット」',
+    modeName: 'ダイエット',
     actionSuffix: 'ボタンで計測、それだけ',
     accent: '#CE82FF',
     accentDark: '#9C5CC9',
@@ -91,7 +92,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'food',
     badge: 'FOOD',
-    tagline: '今度こそ、続く「食事ログ」',
+    modeName: '食事ログ',
     actionSuffix: 'ボタンで撮る、それだけ',
     accent: '#FF9600',
     accentDark: '#CC7700',
@@ -103,7 +104,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'edu',
     badge: 'EDU',
-    tagline: '今度こそ、続く「語学」',
+    modeName: '語学',
     actionSuffix: 'ボタンで例文、それだけ',
     accent: '#1CB0F6',
     accentDark: '#1090CC',
@@ -425,13 +426,50 @@ const ModeCard: React.FC<CardProps> = ({
         style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '50%' }}
       />
 
-      {/* ── タグライン ──────────────────────────────────────────────── */}
-      <p
-        className="mt-5 text-3xl font-black tracking-tight text-center px-4"
-        style={{ color: accent, textShadow: `0 2px 8px ${accent}33` }}
-      >
-        {mode.tagline}
-      </p>
+      {/* ── 連続日数（あと◯日で全開放）＋ 5日チェックマーク ─────────────── */}
+      <div className="mt-3 flex flex-col items-center" style={{ gap: 10 }}>
+        <p style={{ margin: 0, textAlign: 'center' }}>
+          <span style={{ fontSize: 20, fontWeight: 900, color: '#1f1f1f' }}>
+            🔥{streak}日連続
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: graduated ? '#FF9600' : '#777' }}>
+            {graduated ? '　🎉全機能開放中！' : `（あと${MAX_DAYS - streak}日で全開放）`}
+          </span>
+        </p>
+        <div className="flex" style={{ gap: 12 }}>
+          {Array.from({ length: MAX_DAYS }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: 20, height: 20, borderRadius: '50%',
+                background: i < activeDays.length ? accent : '#e5e5e5',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: i < activeDays.length ? `0 2px 6px ${accent}66` : 'none',
+              }}
+            >
+              {i < activeDays.length && (
+                <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 大見出し：今度こそ、続く／「モード名」──────────────────────── */}
+      <div className="mt-5 flex flex-col items-center px-4" style={{ gap: 2 }}>
+        <p
+          className="text-4xl font-black tracking-tight text-center"
+          style={{ color: accent, textShadow: `0 2px 8px ${accent}33`, margin: 0 }}
+        >
+          今度こそ、続く
+        </p>
+        <p
+          className="text-lg font-bold text-center"
+          style={{ color: accent, opacity: 0.85, margin: 0 }}
+        >
+          「{mode.modeName}」
+        </p>
+      </div>
 
       {/* ── メインボタン（モード別）──────────────────────────────────── */}
       {mode.id === 'food' ? (
@@ -568,41 +606,6 @@ const ModeCard: React.FC<CardProps> = ({
           </p>
         </div>
       )}
-
-      {/* ── 5日進捗ドット（🔥連続 → ドット → あと◯日）──────────────── */}
-      <div className="flex flex-col items-center" style={{ marginTop: 20, gap: 8 }}>
-        {/* 🔥◯日連続 */}
-        <div className="flex items-center" style={{ gap: 5 }}>
-          <span style={{ fontSize: 22 }}>🔥</span>
-          <span style={{ fontSize: 22, fontWeight: 900, color: '#1f1f1f', letterSpacing: '-0.5px' }}>
-            {streak}日連続
-          </span>
-        </div>
-        {/* ドット */}
-        <div className="flex" style={{ gap: 12 }}>
-          {Array.from({ length: MAX_DAYS }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                width: 20, height: 20, borderRadius: '50%',
-                background: i < activeDays.length ? accent : '#e5e5e5',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: i < activeDays.length ? `0 2px 6px ${accent}66` : 'none',
-              }}
-            >
-              {i < activeDays.length && (
-                <span style={{ color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>
-              )}
-            </div>
-          ))}
-        </div>
-        {/* あと◯日 */}
-        <p style={{ fontSize: 16, fontWeight: 900, color: graduated ? '#FF9600' : '#555', margin: 0, letterSpacing: '-0.3px' }}>
-          {graduated
-            ? '🎉 5日続きました！全機能が開放されています！'
-            : `あと${MAX_DAYS - activeDays.length}日で全機能が開放`}
-        </p>
-      </div>
 
       {/* ── iOS アプリ誘導ボタン（コンパクト）──────────────────────────── */}
       <button

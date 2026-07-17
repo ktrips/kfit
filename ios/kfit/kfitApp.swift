@@ -914,12 +914,13 @@ enum NinetySecondModeType: Int, CaseIterable {
         }
     }
 
-    var tagline: String {
+    /// 見出し「今度こそ、続く」の下に表示するモード名（かっこ書き）
+    var modeName: String {
         switch self {
-        case .fit:  return "今度こそ、続く\n「筋トレ」"
-        case .food: return "今度こそ、続く\n「食事ログ」"
-        case .edu:  return "今度こそ、続く\n「語学」"
-        case .diet: return "今度こそ、続く\n「ダイエット」"
+        case .fit:  return "筋トレ"
+        case .food: return "食事ログ"
+        case .edu:  return "語学"
+        case .diet: return "ダイエット"
         }
     }
 
@@ -1182,6 +1183,35 @@ struct NinetySecondModeCard: View {
 
             VStack(spacing: 0) {
 
+                // ── Fitingo ロゴマーク ─────────────────────────────────────
+                Image("mascot")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    .padding(.top, 12)
+
+                Spacer().frame(height: 10)
+
+                // ── 連続日数（あと◯日で全開放）＋ 5日チェックマーク ─────────
+                streakHeader
+
+                Spacer().frame(height: 18)
+
+                // ── 大見出し：今度こそ、続く／「モード名」────────────────
+                VStack(spacing: 2) {
+                    Text("今度こそ、続く")
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundColor(accent)
+                        .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
+                    Text("「\(mode.modeName)」")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(accent.opacity(0.85))
+                }
+                .multilineTextAlignment(.center)
+
+                Spacer().frame(height: 16)
+
                 // ── コンテンツエリア（表示/非表示トグル付き）───────────────
                 if topWindowVisible {
                     ZStack(alignment: .topTrailing) {
@@ -1226,15 +1256,6 @@ struct NinetySecondModeCard: View {
 
                 Spacer().frame(height: 14)
 
-                // ── タグライン（30px / 20%大型化）─────────────────────────
-                Text(mode.tagline)
-                    .font(.system(size: 30, weight: .black, design: .rounded))
-                    .foregroundColor(accent)
-                    .multilineTextAlignment(.center)
-                    .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
-
-                Spacer().frame(height: 16)
-
                 // ── メインアクションボタン ─────────────────────────────────
                 mainActionButton
 
@@ -1268,11 +1289,6 @@ struct NinetySecondModeCard: View {
                 }
 
                 Spacer()
-
-                // ── 5日進捗ドット ──────────────────────────────────────────
-                progressDots
-
-                Spacer().frame(height: 12)
 
                 if graduated {
                     Button(action: onExit) {
@@ -1589,16 +1605,20 @@ struct NinetySecondModeCard: View {
         }
     }
 
-    // MARK: 5日進捗ドット（ストリーク → あと◯日 の順）
-    private var progressDots: some View {
-        VStack(spacing: 8) {
-            // 🔥◯日連続
-            HStack(spacing: 5) {
-                Text("🔥").font(.system(size: 22))
-                Text("\(streak)日連続")
-                    .font(.system(size: 22, weight: .black))
+    // MARK: 連続日数（あと◯日で全開放）＋ 5日チェックマーク（ヘッダー用・1行＋ドット）
+    private var streakHeader: some View {
+        VStack(spacing: 10) {
+            // 🔥◯日連続（あと◯日で全開放）
+            Group {
+                Text("🔥\(streak)日連続")
+                    .font(.system(size: 20, weight: .black))
                     .foregroundColor(.duoDark)
+                +
+                Text(graduated ? "　🎉全機能開放中！" : "（あと\(max(0, 5 - activeDays))日で全開放）")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
             }
+            .multilineTextAlignment(.center)
             // ドット
             HStack(spacing: 12) {
                 ForEach(0..<5, id: \.self) { i in
@@ -1615,12 +1635,6 @@ struct NinetySecondModeCard: View {
                     }
                 }
             }
-            // あと◯日
-            Text(graduated
-                 ? "🎉 5日続きました！全機能が開放されました！"
-                 : "あと\(max(0, 5 - activeDays))日で全機能が開放")
-                .font(.system(size: 16, weight: .black))
-                .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
         }
     }
 

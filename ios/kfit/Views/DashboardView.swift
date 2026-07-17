@@ -408,6 +408,13 @@ struct DashboardView: View {
         f.dateFormat = "M/d(E)"
         return f
     }()
+    /// スパイラル共有画像の「RoutinGo (xx%, mm/dd)」バッジ用
+    private static let slashMd: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d"
+        return f
+    }()
     private static let slashMdSpaceE: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
@@ -6134,6 +6141,7 @@ struct DashboardView: View {
             try? await Task.sleep(nanoseconds: 350_000_000)
 
             let dateLabel = Self.mdE.string(from: Date())
+            let badgeText = "RoutinGo (\(cachedProgressStats.progressPercent)%, \(Self.slashMd.string(from: Date())))"
             let renderer = ImageRenderer(content:
                 VStack(spacing: 14) {
                     Text("\(dateLabel)のルーティン！")
@@ -6153,6 +6161,15 @@ struct DashboardView: View {
                         isSnapshotMode: true
                     )
                     .frame(width: 360, height: 410)
+                    .overlay(alignment: .bottom) {
+                        Text(badgeText)
+                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Capsule())
+                            .padding(.bottom, 8)
+                    }
                     .padding(.bottom, 12)
                 }
                 .frame(width: 360)

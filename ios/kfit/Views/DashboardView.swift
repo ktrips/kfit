@@ -469,7 +469,7 @@ struct DashboardView: View {
     @State private var mascotBounce = false
     @State private var showTracker  = false
     @State private var showHabits   = false
-    @State private var showTodayRecords = false  // スパイラル上部メッセージの「アクティビティ詳細」開閉
+    @State private var showTodayRecords = false  // スパイラル下部メッセージの「アクティビティ詳細」開閉
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
     @State private var expandedSetId: String? = nil  // 展開中のセットID
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
@@ -1365,15 +1365,16 @@ struct DashboardView: View {
                     dailyWaterDone: dailyWaterDone,
                     weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
                     bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil,
-                    mandalaContextLabel: mandalaContextString(mandalaNodes),
-                    showTodayRecords: $showTodayRecords,
                     onShareSpiral: { startWebPostShare(for: nil) }
                 )
 
-                compactPointsBar
+                VStack(spacing: 4) {
+                    todayRecordsMessageRow(label: mandalaContextString(mandalaNodes))
+                    compactPointsBar
+                }
             }
 
-            // アコーディオン本体（開閉ボタンはスパイラル上部に移動済み・独立Viewでスタックオーバーフローを防止）
+            // アコーディオン本体（開閉ボタンはスパイラル下部・XPバー上に移動済み・独立Viewでスタックオーバーフローを防止）
             DailySetsExpandableSection(
                 timeSlotManager: timeSlotManager,
                 healthKit: healthKit,
@@ -1389,6 +1390,34 @@ struct DashboardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+    }
+
+    // アクティビティ詳細の開閉メッセージ（スパイラル下部・XPバーの上に表示）
+    private func todayRecordsMessageRow(label: String) -> some View {
+        Group {
+            if !label.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        showTodayRecords.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(label)
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 11 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 3)
+                    .background(Color(.systemBackground).opacity(0.88))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var compactPointsBar: some View {
@@ -2593,9 +2622,9 @@ struct DashboardView: View {
 
         // 全完了
         if completedCount == totalCount && totalCount > 0 {
-            if hour < 12 { return "午前中に全完了！最高のスタート" }
-            if hour < 17 { return "全タスク完了！今日も最高だよ" }
-            return "全タスク達成！お疲れ様"
+            if hour < 12 { return "🎉 午前中に全完了！最高のスタート！" }
+            if hour < 17 { return "🎉 全タスク完了！今日も最高だよ！" }
+            return "🎉 全タスク達成！今日もお疲れ様！"
         }
 
         let currentSlot: TimeSlot? = {
@@ -2616,8 +2645,8 @@ struct DashboardView: View {
             } else if incomplete.isEmpty {
                 // 現在のスロット完了
                 let nextSlotMessages: [String] = [
-                    "\(slot.displayName)完了！次も頑張ろう",
-                    "\(slot.displayName)パーフェクト！この調子",
+                    "\(slot.displayName)のROUTIN完了！次も頑張ろう💪",
+                    "\(slot.displayName)はパーフェクト！この調子！",
                 ]
                 return nextSlotMessages[hour % nextSlotMessages.count]
             } else {
@@ -2627,47 +2656,47 @@ struct DashboardView: View {
                 switch slot {
                 case .morning:
                     let msgs = [
-                        "朝のトレーニングが足りないよ",
-                        "朝ROUTINあと\(remaining)個！",
-                        "早起きは三文の得！こなそう",
+                        "☀️ 朝のトレーニングが足りないよ！やってみよう！",
+                        "🌅 朝から動けば一日が変わる！あと\(remaining)個！",
+                        "🐓 早起きは三文の得！朝ROUTINをこなそう！",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .noon:
                     let msgs = [
-                        "ランチ前に\(remaining)個こなそう",
-                        "昼ROUTINもやり切ろう",
-                        "昼休みにサクッと終わらせよう",
+                        "🍱 お昼の時間！ランチ前に\(remaining)個こなそう！",
+                        "⚡ 午前の勢いで昼ROUTINもやり切ろう！",
+                        "🕛 昼休みにサクッとROUTINを終わらせよう！",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .afternoon:
                     let msgs = [
-                        "午後ROUTINが残ってるよ",
-                        "夕方前にあと\(remaining)個！",
-                        "午後ROUTINでシャキッと",
+                        "🌤️ 午後のROUTINがまだ残ってるよ！今すぐやろう！",
+                        "💡 夕方前にあと\(remaining)個！集中してこなそう！",
+                        "🏃 午後の眠気を吹き飛ばせ！ROUTINでシャキッと！",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .evening:
                     let msgs = [
-                        "夜ROUTINあと\(remaining)個！",
-                        "ラストスパート！あと\(remaining)個",
-                        "寝る前に完璧な一日に",
+                        "🌙 夜のROUTINが\(remaining)個残ってる！諦めないで！",
+                        "🔥 今日を終える前にあと\(remaining)個！ラストスパート！",
+                        "⭐ 寝る前にROUTINで完璧な一日にしよう！",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 default:
-                    return "あと\(remaining)個！今すぐ始めよう"
+                    return "💪 あと\(remaining)個！今すぐROUTINを始めよう！"
                 }
             }
         }
 
         // スロット外（深夜・早朝）または全体メッセージ
         if completedCount == 0 {
-            if hour < 5  { return "もうすぐ夜明け！準備しよう" }
-            return "今日のROUTINを始めよう"
+            if hour < 5  { return "🌙 もうすぐ夜明け！今日のROUTINを準備しよう" }
+            return "👊 今日のROUTINを始めよう！最初の一歩が大事！"
         }
         if progress < 0.5 {
-            return "\(completedCount)/\(totalCount) 達成中！まだいけるよ"
+            return "💪 \(completedCount)/\(totalCount) 達成中！まだまだいけるよ！"
         }
-        return "もう少し！あと\(totalCount - completedCount)個"
+        return "🔥 もう少し！\(totalCount - completedCount)個で今日完璧！"
     }
 
 
@@ -7122,8 +7151,6 @@ private struct DailySetsMandalaSectionView: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
-    var mandalaContextLabel: String = ""
-    @Binding var showTodayRecords: Bool
     var onShareSpiral: () -> Void = {}
 
     var body: some View {
@@ -7143,8 +7170,6 @@ private struct DailySetsMandalaSectionView: View {
             dailyWaterDone: dailyWaterDone,
             weightKg: weightKg,
             bodyFatPercent: bodyFatPercent,
-            mandalaContextLabel: mandalaContextLabel,
-            showTodayRecords: $showTodayRecords,
             onShareSpiral: onShareSpiral
         )
         .padding(.top, 8)
@@ -7171,8 +7196,6 @@ private struct MandalaSpiralCard: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
-    var mandalaContextLabel: String = ""
-    @Binding var showTodayRecords: Bool
     var onShareSpiral: () -> Void = {}
     @EnvironmentObject private var photoLogManager: PhotoLogManager
 
@@ -7200,13 +7223,12 @@ private struct MandalaSpiralCard: View {
             .padding(.top, 1)
             .padding(.bottom, 0)
             .overlay(alignment: .top) { legendOverlay }
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .topTrailing) {
                 HStack(spacing: 6) {
                     shareButton
                     settingsButton
                 }
                 .padding(.trailing, 8)
-                .padding(.bottom, 8)
             }
             .sheet(isPresented: $showWeightOptions) {
                 WeightRecordOptionsSheet(
@@ -7332,51 +7354,26 @@ private struct MandalaSpiralCard: View {
                 .cornerRadius(6)
                 .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
 
-            HStack(spacing: 5) {
-                // 今日の投稿があるときだけスライドアイコンを表示
-                if !entries.isEmpty {
-                    Button {
-                        carouselSlotFilter = nil
-                        showDayCarousel = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "rectangle.stack.fill")
-                                .font(.system(size: 9, weight: .bold))
-                            Text("\(entries.count)件")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundColor(Color(hex: "CE82FF"))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color(hex: "CE82FF").opacity(0.13))
-                        .cornerRadius(5)
+            // 今日の投稿があるときだけスライドアイコンを表示
+            if !entries.isEmpty {
+                Button {
+                    carouselSlotFilter = nil
+                    showDayCarousel = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "rectangle.stack.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("\(entries.count)件")
+                            .font(.system(size: 9, weight: .bold))
                     }
-                    .buttonStyle(.plain)
+                    .foregroundColor(Color(hex: "CE82FF"))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color(hex: "CE82FF").opacity(0.13))
+                    .cornerRadius(5)
                 }
-
-                // アクティビティ詳細の開閉メッセージ（短縮・アイコンなし。
-                // DailySetsExpandableSection と showTodayRecords を共有）
-                if !mandalaContextLabel.isEmpty {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showTodayRecords.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text(mandalaContextLabel)
-                                .font(.system(size: 9, weight: .semibold))
-                                .lineLimit(1)
-                            Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .foregroundColor(Color.duoSubtitle)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color(.systemBackground).opacity(0.82))
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
-                }
+                .buttonStyle(.plain)
+                .padding(.leading, 5)
             }
-            .padding(.leading, 5)
         }
         .padding(.top, 6)
         .padding(.horizontal, 6)

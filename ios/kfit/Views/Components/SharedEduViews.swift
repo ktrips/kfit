@@ -294,6 +294,20 @@ struct DuolingoPhraseView: View {
     }
 }
 
+// MARK: - routinGoShareCaption
+// スパイラル・今日の投稿を共有する際の共通メッセージ。DashboardView で共有。
+
+private let routinGoShareDateFmt: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "ja_JP")
+    f.dateFormat = "M/d"
+    return f
+}()
+
+func routinGoShareCaption() -> String {
+    "今日(\(routinGoShareDateFmt.string(from: Date())))のルーティン。Fit.ktrips.net で続けよう！ #fitingo #routingo"
+}
+
 // MARK: - dayLabel
 // 参加日（joinDate）からの経過日数を "Day N" 形式で返す。
 // GoalView・GoalingoView・TomoView・WeightFeedCard で共有。

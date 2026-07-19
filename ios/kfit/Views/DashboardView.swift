@@ -469,6 +469,7 @@ struct DashboardView: View {
     @State private var mascotBounce = false
     @State private var showTracker  = false
     @State private var showHabits   = false
+    @State private var showTodayRecords = false  // スパイラル上部メッセージの「アクティビティ詳細」開閉
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
     @State private var expandedSetId: String? = nil  // 展開中のセットID
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
@@ -1364,19 +1365,21 @@ struct DashboardView: View {
                     dailyWaterDone: dailyWaterDone,
                     weightKg: healthKit.todayBodyMassRecord?.kg ?? (healthKit.latestBodyMass > 0 ? healthKit.latestBodyMass : nil),
                     bodyFatPercent: healthKit.latestBodyFatPercentage > 0 ? healthKit.latestBodyFatPercentage : nil,
+                    mandalaContextLabel: mandalaContextString(mandalaNodes),
+                    showTodayRecords: $showTodayRecords,
                     onShareSpiral: { startWebPostShare(for: nil) }
                 )
 
                 compactPointsBar
             }
 
-            // 展開ボタン + アコーディオン（独立 View でスタックオーバーフローを防止）
+            // アコーディオン本体（開閉ボタンはスパイラル上部に移動済み・独立Viewでスタックオーバーフローを防止）
             DailySetsExpandableSection(
                 timeSlotManager: timeSlotManager,
                 healthKit: healthKit,
                 todayExercises: todayExercises,
                 slotSetCounts: cachedSlotSetCounts,
-                mandalaContextLabel: mandalaContextString(mandalaNodes),
+                showTodayRecords: $showTodayRecords,
                 dailyCalorieGoal: intakeGoals.dailyCalorieGoal,
                 dailyWaterGoal: intakeGoals.dailyWaterGoal
             )
@@ -1437,11 +1440,6 @@ struct DashboardView: View {
                         .foregroundColor(Color.duoOrange)
                 }
                 .frame(maxWidth: .infinity)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle.opacity(0.5))
-                    .padding(.trailing, 10)
             }
             .padding(.vertical, 6)
             .background(
@@ -6125,7 +6123,6 @@ struct DashboardView: View {
         }
     }
 
-    private static let webPostShareCaption = "1日の習慣を Fit.ktrips.net で記録、継続しよう！"
     /// ImageRenderer初回呼び出しの白紙画像対策（プロセス内で1回だけ捨て打ちする）
     private static var hasWarmedUpWebPostRenderer = false
 
@@ -6148,11 +6145,11 @@ struct DashboardView: View {
             let centerPercent = centerTotal > 0 ? Int(Double(centerCompleted) / Double(centerTotal) * 100) : 0
             let headerText = "\(Self.slashMdHm.string(from: Date()))　\(centerPercent)%"
             let renderer = ImageRenderer(content:
-                VStack(spacing: 8) {
+                VStack(spacing: 0) {
                     Text(headerText)
                         .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
-                        .padding(.top, 16)
+                        .padding(.top, 10)
 
                     MandalaChartView(
                         settings: timeSlotManager.settings,
@@ -6170,7 +6167,7 @@ struct DashboardView: View {
                     Text("Fit.ktrips.net")
                         .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
                         .foregroundColor(Color.duoSubtitle)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 10)
                 }
                 .frame(width: 360)
                 .background(Color.duoBg)
@@ -6193,7 +6190,7 @@ struct DashboardView: View {
             var attempt = 0
             while attempt < 4 {
                 if let image = renderer.uiImage {
-                    webPostShareItems = [Self.webPostShareCaption, image]
+                    webPostShareItems = [routinGoShareCaption(), image]
                     showWebPostShare = true
                     return
                 }
@@ -6203,7 +6200,7 @@ struct DashboardView: View {
                 }
             }
             // 数回試しても画像化に失敗した場合はテキストのみで共有を開く
-            webPostShareItems = [Self.webPostShareCaption]
+            webPostShareItems = [routinGoShareCaption()]
             showWebPostShare = true
         }
     }
@@ -7125,6 +7122,8 @@ private struct DailySetsMandalaSectionView: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
+    var mandalaContextLabel: String = ""
+    @Binding var showTodayRecords: Bool
     var onShareSpiral: () -> Void = {}
 
     var body: some View {
@@ -7144,6 +7143,8 @@ private struct DailySetsMandalaSectionView: View {
             dailyWaterDone: dailyWaterDone,
             weightKg: weightKg,
             bodyFatPercent: bodyFatPercent,
+            mandalaContextLabel: mandalaContextLabel,
+            showTodayRecords: $showTodayRecords,
             onShareSpiral: onShareSpiral
         )
         .padding(.top, 8)
@@ -7170,6 +7171,8 @@ private struct MandalaSpiralCard: View {
     var dailyWaterDone: Bool = false
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
+    var mandalaContextLabel: String = ""
+    @Binding var showTodayRecords: Bool
     var onShareSpiral: () -> Void = {}
     @EnvironmentObject private var photoLogManager: PhotoLogManager
 
@@ -7347,6 +7350,30 @@ private struct MandalaSpiralCard: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.leading, 5)
+            }
+
+            // アクティビティ詳細の開閉メッセージ（DailySetsExpandableSection と showTodayRecords を共有）
+            if !mandalaContextLabel.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        showTodayRecords.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(mandalaContextLabel)
+                            .font(.caption2)
+                            .foregroundColor(Color.duoSubtitle)
+                            .lineLimit(1)
+                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color(.systemBackground).opacity(0.82))
+                    .cornerRadius(6)
+                    .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.top, 6)
@@ -8645,11 +8672,11 @@ private struct DailySetsExpandableSection: View {
     @ObservedObject private var eduLog = EduLogManager.shared
     let todayExercises: [CompletedExercise]
     let slotSetCounts: [String: Int]
-    let mandalaContextLabel: String
     let dailyCalorieGoal: Int
     let dailyWaterGoal: Int
 
-    @State private var showTodayRecords = false
+    // 開閉トグルはスパイラル上部のメッセージ行（legendOverlay）と共有
+    @Binding var showTodayRecords: Bool
     @State private var expandedSetIds: Set<Int> = []
 
     private static let histTimeFmt: DateFormatter = {
@@ -8683,27 +8710,6 @@ private struct DailySetsExpandableSection: View {
 
     var body: some View {
         Group {
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showTodayRecords.toggle()
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(mandalaContextLabel)
-                        .font(.caption2)
-                        .foregroundColor(Color.duoSubtitle)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 0)
-                .padding(.bottom, 3)
-            }
-            .buttonStyle(.plain)
-
             if showTodayRecords {
                 VStack(spacing: 0) {
                     Divider().padding(.horizontal, 16)
@@ -9446,7 +9452,7 @@ struct DayCarouselSheet: View {
             var attempt = 0
             while attempt < 4 {
                 if let image = renderer.uiImage {
-                    shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸", image]
+                    shareItems = [routinGoShareCaption(), image]
                     showShare = true
                     isPreparingShare = false
                     return
@@ -9457,7 +9463,7 @@ struct DayCarouselSheet: View {
                 }
             }
             // 画像化に失敗した場合はテキストのみで共有を開く
-            shareItems = ["今日の投稿を Fit.ktrips.net でシェア📸"]
+            shareItems = [routinGoShareCaption()]
             showShare = true
             isPreparingShare = false
         }

@@ -9140,6 +9140,8 @@ private struct TodayHistorySection: View {
                                      progressDone: true) {
                             VStack(spacing: 4) {
                                 ForEach(eduItems) { item in
+                                    // EduLogManager.addItem と同じ判定（写真添付時のみ +10 XP）
+                                    let hasPhoto = item.thumbnail != nil
                                     HStack(spacing: 6) {
                                         // 時刻
                                         Text(Self.histTimeFmt.string(from: item.timestamp))
@@ -9163,6 +9165,10 @@ private struct TodayHistorySection: View {
                                         }
 
                                         Spacer()
+                                        if hasPhoto {
+                                            Text("+10 XP")
+                                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoGold)
+                                        }
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 12 * UIScale.font))
                                             .foregroundColor(Color.duoGreen)
@@ -9289,6 +9295,8 @@ private struct TodayHistorySection: View {
                                   timeFmt: DateFormatter) -> some View {
         VStack(spacing: 4) {
             ForEach(sessions) { s in
+                // awardXPForMindfulSessions と同じ判定（Reflect=30pt / それ以外(Breathe)=10pt）
+                let xp = s.sessionTypeLabel == "Reflect" ? 30 : 10
                 HStack(spacing: 6) {
                     Text(timeFmt.string(from: s.startDate))
                         .font(.system(size: 11 * UIScale.font)).foregroundColor(Color.duoSubtitle)
@@ -9296,6 +9304,8 @@ private struct TodayHistorySection: View {
                     Spacer()
                     Text("\(Int(s.durationMinutes))分")
                         .font(.system(size: 11 * UIScale.font, weight: .black)).foregroundColor(color)
+                    Text("+\(xp) XP")
+                        .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoGold)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(color.opacity(0.07))

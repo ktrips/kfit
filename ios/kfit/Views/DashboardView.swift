@@ -1379,9 +1379,9 @@ struct DashboardView: View {
                 healthKit: healthKit,
                 todayExercises: todayExercises,
                 slotSetCounts: cachedSlotSetCounts,
-                showTodayRecords: $showTodayRecords,
                 dailyCalorieGoal: intakeGoals.dailyCalorieGoal,
-                dailyWaterGoal: intakeGoals.dailyWaterGoal
+                dailyWaterGoal: intakeGoals.dailyWaterGoal,
+                showTodayRecords: $showTodayRecords
             )
 
             dailySetsCardButtons
@@ -2593,9 +2593,9 @@ struct DashboardView: View {
 
         // 全完了
         if completedCount == totalCount && totalCount > 0 {
-            if hour < 12 { return "🎉 午前中に全完了！最高のスタート！" }
-            if hour < 17 { return "🎉 全タスク完了！今日も最高だよ！" }
-            return "🎉 全タスク達成！今日もお疲れ様！"
+            if hour < 12 { return "午前中に全完了！最高のスタート" }
+            if hour < 17 { return "全タスク完了！今日も最高だよ" }
+            return "全タスク達成！お疲れ様"
         }
 
         let currentSlot: TimeSlot? = {
@@ -2616,8 +2616,8 @@ struct DashboardView: View {
             } else if incomplete.isEmpty {
                 // 現在のスロット完了
                 let nextSlotMessages: [String] = [
-                    "\(slot.displayName)のROUTIN完了！次も頑張ろう💪",
-                    "\(slot.displayName)はパーフェクト！この調子！",
+                    "\(slot.displayName)完了！次も頑張ろう",
+                    "\(slot.displayName)パーフェクト！この調子",
                 ]
                 return nextSlotMessages[hour % nextSlotMessages.count]
             } else {
@@ -2627,47 +2627,47 @@ struct DashboardView: View {
                 switch slot {
                 case .morning:
                     let msgs = [
-                        "☀️ 朝のトレーニングが足りないよ！やってみよう！",
-                        "🌅 朝から動けば一日が変わる！あと\(remaining)個！",
-                        "🐓 早起きは三文の得！朝ROUTINをこなそう！",
+                        "朝のトレーニングが足りないよ",
+                        "朝ROUTINあと\(remaining)個！",
+                        "早起きは三文の得！こなそう",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .noon:
                     let msgs = [
-                        "🍱 お昼の時間！ランチ前に\(remaining)個こなそう！",
-                        "⚡ 午前の勢いで昼ROUTINもやり切ろう！",
-                        "🕛 昼休みにサクッとROUTINを終わらせよう！",
+                        "ランチ前に\(remaining)個こなそう",
+                        "昼ROUTINもやり切ろう",
+                        "昼休みにサクッと終わらせよう",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .afternoon:
                     let msgs = [
-                        "🌤️ 午後のROUTINがまだ残ってるよ！今すぐやろう！",
-                        "💡 夕方前にあと\(remaining)個！集中してこなそう！",
-                        "🏃 午後の眠気を吹き飛ばせ！ROUTINでシャキッと！",
+                        "午後ROUTINが残ってるよ",
+                        "夕方前にあと\(remaining)個！",
+                        "午後ROUTINでシャキッと",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 case .evening:
                     let msgs = [
-                        "🌙 夜のROUTINが\(remaining)個残ってる！諦めないで！",
-                        "🔥 今日を終える前にあと\(remaining)個！ラストスパート！",
-                        "⭐ 寝る前にROUTINで完璧な一日にしよう！",
+                        "夜ROUTINあと\(remaining)個！",
+                        "ラストスパート！あと\(remaining)個",
+                        "寝る前に完璧な一日に",
                     ]
                     return msgs[slotCompleted % msgs.count]
                 default:
-                    return "💪 あと\(remaining)個！今すぐROUTINを始めよう！"
+                    return "あと\(remaining)個！今すぐ始めよう"
                 }
             }
         }
 
         // スロット外（深夜・早朝）または全体メッセージ
         if completedCount == 0 {
-            if hour < 5  { return "🌙 もうすぐ夜明け！今日のROUTINを準備しよう" }
-            return "👊 今日のROUTINを始めよう！最初の一歩が大事！"
+            if hour < 5  { return "もうすぐ夜明け！準備しよう" }
+            return "今日のROUTINを始めよう"
         }
         if progress < 0.5 {
-            return "💪 \(completedCount)/\(totalCount) 達成中！まだまだいけるよ！"
+            return "\(completedCount)/\(totalCount) 達成中！まだいけるよ"
         }
-        return "🔥 もう少し！\(totalCount - completedCount)個で今日完璧！"
+        return "もう少し！あと\(totalCount - completedCount)個"
     }
 
 
@@ -7200,12 +7200,13 @@ private struct MandalaSpiralCard: View {
             .padding(.top, 1)
             .padding(.bottom, 0)
             .overlay(alignment: .top) { legendOverlay }
-            .overlay(alignment: .topTrailing) {
+            .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 6) {
                     shareButton
                     settingsButton
                 }
                 .padding(.trailing, 8)
+                .padding(.bottom, 8)
             }
             .sheet(isPresented: $showWeightOptions) {
                 WeightRecordOptionsSheet(
@@ -7331,50 +7332,51 @@ private struct MandalaSpiralCard: View {
                 .cornerRadius(6)
                 .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
 
-            // 今日の投稿があるときだけスライドアイコンを表示
-            if !entries.isEmpty {
-                Button {
-                    carouselSlotFilter = nil
-                    showDayCarousel = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "rectangle.stack.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("\(entries.count)件")
-                            .font(.system(size: 9, weight: .bold))
+            HStack(spacing: 5) {
+                // 今日の投稿があるときだけスライドアイコンを表示
+                if !entries.isEmpty {
+                    Button {
+                        carouselSlotFilter = nil
+                        showDayCarousel = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "rectangle.stack.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("\(entries.count)件")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(Color(hex: "CE82FF"))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color(hex: "CE82FF").opacity(0.13))
+                        .cornerRadius(5)
                     }
-                    .foregroundColor(Color(hex: "CE82FF"))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color(hex: "CE82FF").opacity(0.13))
-                    .cornerRadius(5)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .padding(.leading, 5)
-            }
 
-            // アクティビティ詳細の開閉メッセージ（DailySetsExpandableSection と showTodayRecords を共有）
-            if !mandalaContextLabel.isEmpty {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showTodayRecords.toggle()
+                // アクティビティ詳細の開閉メッセージ（短縮・アイコンなし。
+                // DailySetsExpandableSection と showTodayRecords を共有）
+                if !mandalaContextLabel.isEmpty {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showTodayRecords.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(mandalaContextLabel)
+                                .font(.system(size: 9, weight: .semibold))
+                                .lineLimit(1)
+                            Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color(.systemBackground).opacity(0.82))
+                        .cornerRadius(5)
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(mandalaContextLabel)
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                            .lineLimit(1)
-                        Image(systemName: showTodayRecords ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color(.systemBackground).opacity(0.82))
-                    .cornerRadius(6)
-                    .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .padding(.leading, 5)
         }
         .padding(.top, 6)
         .padding(.horizontal, 6)

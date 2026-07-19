@@ -6146,9 +6146,14 @@ struct DashboardView: View {
             let centerTotal = cachedMandalaNodes.count
             let centerCompleted = cachedMandalaNodes.filter(\.isCompleted).count
             let centerPercent = centerTotal > 0 ? Int(Double(centerCompleted) / Double(centerTotal) * 100) : 0
-            let badgeText = "RoutinGo (\(centerPercent)%, \(Self.slashMdHm.string(from: Date())))"
+            let headerText = "\(Self.slashMdHm.string(from: Date()))　\(centerPercent)%"
             let renderer = ImageRenderer(content:
-                VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    Text(headerText)
+                        .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                        .padding(.top, 16)
+
                     MandalaChartView(
                         settings: timeSlotManager.settings,
                         progress: timeSlotManager.progress,
@@ -6161,17 +6166,11 @@ struct DashboardView: View {
                         isSnapshotMode: true
                     )
                     .frame(width: 360, height: 410)
-                    .padding(.top, 8)
-                    .overlay(alignment: .bottom) {
-                        Text(badgeText)
-                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Color.black.opacity(0.55))
-                            .clipShape(Capsule())
-                            .padding(.bottom, 8)
-                    }
-                    .padding(.bottom, 12)
+
+                    Text("Fit.ktrips.net")
+                        .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
+                        .padding(.bottom, 16)
                 }
                 .frame(width: 360)
                 .background(Color.duoBg)

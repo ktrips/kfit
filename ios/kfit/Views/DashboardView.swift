@@ -354,6 +354,49 @@ struct ActivityRingView: View {
     }
 }
 
+/// 週次・月次 到達度カレンダーの1セル（リングの中に%を表示）。
+/// percent が nil の場合（未記録・未来日）は空のリングのみ表示する。
+struct AchievementRingView: View {
+    let percent: Int?
+    let size: CGFloat
+    let isToday: Bool
+    let isFuture: Bool
+
+    private var ringColor: Color {
+        guard let percent = percent else { return Color(.systemGray5) }
+        if percent >= 100 { return Color.duoGreen }
+        if percent >= 50 { return Color.duoOrange }
+        return Color(hex: "#FF4B4B")
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(.systemGray5), lineWidth: 3)
+            if let percent = percent {
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(1.0, max(0, Double(percent) / 100.0))))
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text("\(percent)")
+                    .font(.system(size: size * 0.32, weight: .black, design: .rounded))
+                    .foregroundColor(ringColor)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            } else if !isFuture {
+                Text("-")
+                    .font(.system(size: size * 0.32, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(
+            Circle().stroke(isToday ? Color.duoGreen : Color.clear, lineWidth: 1.5)
+                .frame(width: size + 4, height: size + 4)
+        )
+    }
+}
+
 /// DispatchWorkItemをSwiftUIの@Stateに入れると毎回の代入で再レンダリングが
 /// トリガーされる。このクラスはObservableObjectだが@Publishedプロパティを
 /// 持たないため、workItemの更新がDashboardViewの再レンダリングを起こさない。
@@ -421,6 +464,11 @@ struct DashboardView: View {
         f.dateFormat = "M/d (E)"
         return f
     }()
+    private static let yyyyMMdd: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     // body 再評価毎に Timer.publish を再生成するとカウントがリセットされ
     // 実質発火しなくなるため、static で1つだけ保持する
@@ -454,6 +502,10 @@ struct DashboardView: View {
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
     @State private var cachedMandalaOverallCount: (done: Int, total: Int) = (0, 0)
+    // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent の履歴）
+    @State private var weeklyAchievementPercents: [Date: Int] = [:]
+    @State private var monthlyAchievementPercents: [Date: Int] = [:]
+    @State private var hasLoadedAchievementCalendar = false
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -635,6 +687,7 @@ struct DashboardView: View {
                                 pointsDetailExpandedSection
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
+                            achievementCalendarSection
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)
@@ -2361,6 +2414,30 @@ struct DashboardView: View {
         let visibleSlotSet = Set(mandalaVisibleSlots)
         let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
         cachedMandalaOverallCount = (visible.filter(\.isCompleted).count, visible.count)
+        recordDailyAchievementPercentIfNeeded()
+    }
+
+    /// 1日の終わり（23:59以降）に、その日のスパイラル到達度パーセンテージを
+    /// summaries/daily-{yyyy-MM-dd} に記録する（週次・月次カレンダー表示用）。
+    /// 1日1回のみ記録する（UserDefaultsで判定）。
+    private func recordDailyAchievementPercentIfNeeded() {
+        let calendar = Calendar.current
+        let now = Date()
+        let comps = calendar.dateComponents([.hour, .minute], from: now)
+        let isEndOfToday = (comps.hour ?? 0) > 23
+            || ((comps.hour ?? 0) == 23 && (comps.minute ?? 0) >= 59)
+        guard isEndOfToday else { return }
+
+        let dayKey = DashboardView.yyyyMMdd.string(from: calendar.startOfDay(for: now))
+        let defaultsKey = "dashboard.dailyAchievementPercent.\(dayKey)"
+        guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
+
+        let count = cachedMandalaOverallCount
+        guard count.total > 0 else { return }
+        let percent = Int((Double(count.done) / Double(count.total) * 100).rounded())
+
+        UserDefaults.standard.set(true, forKey: defaultsKey)
+        Task { await authManager.saveDailyAchievementPercent(percent, for: now) }
     }
 
     /// 今日投稿された Edu 記録（共有・写真ログなど）があれば
@@ -4537,6 +4614,125 @@ struct DashboardView: View {
                     weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
                     isLoadingWeeklyStats = false
                 }
+    }
+
+    // MARK: - 週次・月次 到達度カレンダー
+
+    /// 今週（月〜日）の日付一覧
+    private var currentWeekDates: [Date] {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2  // 月曜始まり
+        let today = calendar.startOfDay(for: Date())
+        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+    }
+
+    /// 今月のカレンダーグリッド（月曜始まり）。月初の空きマスは nil。
+    private var currentMonthGridDates: [Date?] {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2
+        let today = Date()
+        guard let monthInterval = calendar.dateInterval(of: .month, for: today) else { return [] }
+        let monthStart = monthInterval.start
+        let daysInMonth = calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 30
+        let leadingEmpty = (calendar.component(.weekday, from: monthStart) - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: leadingEmpty)
+        cells += (0..<daysInMonth).compactMap { calendar.date(byAdding: .day, value: $0, to: monthStart) }
+        return cells
+    }
+
+    private static let weekdayLabelFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        return f
+    }()
+
+    private static let monthTitleFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月"
+        return f
+    }()
+
+    /// 指定日の到達度パーセント。今日は記録が無ければ現在のスパイラル進捗を暫定表示する。
+    private func achievementPercent(for date: Date, from store: [Date: Int]) -> Int? {
+        let day = Calendar.current.startOfDay(for: date)
+        if let saved = store[day] { return saved }
+        if Calendar.current.isDateInToday(day), cachedMandalaOverallCount.total > 0 {
+            return Int((Double(cachedMandalaOverallCount.done) / Double(cachedMandalaOverallCount.total) * 100).rounded())
+        }
+        return nil
+    }
+
+    private var achievementCalendarSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // ── 週次（月〜日）──
+            VStack(alignment: .leading, spacing: 8) {
+                Text("📅 今週の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
+                HStack(spacing: 6) {
+                    ForEach(currentWeekDates, id: \.self) { date in
+                        VStack(spacing: 4) {
+                            AchievementRingView(
+                                percent: achievementPercent(for: date, from: weeklyAchievementPercents),
+                                size: 38,
+                                isToday: Calendar.current.isDateInToday(date),
+                                isFuture: date > Date()
+                            )
+                            Text(Self.weekdayLabelFmt.string(from: date))
+                                .font(.system(size: 9)).foregroundColor(Color.duoSubtitle)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(12)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+            }
+
+            // ── 月次カレンダー ──
+            VStack(alignment: .leading, spacing: 8) {
+                Text("🗓️ \(Self.monthTitleFmt.string(from: Date()))の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
+                VStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        ForEach(["月","火","水","木","金","土","日"], id: \.self) { d in
+                            Text(d).font(.caption2).foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity)
+                        }
+                    }
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                        ForEach(Array(currentMonthGridDates.enumerated()), id: \.offset) { _, date in
+                            if let date = date {
+                                AchievementRingView(
+                                    percent: achievementPercent(for: date, from: monthlyAchievementPercents),
+                                    size: 26,
+                                    isToday: Calendar.current.isDateInToday(date),
+                                    isFuture: date > Date()
+                                )
+                            } else {
+                                Color.clear.frame(width: 26, height: 26)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color(.systemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+            }
+        }
+        .task {
+            guard !hasLoadedAchievementCalendar else { return }
+            hasLoadedAchievementCalendar = true
+            let calendar = Calendar.current
+            if let weekStart = currentWeekDates.first, let weekEnd = currentWeekDates.last {
+                async let weekly = authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
+                let monthStart = calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
+                async let monthly = authManager.getDailyAchievementPercents(from: monthStart, to: Date())
+                weeklyAchievementPercents = await weekly
+                monthlyAchievementPercents = await monthly
+            }
+        }
     }
 
     // MARK: - カロリー目標編集シート

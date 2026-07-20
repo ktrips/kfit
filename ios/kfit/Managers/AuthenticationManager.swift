@@ -2010,6 +2010,58 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
+    // MARK: - 到達度パーセンテージ（週次・月次カレンダー表示用）
+
+    /// その日の到達度パーセンテージ（スパイラルの完了率）を daily summary に記録する
+    func saveDailyAchievementPercent(_ percent: Int, for date: Date = Date()) async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        let dailyId = "daily-\(dayKey(for: date))"
+        let data: [String: Any] = [
+            "achievementPercent": percent,
+            "achievementPercentUpdatedAt": FieldValue.serverTimestamp()
+        ]
+        do {
+            try await summaryDocument(userId: userId, id: dailyId).setData(data, merge: true)
+        } catch {
+            dlog("❌ Failed to save daily achievement percent: \(error)")
+        }
+    }
+
+    /// 指定期間（両端含む）の日別到達度パーセンテージを取得する（週次・月次カレンダー表示用）
+    func getDailyAchievementPercents(from startDate: Date, to endDate: Date) async -> [Date: Int] {
+        guard let userId = Auth.auth().currentUser?.uid else { return [:] }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        let end = calendar.startOfDay(for: endDate)
+        guard start <= end else { return [:] }
+
+        var dates: [Date] = []
+        var cursor = start
+        while cursor <= end {
+            dates.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+
+        var result: [Date: Int] = [:]
+        await withTaskGroup(of: (Date, Int?).self) { group in
+            for date in dates {
+                let key = Self.yyyyMMddFmt.string(from: date)
+                group.addTask {
+                    let snap = try? await self.db
+                        .collection("users").document(userId)
+                        .collection("summaries").document("daily-\(key)")
+                        .getDocument()
+                    return (date, snap?.data()?["achievementPercent"] as? Int)
+                }
+            }
+            for await (date, percent) in group {
+                if let percent = percent { result[date] = percent }
+            }
+        }
+        return result
+    }
+
     func performEndOfDayWaterTopUpIfNeeded(now: Date = Date(), targetWaterMl: Int? = nil) async {
         guard TimeSlotManager.shared.settings.globalGoals.drinkEnabled else { return }
         let targetWaterMl = targetWaterMl ?? TimeSlotManager.shared.settings.globalGoals.dailyDrinkMl

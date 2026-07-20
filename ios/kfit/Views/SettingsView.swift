@@ -91,14 +91,13 @@ struct SettingsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     premiumSection
-                    permissionBanner
                     tabVisibilitySection
                     dailyHabitsSection
                     motionSensitivitySection
                     intakeSection
-                    habitStackSection
                     advancedSettingsSection
                     saveButton
+                    permissionBanner
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, 16)
@@ -470,7 +469,8 @@ struct SettingsView: View {
                     showHabitSettings = true
                 } label: {
                     Text("習慣設定")
-                        .font(.caption2).fontWeight(.bold)
+                        .font(.system(size: 10, weight: .bold))
+                        .lineLimit(1).fixedSize()
                         .foregroundColor(Color.duoGreen)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(Color.duoGreen.opacity(0.12))
@@ -485,7 +485,8 @@ struct SettingsView: View {
                     case .goal:
                         Button { showDietGoalSettings = true } label: {
                             Text("目標設定")
-                                .font(.caption2).fontWeight(.bold)
+                                .font(.system(size: 10, weight: .bold))
+                                .lineLimit(1).fixedSize()
                                 .foregroundColor(Color.duoGreen)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(Color.duoGreen.opacity(0.12))
@@ -495,7 +496,8 @@ struct SettingsView: View {
                     case .goalingo:
                         Button { showRaceGoalSettings = true } label: {
                             Text("ゴール設定")
-                                .font(.caption2).fontWeight(.bold)
+                                .font(.system(size: 10, weight: .bold))
+                                .lineLimit(1).fixedSize()
                                 .foregroundColor(Color.duoGreen)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(Color.duoGreen.opacity(0.12))
@@ -505,7 +507,8 @@ struct SettingsView: View {
                     case .food:
                         Button { showIntakeSettings = true } label: {
                             Text("食事設定")
-                                .font(.caption2).fontWeight(.bold)
+                                .font(.system(size: 10, weight: .bold))
+                                .lineLimit(1).fixedSize()
                                 .foregroundColor(Color.duoOrange)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(Color.duoOrange.opacity(0.12))
@@ -711,18 +714,6 @@ struct SettingsView: View {
 
     private var dailyFixedGoalsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("📆").font(.title2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("毎日の設定")
-                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("曜日に関わらず毎日Apple Healthから自動チェック")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-            .padding(.bottom, 14)
-
             Toggle(isOn: Binding(
                 get: { dailyFixedGoals.foodEnabled },
                 set: { v in dailyFixedGoals.foodEnabled = v; foodTabVisible = v; saveDailyFixedGoals() }
@@ -1497,9 +1488,6 @@ struct SettingsView: View {
 
     private var intakeSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "fork.knife", title: "摂取記録",
-                          subtitle: "食事・水分・コーヒー・アルコール")
-
             Button {
                 showIntakeSettings = true
             } label: {
@@ -1509,7 +1497,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.duoOrange)
                         .frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("デフォルト設定")
+                        Text("食事記録設定")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
                         Text("カロリー量やアルコール種類など")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
@@ -1530,9 +1518,6 @@ struct SettingsView: View {
 
     private var motionSensitivitySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "sensor.fill", title: "トレーニング・メニュー、モーション設定",
-                          subtitle: "種目・回数・検出精度をまとめて調整")
-
             Button {
                 showSensitivityEditor = true
             } label: {
@@ -1542,7 +1527,7 @@ struct SettingsView: View {
                         .foregroundColor(Color.duoGreen)
                         .frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("メニュー・感度を編集")
+                        Text("トレーニング・メニュー設定")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
                         Text("\(setConfiguration.exercises.count)種目 登録済み · iPhone・Apple Watch共通")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
@@ -1756,6 +1741,7 @@ struct SettingsView: View {
                         ninetySecondModeSection
                         llmSection
                         watchSection
+                        habitStackSection
                         linkedAppsSection
                         snsAccountSection
                         Spacer(minLength: 40)

@@ -543,13 +543,18 @@ const ModeCard: React.FC<CardProps> = ({
               key={gifIdx}
               src={GIFS[gifIdx % GIFS.length]}
               alt="お手本動画"
-              style={{ width: 190, height: 190, objectFit: 'cover', borderRadius: 24 }}
+              style={{
+                width: 'min(280px, calc(100vw - 96px))',
+                height: 200,
+                objectFit: 'cover',
+                borderRadius: 24,
+              }}
             />
           ) : (
             <img
               src="/mascot.png"
               alt="Fitingo"
-              style={{ width: 190, height: 190, objectFit: 'contain', borderRadius: '50%' }}
+              style={{ width: 230, height: 230, objectFit: 'contain', borderRadius: '50%' }}
             />
           )}
         </button>
@@ -589,7 +594,7 @@ const ModeCard: React.FC<CardProps> = ({
       <button
         onClick={() => openIOS(mode.id)}
         style={{
-          marginTop: 28,
+          marginTop: 48,
           padding: '8px 16px',
           borderRadius: 999,
           background: accent,

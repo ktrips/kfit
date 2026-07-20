@@ -47,6 +47,7 @@ struct SettingsView: View {
     @State private var showHabitStack = false
     @State private var showHabitSettings = false
     @State private var showRaceGoalSettings = false
+    @State private var showTimeSlotGoals = false
     @State private var showShortcutsGuide = false
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
@@ -135,6 +136,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showHabitStack) { NavigationView { HabitStackView() } }
         .sheet(isPresented: $showHabitSettings) { habitSettingsSheet }
         .sheet(isPresented: $showRaceGoalSettings) { NavigationView { RaceGoalSettingsView() } }
+        .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
         .sheet(isPresented: $showSetEditor) {
             SetConfigurationEditorView(configuration: $setConfiguration)
@@ -652,9 +654,6 @@ struct SettingsView: View {
                 // 曜日毎の目標
                 weekdayGoalsSection
 
-                // 時間帯別の目標（インライン表示）
-                timeSlotGoalsInlineSection
-
                 // ゴール目標設定ボタン（レース・トライアスロン等）
                 Button { showRaceGoalSettings = true } label: {
                     HStack(spacing: 10) {
@@ -669,6 +668,35 @@ struct SettingsView: View {
                                 .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Text("大会・レース目標を設定（スイム・バイク・ラン）")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+
+                // 時間帯別設定ボタン
+                Button { showTimeSlotGoals = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoGreen)
+                            .frame(width: 32, height: 32)
+                            .background(Color.duoGreen.opacity(0.10))
+                            .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("時間帯別の目標")
+                                .font(.system(size: 13 * UIScale.font, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text("朝・昼・午後・夜の時間帯ごとに設定")
                                 .font(.caption)
                                 .foregroundColor(Color.duoSubtitle)
                         }
@@ -986,24 +1014,6 @@ struct SettingsView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-
-    // MARK: - 時間帯別の目標（インライン表示）
-
-    private var timeSlotGoalsInlineSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("⏰").font(.title2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("時間帯別の目標")
-                        .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
-                    Text("朝・昼・午後・夜の時間帯ごとに設定")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-            }
-            TimeSlotGoalsCardsView()
-        }
     }
 
     @ViewBuilder

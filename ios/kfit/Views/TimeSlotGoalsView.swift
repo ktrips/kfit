@@ -36,7 +36,10 @@ struct TimeSlotGoalsCardsView: View {
     // MARK: - Load / Save
 
     private func loadAll() async {
-        await timeSlotManager.loadTodaySettings()
+        // 呼び出し元（SettingsView / TimeSlotGoalsView）が既に
+        // timeSlotManager.loadTodaySettings() を完了させた後にこのビューを描画するため、
+        // ここで再度呼ぶと isLoading が再度 true になり親ビューとの間で
+        // 無限リロードループが発生する。ここでは再読み込みしない。
         for slot in activeSlots {
             goals[slot.rawValue] = timeSlotManager.settings.goalFor(slot) ?? TimeSlotGoal(timeSlot: slot)
         }

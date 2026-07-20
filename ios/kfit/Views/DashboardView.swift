@@ -631,6 +631,10 @@ struct DashboardView: View {
                                 }
                             }
                             xpSummaryCard
+                            if showPointsDetail {
+                                pointsDetailExpandedSection
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)
@@ -680,7 +684,6 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
             .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
-            .sheet(isPresented: $showPointsDetail) { pointsDetailSheet }
             .onChange(of: showPointsDetail) { isShown in
                 if isShown {
                     weeklyDailyStats = []  // 開くたびに再取得
@@ -1424,7 +1427,9 @@ struct DashboardView: View {
 
     // MARK: - XPサマリーカード（カロリー収支の下に表示）
     private var xpSummaryCard: some View {
-        Button { showPointsDetail = true } label: {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail.toggle() }
+        } label: {
             HStack(spacing: 0) {
                 xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
 
@@ -4196,7 +4201,7 @@ struct DashboardView: View {
     }
 
     // MARK: - ポイント詳細シート
-    private var pointsDetailSheet: some View {
+    private var pointsDetailExpandedSection: some View {
         let totalPoints = authManager.userProfile?.totalPoints ?? 0
         let cal = Calendar.current
 
@@ -4242,9 +4247,22 @@ struct DashboardView: View {
         // 日付フォーマッター（body 評価毎の生成を避けるため static を参照）
         let dayFmt = Self.slashMdSpaceE
 
-        return NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
+        return VStack(spacing: 16) {
+
+                    // ── ヘッダー（タイトル・閉じる）──
+                    HStack {
+                        Text("⭐ ポイント詳細")
+                            .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail = false }
+                        } label: {
+                            Text("閉じる")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 4)
 
                     // ── サマリーカード（今日 / 今週 / 累計）──
                     HStack(spacing: 0) {
@@ -4326,7 +4344,7 @@ struct DashboardView: View {
                                     let pXP = photoXP(for: date)
                                     let dayTotal = exXP + pXP
                                     HStack(spacing: 0) {
-                                        VStack(alignment: .leading, spacing: 1) {
+                                        HStack(spacing: 6) {
                                             Text(dayFmt.string(from: date))
                                                 .font(.system(size: 13 * UIScale.font, weight: isToday ? .bold : .regular))
                                                 .foregroundColor(isToday ? Color.duoGreen : Color.duoDark)
@@ -4339,6 +4357,7 @@ struct DashboardView: View {
                                                     .padding(.horizontal, 5).padding(.vertical, 1)
                                                     .background(Color.duoGreen)
                                                     .clipShape(Capsule())
+                                                    .fixedSize()
                                             }
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -4507,26 +4526,17 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity).padding(32)
                     }
 
-                    Spacer(minLength: 20)
+                    Spacer(minLength: 4)
                 }
-                .padding(20)
-            }
-            .background(Color.duoBg.ignoresSafeArea())
-            .navigationTitle("⭐ ポイント詳細")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("閉じる") { showPointsDetail = false }
-                        .foregroundColor(Color.duoGreen).fontWeight(.bold)
+                .padding(16)
+                .background(Color(.systemGroupedBackground))
+                .cornerRadius(20)
+                .task {
+                    guard weeklyDailyStats.isEmpty else { return }
+                    isLoadingWeeklyStats = true
+                    weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
+                    isLoadingWeeklyStats = false
                 }
-            }
-            .task {
-                guard weeklyDailyStats.isEmpty else { return }
-                isLoadingWeeklyStats = true
-                weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
-                isLoadingWeeklyStats = false
-            }
-        }
     }
 
     // MARK: - カロリー目標編集シート

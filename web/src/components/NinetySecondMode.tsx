@@ -94,7 +94,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'food',
     modeName: '食事ログ',
-    actionSuffix: '食事を撮る',
+    actionSuffix: '食事を撮る、それだけ',
     accent: '#FF9600',
     accentDark: '#CC7700',
     accentLight: 'rgba(255,150,0,0.1)',

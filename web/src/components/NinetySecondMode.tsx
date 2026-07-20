@@ -50,10 +50,9 @@ function recordToday(): string[] {
 
 interface ModeConfig {
   id: string;
-  badge: string;
   /** 見出し「今度こそ、続く」の下に表示するモード名（かっこ書き） */
   modeName: string;
-  /** バッジ（ボタン）の直後に続くメッセージ。例: [FIT 90秒]＋「を押して始める、それだけ」 */
+  /** メインボタンを指す「↑」の直後に続くメッセージ。例: ↑90秒始める、それだけ */
   actionSuffix: string;
   accent: string;
   accentDark: string;
@@ -67,9 +66,8 @@ interface ModeConfig {
 const MODES: ModeConfig[] = [
   {
     id: 'fit',
-    badge: 'FIT 90秒',
     modeName: '筋トレ',
-    actionSuffix: 'で始める、それだけ',
+    actionSuffix: '90秒始める、それだけ',
     accent: '#58CC02',
     accentDark: '#46A302',
     accentLight: 'rgba(88,204,2,0.1)',
@@ -79,7 +77,6 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'diet',
-    badge: 'DIET',
     modeName: 'ダイエット',
     actionSuffix: 'ボタンで計測、それだけ',
     accent: '#CE82FF',
@@ -91,7 +88,6 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'food',
-    badge: 'FOOD',
     modeName: '食事ログ',
     actionSuffix: 'ボタンで撮る、それだけ',
     accent: '#FF9600',
@@ -103,7 +99,6 @@ const MODES: ModeConfig[] = [
   },
   {
     id: 'edu',
-    badge: 'EDU',
     modeName: '語学',
     actionSuffix: 'ボタンで例文、それだけ',
     accent: '#1CB0F6',
@@ -541,7 +536,7 @@ const ModeCard: React.FC<CardProps> = ({
             transition: 'transform 1.6s ease-in-out',
             filter: `drop-shadow(0 8px 16px ${accent}55)`,
           }}
-          aria-label={doneToday ? 'もう1セット' : `${mode.badge}${mode.actionSuffix}`}
+          aria-label={doneToday ? 'もう1セット' : `${mode.modeName}を始める`}
         >
           {mode.id === 'fit' ? (
             <img
@@ -560,37 +555,20 @@ const ModeCard: React.FC<CardProps> = ({
         </button>
       )}
 
-      {/* ── モードバッジ（ボタン）+ メッセージ ─────────────────────────── */}
-      {/* 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）*/}
+      {/* ── メッセージ（↑がメインボタンを指す）────────────────────────── */}
+      {/* 例: ↑90秒始める、それだけ / ↑ボタンで計測、それだけ */}
       {doneToday ? (
         <p className="mt-4 font-black" style={{ color: '#1f1f1f', fontSize: 18 }}>
           ✅ 今日は完了！
         </p>
       ) : (
-        <div
-          className="mt-4 flex items-center flex-wrap justify-center"
-          style={{ gap: 8, padding: '0 16px' }}
+        <p
+          className="mt-4 text-center"
+          style={{ color: '#333', fontWeight: 900, fontSize: 22, padding: '0 16px', margin: 0 }}
         >
-          <button
-            onClick={onAction}
-            style={{
-              background: accent,
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: 999,
-              color: '#fff',
-              fontWeight: 900,
-              fontSize: 16,
-              padding: '7px 20px',
-              boxShadow: `0 3px 10px ${accent}55`,
-            }}
-          >
-            {mode.badge}
-          </button>
-          <span style={{ color: '#333', fontWeight: 900, fontSize: 22 }}>
-            {mode.actionSuffix}
-          </span>
-        </div>
+          <span style={{ color: accent }}>↑</span>
+          {mode.actionSuffix}
+        </p>
       )}
 
       {/* ── Tips（実施後はシンプルにするため非表示）──────────────────── */}
@@ -611,7 +589,7 @@ const ModeCard: React.FC<CardProps> = ({
       <button
         onClick={() => openIOS(mode.id)}
         style={{
-          marginTop: 14,
+          marginTop: 28,
           padding: '8px 16px',
           borderRadius: 999,
           background: accent,

@@ -6224,9 +6224,9 @@ struct DashboardView: View {
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
 
-            var items: [Any] = [routinGoShareCaption()]
+            var images: [UIImage] = []
             if let spiralImage = await renderWithRetry(spiralRenderer) {
-                items.append(spiralImage)
+                images.append(spiralImage)
             }
 
             // 今日の投稿があれば、その一覧も1枚の画像にして一緒に共有する
@@ -6235,9 +6235,15 @@ struct DashboardView: View {
                 let postsRenderer = ImageRenderer(content: TodayPostsSnapshotView(entries: todayEntries))
                 postsRenderer.scale = 2.0
                 if let postsImage = await renderWithRetry(postsRenderer) {
-                    items.append(postsImage)
+                    images.append(postsImage)
                 }
             }
+
+            // Facebookは共有シート経由だと画像を1枚しか受け取れないため、
+            // MultiImageShareItemSource でFacebookには結合画像・他アプリには
+            // 個別の画像を渡し分けて、どの共有先でも内容が欠落しないようにする。
+            var items: [Any] = [routinGoShareCaption()]
+            items.append(contentsOf: MultiImageShareItemSource.makeItems(images: images))
 
             webPostShareRequest = WebPostShareRequest(items: items)
         }

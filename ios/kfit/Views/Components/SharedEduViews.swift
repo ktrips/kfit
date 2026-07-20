@@ -58,6 +58,64 @@ struct SystemShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
+// MARK: - 複数画像を確実に共有するための ActivityItemSource
+// Facebookの共有拡張（ネイティブ・アプリいずれも）は UIActivityViewController に
+// 渡された複数枚の画像のうち1枚しか受け取れないため、そのままだと2枚目以降が
+// 欠落する。Facebook向けには全画像を縦に結合した1枚を渡し、それ以外の共有先には
+// 従来通り個別の画像を渡すことで、共有先を問わず内容が欠落しないようにする。
+
+final class MultiImageShareItemSource: NSObject, UIActivityItemSource {
+    private let image: UIImage
+    private let mergedImageForFacebook: UIImage?
+    private let isPrimary: Bool
+
+    /// `images` の各要素ごとに1つずつ生成し、まとめて共有シートの activityItems に渡す。
+    static func makeItems(images: [UIImage]) -> [MultiImageShareItemSource] {
+        let merged = images.count > 1 ? combinedVertically(images) : nil
+        return images.enumerated().map { index, image in
+            MultiImageShareItemSource(image: image, mergedImageForFacebook: merged, isPrimary: index == 0)
+        }
+    }
+
+    private init(image: UIImage, mergedImageForFacebook: UIImage?, isPrimary: Bool) {
+        self.image = image
+        self.mergedImageForFacebook = mergedImageForFacebook
+        self.isPrimary = isPrimary
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        image
+    }
+
+    func activityViewController(_ activityViewController: UIActivityViewController,
+                                 itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        let isFacebook = activityType?.rawValue.lowercased().contains("facebook") ?? false
+        guard isFacebook else { return image }
+        // Facebookには結合済みの1枚だけを、先頭のソースからのみ渡す（2枚目以降は nil で除外）。
+        return isPrimary ? (mergedImageForFacebook ?? image) : nil
+    }
+
+    private static func combinedVertically(_ images: [UIImage]) -> UIImage? {
+        guard let first = images.first else { return nil }
+        let spacing: CGFloat = 16
+        let width = images.map(\.size.width).max() ?? first.size.width
+        let height = images.reduce(0) { $0 + $1.size.height } + spacing * CGFloat(images.count - 1)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = first.scale
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
+        return renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            var y: CGFloat = 0
+            for image in images {
+                let x = (width - image.size.width) / 2
+                image.draw(at: CGPoint(x: x, y: y))
+                y += image.size.height + spacing
+            }
+        }
+    }
+}
+
 // MARK: - DuolingoPhraseView
 // Duolingo フレーズパネルの統一実装。
 // TomoView・SwipeableTomoDetailSheet・DayCarouselSheet の三箇所で共有。
@@ -363,12 +421,12 @@ struct DuolingoPhraseView: View {
 private let routinGoShareDateFmt: DateFormatter = {
     let f = DateFormatter()
     f.locale = Locale(identifier: "ja_JP")
-    f.dateFormat = "M/d"
+    f.dateFormat = "M/d(E)"
     return f
 }()
 
 func routinGoShareCaption() -> String {
-    "今日(\(routinGoShareDateFmt.string(from: Date())))のルーティン。Fit.ktrips.net で続けよう！ #fitingo #routingo"
+    "今日 \(routinGoShareDateFmt.string(from: Date()))のルーティン。Fit.ktrips.netで継続中！"
 }
 
 // MARK: - dayLabel

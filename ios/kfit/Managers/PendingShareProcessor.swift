@@ -37,7 +37,7 @@ private func detectCategory(comment: String, sourceApp: String) -> ShareCategory
     }
 
     // ── 日記 ──────────────────────────────────────────────────────────────
-    let diaryKeywords = ["日記", "diary", "フォト日記", "journal", "メモ", "今日の出来事"]
+    let diaryKeywords = ["日記", "diary", "フォト日記", "journal", "メモ", "今日の出来事", "記録"]
     if diaryKeywords.contains(where: { text.contains($0) }) {
         return ShareCategory(activityName: "日記", activityEmoji: "📔", isDuolingo: false)
     }

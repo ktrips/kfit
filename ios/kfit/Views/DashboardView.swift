@@ -512,9 +512,13 @@ struct DashboardView: View {
     @State private var eduPhotoLogNode: MandalaNodeData? = nil
     @State private var eduPhotoLogLinkMode: Bool = false  // コメント・リンクで記録モード
     // ウェブ投稿ノード: スパイラルを画像化して共有シートを出す
-    @State private var showWebPostShare = false
-    @State private var webPostShareItems: [Any] = []
+    // item: で渡すことで sheet(isPresented:) の状態キャプチャ競合（初回ブランク画面）を回避
+    @State private var webPostShareRequest: WebPostShareRequest? = nil
     @State private var pendingWebPostNode: MandalaNodeData? = nil
+    private struct WebPostShareRequest: Identifiable {
+        let id = UUID()
+        let items: [Any]
+    }
     @State private var lastLoadDataTime: Date? = nil
     @State private var todayWeekdayGoal: WeekdayGoal? = nil
     @State private var dailyFixedGoals: DailyFixedGoals = DailyFixedGoals()
@@ -626,6 +630,7 @@ struct DashboardView: View {
                                     )
                                 }
                             }
+                            xpSummaryCard
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)
@@ -755,8 +760,8 @@ struct DashboardView: View {
                 }())])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showWebPostShare) {
-                SystemShareSheet(items: webPostShareItems, onComplete: handleWebPostShareResult)
+            .sheet(item: $webPostShareRequest) { req in
+                SystemShareSheet(items: req.items, onComplete: handleWebPostShareResult)
             }
             .fullScreenCover(isPresented: $showPhotoLog) { PhotoLogView() }
             .sheet(item: $eduPhotoLogNode) { node in
@@ -1368,13 +1373,10 @@ struct DashboardView: View {
                     onShareSpiral: { startWebPostShare(for: nil) }
                 )
 
-                VStack(spacing: 4) {
-                    todayRecordsMessageRow(label: mandalaContextString(mandalaNodes))
-                    compactPointsBar
-                }
+                todayRecordsMessageRow(label: mandalaContextString(mandalaNodes))
             }
 
-            // アコーディオン本体（開閉ボタンはスパイラル下部・XPバー上に移動済み・独立Viewでスタックオーバーフローを防止）
+            // アコーディオン本体（開閉ボタンはスパイラル下部に移動済み・独立Viewでスタックオーバーフローを防止）
             DailySetsExpandableSection(
                 timeSlotManager: timeSlotManager,
                 healthKit: healthKit,
@@ -1420,66 +1422,47 @@ struct DashboardView: View {
         }
     }
 
-    private var compactPointsBar: some View {
+    // MARK: - XPサマリーカード（カロリー収支の下に表示）
+    private var xpSummaryCard: some View {
         Button { showPointsDetail = true } label: {
             HStack(spacing: 0) {
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Color.duoGreen)
-                    Text("今日")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                    Text("\(totalXP)XP")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoGreen)
-                }
-                .frame(maxWidth: .infinity)
+                xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
 
                 Rectangle()
                     .fill(Color(.systemGray5))
-                    .frame(width: 1, height: 12)
+                    .frame(width: 1, height: 32)
 
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Color.duoBlue)
-                    Text("今週")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                    Text("\(weeklyXP)XP")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoBlue)
-                }
-                .frame(maxWidth: .infinity)
+                xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
 
                 Rectangle()
                     .fill(Color(.systemGray5))
-                    .frame(width: 1, height: 12)
+                    .frame(width: 1, height: 32)
 
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Color.duoOrange)
-                    Text("総計")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                    Text("\(authManager.userProfile?.totalPoints ?? 0)XP")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoOrange)
-                }
-                .frame(maxWidth: .infinity)
+                xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
             }
-            .padding(.vertical, 6)
-            .background(
-                Color(.systemBackground).opacity(0.88)
-                    .background(.ultraThinMaterial)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            .padding(.vertical, 14)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
+    }
+
+    private func xpSummaryItem(label: String, xp: Int, color: Color) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Text("\(xp)XP")
+                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 今日の状況カード ヘルパー（スタックオーバーフロー防止のため分離）
@@ -6155,7 +6138,22 @@ struct DashboardView: View {
     /// ImageRenderer初回呼び出しの白紙画像対策（プロセス内で1回だけ捨て打ちする）
     private static var hasWarmedUpWebPostRenderer = false
 
-    /// 現在のスパイラルをカード画像にして共有シートを開く。
+    /// renderer.uiImage はプロセス内で最初に呼ばれた際、nil ではなくレイアウト未完了の
+    /// 「白紙」画像を返すことがある（2回目以降は正常）。nil チェックだけでは検知できないため
+    /// 数回リトライして正常な画像を待つ。数回試しても失敗したら nil を返す。
+    private func renderWithRetry<Content: View>(_ renderer: ImageRenderer<Content>) async -> UIImage? {
+        var attempt = 0
+        while attempt < 4 {
+            if let image = renderer.uiImage { return image }
+            attempt += 1
+            if attempt < 4 {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+        }
+        return nil
+    }
+
+    /// 現在のスパイラルと「今日の投稿」をカード画像にして共有シートを開く。
     /// node が「今日をシェア」ノードの場合は、実際に共有が完了したタイミングで
     /// そのノードを完了扱いにする（handleWebPostShareResult）。キャンセル時は完了にしない。
     /// node が nil の場合（スパイラル右上の共有ボタンから）は完了処理を行わない。
@@ -6173,12 +6171,14 @@ struct DashboardView: View {
             let centerCompleted = cachedMandalaNodes.filter(\.isCompleted).count
             let centerPercent = centerTotal > 0 ? Int(Double(centerCompleted) / Double(centerTotal) * 100) : 0
             let headerText = "\(Self.slashMdHm.string(from: Date()))　\(centerPercent)%"
-            let renderer = ImageRenderer(content:
-                VStack(spacing: 0) {
+            let spiralRenderer = ImageRenderer(content:
+                VStack(spacing: 2) {
                     Text(headerText)
                         .font(.system(size: 16 * UIScale.font, weight: .black, design: .rounded))
                         .foregroundColor(Color.duoDark)
-                        .padding(.top, 10)
+                    Text("Fit.ktrips.netで継続!")
+                        .font(.system(size: 12 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
 
                     MandalaChartView(
                         settings: timeSlotManager.settings,
@@ -6192,45 +6192,40 @@ struct DashboardView: View {
                         isSnapshotMode: true
                     )
                     .frame(width: 360, height: 410)
-
-                    Text("Fit.ktrips.net")
-                        .font(.system(size: 13 * UIScale.font, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.duoSubtitle)
-                        .padding(.bottom, 10)
+                    .padding(.top, 4)
                 }
+                .padding(.top, 10)
+                .padding(.bottom, 10)
                 .frame(width: 360)
                 .background(Color.duoBg)
             )
-            renderer.scale = 3.0
+            spiralRenderer.scale = 3.0
 
             // ImageRenderer はプロセス内で最初に呼ばれた際、nil ではなく
             // レイアウト未完了の「白紙」画像を返すことがある（2回目以降は正常）。
-            // nil チェックだけでは検知できないため、プロセス内で初回のみ
-            // 1回捨て打ちしてレンダリングパイプラインを温めてから本番取得する。
+            // プロセス内で初回のみ1回捨て打ちしてレンダリングパイプラインを温めてから本番取得する。
             if !Self.hasWarmedUpWebPostRenderer {
-                _ = renderer.uiImage
+                _ = spiralRenderer.uiImage
                 Self.hasWarmedUpWebPostRenderer = true
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
 
-            // renderer.uiImage はプロセス内で最初に呼ばれた際、レイアウト未完了のまま
-            // 空画像を返すことがあるため、nil の場合は同じ renderer に対して少し待って
-            // 再試行する（ビューツリーの再構築はしない）。
-            var attempt = 0
-            while attempt < 4 {
-                if let image = renderer.uiImage {
-                    webPostShareItems = [routinGoShareCaption(), image]
-                    showWebPostShare = true
-                    return
-                }
-                attempt += 1
-                if attempt < 4 {
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+            var items: [Any] = [routinGoShareCaption()]
+            if let spiralImage = await renderWithRetry(spiralRenderer) {
+                items.append(spiralImage)
+            }
+
+            // 今日の投稿があれば、その一覧も1枚の画像にして一緒に共有する
+            let todayEntries = buildTodayCarouselEntries()
+            if !todayEntries.isEmpty {
+                let postsRenderer = ImageRenderer(content: TodayPostsSnapshotView(entries: todayEntries))
+                postsRenderer.scale = 2.0
+                if let postsImage = await renderWithRetry(postsRenderer) {
+                    items.append(postsImage)
                 }
             }
-            // 数回試しても画像化に失敗した場合はテキストのみで共有を開く
-            webPostShareItems = [routinGoShareCaption()]
-            showWebPostShare = true
+
+            webPostShareRequest = WebPostShareRequest(items: items)
         }
     }
 
@@ -7197,7 +7192,6 @@ private struct MandalaSpiralCard: View {
     var weightKg: Double? = nil
     var bodyFatPercent: Double? = nil
     var onShareSpiral: () -> Void = {}
-    @EnvironmentObject private var photoLogManager: PhotoLogManager
 
     // 体重計測ノード: 記録方法の選択 / 写真記録シート
     @State private var showWeightOptions = false
@@ -7381,60 +7375,7 @@ private struct MandalaSpiralCard: View {
 
     // 今日の投稿エントリ（Edu + フォトログ）を時刻順で返す
     private var todayCarouselEntries: [DayCarouselEntry] {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        var entries: [DayCarouselEntry] = []
-
-        // EduLog（活動・学習・リンク共有など）
-        for item in EduLogManager.shared.history where cal.startOfDay(for: item.timestamp) == today {
-            let linkURL = item.sharedUrl.flatMap { URL(string: $0) }
-            let kind: DayCarouselEntry.Kind = linkURL != nil ? .link
-                : (item.thumbnail != nil ? .photo : .activity)
-            entries.append(DayCarouselEntry(
-                id: item.id,
-                emoji: item.activityEmoji.isEmpty ? "💪" : item.activityEmoji,
-                title: item.activityName.isEmpty ? "アクティビティ" : item.activityName,
-                time: item.timestamp,
-                image: item.thumbnail,
-                linkURL: linkURL,
-                linkTitle: item.sharedTitle,
-                linkImageURL: item.sharedImageURL,
-                comment: item.comment,
-                kind: kind,
-                weightKg: item.weightKg,
-                bodyFatPercent: item.bodyFatPercent,
-                extractedPhrase: item.extractedPhrase,
-                extractedLanguageCode: item.extractedLanguageCode,
-                translationJA: item.translationJA,
-                pronunciation: item.pronunciation,
-                exampleSentences: item.exampleSentences,
-                relatedWords: item.relatedWords,
-                grammarNote: item.grammarNote,
-                mistakeNote: item.mistakeNote
-            ))
-        }
-
-        // フォトログ（食事写真など）
-        for item in photoLogManager.history where cal.startOfDay(for: item.timestamp) == today {
-            entries.append(DayCarouselEntry(
-                id: "photo_\(item.id)",
-                emoji: "📸",
-                title: item.displayName,
-                time: item.timestamp,
-                image: item.thumbnail,
-                linkURL: nil,
-                linkTitle: nil,
-                linkImageURL: nil,
-                comment: item.analyzedNutrition.description,
-                kind: .foodPhoto,
-                calories: item.analyzedNutrition.calories,
-                protein: item.analyzedNutrition.protein,
-                fat: item.analyzedNutrition.fat,
-                carbs: item.analyzedNutrition.carbs
-            ))
-        }
-
-        return entries.sorted { $0.time < $1.time }
+        buildTodayCarouselEntries()
     }
 
     // ノード配列を1回だけスキャンして今日/スロット別/全体の完了数を収集する。
@@ -7529,11 +7470,6 @@ private struct MandalaSpiralCard: View {
                 .font(.system(size: 10 * UIScale.font, weight: .semibold))
                 .lineLimit(1)
                 .foregroundColor(achieved ? color : Color.duoSubtitle)
-            if hasEntries {
-                Image(systemName: "photo.stack")
-                    .font(.system(size: 7 * UIScale.font))
-                    .foregroundColor(color.opacity(0.7))
-            }
         }
         .padding(.horizontal, 4).padding(.vertical, 2)
         .background(achieved ? color.opacity(0.12) : (hasEntries ? color.opacity(0.06) : Color.clear))
@@ -9352,6 +9288,7 @@ struct DayCarouselEntry: Identifiable {
     var relatedWords: [ExampleSentence]? = nil
     var grammarNote: String? = nil
     var mistakeNote: String? = nil
+    var extractedWords: [VocabWord]? = nil
 
     var isDuolingo: Bool { extractedPhrase != nil && !(extractedPhrase?.isEmpty ?? true) }
 
@@ -9381,8 +9318,438 @@ extension DayCarouselEntry {
             mistakeNote: mistakeNote,
             grammarNote: grammarNote,
             exampleSentences: exampleSentences,
-            relatedWords: relatedWords
+            relatedWords: relatedWords,
+            extractedWords: extractedWords
         )
+    }
+}
+
+/// 今日投稿されたエントリ一覧を構築する（EduLog + フォトログ、時刻順）。
+/// MandalaSpiralCard（スパイラル画面上の一覧）と DashboardView（スパイラル右上の共有）の
+/// 両方から使うため、シングルトンから直接構築する独立関数として定義する。
+func buildTodayCarouselEntries() -> [DayCarouselEntry] {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: Date())
+    var entries: [DayCarouselEntry] = []
+
+    // EduLog（活動・学習・リンク共有など）
+    for item in EduLogManager.shared.history where cal.startOfDay(for: item.timestamp) == today {
+        let linkURL = item.sharedUrl.flatMap { URL(string: $0) }
+        let kind: DayCarouselEntry.Kind = linkURL != nil ? .link
+            : (item.thumbnail != nil ? .photo : .activity)
+        entries.append(DayCarouselEntry(
+            id: item.id,
+            emoji: item.activityEmoji.isEmpty ? "💪" : item.activityEmoji,
+            title: item.activityName.isEmpty ? "アクティビティ" : item.activityName,
+            time: item.timestamp,
+            image: item.thumbnail,
+            linkURL: linkURL,
+            linkTitle: item.sharedTitle,
+            linkImageURL: item.sharedImageURL,
+            comment: item.comment,
+            kind: kind,
+            weightKg: item.weightKg,
+            bodyFatPercent: item.bodyFatPercent,
+            extractedPhrase: item.extractedPhrase,
+            extractedLanguageCode: item.extractedLanguageCode,
+            translationJA: item.translationJA,
+            pronunciation: item.pronunciation,
+            exampleSentences: item.exampleSentences,
+            relatedWords: item.relatedWords,
+            grammarNote: item.grammarNote,
+            mistakeNote: item.mistakeNote,
+            extractedWords: item.extractedWords
+        ))
+    }
+
+    // フォトログ（食事写真など）
+    for item in PhotoLogManager.shared.history where cal.startOfDay(for: item.timestamp) == today {
+        entries.append(DayCarouselEntry(
+            id: "photo_\(item.id)",
+            emoji: "📸",
+            title: item.displayName,
+            time: item.timestamp,
+            image: item.thumbnail,
+            linkURL: nil,
+            linkTitle: nil,
+            linkImageURL: nil,
+            comment: item.analyzedNutrition.description,
+            kind: .foodPhoto,
+            calories: item.analyzedNutrition.calories,
+            protein: item.analyzedNutrition.protein,
+            fat: item.analyzedNutrition.fat,
+            carbs: item.analyzedNutrition.carbs
+        ))
+    }
+
+    return entries.sorted { $0.time < $1.time }
+}
+
+// MARK: - 今日の投稿 画像化専用ビュー（共有用スナップショット）
+// DayCarouselSheet の共有ボタン、およびスパイラル右上の共有ボタンの両方から
+// ImageRenderer で画像化するために使う（インタラクティブ要素を含まない）。
+
+struct TodayPostsSnapshotView: View {
+    let entries: [DayCarouselEntry]
+    @ObservedObject private var linkFetcher = LinkMetadataFetcher.shared
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    private var groupedBySlot: [(slot: TimeSlot, entries: [DayCarouselEntry])] {
+        let ordered: [TimeSlot] = [.morning, .noon, .afternoon, .evening, .midnight]
+        return ordered.compactMap { slot in
+            let items = entries.filter { $0.slot == slot }
+                .sorted { $0.time < $1.time }
+            return items.isEmpty ? nil : (slot: slot, entries: items)
+        }
+    }
+
+    private func layoutRows(for entries: [DayCarouselEntry]) -> [[DayCarouselEntry]] {
+        var rows: [[DayCarouselEntry]] = []
+        var buffer: [DayCarouselEntry] = []
+        for entry in entries {
+            if entry.kind == .link {
+                if !buffer.isEmpty { rows.append(buffer); buffer = [] }
+                rows.append([entry])
+            } else {
+                buffer.append(entry)
+                if buffer.count == 2 { rows.append(buffer); buffer = [] }
+            }
+        }
+        if !buffer.isEmpty { rows.append(buffer) }
+        return rows
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(groupedBySlot, id: \.slot) { group in
+                slotHeader(group.slot, count: group.entries.count)
+                VStack(spacing: 12) {
+                    ForEach(Array(layoutRows(for: group.entries).enumerated()), id: \.offset) { _, row in
+                        if row.count == 1, row[0].kind == .link {
+                            linkEntryCard(row[0])
+                        } else {
+                            HStack(alignment: .top, spacing: 12) {
+                                ForEach(row) { entry in
+                                    entryCard(entry)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                if row.count == 1 {
+                                    Color.clear.frame(maxWidth: .infinity)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
+            }
+        }
+        .frame(width: 390)
+        .background(Color(.systemGroupedBackground))
+    }
+
+    // MARK: - セクションヘッダー（時間帯バー）
+
+    private func slotHeader(_ slot: TimeSlot, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(slot.emoji).font(.system(size: 18))
+            Text(slot.displayName)
+                .font(.system(size: 15, weight: .black))
+                .foregroundColor(slot.mandalaColor)
+            Text("\(count)件")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(slot.mandalaColor.opacity(0.75))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(slot.mandalaColor.opacity(0.22))
+    }
+
+    private func entryCard(_ entry: DayCarouselEntry) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let img = entry.image {
+                photoThumb(entry: entry, image: img)
+            } else {
+                emojiThumb(entry: entry)
+            }
+            if let dp = entry.duolingoPhrase {
+                CompactDuolingoRow(data: dp)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+            }
+        }
+        .background(entry.slot.mandalaColor.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: entry.slot.mandalaColor.opacity(0.18), radius: 5, y: 2)
+    }
+
+    // MARK: - フォトサムネイル（時間・カテゴリバッジを写真上に重ねる）
+
+    private func photoThumb(entry: DayCarouselEntry, image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .clipped()
+            .overlay(alignment: .top) {
+                LinearGradient(
+                    colors: [.black.opacity(0.55), .clear],
+                    startPoint: .top, endPoint: .center
+                )
+                .frame(height: 60)
+            }
+            .overlay(alignment: .topLeading) {
+                Text(Self.timeFmt.string(from: entry.time))
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+                    .padding(8)
+            }
+            .overlay(alignment: .top) {
+                categoryBadge(entry)
+                    .padding(.top, 8)
+            }
+            .overlay(alignment: .bottom) {
+                let hasWeight = entry.weightKg != nil || entry.bodyFatPercent != nil
+                if !entry.comment.isEmpty || (entry.kind == .foodPhoto && entry.calories > 0) || hasWeight {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.65)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            if !entry.comment.isEmpty {
+                                Text(entry.comment)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .shadow(color: .black.opacity(0.7), radius: 2)
+                            }
+                            if entry.kind == .foodPhoto, entry.calories > 0 {
+                                HStack(spacing: 3) {
+                                    Text("🔥").font(.system(size: 11))
+                                    Text("\(entry.calories)kcal")
+                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .foregroundColor(.white)
+                                }
+                                .shadow(color: .black.opacity(0.6), radius: 2)
+                            }
+                            if hasWeight {
+                                WeightFatReadout(weightKg: entry.weightKg, bodyFatPercent: entry.bodyFatPercent)
+                                    .shadow(color: .black.opacity(0.6), radius: 2)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6)
+                    }
+                    .frame(height: 46)
+                }
+            }
+    }
+
+    // MARK: - 絵文字サムネイル（画像なし・80pt）
+
+    private func emojiThumb(entry: DayCarouselEntry) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(entry.slot.mandalaColor.opacity(0.12))
+            VStack(spacing: 2) {
+                Text(entry.emoji).font(.system(size: 30))
+                Text(entry.title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(entry.slot.mandalaColor)
+                    .lineLimit(1)
+            }
+        }
+        .frame(height: 80)
+        .overlay(alignment: .topLeading) {
+            Text(Self.timeFmt.string(from: entry.time))
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundColor(entry.slot.mandalaColor)
+                .padding(8)
+        }
+        .overlay(alignment: .top) {
+            categoryBadge(entry)
+                .padding(.top, 6)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if !entry.comment.isEmpty {
+                Text(entry.comment)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(entry.slot.mandalaColor.opacity(0.85))
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 6)
+            }
+        }
+    }
+
+    /// 食事写真の時間帯 → Breakfast / Lunch / Dinner / Snack
+    private func mealBadgeLabel(for slot: TimeSlot) -> String {
+        switch slot {
+        case .morning:   return "Breakfast"
+        case .noon:      return "Lunch"
+        case .afternoon: return "Snack"
+        case .evening:   return "Dinner"
+        case .midnight:  return "Snack"
+        }
+    }
+
+    // MARK: - リンクカード（読書・リンク投稿・全幅表示）
+
+    @ViewBuilder
+    private func linkEntryCard(_ entry: DayCarouselEntry) -> some View {
+        if let url = entry.linkURL {
+            let urlStr = url.absoluteString
+            let host = url.host ?? urlStr
+            let svcEmoji = linkServiceEmoji(from: host)
+            let svcName  = linkServiceName(from: host)
+            let svcColor = linkServiceColor(from: host)
+            let fetched  = linkFetcher.meta(for: urlStr)
+            let dispTitle = (fetched?.title ?? entry.linkTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let dispDesc  = (fetched?.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let thumbImage = entry.image ?? fetched?.thumbnailImage
+
+            let mainContent = HStack(alignment: .top, spacing: 12) {
+                Text(Self.timeFmt.string(from: entry.time))
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 34, alignment: .leading)
+
+                if let img = thumbImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(svcColor.opacity(0.14))
+                        Text(svcEmoji).font(.system(size: 30))
+                    }
+                    .frame(width: 72, height: 72)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    if !dispTitle.isEmpty {
+                        Text(dispTitle)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
+                    }
+                    if !dispDesc.isEmpty {
+                        Text(dispDesc)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(3)
+                    }
+                    HStack(spacing: 4) {
+                        Text(svcEmoji).font(.system(size: 12))
+                        Text(svcName)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(svcColor)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 0) {
+                mainContent
+
+                if !entry.comment.isEmpty {
+                    Divider().padding(.horizontal, 12)
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "quote.opening")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(svcColor.opacity(0.7))
+                            .padding(.top, 2)
+                        Text(entry.comment)
+                            .font(.system(size: 13))
+                            .foregroundColor(.primary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .background(svcColor.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(svcColor.opacity(0.2), lineWidth: 1))
+        }
+    }
+
+    private func linkServiceName(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "Audible" }
+        if h.contains("amazon") { return "Amazon Books" }
+        if h.contains("kindle") { return "Kindle" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "Libby 図書館" }
+        if h.contains("books.google") { return "Google Play Books" }
+        if h.contains("bookwalker") { return "BookWalker" }
+        if h.contains("kobo") { return "楽天Kobo" }
+        if h.contains("booklive") { return "BookLive" }
+        return "📖 リンクを開く"
+    }
+
+    private func linkServiceEmoji(from host: String) -> String {
+        let h = host.lowercased()
+        if h.contains("audible") { return "🎧" }
+        if h.contains("libbyapp") || h.contains("overdrive") { return "🏛️" }
+        return "📖"
+    }
+
+    private func linkServiceColor(from host: String) -> Color {
+        let h = host.lowercased()
+        if h.contains("audible") { return Color(hex: "#F28C28") }
+        if h.contains("amazon") || h.contains("kindle") { return Color(hex: "#FF9900") }
+        if h.contains("libbyapp") || h.contains("overdrive") { return Color(hex: "#2E86AB") }
+        if h.contains("books.google") { return Color(hex: "#4285F4") }
+        if h.contains("bookwalker") { return Color(hex: "#E4001A") }
+        if h.contains("kobo") { return Color(hex: "#6A0DAD") }
+        return Color(hex: "#5E5CE6")
+    }
+
+    // MARK: - カテゴリバッジ（中央上）
+
+    @ViewBuilder
+    private func categoryBadge(_ entry: DayCarouselEntry) -> some View {
+        let (label, color, flag): (String, Color, String?) = {
+            if entry.isDuolingo, let lang = entry.extractedLanguageCode {
+                return (languageLabel(lang), languageBadgeColor(lang), languageFlag(lang))
+            }
+            switch entry.kind {
+            case .foodPhoto:
+                return (mealBadgeLabel(for: entry.slot), Color.duoOrange, nil)
+            case .activity:
+                return (entry.title.isEmpty ? "FIT" : entry.title, Color.duoGreen, nil)
+            case .photo:
+                let t = entry.title.isEmpty ? "フォト" : entry.title
+                return (String(t.prefix(6)), Color.duoPurple, nil)
+            case .link:
+                let t = entry.title.isEmpty ? "リンク" : entry.title
+                return (String(t.prefix(6)), Color(hex: "#1CB0F6"), nil)
+            }
+        }()
+        HStack(spacing: 4) {
+            if let flag {
+                Text(flag).font(.system(size: 11))
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .black))
+                .foregroundColor(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(color)
+        .clipShape(Capsule())
+        .shadow(color: .black.opacity(0.3), radius: 2)
     }
 }
 
@@ -9400,6 +9767,7 @@ struct DayCarouselSheet: View {
     @State private var showShare = false
     @State private var shareItems: [Any] = []
     @State private var isPreparingShare = false
+    @State private var swipeDetailRequest: SwipeDetailRequest? = nil
 
     private static let timeFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
@@ -9418,34 +9786,7 @@ struct DayCarouselSheet: View {
             // 直前のUI操作（シート表示など）のレイアウトが落ち着くのを少し待つ
             try? await Task.sleep(nanoseconds: 150_000_000)
 
-            let renderer = ImageRenderer(content:
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(groupedBySlot, id: \.slot) { group in
-                        slotHeader(group.slot, count: group.entries.count)
-                        VStack(spacing: 12) {
-                            ForEach(Array(layoutRows(for: group.entries).enumerated()), id: \.offset) { _, row in
-                                if row.count == 1, row[0].kind == .link {
-                                    linkEntryCard(row[0], isSnapshot: true)
-                                } else {
-                                    HStack(alignment: .top, spacing: 12) {
-                                        ForEach(row) { entry in
-                                            entryCard(entry, isSnapshot: true)
-                                                .frame(maxWidth: .infinity)
-                                        }
-                                        if row.count == 1 {
-                                            Color.clear.frame(maxWidth: .infinity)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 14)
-                    }
-                }
-                .frame(width: 390)
-                .background(Color(.systemGroupedBackground))
-            )
+            let renderer = ImageRenderer(content: TodayPostsSnapshotView(entries: displayEntries))
             renderer.scale = 2.0
 
             var attempt = 0
@@ -9480,6 +9821,52 @@ struct DayCarouselSheet: View {
 
     private func tabFor(_ entry: DayCarouselEntry) -> Int {
         entry.kind == .foodPhoto ? MainMenuTab.food.rawValue : MainMenuTab.tomo.rawValue
+    }
+
+    /// DayCarouselEntry に対応する元データ（EduLogHistoryItem）を解決する（詳細シート表示用）。
+    /// 見つからない場合はタブ切り替えにフォールバックする。
+    private func openDetail(for entry: DayCarouselEntry) {
+        guard let item = resolveDetailItem(entry) else {
+            let tab = tabFor(entry)
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                selectedTab = tab
+            }
+            return
+        }
+        swipeDetailRequest = SwipeDetailRequest(items: [item], startIndex: 0)
+    }
+
+    private func resolveDetailItem(_ entry: DayCarouselEntry) -> EduLogHistoryItem? {
+        if entry.kind == .foodPhoto {
+            let foodId = String(entry.id.dropFirst("photo_".count))
+            guard let food = PhotoLogManager.shared.history.first(where: { $0.id == foodId }) else { return nil }
+            var item = EduLogHistoryItem(
+                activityName: "食事ログ",
+                activityEmoji: "🍽️",
+                comment: food.foodName.isEmpty ? food.comment : food.foodName,
+                authorName: UserDefaults.standard.string(forKey: "cachedCurrentUserName") ?? "Kenichi Yoshida",
+                authorPhotoURL: UserDefaults.standard.string(forKey: "cachedCurrentUserPhotoURL") ?? ""
+            )
+            item.id = "food_\(food.id)"
+            item.timestamp = food.timestamp
+            item.thumbnailPath = food.thumbnailPath
+            item.thumbnailData = food.thumbnailData
+            item.isLiked = food.isLiked
+            item.likeCount = food.likeCount
+            item.feedComments = food.feedComments
+            return item
+        }
+        return EduLogManager.shared.history.first(where: { $0.id == entry.id })
+    }
+
+    private func toggleDetailLike(_ item: EduLogHistoryItem) {
+        if item.id.hasPrefix("food_") {
+            let originalId = String(item.id.dropFirst("food_".count))
+            PhotoLogManager.shared.toggleLike(id: originalId)
+        } else {
+            EduLogManager.shared.toggleLike(id: item.id)
+        }
     }
 
     /// 読書・リンク投稿は全幅のリンクカードで単独表示し、それ以外は2件ずつ
@@ -9567,6 +9954,14 @@ struct DayCarouselSheet: View {
             .sheet(isPresented: $showShare) {
                 SystemShareSheet(items: shareItems)
             }
+            .sheet(item: $swipeDetailRequest) { req in
+                SwipeableTomoDetailSheet(
+                    items: req.items,
+                    startIndex: req.startIndex,
+                    photoLogManager: PhotoLogManager.shared,
+                    onLike: { toggleDetailLike($0) }
+                )
+            }
         }
     }
 
@@ -9590,10 +9985,7 @@ struct DayCarouselSheet: View {
 
     // MARK: - エントリカード（2列グリッド用セル）
 
-    /// isSnapshot: true の場合は Button でラップしない
-    /// （ImageRenderer での画像書き出し用。Button ラベルは描画できないことがあるため）。
-    @ViewBuilder
-    private func entryCard(_ entry: DayCarouselEntry, isSnapshot: Bool = false) -> some View {
+    private func entryCard(_ entry: DayCarouselEntry) -> some View {
         let content = VStack(alignment: .leading, spacing: 0) {
             // ── フォト / 絵文字サムネイル（時間・カテゴリ・コメント/カロリーは写真上に重ねる）──
             if let img = entry.image {
@@ -9613,20 +10005,12 @@ struct DayCarouselSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: entry.slot.mandalaColor.opacity(0.18), radius: 5, y: 2)
 
-        if isSnapshot {
+        return Button {
+            openDetail(for: entry)
+        } label: {
             content
-        } else {
-            Button {
-                let tab = tabFor(entry)
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    selectedTab = tab
-                }
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - フォトサムネイル（時間・カテゴリバッジを写真上に重ねる）
@@ -9747,10 +10131,8 @@ struct DayCarouselSheet: View {
     // MARK: - リンクカード（読書・リンク投稿・全幅表示）
     // Audible/Kindle等の書影・タイトル・説明・引用コメントを1枚のカードで表示する。
 
-    /// isSnapshot: true の場合は Button でラップしない
-    /// （ImageRenderer での画像書き出し用。Button ラベルは描画できないことがあるため）。
     @ViewBuilder
-    private func linkEntryCard(_ entry: DayCarouselEntry, isSnapshot: Bool = false) -> some View {
+    private func linkEntryCard(_ entry: DayCarouselEntry) -> some View {
         if let url = entry.linkURL {
             let urlStr = url.absoluteString
             let host = url.host ?? urlStr
@@ -9811,20 +10193,12 @@ struct DayCarouselSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                if isSnapshot {
+                Button {
+                    openDetail(for: entry)
+                } label: {
                     mainContent
-                } else {
-                    Button {
-                        let tab = tabFor(entry)
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            selectedTab = tab
-                        }
-                    } label: {
-                        mainContent
-                    }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
 
                 // ── ユーザーのコメント（あれば・引用スタイル）─────────────
                 if !entry.comment.isEmpty {

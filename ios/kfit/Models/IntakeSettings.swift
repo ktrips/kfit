@@ -440,6 +440,14 @@ struct ExampleSentence: Codable {
     var translationJA: String? // 日本語訳
 }
 
+/// 単語リスト画像から抽出した1単語（テキスト + 読み方、個別にTTS再生可能）
+struct VocabWord: Codable, Identifiable {
+    var id: String = UUID().uuidString
+    var text: String           // 外国語の単語
+    var languageCode: String   // 検出言語コード
+    var reading: String?       // 発音記号 / ピンイン / カタカナ読み
+}
+
 struct EduLogHistoryItem: Codable, Identifiable {
     var id: String = UUID().uuidString
     var timestamp: Date = Date()
@@ -466,6 +474,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var exampleSentences: [ExampleSentence]? // 例文 2 件（コメントに「例文」と入れた場合に LLM 生成）
     var mistakeNote: String?             // 間違えた理由解説（コメントに「ダメな理由」と入れた場合に LLM 生成）
     var relatedWords: [ExampleSentence]? // 関連単語/文章（コメントに「単語」「文章」と入れた場合に LLM 生成）
+    var extractedWords: [VocabWord]?     // 画像内の各単語（コメントに「単語」と入れた場合にOCR抽出、読み方付き）
 
     // 体重ログ用：記録時点の Apple Health 計測値
     var weightKg: Double?              // 体重（kg）
@@ -507,6 +516,7 @@ struct EduLogHistoryItem: Codable, Identifiable {
         exampleSentences      = try c.decodeIfPresent([ExampleSentence].self,   forKey: .exampleSentences)
         mistakeNote           = try c.decodeIfPresent(String.self,              forKey: .mistakeNote)
         relatedWords          = try c.decodeIfPresent([ExampleSentence].self,   forKey: .relatedWords)
+        extractedWords        = try c.decodeIfPresent([VocabWord].self,         forKey: .extractedWords)
         weightKg              = try c.decodeIfPresent(Double.self,              forKey: .weightKg)
         bodyFatPercent        = try c.decodeIfPresent(Double.self,              forKey: .bodyFatPercent)
         calories              = try c.decodeIfPresent(Int.self,                 forKey: .calories)

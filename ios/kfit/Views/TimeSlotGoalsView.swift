@@ -1,187 +1,33 @@
 import SwiftUI
 
-struct TimeSlotGoalsView: View {
+// MARK: - 時間帯別の目標カード（トレーニング・マインドフルネス等の設定行）
+// SETUP画面へのインライン表示、および TimeSlotGoalsView（スパイラル詳細シート）の両方で使用する。
+
+struct TimeSlotGoalsCardsView: View {
     @StateObject private var timeSlotManager = TimeSlotManager.shared
     @StateObject private var notif = NotificationManager.shared
-    @StateObject private var healthKit = HealthKitManager.shared
-    @Environment(\.dismiss) private var dismiss
-    @State private var widgetProgressPercent: Int = 0
-    @State private var streakPickerTime: Date = Date()
     @State private var goals: [String: TimeSlotGoal] = [:]
     @State private var reminderPickerTimes: [String: Date] = [:]
     @State private var expandingSlot: String? = nil
     @State private var newActivityName: String = ""
     @State private var newActivityEmoji: String = ""
-    @State private var intakeGoals = IntakeSettings.defaultSettings
 
     private let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
     private let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
 
-    // HealthKit実施時間ベースで計算したスパイラルノード
-    private var precomputedMandalaNodes: [MandalaNodeData] {
-        let cal = Calendar.current
-
-        // 時間帯別: マインドフルネス（HK優先、なければFirestore）
-        var mindfulMinutes: [String: Int] = [:]
-        // 時間帯別: 水分（HK）
-        var slotWaterMl: [String: Int] = [:]
-        // 時間帯別: カロリー（HK）
-        var slotMealKcal: [String: Int] = [:]
-        // 時間帯別: トレーニング（Firestoreのスロット別カウント）
-        var slotTrainingCounts: [String: Int] = [:]
-
-        for slot in activeSlots {
-            let prog = timeSlotManager.progress.progressFor(slot)
-            let goal = timeSlotManager.settings.goalFor(slot)
-
-            // トレーニング: Firestoreのスロット別カウント（実施時にスロットへ記録済み）
-            slotTrainingCounts[slot.rawValue] = prog?.trainingCompleted ?? 0
-
-            // マインドフルネス: HKセッションをスロット時間帯でフィルタ
-            let stretchGoalMin = goal?.stretchGoal.stretchMinutes ?? 3
-            let stretchMin = (prog?.stretchSetsCompleted ?? 0) * stretchGoalMin
-            let hkMin = healthKit.todayMindfulnessSamples
-                .filter { let h = cal.component(.hour, from: $0.startDate)
-                          return h >= slot.startHour && h < slot.endHour }
-                .reduce(0) { $0 + max(1, Int($1.durationMinutes.rounded())) }
-            let firestoreMin = (prog?.mindfulnessCompleted ?? 0)
-            mindfulMinutes[slot.rawValue] = (hkMin > 0 ? hkMin : firestoreMin) + stretchMin
-
-            // 水分: HK水分サンプルをスロット時間帯でフィルタ
-            slotWaterMl[slot.rawValue] = Int(healthKit.todayWaterSamples
-                .filter { let h = cal.component(.hour, from: $0.startDate)
-                          return h >= slot.startHour && h < slot.endHour }
-                .reduce(0.0) { $0 + $1.value })
-
-            // カロリー: HK食事サンプルをスロット時間帯でフィルタ
-            slotMealKcal[slot.rawValue] = Int(healthKit.todayMealSamples
-                .filter { let h = cal.component(.hour, from: $0.startDate)
-                          return h >= slot.startHour && h < slot.endHour }
-                .reduce(0.0) { $0 + $1.value })
-        }
-
-        // 1日合計: トレーニング
-        let totalTrainingDone = slotTrainingCounts.values.reduce(0, +)
-        let totalTrainingGoal = activeSlots.reduce(0) {
-            $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0)
-        }
-        let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingDone >= totalTrainingGoal
-
-        // 1日合計: マインドフルネス（瞑想のみ目標）
-        let totalMindfulDone = mindfulMinutes.values.reduce(0, +)
-        let totalMindfulGoal = activeSlots.reduce(0) {
-            $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0)
-        }
-        let dailyMindfulnessDone = totalMindfulGoal > 0 && totalMindfulDone >= totalMindfulGoal
-
-        // 1日合計: 瞑想+ストレッチ+スタンド統合
-        let totalMindfulStandGoal = activeSlots.reduce(0) { sum, slot in
-            guard let g = timeSlotManager.settings.goalFor(slot) else { return sum }
-            let stretchMin = g.stretchGoal.enabled ? g.stretchGoal.stretchMinutes : 0
-            let standMin   = g.standGoal.enabled   ? g.standGoal.standMinutes   : 0
-            return sum + g.mindfulnessGoal + stretchMin + standMin
-        }
-        let totalMindfulStandActual = activeSlots.reduce(0) { sum, slot in
-            let prog     = timeSlotManager.progress.progressFor(slot)
-            let goalInfo = timeSlotManager.settings.goalFor(slot)
-            let rawMAS   = mindfulMinutes[slot.rawValue] ?? 0
-            guard let goalInfo, goalInfo.standGoal.enabled else { return sum + rawMAS }
-            let standGoalMin = goalInfo.standGoal.standMinutes
-            let hasHKStand = healthKit.todayMindfulnessSamples
-                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
-                          return h >= slot.startHour && h < slot.endHour }
-                .contains { max(1, Int($0.durationMinutes.rounded())) >= standGoalMin }
-            let firestoreStand = (prog?.standCompleted ?? 0) >= 1
-            let standActual = (hasHKStand || firestoreStand) ? standGoalMin : 0
-            let mindAndStretch = hasHKStand ? max(0, rawMAS - standGoalMin) : rawMAS
-            return sum + mindAndStretch + standActual
-        }
-        let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
-            && totalMindfulStandActual >= totalMindfulStandGoal
-
-        // 1日合計: カロリー・水分
-        let dailyCalorieDone = Int(healthKit.todayIntakeCalories) >= intakeGoals.dailyCalorieGoal
-        let dailyWaterDone   = Int(healthKit.todayIntakeWater)    >= intakeGoals.dailyWaterGoal
-
-        // アクティビティリング
-        let activityRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
-            && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
-
-        // 今日の Edu 履歴（写真ログ・共有投稿など）
-        let eduStart = Calendar.current.startOfDay(for: Date())
-        let todayAllEduItems = EduLogManager.shared.history.filter { $0.timestamp >= eduStart }
-        // wd-study（曜日別の勉強目標）は語学・勉強系のみを対象にする
-        let todayEduCount = todayAllEduItems.filter { item in
-            let name = item.activityName
-            return name.localizedCaseInsensitiveContains("Duolingo")
-                || name == "語学" || name.contains("語学")
-                || name == "勉強" || name == "読書"
-        }.count
-        // スパイラルのカスタム活動照合はカテゴリを限定せず、今日投稿された
-        // 全アイテムの activityName と一致すれば完了扱いにする（読書に限らず
-        // 瞑想・ストレッチ・コーヒーなど任意のカスタム活動に対応）
-        let todayEduActivityNames = Set(todayAllEduItems.map { $0.activityName }).subtracting([""])
-
-        return MandalaChartView.buildNodes(
-            settings: timeSlotManager.settings,
-            progress: timeSlotManager.progress,
-            activityRingsDone: activityRingsDone,
-            slotTrainingCounts: slotTrainingCounts,
-            slotMindfulMinutes: mindfulMinutes,
-            slotWaterMl: slotWaterMl,
-            slotMealKcal: slotMealKcal,
-            dailyCalorieDone: dailyCalorieDone,
-            dailyWaterDone: dailyWaterDone,
-            totalDailyCalorieGoal: intakeGoals.dailyCalorieGoal,
-            totalDailyWaterGoal: intakeGoals.dailyWaterGoal,
-            dailyTrainingDone: dailyTrainingDone,
-            dailyMindfulnessDone: dailyMindfulnessDone,
-            dailyMindfulAndStandDone: dailyMindfulAndStandDone,
-            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
-            todayEduItemCount: todayEduCount,
-            todayEduActivityNames: todayEduActivityNames
-        )
-    }
-
     var body: some View {
-        ZStack {
-            Color.duoBg.ignoresSafeArea()
-
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        if timeSlotManager.isLoading {
-                            ProgressView()
-                                .tint(Color.duoGreen)
-                                .scaleEffect(1.4)
-                                .padding(.vertical, 40)
-                        } else {
-                            ForEach(activeSlots, id: \.self) { slot in
-                                timeSlotCard(slot: slot)
-                            }
-                            mandalaSection(scrollProxy: proxy)
-                            streakAlertSection
-                        }
-                        Spacer(minLength: 40)
+        Group {
+            if timeSlotManager.isLoading {
+                ProgressView()
+                    .tint(Color.duoGreen)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else {
+                VStack(spacing: 16) {
+                    ForEach(activeSlots, id: \.self) { slot in
+                        timeSlotCard(slot: slot)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 20)
                 }
-                .refreshable {
-                    await loadAll()
-                    await HealthKitManager.shared.fetchGoalHealth(force: true)
-                    widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
-                }
-            }
-        }
-        .navigationTitle("時間帯別の目標")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("完了") { dismiss() }
-                    .foregroundColor(Color.duoGreen)
-                    .fontWeight(.bold)
             }
         }
         .task { await loadAll() }
@@ -191,11 +37,6 @@ struct TimeSlotGoalsView: View {
 
     private func loadAll() async {
         await timeSlotManager.loadTodaySettings()
-        await timeSlotManager.loadTodayProgress()
-        async let loadedIntake = AuthenticationManager.shared.getIntakeSettings()
-        async let _ = HealthKitManager.shared.fetchIntakeHealth(force: false)
-        intakeGoals = await loadedIntake
-        widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
         for slot in activeSlots {
             goals[slot.rawValue] = timeSlotManager.settings.goalFor(slot) ?? TimeSlotGoal(timeSlot: slot)
         }
@@ -206,10 +47,6 @@ struct TimeSlotGoalsView: View {
                 bySettingHour: cfg.hour, minute: cfg.minute, second: 0, of: Date()
             ) ?? Date()
         }
-        let sc = notif.prefs[NotificationManager.ID.streakAlert]
-        streakPickerTime = Calendar.current.date(
-            bySettingHour: sc.hour, minute: sc.minute, second: 0, of: Date()
-        ) ?? Date()
     }
 
     private func notifId(for slot: TimeSlot) -> String {
@@ -230,7 +67,6 @@ struct TimeSlotGoalsView: View {
         timeSlotManager.saveGoalTemplate()
         Task { await timeSlotManager.saveTodaySettings() }
     }
-
     // MARK: - Time Slot Card
 
     private func timeSlotCard(slot: TimeSlot) -> some View {
@@ -503,6 +339,203 @@ struct TimeSlotGoalsView: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
         }
+    }
+}
+
+// MARK: - TimeSlotGoalsView（スパイラル詳細シート：カード + Mandala + ストリークアラート）
+
+struct TimeSlotGoalsView: View {
+    @StateObject private var timeSlotManager = TimeSlotManager.shared
+    @StateObject private var notif = NotificationManager.shared
+    @StateObject private var healthKit = HealthKitManager.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var widgetProgressPercent: Int = 0
+    @State private var streakPickerTime: Date = Date()
+    @State private var intakeGoals = IntakeSettings.defaultSettings
+
+    private let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
+
+    // HealthKit実施時間ベースで計算したスパイラルノード
+    private var precomputedMandalaNodes: [MandalaNodeData] {
+        let cal = Calendar.current
+
+        // 時間帯別: マインドフルネス（HK優先、なければFirestore）
+        var mindfulMinutes: [String: Int] = [:]
+        // 時間帯別: 水分（HK）
+        var slotWaterMl: [String: Int] = [:]
+        // 時間帯別: カロリー（HK）
+        var slotMealKcal: [String: Int] = [:]
+        // 時間帯別: トレーニング（Firestoreのスロット別カウント）
+        var slotTrainingCounts: [String: Int] = [:]
+
+        for slot in activeSlots {
+            let prog = timeSlotManager.progress.progressFor(slot)
+            let goal = timeSlotManager.settings.goalFor(slot)
+
+            // トレーニング: Firestoreのスロット別カウント（実施時にスロットへ記録済み）
+            slotTrainingCounts[slot.rawValue] = prog?.trainingCompleted ?? 0
+
+            // マインドフルネス: HKセッションをスロット時間帯でフィルタ
+            let stretchGoalMin = goal?.stretchGoal.stretchMinutes ?? 3
+            let stretchMin = (prog?.stretchSetsCompleted ?? 0) * stretchGoalMin
+            let hkMin = healthKit.todayMindfulnessSamples
+                .filter { let h = cal.component(.hour, from: $0.startDate)
+                          return h >= slot.startHour && h < slot.endHour }
+                .reduce(0) { $0 + max(1, Int($1.durationMinutes.rounded())) }
+            let firestoreMin = (prog?.mindfulnessCompleted ?? 0)
+            mindfulMinutes[slot.rawValue] = (hkMin > 0 ? hkMin : firestoreMin) + stretchMin
+
+            // 水分: HK水分サンプルをスロット時間帯でフィルタ
+            slotWaterMl[slot.rawValue] = Int(healthKit.todayWaterSamples
+                .filter { let h = cal.component(.hour, from: $0.startDate)
+                          return h >= slot.startHour && h < slot.endHour }
+                .reduce(0.0) { $0 + $1.value })
+
+            // カロリー: HK食事サンプルをスロット時間帯でフィルタ
+            slotMealKcal[slot.rawValue] = Int(healthKit.todayMealSamples
+                .filter { let h = cal.component(.hour, from: $0.startDate)
+                          return h >= slot.startHour && h < slot.endHour }
+                .reduce(0.0) { $0 + $1.value })
+        }
+
+        // 1日合計: トレーニング
+        let totalTrainingDone = slotTrainingCounts.values.reduce(0, +)
+        let totalTrainingGoal = activeSlots.reduce(0) {
+            $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0)
+        }
+        let dailyTrainingDone = totalTrainingGoal > 0 && totalTrainingDone >= totalTrainingGoal
+
+        // 1日合計: マインドフルネス（瞑想のみ目標）
+        let totalMindfulDone = mindfulMinutes.values.reduce(0, +)
+        let totalMindfulGoal = activeSlots.reduce(0) {
+            $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0)
+        }
+        let dailyMindfulnessDone = totalMindfulGoal > 0 && totalMindfulDone >= totalMindfulGoal
+
+        // 1日合計: 瞑想+ストレッチ+スタンド統合
+        let totalMindfulStandGoal = activeSlots.reduce(0) { sum, slot in
+            guard let g = timeSlotManager.settings.goalFor(slot) else { return sum }
+            let stretchMin = g.stretchGoal.enabled ? g.stretchGoal.stretchMinutes : 0
+            let standMin   = g.standGoal.enabled   ? g.standGoal.standMinutes   : 0
+            return sum + g.mindfulnessGoal + stretchMin + standMin
+        }
+        let totalMindfulStandActual = activeSlots.reduce(0) { sum, slot in
+            let prog     = timeSlotManager.progress.progressFor(slot)
+            let goalInfo = timeSlotManager.settings.goalFor(slot)
+            let rawMAS   = mindfulMinutes[slot.rawValue] ?? 0
+            guard let goalInfo, goalInfo.standGoal.enabled else { return sum + rawMAS }
+            let standGoalMin = goalInfo.standGoal.standMinutes
+            let hasHKStand = healthKit.todayMindfulnessSamples
+                .filter { let h = Calendar.current.component(.hour, from: $0.startDate)
+                          return h >= slot.startHour && h < slot.endHour }
+                .contains { max(1, Int($0.durationMinutes.rounded())) >= standGoalMin }
+            let firestoreStand = (prog?.standCompleted ?? 0) >= 1
+            let standActual = (hasHKStand || firestoreStand) ? standGoalMin : 0
+            let mindAndStretch = hasHKStand ? max(0, rawMAS - standGoalMin) : rawMAS
+            return sum + mindAndStretch + standActual
+        }
+        let dailyMindfulAndStandDone = totalMindfulStandGoal > 0
+            && totalMindfulStandActual >= totalMindfulStandGoal
+
+        // 1日合計: カロリー・水分
+        let dailyCalorieDone = Int(healthKit.todayIntakeCalories) >= intakeGoals.dailyCalorieGoal
+        let dailyWaterDone   = Int(healthKit.todayIntakeWater)    >= intakeGoals.dailyWaterGoal
+
+        // アクティビティリング
+        let activityRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
+            && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
+
+        // 今日の Edu 履歴（写真ログ・共有投稿など）
+        let eduStart = Calendar.current.startOfDay(for: Date())
+        let todayAllEduItems = EduLogManager.shared.history.filter { $0.timestamp >= eduStart }
+        // wd-study（曜日別の勉強目標）は語学・勉強系のみを対象にする
+        let todayEduCount = todayAllEduItems.filter { item in
+            let name = item.activityName
+            return name.localizedCaseInsensitiveContains("Duolingo")
+                || name == "語学" || name.contains("語学")
+                || name == "勉強" || name == "読書"
+        }.count
+        // スパイラルのカスタム活動照合はカテゴリを限定せず、今日投稿された
+        // 全アイテムの activityName と一致すれば完了扱いにする（読書に限らず
+        // 瞑想・ストレッチ・コーヒーなど任意のカスタム活動に対応）
+        let todayEduActivityNames = Set(todayAllEduItems.map { $0.activityName }).subtracting([""])
+
+        return MandalaChartView.buildNodes(
+            settings: timeSlotManager.settings,
+            progress: timeSlotManager.progress,
+            activityRingsDone: activityRingsDone,
+            slotTrainingCounts: slotTrainingCounts,
+            slotMindfulMinutes: mindfulMinutes,
+            slotWaterMl: slotWaterMl,
+            slotMealKcal: slotMealKcal,
+            dailyCalorieDone: dailyCalorieDone,
+            dailyWaterDone: dailyWaterDone,
+            totalDailyCalorieGoal: intakeGoals.dailyCalorieGoal,
+            totalDailyWaterGoal: intakeGoals.dailyWaterGoal,
+            dailyTrainingDone: dailyTrainingDone,
+            dailyMindfulnessDone: dailyMindfulnessDone,
+            dailyMindfulAndStandDone: dailyMindfulAndStandDone,
+            loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
+            todayEduItemCount: todayEduCount,
+            todayEduActivityNames: todayEduActivityNames
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            Color.duoBg.ignoresSafeArea()
+
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        if timeSlotManager.isLoading {
+                            ProgressView()
+                                .tint(Color.duoGreen)
+                                .scaleEffect(1.4)
+                                .padding(.vertical, 40)
+                        } else {
+                            TimeSlotGoalsCardsView()
+                            mandalaSection(scrollProxy: proxy)
+                            streakAlertSection
+                        }
+                        Spacer(minLength: 40)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                }
+                .refreshable {
+                    await loadAll()
+                    await HealthKitManager.shared.fetchGoalHealth(force: true)
+                    widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
+                }
+            }
+        }
+        .navigationTitle("時間帯別の目標")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("完了") { dismiss() }
+                    .foregroundColor(Color.duoGreen)
+                    .fontWeight(.bold)
+            }
+        }
+        .task { await loadAll() }
+    }
+
+    // MARK: - Load / Save
+
+    private func loadAll() async {
+        await timeSlotManager.loadTodaySettings()
+        await timeSlotManager.loadTodayProgress()
+        async let loadedIntake = AuthenticationManager.shared.getIntakeSettings()
+        async let _ = HealthKitManager.shared.fetchIntakeHealth(force: false)
+        intakeGoals = await loadedIntake
+        widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
+        let sc = notif.prefs[NotificationManager.ID.streakAlert]
+        streakPickerTime = Calendar.current.date(
+            bySettingHour: sc.hour, minute: sc.minute, second: 0, of: Date()
+        ) ?? Date()
     }
 
     // MARK: - Streak Alert Section

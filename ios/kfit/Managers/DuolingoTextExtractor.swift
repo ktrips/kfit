@@ -133,6 +133,77 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
         )
     }
 
+    // MARK: - 単語リスト抽出（「単語」タグ付き共有時に使用）
+
+    /// 画像に写っている複数の単語を抽出する（単語リストのスクリーンショット向け）。
+    /// OCR行ごとに1単語として扱い、日本語訳行・UIロゴ文字列は除外する。
+    func extractWords(from image: UIImage, maxCount: Int = 12) async -> [VocabWord] {
+        guard let cgImage = image.cgImage else { return [] }
+
+        let lines: [String] = await withCheckedContinuation { continuation in
+            let request = VNRecognizeTextRequest { request, error in
+                guard error == nil,
+                      let observations = request.results as? [VNRecognizedTextObservation] else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                continuation.resume(returning: observations.compactMap { $0.topCandidates(1).first?.string })
+            }
+            request.recognitionLanguages = [
+                "zh-Hans", "zh-Hant",
+                "en-US", "fr-FR", "es-ES", "de-DE",
+                "ko-KR", "pt-BR", "it-IT", "ja-JP"
+            ]
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try? handler.perform([request])
+        }
+
+        let skipWords: Set<String> = ["duolingo", "Duolingo", "この文を訳してください",
+                                      "コンボ", "ライフ", "ハート"]
+
+        var seen = Set<String>()
+        var words: [VocabWord] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count > 1, trimmed.count <= 40,
+                  !skipWords.contains(trimmed), !trimmed.hasPrefix("x"),
+                  !seen.contains(trimmed) else { continue }
+
+            // 日本語訳行（単語の意味）は除外し、外国語の単語のみを対象とする
+            guard let lang = detectLanguage(trimmed), lang != "ja" else { continue }
+
+            seen.insert(trimmed)
+            words.append(VocabWord(text: trimmed, languageCode: lang))
+            if words.count >= maxCount { break }
+        }
+        return words
+    }
+
+    /// 抽出済みの各単語に発音記号（読み方）を生成して埋める
+    func fillReadings(for words: [VocabWord], settings: LLMSettings) async -> [VocabWord] {
+        guard !words.isEmpty else { return words }
+        var result = words
+        await withTaskGroup(of: (Int, String?).self) { group in
+            for (idx, word) in words.enumerated() {
+                group.addTask { @MainActor in
+                    if let pinyin = self.generatePronunciation(phrase: word.text, languageCode: word.languageCode) {
+                        return (idx, pinyin)
+                    }
+                    let langName = self.languageDisplayNamePublic(word.languageCode)
+                    let reading = await self.generatePhoneticPronunciation(
+                        phrase: word.text, languageName: langName, settings: settings)
+                    return (idx, reading)
+                }
+            }
+            for await (idx, reading) in group {
+                result[idx].reading = reading
+            }
+        }
+        return result
+    }
+
     // MARK: - 言語検出
 
     private func detectLanguage(_ text: String) -> String? {

@@ -130,6 +130,8 @@ class EduLogManager: ObservableObject {
                 let llmWantsRelatedSentences = (capturedComment.contains("文章")
                     || capturedComment.contains("他の文章"))
                     && !capturedComment.contains("例文")
+                // 「単語」タグ付き画像共有：写っている各単語を抽出し、読み方付きで再生できるようにする
+                let wantsWordList = capturedComment.contains("単語") && image != nil
 
                 // APIキー未設定でもサーバー経由（1日1回無料）でAI利用可能
                 let needsLLM = (llmWantsGrammar || llmWantsExamples || llmWantsMistake
@@ -166,9 +168,16 @@ class EduLogManager: ObservableObject {
                     ? DuolingoTextExtractor.shared.generatePhoneticPronunciation(
                         phrase: finalPhrase, languageName: langName, settings: llmSettings)
                     : nil
+                async let wordListTask: [VocabWord]? = wantsWordList
+                    ? {
+                        let words = await DuolingoTextExtractor.shared.extractWords(from: image!)
+                        guard !words.isEmpty else { return nil }
+                        return await DuolingoTextExtractor.shared.fillReadings(for: words, settings: llmSettings)
+                    }()
+                    : nil
 
-                let (grammarNote, examples, mistakeNote, relatedWords, meaning, pronunciationText) =
-                    await (grammarTask, examplesTask, mistakeTask, relatedWordsTask, meaningTask, pronunciationTask)
+                let (grammarNote, examples, mistakeNote, relatedWords, meaning, pronunciationText, extractedWords) =
+                    await (grammarTask, examplesTask, mistakeTask, relatedWordsTask, meaningTask, pronunciationTask, wordListTask)
 
                 if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
                     if let g = grammarNote  { self.history[idx].grammarNote      = g }
@@ -177,6 +186,7 @@ class EduLogManager: ObservableObject {
                     if let r = relatedWords { self.history[idx].relatedWords     = r }
                     if let tr = meaning     { self.history[idx].translationJA    = tr }
                     if let pr = pronunciationText { self.history[idx].pronunciation = pr }
+                    if let w = extractedWords { self.history[idx].extractedWords = w }
                     self.persistHistory()
                     PublicFeedPublisher.publishEduDebounced(self.history[idx])
                 }

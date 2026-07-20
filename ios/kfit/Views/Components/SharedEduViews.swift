@@ -14,6 +14,7 @@ struct DuolingoPhrase {
     let grammarNote: String?
     let exampleSentences: [ExampleSentence]?
     let relatedWords: [ExampleSentence]?
+    let extractedWords: [VocabWord]?
 }
 
 extension EduLogHistoryItem {
@@ -28,7 +29,8 @@ extension EduLogHistoryItem {
             mistakeNote: mistakeNote,
             grammarNote: grammarNote,
             exampleSentences: exampleSentences,
-            relatedWords: relatedWords
+            relatedWords: relatedWords,
+            extractedWords: extractedWords
         )
     }
 }
@@ -73,8 +75,9 @@ struct DuolingoPhraseView: View {
 
     private var allPhrases: [(phrase: String, langCode: String)] {
         var q: [(String, String)] = [(data.phrase, langCode)]
-        if let ex = data.exampleSentences { q += ex.map { ($0.text, langCode) } }
+        if let ex = data.exampleSentences  { q += ex.map { ($0.text, langCode) } }
         if let rel = data.relatedWords     { q += rel.map { ($0.text, langCode) } }
+        if let words = data.extractedWords { q += words.map { ($0.text, $0.languageCode) } }
         return q
     }
 
@@ -88,6 +91,7 @@ struct DuolingoPhraseView: View {
             grammarNoteCard
             examplesCard
             relatedCard
+            wordsCard
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -231,6 +235,25 @@ struct DuolingoPhraseView: View {
         }
     }
 
+    @ViewBuilder
+    private var wordsCard: some View {
+        if let words = data.extractedWords, !words.isEmpty {
+            let wordColor = Color(hex: "#CE82FF")
+            VStack(alignment: .leading, spacing: 6) {
+                Label("単語リスト", systemImage: "textformat.abc")
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(wordColor)
+                ForEach(Array(words.enumerated()), id: \.offset) { idx, word in
+                    wordRow(word, color: wordColor, key: "\(data.id)-word\(idx)")
+                }
+            }
+            .padding(10)
+            .background(wordColor.opacity(0.07))
+            .cornerRadius(8)
+            .padding(.top, 2)
+        }
+    }
+
     // MARK: - Helper builders
 
     private func noteBlock(label: String, icon: String, text: String, accent: Color) -> some View {
@@ -277,6 +300,46 @@ struct DuolingoPhraseView: View {
                     speakingExKey = key
                     isMySeqPlaying = false
                     tts.speak(phrase: ex.text, languageCode: langCode)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                        if speakingExKey == key { speakingExKey = nil }
+                    }
+                }
+            } label: {
+                Image(systemName: isSpeaking ? "stop.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(isSpeaking ? .red : color)
+                    .frame(width: 28, height: 28)
+                    .background((isSpeaking ? Color.red : color).opacity(0.12))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func wordRow(_ word: VocabWord, color: Color, key: String) -> some View {
+        let isSpeaking = speakingExKey == key
+        return HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(word.text)
+                    .font(.system(size: 14 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let reading = word.reading, !reading.isEmpty {
+                    Text(reading)
+                        .font(.system(size: 12 * UIScale.font))
+                        .foregroundColor(Color.duoSubtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer()
+            Button {
+                if isSpeaking {
+                    tts.stopSpeaking()
+                    speakingExKey = nil
+                } else {
+                    speakingExKey = key
+                    isMySeqPlaying = false
+                    tts.speak(phrase: word.text, languageCode: word.languageCode)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
                         if speakingExKey == key { speakingExKey = nil }
                     }

@@ -83,7 +83,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'diet',
     modeName: 'ダイエット',
-    actionSuffix: 'ボタンで計測、それだけ',
+    actionSuffix: '体重を計測、それだけ',
     accent: '#CE82FF',
     accentDark: '#9C5CC9',
     accentLight: 'rgba(206,130,255,0.1)',
@@ -94,7 +94,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'food',
     modeName: '食事ログ',
-    actionSuffix: 'ボタンで撮る、それだけ',
+    actionSuffix: '食事を撮る',
     accent: '#FF9600',
     accentDark: '#CC7700',
     accentLight: 'rgba(255,150,0,0.1)',
@@ -105,7 +105,7 @@ const MODES: ModeConfig[] = [
   {
     id: 'edu',
     modeName: '語学',
-    actionSuffix: 'ボタンで例文、それだけ',
+    actionSuffix: 'Duolingoで共有、それだけ',
     accent: '#1CB0F6',
     accentDark: '#1090CC',
     accentLight: 'rgba(28,176,246,0.1)',
@@ -144,9 +144,11 @@ export const NinetySecondMode: React.FC<Props> = ({
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
   const [pulse, setPulse] = useState(false);
-  // 直近の食事ログ写真（data URL）。FOOD ページの大型ボタン背景でスライドショー表示する
+  // 直近の食事ログ・語学アップロード写真（data URL）。大型ボタン背景でスライドショー表示する
   const [foodPhotos, setFoodPhotos] = useState<string[]>([]);
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [eduPhotos, setEduPhotos] = useState<string[]>([]);
+  const [eduPhotoIdx, setEduPhotoIdx] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const graduated = activeDays.length >= MAX_DAYS;
@@ -182,8 +184,8 @@ export const NinetySecondMode: React.FC<Props> = ({
     return () => clearInterval(t);
   }, []);
 
-  // ── 直近の食事ログ写真を取得（FOOD ボタンのスライドショー用）──────────────
-  // iOS アプリが publicProfiles/{uid}/posts に kind:"food" + base64 サムネイルで
+  // ── 直近の食事ログ・語学アップロード写真を取得（大型ボタンのスライドショー用）──
+  // iOS アプリが publicProfiles/{uid}/posts に kind:"food"/"edu" + base64 サムネイルで
   // 公開している投稿を最新順に読む。未ログイン・写真なしの場合は従来ボタン表示。
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -193,16 +195,21 @@ export const NinetySecondMode: React.FC<Props> = ({
           const snap = await getDocs(query(
             collection(db, 'publicProfiles', user.uid, 'posts'),
             orderBy('timestamp', 'desc'),
-            limit(30),
+            limit(40),
           ));
-          const photos: string[] = [];
+          const food: string[] = [];
+          const edu: string[] = [];
           snap.forEach((d) => {
             const data = d.data();
-            if (data.kind === 'food' && typeof data.thumbnail === 'string' && photos.length < 6) {
-              photos.push(`data:image/jpeg;base64,${data.thumbnail}`);
+            if (typeof data.thumbnail !== 'string') return;
+            if (data.kind === 'food' && food.length < 6) {
+              food.push(`data:image/jpeg;base64,${data.thumbnail}`);
+            } else if (data.kind === 'edu' && edu.length < 6) {
+              edu.push(`data:image/jpeg;base64,${data.thumbnail}`);
             }
           });
-          if (photos.length > 0) setFoodPhotos(photos);
+          if (food.length > 0) setFoodPhotos(food);
+          if (edu.length > 0) setEduPhotos(edu);
         } catch {
           // 取得失敗時は絵文字版の従来ボタンをそのまま表示
         }
@@ -217,6 +224,13 @@ export const NinetySecondMode: React.FC<Props> = ({
     const t = setInterval(() => setPhotoIdx((i) => (i + 1) % foodPhotos.length), 3_000);
     return () => clearInterval(t);
   }, [foodPhotos.length]);
+
+  // ── 語学アップロード写真ローテーション（3秒）───────────────────────────────
+  useEffect(() => {
+    if (eduPhotos.length < 2) return;
+    const t = setInterval(() => setEduPhotoIdx((i) => (i + 1) % eduPhotos.length), 3_000);
+    return () => clearInterval(t);
+  }, [eduPhotos.length]);
 
   // ── Tips ローテーション（4秒）─────────────────────────────────────────────
   useEffect(() => {
@@ -292,6 +306,8 @@ export const NinetySecondMode: React.FC<Props> = ({
             pulse={pulse}
             foodPhotos={foodPhotos}
             photoIdx={photoIdx}
+            eduPhotos={eduPhotos}
+            eduPhotoIdx={eduPhotoIdx}
             onAction={handleAction}
             onExit={onExit}
           />
@@ -439,13 +455,16 @@ interface CardProps {
   /** 直近の食事ログ写真（FOOD ボタンのスライドショー用・空なら従来表示） */
   foodPhotos: string[];
   photoIdx: number;
+  /** 直近の語学アップロード写真（EDU ボタンのスライドショー用・空なら従来表示） */
+  eduPhotos: string[];
+  eduPhotoIdx: number;
   onAction: () => void;
   onExit: () => void;
 }
 
 const ModeCard: React.FC<CardProps> = ({
   mode, gifIdx, tipIdx, tipList, activeDays, graduated, doneToday,
-  pulse, foodPhotos, photoIdx, onAction,
+  pulse, foodPhotos, photoIdx, eduPhotos, eduPhotoIdx, onAction,
 }) => {
   const { accent, accentDark } = mode;
   const streak = activeDays.length;
@@ -462,22 +481,20 @@ const ModeCard: React.FC<CardProps> = ({
       }}
     >
 
-      {/* ── Fitingo アイコン（最上部に小さく表示）───────────────────── */}
-      <img
-        src="/mascot.png"
-        alt="Fitingo"
-        className="mt-4"
-        style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: '50%' }}
-      />
-
       {/* ── 連続日数（あと◯日で全開放）＋ 5日チェックマーク ─────────────── */}
-      <div className="mt-3 flex flex-col items-center" style={{ gap: 10 }}>
-        <p style={{ margin: 0, textAlign: 'center' }}>
+      {/* 「◯日連続」の左側は、旧・最上部の Fitingo アイコンをここに移動したもの */}
+      <div className="mt-4 flex flex-col items-center" style={{ gap: 10 }}>
+        <p style={{ margin: 0, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <img
+            src="/mascot.png"
+            alt="Fitingo"
+            style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '50%', flexShrink: 0 }}
+          />
           <span style={{ fontSize: 20, fontWeight: 900, color: '#1f1f1f' }}>
-            🔥{streak}日連続
+            {streak}日連続
           </span>
           <span style={{ fontSize: 14, fontWeight: 700, color: graduated ? '#FF9600' : '#777' }}>
-            {graduated ? '　🎉全機能開放中！' : `（あと${MAX_DAYS - streak}日で全開放）`}
+            {graduated ? '🎉全機能開放中！' : `（あと${MAX_DAYS - streak}日で全開放）`}
           </span>
         </p>
         <div className="flex" style={{ gap: 12 }}>
@@ -591,27 +608,83 @@ const ModeCard: React.FC<CardProps> = ({
           </div>
         </button>
       ) : mode.id === 'edu' ? (
-        // EDU: 語学記録ボタン（常に表示）
+        // EDU: 語学記録ボタン
+        // 直近の語学アップロード写真があれば、背景でスライドショー表示する大型フォトボタンに
         <button
           onClick={onAction}
           style={{
             marginTop: 20,
             width: 'calc(100vw - 48px)',
             maxWidth: 380,
-            padding: '20px 24px',
+            height: eduPhotos.length > 0 ? 210 : undefined,
+            padding: eduPhotos.length > 0 ? 0 : '20px 24px',
+            position: 'relative',
+            overflow: 'hidden',
             borderRadius: 20,
             background: accent,
-            boxShadow: `0 6px 0 ${accentDark}`,
+            boxShadow: `0 6px 0 ${accentDark}, 0 0 ${pulse ? 24 : 12}px ${accent}55`,
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 12,
+            alignItems: eduPhotos.length > 0 ? 'flex-end' : 'center',
+            justifyContent: eduPhotos.length > 0 ? 'flex-start' : 'center',
+            gap: 16,
+            transform: `scale(${pulse ? 1.02 : 1.0})`,
+            transition: 'transform 1.6s ease-in-out, box-shadow 1.6s ease-in-out',
           }}
         >
-          <span style={{ fontSize: 32 }}>📚</span>
-          <span style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>語学を記録</span>
+          {/* 背景スライドショー（クロスフェード） */}
+          {eduPhotos.map((src, i) => (
+            <img
+              key={i}
+              src={src}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                opacity: i === eduPhotoIdx % eduPhotos.length ? 1 : 0,
+                transition: 'opacity 0.8s ease-in-out',
+              }}
+            />
+          ))}
+          {/* 写真の上に文字を読ませるためのグラデーション */}
+          {eduPhotos.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.68) 100%)',
+              }}
+            />
+          )}
+          <div
+            style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: eduPhotos.length > 0 ? 'flex-start' : 'center',
+              gap: 12,
+              width: '100%',
+              padding: eduPhotos.length > 0 ? '0 20px 16px' : 0,
+            }}
+          >
+            <span style={{ fontSize: 32 }}>📚</span>
+            {eduPhotos.length > 0 ? (
+              <div style={{ textAlign: 'left', flex: 1 }}>
+                <div style={{ color: '#fff', fontWeight: 900, fontSize: 20, textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                  語学を記録
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600, fontSize: 12, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+                  スクショを撮るだけでAI例文作成
+                </div>
+              </div>
+            ) : (
+              <span style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>語学を記録</span>
+            )}
+          </div>
         </button>
       ) : (
         // FIT: お手本動画をそのままボタンに / DIET: Fitingo 画像ボタン（丸バックなし）

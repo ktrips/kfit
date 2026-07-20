@@ -40,6 +40,7 @@ struct SettingsView: View {
     @State private var showRaceGoalSettings = false
     @State private var showTimeSlotGoals = false
     @State private var showShortcutsGuide = false
+    @State private var showAdvancedSettings = false
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
     @State private var motionSensitivity: [String: MotionSensitivity] = MotionSensitivity.defaultSettings
@@ -90,17 +91,12 @@ struct SettingsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     premiumSection
-                    appearanceSection
-                    tabMenuSettingsSection
                     permissionBanner
                     dailyHabitsSection
                     motionSensitivitySection
                     intakeSection
-                    llmSection
-                    watchSection
                     habitStackSection
-                    linkedAppsSection
-                    snsAccountSection
+                    advancedSettingsSection
                     saveButton
                     Spacer(minLength: 40)
                 }
@@ -127,6 +123,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showRaceGoalSettings) { NavigationView { RaceGoalSettingsView() } }
         .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
+        .sheet(isPresented: $showAdvancedSettings) { advancedSettingsSheet }
         .sheet(isPresented: $showSensitivityEditor) {
             MotionSensitivityEditorView(configuration: $setConfiguration, sensitivity: $motionSensitivity)
         }
@@ -1705,6 +1702,68 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showAPIKeySheet) {
             CustomAPIKeySheet()
+        }
+    }
+
+    // MARK: - 詳細設定
+
+    private var advancedSettingsSection: some View {
+        Button { showAdvancedSettings = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "gearshape.2.fill")
+                    .font(.system(size: 15 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoSubtitle)
+                    .frame(width: 32, height: 32)
+                    .background(Color.duoSubtitle.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("詳細設定")
+                        .font(.system(size: 15 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Text("テーマ・メニュー・AI・Apple Watch・連動アプリ・SNS")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .padding(14)
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var advancedSettingsSheet: some View {
+        NavigationView {
+            ZStack {
+                Color.duoBg.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        appearanceSection
+                        tabMenuSettingsSection
+                        llmSection
+                        watchSection
+                        linkedAppsSection
+                        snsAccountSection
+                        Spacer(minLength: 40)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                }
+            }
+            .navigationTitle("詳細設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("閉じる") { showAdvancedSettings = false }
+                        .fontWeight(.bold)
+                }
+            }
         }
     }
 

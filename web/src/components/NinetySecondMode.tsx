@@ -1,6 +1,11 @@
 import React, {
   useEffect, useRef, useState, useCallback,
 } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import {
+  collection, query, orderBy, limit, getDocs,
+} from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
@@ -139,6 +144,9 @@ export const NinetySecondMode: React.FC<Props> = ({
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
   const [pulse, setPulse] = useState(false);
+  // 直近の食事ログ写真（data URL）。FOOD ページの大型ボタン背景でスライドショー表示する
+  const [foodPhotos, setFoodPhotos] = useState<string[]>([]);
+  const [photoIdx, setPhotoIdx] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const graduated = activeDays.length >= MAX_DAYS;
@@ -173,6 +181,42 @@ export const NinetySecondMode: React.FC<Props> = ({
     const t = setInterval(() => setGifIdx((i) => (i + 1) % GIFS.length), 10_000);
     return () => clearInterval(t);
   }, []);
+
+  // ── 直近の食事ログ写真を取得（FOOD ボタンのスライドショー用）──────────────
+  // iOS アプリが publicProfiles/{uid}/posts に kind:"food" + base64 サムネイルで
+  // 公開している投稿を最新順に読む。未ログイン・写真なしの場合は従来ボタン表示。
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) return;
+      (async () => {
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'publicProfiles', user.uid, 'posts'),
+            orderBy('timestamp', 'desc'),
+            limit(30),
+          ));
+          const photos: string[] = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            if (data.kind === 'food' && typeof data.thumbnail === 'string' && photos.length < 6) {
+              photos.push(`data:image/jpeg;base64,${data.thumbnail}`);
+            }
+          });
+          if (photos.length > 0) setFoodPhotos(photos);
+        } catch {
+          // 取得失敗時は絵文字版の従来ボタンをそのまま表示
+        }
+      })();
+    });
+    return () => unsub();
+  }, []);
+
+  // ── 食事写真ローテーション（3秒）──────────────────────────────────────────
+  useEffect(() => {
+    if (foodPhotos.length < 2) return;
+    const t = setInterval(() => setPhotoIdx((i) => (i + 1) % foodPhotos.length), 3_000);
+    return () => clearInterval(t);
+  }, [foodPhotos.length]);
 
   // ── Tips ローテーション（4秒）─────────────────────────────────────────────
   useEffect(() => {
@@ -246,6 +290,8 @@ export const NinetySecondMode: React.FC<Props> = ({
             graduated={graduated}
             doneToday={doneToday}
             pulse={pulse}
+            foodPhotos={foodPhotos}
+            photoIdx={photoIdx}
             onAction={handleAction}
             onExit={onExit}
           />
@@ -390,13 +436,16 @@ interface CardProps {
   graduated: boolean;
   doneToday: boolean;
   pulse: boolean;
+  /** 直近の食事ログ写真（FOOD ボタンのスライドショー用・空なら従来表示） */
+  foodPhotos: string[];
+  photoIdx: number;
   onAction: () => void;
   onExit: () => void;
 }
 
 const ModeCard: React.FC<CardProps> = ({
   mode, gifIdx, tipIdx, tipList, activeDays, graduated, doneToday,
-  pulse, onAction,
+  pulse, foodPhotos, photoIdx, onAction,
 }) => {
   const { accent, accentDark } = mode;
   const streak = activeDays.length;
@@ -469,35 +518,77 @@ const ModeCard: React.FC<CardProps> = ({
       {/* ── メインボタン（モード別）──────────────────────────────────── */}
       {mode.id === 'food' ? (
         // FOOD: 大型 AI 食事フォトログ ボタン
+        // 直近の食事ログ写真があれば、背景でスライドショー表示する大型フォトボタンに
         <button
           onClick={onAction}
           style={{
             marginTop: 20,
             width: 'calc(100vw - 48px)',
             maxWidth: 380,
-            padding: '20px 24px',
+            height: foodPhotos.length > 0 ? 210 : undefined,
+            padding: foodPhotos.length > 0 ? 0 : '20px 24px',
+            position: 'relative',
+            overflow: 'hidden',
             borderRadius: 20,
             background: accent,
             boxShadow: `0 6px 0 ${accentDark}, 0 0 ${pulse ? 24 : 12}px ${accent}55`,
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
-            alignItems: 'center',
+            alignItems: foodPhotos.length > 0 ? 'flex-end' : 'center',
             gap: 16,
             transform: `scale(${pulse ? 1.02 : 1.0})`,
             transition: 'transform 1.6s ease-in-out, box-shadow 1.6s ease-in-out',
           }}
         >
-          <span style={{ fontSize: 36 }}>📸</span>
-          <div style={{ textAlign: 'left', flex: 1 }}>
-            <div style={{ color: '#fff', fontWeight: 900, fontSize: 20 }}>
-              AI食事フォトログ
+          {/* 背景スライドショー（クロスフェード） */}
+          {foodPhotos.map((src, i) => (
+            <img
+              key={i}
+              src={src}
+              alt=""
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                opacity: i === photoIdx % foodPhotos.length ? 1 : 0,
+                transition: 'opacity 0.8s ease-in-out',
+              }}
+            />
+          ))}
+          {/* 写真の上に文字を読ませるためのグラデーション */}
+          {foodPhotos.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.68) 100%)',
+              }}
+            />
+          )}
+          <div
+            style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              width: '100%',
+              padding: foodPhotos.length > 0 ? '0 20px 16px' : 0,
+            }}
+          >
+            <span style={{ fontSize: 36 }}>📸</span>
+            <div style={{ textAlign: 'left', flex: 1 }}>
+              <div style={{ color: '#fff', fontWeight: 900, fontSize: 20, textShadow: foodPhotos.length > 0 ? '0 1px 4px rgba(0,0,0,0.5)' : 'none' }}>
+                AI食事フォトログ
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600, fontSize: 12, textShadow: foodPhotos.length > 0 ? '0 1px 3px rgba(0,0,0,0.5)' : 'none' }}>
+                写真を撮るだけでカロリー自動記録
+              </div>
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 600, fontSize: 12 }}>
-              写真を撮るだけでカロリー自動記録
-            </div>
+            <span style={{ color: '#fff', fontSize: 18, fontWeight: 900 }}>›</span>
           </div>
-          <span style={{ color: '#fff', fontSize: 18, fontWeight: 900 }}>›</span>
         </button>
       ) : mode.id === 'edu' ? (
         // EDU: 語学記録ボタン（常に表示）

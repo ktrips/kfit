@@ -464,8 +464,8 @@ const ModeCard: React.FC<CardProps> = ({
           今度こそ、続く
         </p>
         <p
-          className="text-lg font-bold text-center"
-          style={{ color: accent, opacity: 0.85, margin: 0 }}
+          className="text-4xl font-black tracking-tight text-center"
+          style={{ color: accent, textShadow: `0 2px 8px ${accent}33`, margin: 0 }}
         >
           「{mode.modeName}」
         </p>

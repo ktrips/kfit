@@ -4,14 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commit & Push Workflow
 
-**IMPORTANT**: Before running `git commit` and `git push`, always:
-1. Show the list of changed files (`git status` and `git diff --stat`)
-2. Show the proposed commit message
-3. Ask the user for confirmation before proceeding
+**Auto commit & push is pre-approved** (user instruction, 2026-07-20): after completing a task, commit and push automatically without asking for confirmation. Always include in the reply:
+1. The list of changed files
+2. The commit message used
 
-Do not commit or push without explicit user approval.
-
-**Exception**: If the user's message ends with the word "commit" or "push" (in any language/case), treat that as pre-approval — complete the task, then commit and push automatically without asking for confirmation.
+Do not force-push or rewrite published history without explicit user approval.
 
 ## Project Overview
 

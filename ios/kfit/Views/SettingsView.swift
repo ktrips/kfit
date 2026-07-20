@@ -651,6 +651,35 @@ struct SettingsView: View {
                 // 毎日の設定
                 dailyFixedGoalsSection
 
+                // 時間帯別設定ボタン
+                Button { showTimeSlotGoals = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 15 * UIScale.font, weight: .bold))
+                            .foregroundColor(Color.duoGreen)
+                            .frame(width: 32, height: 32)
+                            .background(Color.duoGreen.opacity(0.10))
+                            .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("時間帯別の目標")
+                                .font(.system(size: 15 * UIScale.font, weight: .black))
+                                .foregroundColor(Color.duoDark)
+                            Text("朝・昼・午後・夜の時間帯ごとに設定")
+                                .font(.caption)
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
+
                 // 曜日毎の目標
                 weekdayGoalsSection
 
@@ -668,35 +697,6 @@ struct SettingsView: View {
                                 .font(.system(size: 13 * UIScale.font, weight: .black))
                                 .foregroundColor(Color.duoDark)
                             Text("大会・レース目標を設定（スイム・バイク・ラン）")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(14)
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-
-                // 時間帯別設定ボタン
-                Button { showTimeSlotGoals = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 15 * UIScale.font, weight: .bold))
-                            .foregroundColor(Color.duoGreen)
-                            .frame(width: 32, height: 32)
-                            .background(Color.duoGreen.opacity(0.10))
-                            .clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("時間帯別の目標")
-                                .font(.system(size: 13 * UIScale.font, weight: .black))
-                                .foregroundColor(Color.duoDark)
-                            Text("朝・昼・午後・夜の時間帯ごとに設定")
                                 .font(.caption)
                                 .foregroundColor(Color.duoSubtitle)
                         }
@@ -782,6 +782,15 @@ struct SettingsView: View {
                             set: { v in
                                 timeSlotManager.settings.globalGoals.dailyDrinkMl = v
                                 timeSlotManager.applyGlobalMealDrinkToSlots()
+                                timeSlotManager.saveGoalTemplate()
+                                Task {
+                                    await timeSlotManager.saveTodaySettings()
+                                    // 水分目標の単一ソースである IntakeSettings（1日のゴール・
+                                    // ダッシュボード・Watch連携で参照）にも反映する
+                                    var intake = await AuthenticationManager.shared.getIntakeSettings()
+                                    intake.dailyWaterGoal = v
+                                    await AuthenticationManager.shared.saveIntakeSettings(intake)
+                                }
                             }
                         ),
                         in: 500...5000, step: 100

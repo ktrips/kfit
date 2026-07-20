@@ -4330,6 +4330,8 @@ struct DashboardView: View {
                                             Text(dayFmt.string(from: date))
                                                 .font(.system(size: 13 * UIScale.font, weight: isToday ? .bold : .regular))
                                                 .foregroundColor(isToday ? Color.duoGreen : Color.duoDark)
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.7)
                                             if isToday {
                                                 Text("今日")
                                                     .font(.system(size: 9 * UIScale.font, weight: .bold))
@@ -4354,7 +4356,9 @@ struct DashboardView: View {
                                         Text(dayTotal > 0 ? "\(dayTotal) XP" : "—")
                                             .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                             .foregroundColor(dayTotal > 0 ? Color.duoGold : Color.duoSubtitle)
-                                            .frame(width: 56, alignment: .trailing)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.6)
+                                            .frame(width: 60, alignment: .trailing)
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 10)

@@ -1,15 +1,6 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - リマインダーメタデータ
-
-private struct ReminderMeta: Identifiable {
-    let id: String
-    let emoji: String
-    let label: String
-    let description: String
-}
-
 // MARK: - 毎日の設定モデル → Models/DailyFixedGoals.swift に移動
 
 // MARK: - 曜日毎の目標モデル
@@ -52,7 +43,6 @@ struct SettingsView: View {
     @State private var savedBanner = false
     @State private var setConfiguration = SetConfiguration.defaultSet
     @State private var motionSensitivity: [String: MotionSensitivity] = MotionSensitivity.defaultSettings
-    @State private var showSetEditor = false
     @State private var showSensitivityEditor = false
     @State private var showIntakeSettings = false
     @State private var showDietGoalSettings = false
@@ -104,7 +94,6 @@ struct SettingsView: View {
                     tabMenuSettingsSection
                     permissionBanner
                     dailyHabitsSection
-                    setConfigurationSection
                     motionSensitivitySection
                     intakeSection
                     llmSection
@@ -138,11 +127,8 @@ struct SettingsView: View {
         .sheet(isPresented: $showRaceGoalSettings) { NavigationView { RaceGoalSettingsView() } }
         .sheet(isPresented: $showTimeSlotGoals) { NavigationView { TimeSlotGoalsView() } }
         .sheet(isPresented: $showShortcutsGuide) { ShortcutsGuideView() }
-        .sheet(isPresented: $showSetEditor) {
-            SetConfigurationEditorView(configuration: $setConfiguration)
-        }
         .sheet(isPresented: $showSensitivityEditor) {
-            MotionSensitivityEditorView(sensitivity: $motionSensitivity)
+            MotionSensitivityEditorView(configuration: $setConfiguration, sensitivity: $motionSensitivity)
         }
         .sheet(isPresented: $showIntakeSettings) {
             IntakeSettingsView()
@@ -711,9 +697,6 @@ struct SettingsView: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
                 }
                 .buttonStyle(.plain)
-
-                // ストリーク・アラート
-                reminderSection
             }
         }
     }
@@ -1464,39 +1447,6 @@ struct SettingsView: View {
     }
 
 
-    // MARK: - セット構成設定
-
-    private var setConfigurationSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "list.bullet", title: "1セットのメニュー",
-                          subtitle: "種目と回数をカスタマイズ")
-
-            Button {
-                showSetEditor = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "list.bullet")
-                        .font(.title3)
-                        .foregroundColor(Color.duoGreen)
-                        .frame(width: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("メニューを編集")
-                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("\(setConfiguration.exercises.count)種目 登録済み")
-                            .font(.caption).foregroundColor(Color.duoSubtitle)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                .padding(14)
-            }
-            .background(Color(.systemBackground))
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-        }
-    }
-
     // MARK: - ダイエット目標設定
 
     private var dietGoalSection: some View {
@@ -1570,12 +1520,12 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - モーション感度設定
+    // MARK: - トレーニング・メニュー、モーション設定
 
     private var motionSensitivitySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "sensor.fill", title: "モーション感度",
-                          subtitle: "各種目の検出精度を調整")
+            sectionHeader(icon: "sensor.fill", title: "トレーニング・メニュー、モーション設定",
+                          subtitle: "種目・回数・検出精度をまとめて調整")
 
             Button {
                 showSensitivityEditor = true
@@ -1586,9 +1536,9 @@ struct SettingsView: View {
                         .foregroundColor(Color.duoGreen)
                         .frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("感度を編集")
+                        Text("メニュー・感度を編集")
                             .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                        Text("iPhone・Apple Watch共通")
+                        Text("\(setConfiguration.exercises.count)種目 登録済み · iPhone・Apple Watch共通")
                             .font(.caption).foregroundColor(Color.duoSubtitle)
                     }
                     Spacer()
@@ -1755,36 +1705,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showAPIKeySheet) {
             CustomAPIKeySheet()
-        }
-    }
-
-    // MARK: - リマインダーセクション（ストリークアラートのみ）
-
-    private var reminderSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader(icon: "bell.fill", title: "ストリーク・アラート",
-                          subtitle: "連続記録が途絶える前に通知")
-
-            let streakMeta = ReminderMeta(
-                id: NotificationManager.ID.streakAlert,
-                emoji: "🚨",
-                label: "ストリーク・アラート",
-                description: "その日の記録がない時に、連続記録が途絶えちゃうよ！とアラート"
-            )
-            ReminderRow(
-                meta: streakMeta,
-                config: Binding(
-                    get: { notif.prefs[NotificationManager.ID.streakAlert] },
-                    set: { v in
-                        notif.prefs[NotificationManager.ID.streakAlert] = v
-                        notif.savePrefs()
-                        notif.applyOne(id: NotificationManager.ID.streakAlert)
-                    }
-                )
-            )
-            .background(Color(.systemBackground))
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
         }
     }
 
@@ -1997,59 +1917,6 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ReminderRow
-
-private struct ReminderRow: View {
-    let meta: ReminderMeta
-    @Binding var config: ReminderConfig
-    @State private var time: Date = Date()
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(meta.emoji).font(.title3).frame(width: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(meta.label)
-                        .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
-                    Text(meta.description)
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                Spacer()
-                Toggle("", isOn: $config.enabled)
-                    .tint(Color.duoGreen)
-                    .labelsHidden()
-            }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-
-            if config.enabled {
-                HStack(spacing: 10) {
-                    Image(systemName: "clock")
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                    DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .tint(Color.duoGreen)
-                        .onChange(of: time) { newVal in
-                            let comps = Calendar.current.dateComponents([.hour, .minute], from: newVal)
-                            config.hour   = comps.hour   ?? config.hour
-                            config.minute = comps.minute ?? config.minute
-                        }
-                    Spacer()
-                    Text(String(format: "毎日 %02d:%02d", config.hour, config.minute))
-                        .font(.caption).foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.horizontal, 14).padding(.bottom, 12)
-                .background(Color(hex: "#F0FFF0"))
-            }
-        }
-        .onAppear {
-            // config の hour/minute → Date に変換して DatePicker に渡す
-            time = Calendar.current.date(
-                bySettingHour: config.hour, minute: config.minute, second: 0, of: Date()
-            ) ?? Date()
-        }
-    }
-}
 
 // MARK: - ShortcutsGuideView
 
@@ -2122,85 +1989,57 @@ private struct ShortcutsGuideView: View {
     }
 }
 
-// MARK: - SetConfigurationEditorView
-
-struct SetConfigurationEditorView: View {
-    @Binding var configuration: SetConfiguration
-    @Environment(\.dismiss) private var dismiss
-    @State private var editingExercises: [ExerciseInSet]
-
-    init(configuration: Binding<SetConfiguration>) {
-        self._configuration = configuration
-        self._editingExercises = State(initialValue: configuration.wrappedValue.exercises.sorted { $0.order < $1.order })
-    }
-
-    var body: some View {
-        NavigationView {
-            ZStack {
-                Color.duoBg.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "info.circle.fill").font(.caption).foregroundColor(Color(hex: "#1CB0F6"))
-                            Text("1セットで行う種目と回数を設定します。順番はドラッグで変更できます。").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
-                        }.padding(12).background(Color(hex: "#E5F8FF")).cornerRadius(12)
-                        VStack(spacing: 12) {
-                            ForEach(Array(editingExercises.enumerated()), id: \.element.id) { index, exercise in
-                                ExerciseRowEditor(exercise: $editingExercises[index], onDelete: { editingExercises.remove(at: index) })
-                            }
-                            .onMove { from, to in editingExercises.move(fromOffsets: from, toOffset: to); updateOrder() }
-                        }
-                        Button { addExercise() } label: {
-                            HStack(spacing: 8) { Image(systemName: "plus.circle.fill"); Text("種目を追加").fontWeight(.bold) }
-                                .foregroundColor(Color.duoGreen).frame(maxWidth: .infinity).padding(.vertical, 14)
-                                .background(Color.duoGreen.opacity(0.1)).cornerRadius(12)
-                        }.buttonStyle(.plain)
-                        Spacer(minLength: 20)
-                    }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 20)
-                }
-            }
-            .navigationTitle("メニュー編集").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("完了") { configuration.exercises = editingExercises; dismiss() }.fontWeight(.bold) }
-            }
-        }
-    }
-    private func updateOrder() { for (index, _) in editingExercises.enumerated() { editingExercises[index].order = index } }
-    private func addExercise() { editingExercises.append(ExerciseInSet(exerciseId: "pushup", exerciseName: "腕立て伏せ", targetReps: 10, order: editingExercises.count)) }
-}
-
-struct ExerciseRowEditor: View {
-    @Binding var exercise: ExerciseInSet
-    let onDelete: () -> Void
-    private let availableExercises = [("pushup","腕立て伏せ","💪"),("squat","スクワット","🏋️"),("situp","腹筋","🔥"),("lunge","ランジ","🦵"),("burpee","バーピー","⚡"),("plank","プランク","🧘")]
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "line.3.horizontal").font(.caption).foregroundColor(Color.duoSubtitle)
-                Menu { ForEach(availableExercises, id: \.0) { id, name, emoji in Button { exercise.exerciseId = id; exercise.exerciseName = name } label: { Label("\(emoji) \(name)", systemImage: exercise.exerciseId == id ? "checkmark" : "") } } } label: {
-                    HStack(spacing: 6) { if let ex = availableExercises.first(where: { $0.0 == exercise.exerciseId }) { Text(ex.2).font(.title3); Text(ex.1).font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark) }; Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundColor(Color.duoSubtitle) }
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    Button { if exercise.targetReps > 5 { exercise.targetReps -= 5 } } label: { Image(systemName: "minus.circle.fill").font(.title3).foregroundColor(exercise.targetReps > 5 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(exercise.targetReps <= 5)
-                    Text("\(exercise.targetReps)").font(.title3).fontWeight(.black).foregroundColor(Color.duoDark).frame(width: 40)
-                    Button { if exercise.targetReps < 50 { exercise.targetReps += 5 } } label: { Image(systemName: "plus.circle.fill").font(.title3).foregroundColor(exercise.targetReps < 50 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(exercise.targetReps >= 50)
-                }
-                Button { onDelete() } label: { Image(systemName: "trash").font(.caption).foregroundColor(Color.red.opacity(0.7)) }
-            }.padding(14)
-        }.background(Color(.systemBackground)).cornerRadius(12).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-    }
-}
-
-// MARK: - MotionSensitivityEditorView
+// MARK: - MotionSensitivityEditorView（トレーニング・メニュー、モーション設定）
 
 struct MotionSensitivityEditorView: View {
+    @Binding var configuration: SetConfiguration
     @Binding var sensitivity: [String: MotionSensitivity]
     @Environment(\.dismiss) private var dismiss
+    @State private var editingExercises: [ExerciseInSet]
     @State private var editingSensitivity: [String: MotionSensitivity]
-    private let exercises = [("pushup","腕立て伏せ","💪"),("squat","スクワット","🏋️"),("situp","腹筋","🔥"),("lunge","ランジ","🦵"),("burpee","バーピー","⚡")]
-    init(sensitivity: Binding<[String: MotionSensitivity]>) { self._sensitivity = sensitivity; self._editingSensitivity = State(initialValue: sensitivity.wrappedValue) }
+
+    private let availableExercises = [("pushup","腕立て伏せ","💪"),("squat","スクワット","🏋️"),("situp","腹筋","🔥"),("lunge","ランジ","🦵"),("burpee","バーピー","⚡"),("plank","プランク","🧘")]
+
+    init(configuration: Binding<SetConfiguration>, sensitivity: Binding<[String: MotionSensitivity]>) {
+        self._configuration = configuration
+        self._sensitivity = sensitivity
+        self._editingExercises = State(initialValue: configuration.wrappedValue.exercises.sorted { $0.order < $1.order })
+        self._editingSensitivity = State(initialValue: sensitivity.wrappedValue)
+    }
+
+    private func isIncluded(_ id: String) -> Bool { editingExercises.contains { $0.exerciseId == id } }
+
+    private func includeBinding(id: String, name: String) -> Binding<Bool> {
+        Binding(
+            get: { isIncluded(id) },
+            set: { newValue in
+                if newValue {
+                    guard !isIncluded(id) else { return }
+                    editingExercises.append(ExerciseInSet(exerciseId: id, exerciseName: name, targetReps: 10, order: editingExercises.count))
+                } else {
+                    editingExercises.removeAll { $0.exerciseId == id }
+                }
+            }
+        )
+    }
+
+    private func repsBinding(id: String) -> Binding<Int> {
+        Binding(
+            get: { editingExercises.first { $0.exerciseId == id }?.targetReps ?? 10 },
+            set: { newValue in
+                guard let idx = editingExercises.firstIndex(where: { $0.exerciseId == id }) else { return }
+                editingExercises[idx].targetReps = newValue
+            }
+        )
+    }
+
+    private func sensitivityBinding(id: String) -> Binding<MotionSensitivity> {
+        Binding(
+            get: { editingSensitivity[id] ?? MotionSensitivity.defaultSettings[id]! },
+            set: { editingSensitivity[id] = $0 }
+        )
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -2209,15 +2048,19 @@ struct MotionSensitivityEditorView: View {
                     VStack(spacing: 16) {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "info.circle.fill").font(.caption).foregroundColor(Color(hex: "#1CB0F6"))
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("モーションセンサーの感度を調整します。").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
-                                Text("• 感度：低い=大きな動きのみ検出、高い=小さな動きも検出").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
-                                Text("• 間隔：短い=速い動きも検出、長い=ゆっくりした動きのみ").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
-                            }
+                            Text("種目ごとに、1セットのメニューに含めるか・回数・モーション検出の感度を設定します。").font(.caption).foregroundColor(Color(hex: "#0a6c96"))
                         }.padding(12).background(Color(hex: "#E5F8FF")).cornerRadius(12)
-                        ForEach(exercises, id: \.0) { id, name, emoji in if let sens = editingSensitivity[id] { SensitivityRowEditor(exerciseName: "\(emoji) \(name)", sensitivity: Binding(get: { sens }, set: { editingSensitivity[id] = $0 })) } }
+
+                        ForEach(availableExercises, id: \.0) { id, name, emoji in
+                            TrainingMenuRowEditor(
+                                exerciseName: "\(emoji) \(name)",
+                                isIncluded: includeBinding(id: id, name: name),
+                                targetReps: repsBinding(id: id),
+                                sensitivity: sensitivityBinding(id: id)
+                            )
+                        }
                         Button { editingSensitivity = MotionSensitivity.defaultSettings } label: {
-                            HStack(spacing: 8) { Image(systemName: "arrow.counterclockwise"); Text("デフォルトに戻す").fontWeight(.bold) }
+                            HStack(spacing: 8) { Image(systemName: "arrow.counterclockwise"); Text("感度をデフォルトに戻す").fontWeight(.bold) }
                                 .foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity).padding(.vertical, 14).background(Color(.systemBackground)).cornerRadius(12)
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.duoSubtitle.opacity(0.3), lineWidth: 1))
                         }.buttonStyle(.plain)
@@ -2225,26 +2068,51 @@ struct MotionSensitivityEditorView: View {
                     }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 20)
                 }
             }
-            .navigationTitle("感度設定").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("トレーニング・メニュー、モーション設定").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("完了") { sensitivity = editingSensitivity; dismiss() }.fontWeight(.bold) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完了") {
+                        var exercises = editingExercises
+                        for i in exercises.indices { exercises[i].order = i }
+                        configuration.exercises = exercises
+                        sensitivity = editingSensitivity
+                        dismiss()
+                    }.fontWeight(.bold)
+                }
             }
         }
     }
 }
 
-struct SensitivityRowEditor: View {
+struct TrainingMenuRowEditor: View {
     let exerciseName: String
+    @Binding var isIncluded: Bool
+    @Binding var targetReps: Int
     @Binding var sensitivity: MotionSensitivity
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(exerciseName).font(.headline).fontWeight(.bold).foregroundColor(Color.duoDark)
+            HStack(spacing: 10) {
+                Text(exerciseName).font(.headline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                Spacer()
+                Text("メニューに含める").font(.caption).foregroundColor(Color.duoSubtitle)
+                Toggle("", isOn: $isIncluded).labelsHidden().tint(Color.duoGreen)
+            }
+            if isIncluded {
+                HStack(spacing: 8) {
+                    Text("回数").font(.subheadline).foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                    Button { if targetReps > 5 { targetReps -= 5 } } label: { Image(systemName: "minus.circle.fill").font(.title3).foregroundColor(targetReps > 5 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(targetReps <= 5)
+                    Text("\(targetReps)").font(.title3).fontWeight(.black).foregroundColor(Color.duoDark).frame(width: 40)
+                    Button { if targetReps < 50 { targetReps += 5 } } label: { Image(systemName: "plus.circle.fill").font(.title3).foregroundColor(targetReps < 50 ? Color.duoGreen : Color.gray.opacity(0.3)) }.disabled(targetReps >= 50)
+                }
+                Divider()
+            }
             VStack(alignment: .leading, spacing: 8) {
                 HStack { Text("感度").font(.subheadline).foregroundColor(Color.duoSubtitle); Spacer(); Text(sensitivityLabel(sensitivity.threshold)).font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen) }
                 HStack(spacing: 8) { Text("低").font(.caption2).foregroundColor(Color.duoSubtitle); Slider(value: $sensitivity.threshold, in: 0.02...0.20, step: 0.02).tint(Color.duoGreen); Text("高").font(.caption2).foregroundColor(Color.duoSubtitle) }
             }
-            Divider()
             VStack(alignment: .leading, spacing: 8) {
                 HStack { Text("最小間隔").font(.subheadline).foregroundColor(Color.duoSubtitle); Spacer(); Text(String(format: "%.1f秒", sensitivity.minInterval)).font(.caption).fontWeight(.bold).foregroundColor(Color.duoGreen) }
                 HStack(spacing: 8) { Text("短").font(.caption2).foregroundColor(Color.duoSubtitle); Slider(value: $sensitivity.minInterval, in: 0.3...2.0, step: 0.1).tint(Color.duoGreen); Text("長").font(.caption2).foregroundColor(Color.duoSubtitle) }

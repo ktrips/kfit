@@ -4,6 +4,9 @@ import UIKit
 import Combine
 import FirebaseAuth
 import FirebaseFirestore
+import os
+
+private let wcLogger = Logger(subsystem: "com.ktrips.kedu", category: "WatchEduSender")
 
 /// kedu iOS → keduWatch データ送信（WatchConnectivity）
 /// タイムアウト対策：
@@ -18,6 +21,8 @@ final class WatchEduSender: NSObject {
     private var session: WCSession? { WCSession.isSupported() ? WCSession.default : nil }
     private var debounceTask: Task<Void, Never>?
     private var historyObserver: AnyCancellable?
+    /// Firestore 再取得のスロットル用（fetchRemotePostsAndSend）
+    private var lastRemoteFetch: Date?
 
     /// これまでに送信した全アイテムの union（id で重複排除）。
     /// 送信経路が複数あるため（EdulingoView のフィード込み完全版 / ローカル履歴のみ）、
@@ -28,7 +33,11 @@ final class WatchEduSender: NSObject {
     // MARK: - アクティベート
 
     func activate() {
-        guard let session else { return }
+        guard let session else {
+            wcLogger.error("activate: WCSession.isSupported() == false")
+            return
+        }
+        wcLogger.info("activate: isPaired=\(session.isPaired) isWatchAppInstalled=\(session.isWatchAppInstalled) state=\(session.activationState.rawValue)")
         if !(session.delegate is WatchEduSender) {
             session.delegate = self
         }
@@ -72,17 +81,27 @@ final class WatchEduSender: NSObject {
 
     // MARK: - 配信（applicationContext が主経路、sendMessage はリアルタイム補助）
 
+    /// "own_{id}"（Firestore フィード由来）とローカル履歴の生 id は同一投稿を指すため、
+    /// プレフィックスを除去した id で統一する。これをしないと同じ投稿が
+    /// 別 id として union に両方残り、Watch に二重表示される。
+    private static func normalizedId(_ id: String) -> String {
+        id.hasPrefix("own_") ? String(id.dropFirst("own_".count)) : id
+    }
+
     func sendEduItems(_ items: [EduLogHistoryItem]) {
         guard let session, session.activationState == .activated else { return }
         guard !items.isEmpty else { return }
 
-        // 既送信分と union マージ（同じ id は新しい timestamp を優先）。
+        // 既送信分と union マージ（同じ投稿は正規化 id で同一視し、新しい timestamp を優先）。
         // これでローカル履歴のみの送信でも、フィード由来の直近投稿が消えない。
         for item in items {
-            if let existing = mergedItems[item.id], existing.timestamp >= item.timestamp {
+            let key = Self.normalizedId(item.id)
+            if let existing = mergedItems[key], existing.timestamp >= item.timestamp {
                 continue
             }
-            mergedItems[item.id] = item
+            var normalized = item
+            normalized.id = key
+            mergedItems[key] = normalized
         }
 
         // 純粋に新しい順で最大 20 件（「直近の投稿」を最優先で届ける）
@@ -90,6 +109,7 @@ final class WatchEduSender: NSObject {
         guard !combined.isEmpty else { return }
 
         let slimDicts = makeSlimDicts(from: combined)
+        wcLogger.info("sendEduItems: sending \(combined.count) items (reachable=\(session.isReachable))")
 
         // ── 1. applicationContext: バックグラウンド配信（主経路・常に実行）
         //    Phone 未接続でも Watch 側に届き、Watch 再起動後にも残る
@@ -101,7 +121,9 @@ final class WatchEduSender: NSObject {
         if session.isReachable {
             session.sendMessage(["eduItems": slimDicts],
                                 replyHandler: nil,
-                                errorHandler: nil)
+                                errorHandler: { error in
+                                    wcLogger.error("sendMessage failed: \(error.localizedDescription)")
+                                })
         }
 
         // ── transferUserInfo は使用しない ──
@@ -145,11 +167,17 @@ final class WatchEduSender: NSObject {
     private func tryContext(session: WCSession, payload: [[String: Any]]) {
         do {
             try session.updateApplicationContext(["eduItems": payload])
+            wcLogger.info("updateApplicationContext: succeeded with \(payload.count) items")
         } catch {
+            wcLogger.error("updateApplicationContext failed: \(error.localizedDescription) — retrying with half payload")
             // 65KB 超過時は件数を半分に削って再試行
             let half = Array(payload.prefix(payload.count / 2))
             if !half.isEmpty {
-                try? session.updateApplicationContext(["eduItems": half])
+                do {
+                    try session.updateApplicationContext(["eduItems": half])
+                } catch {
+                    wcLogger.error("updateApplicationContext retry failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -161,6 +189,7 @@ extension WatchEduSender: WCSessionDelegate {
     nonisolated func session(_ session: WCSession,
                              activationDidCompleteWith activationState: WCSessionActivationState,
                              error: Error?) {
+        wcLogger.info("activationDidCompleteWith: state=\(activationState.rawValue) error=\(error?.localizedDescription ?? "nil") isPaired=\(session.isPaired) isWatchAppInstalled=\(session.isWatchAppInstalled)")
         guard activationState == .activated else { return }
         // 蓄積した古い transferUserInfo キューをキャンセル
         for transfer in session.outstandingUserInfoTransfers { transfer.cancel() }
@@ -177,6 +206,7 @@ extension WatchEduSender: WCSessionDelegate {
     /// Watch 側が `sendMessage(..., replyHandler: nil, errorHandler: nil)` で送る場合はここに届く
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any]) {
+        wcLogger.info("didReceiveMessage(no reply): \(message)")
         guard (message["action"] as? String) == "request_edu" else { return }
         Task { @MainActor in self.sendCachedItems() }
     }
@@ -226,8 +256,11 @@ extension WatchEduSender {
     /// Firestore（publicProfiles/{uid}/posts）から直近の自分の EDU 投稿を取得して送信する。
     /// EdulingoView の画面表示・フィード読込に依存しないため、
     /// バックグラウンド起動や Watch からのリクエスト時にも最新投稿を届けられる。
+    /// 短時間の連続呼び出し（起動タスク + scenePhase 変化など）は 20 秒間スロットルする。
     func fetchRemotePostsAndSend() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        if let last = lastRemoteFetch, Date().timeIntervalSince(last) < 20 { return }
+        lastRemoteFetch = Date()
         Task { @MainActor in
             let db = Firestore.firestore()
             guard let snap = try? await db

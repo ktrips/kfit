@@ -13,6 +13,7 @@ struct keduApp: App {
     @StateObject private var plus = PlusManager.shared
     @StateObject private var photoLogManager = PhotoLogManager.shared
     @StateObject private var eduLogManager = EduLogManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     /// "auto" / "light" / "dark"
     @AppStorage("keduColorScheme") private var colorSchemePref: String = "auto"
@@ -64,6 +65,14 @@ struct keduApp: App {
                 // EduLogManager の初期ロードが完了してから送信（1秒後）
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 WatchEduSender.shared.sendCachedItems()
+            }
+            .onChange(of: scenePhase) { phase in
+                // バックグラウンドから復帰するたびに Watch へ最新状態を再送する。
+                // kfit 側で投稿 → kedu を開いた、というフローで Watch を最新化する経路。
+                // （Firestore 再取得は WatchEduSender 側で 20 秒スロットル済み）
+                if phase == .active {
+                    WatchEduSender.shared.sendCachedItems()
+                }
             }
         }
     }

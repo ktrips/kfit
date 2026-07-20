@@ -2,6 +2,9 @@ import Foundation
 import Combine
 import WatchConnectivity
 import WatchKit
+import os
+
+private let wcLogger = Logger(subsystem: "com.ktrips.kedu.watchkitapp", category: "WatchEduStore")
 
 // MARK: - WatchEduItem
 
@@ -99,13 +102,24 @@ class WatchEduStore: NSObject, ObservableObject {
 
     // MARK: - アイテム適用（重複排除・最新優先）
 
+    /// "own_{id}"（旧ビルドのiOSが送っていた形式）と生 id は同一投稿。
+    /// 旧キャッシュとの突き合わせ時に二重表示にならないよう正規化して比較する。
+    private static func normalizedId(_ id: String) -> String {
+        id.hasPrefix("own_") ? String(id.dropFirst("own_".count)) : id
+    }
+
     private func applyItems(_ raw: [[String: Any]]) {
-        let parsed = raw.compactMap { WatchEduItem(from: $0) }
+        var parsed: [WatchEduItem] = []
+        var seenKeys = Set<String>()
+        for dict in raw {
+            guard let item = WatchEduItem(from: dict) else { continue }
+            guard seenKeys.insert(Self.normalizedId(item.id)).inserted else { continue }
+            parsed.append(item)
+        }
         guard !parsed.isEmpty else { return }
 
         var merged = parsed
-        let newIds = Set(parsed.map(\.id))
-        let existing = items.filter { !newIds.contains($0.id) }
+        let existing = items.filter { !seenKeys.contains(Self.normalizedId($0.id)) }
         merged += existing
 
         // 純粋にタイムスタンプ降順（直近の投稿を常に先頭に表示）
@@ -125,29 +139,34 @@ class WatchEduStore: NSObject, ObservableObject {
 
     // MARK: - Watch → iOS: フィードリクエスト
 
-    /// applicationContext から即時反映する（sendMessage は使わない）。
-    /// sendMessage はタイムアウト (WCErrorCodeTransferTimedOut) の原因になるため使用しない。
-    /// iOS 側は Combine で履歴変化を監視して applicationContext を自動更新するため、
-    /// Watch 側は「読むだけ」で充分。
-    func requestSync() {
+    /// 同期を要求する。
+    /// 1. まず applicationContext を即反映（Phone の起動状態に依存しない・オフラインでも表示可能）
+    /// 2. その上で iPhone が届く範囲なら request_edu を送って最新データを取りに行く
+    ///    （旧実装はコンテキストがあると即 return していたため、kfit 側で投稿した直後など
+    ///      コンテキストが古い場合に手動同期しても新データが来なかった）
+    /// replyHandler は使わない（往復タイムアウト WCErrorCodeTransferTimedOut 回避）。
+    /// - Parameter playHaptic: 手動操作時のみ true（ライフサイクル起点の自動同期では鳴らさない）
+    func requestSync(playHaptic: Bool = true) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated else { return }
 
         isSyncing = true
-        WKInterfaceDevice.current().play(.click)
+        if playHaptic { WKInterfaceDevice.current().play(.click) }
 
         // applicationContext を即反映（Phone の起動状態に依存しない）
         let ctx = session.receivedApplicationContext
+        wcLogger.info("requestSync: isReachable=\(session.isReachable) receivedContextKeys=\(ctx.keys.sorted())")
         if let raw = ctx["eduItems"] as? [[String: Any]], !raw.isEmpty {
             applyItems(raw)
-            return
         }
 
-        // コンテキストが空 → iOS が起動中なら sendMessage でリクエスト
-        // replyHandler と errorHandler は両方 nil にしてタイムアウト通知を防ぐ
+        // iPhone が届く範囲なら常に最新データをリクエストする
+        // （iOS 側は request_edu 受信で Firestore からも補完して context を更新する）
         if session.isReachable {
-            session.sendMessage(["action": "request_edu"], replyHandler: nil, errorHandler: nil)
+            session.sendMessage(["action": "request_edu"], replyHandler: nil, errorHandler: { error in
+                wcLogger.error("requestSync: sendMessage error=\(error.localizedDescription)")
+            })
         }
 
         isSyncing = false
@@ -187,6 +206,7 @@ extension WatchEduStore: WCSessionDelegate {
     nonisolated func session(_ session: WCSession,
                              activationDidCompleteWith activationState: WCSessionActivationState,
                              error: Error?) {
+        wcLogger.info("activationDidCompleteWith: state=\(activationState.rawValue) error=\(error?.localizedDescription ?? "nil") isReachable=\(session.isReachable)")
         Task { @MainActor in
             self.isLoading = false
             guard activationState == .activated else {

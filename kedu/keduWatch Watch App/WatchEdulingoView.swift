@@ -161,7 +161,7 @@ struct WatchEdulingoView: View {
         }
         .onAppear {
             // キャッシュあり・なし問わず最新データを要求（applicationContext から即反映）
-            store.requestSync()
+            store.requestSync(playHaptic: false)
             if store.items.isEmpty {
                 store.scheduleRetryIfNeeded()
             }

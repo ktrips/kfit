@@ -92,6 +92,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     premiumSection
                     permissionBanner
+                    tabVisibilitySection
                     dailyHabitsSection
                     motionSensitivitySection
                     intakeSection
@@ -267,13 +268,13 @@ struct SettingsView: View {
         }
     }
 
-    private var tabMenuSettingsSection: some View {
+    // 90秒モード（1画面に絞ったシンプル表示）。詳細設定に残す。
+    private var ninetySecondModeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(icon: "rectangle.grid.1x2.fill",
-                          title: "メニューのカスタマイズ",
-                          subtitle: "タブを非表示にすると関連する情報も非表示。並び順を一番上にするとデフォルト表示")
+            sectionHeader(icon: "stopwatch.fill",
+                          title: "90秒モード",
+                          subtitle: "「今日の90秒」だけの1画面表示に切り替え")
 
-            // 90秒モード（1画面に絞ったシンプル表示）
             VStack(spacing: 0) {
                 Toggle(isOn: $simpleModeEnabled) {
                     HStack(spacing: 8) {
@@ -312,7 +313,15 @@ struct SettingsView: View {
             .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+        }
+    }
 
+    // タブの表示・非表示・並び替え。メインのSETUP画面（毎日の習慣・目標設定の上）に表示する。
+    private var tabVisibilitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(icon: "rectangle.grid.1x2.fill",
+                          title: "メニューのカスタマイズ",
+                          subtitle: "タブを非表示にすると関連する情報も非表示。並び順を一番上にするとデフォルト表示")
 
             VStack(spacing: 0) {
                 ForEach(Array(orderedConfigurableTabs.enumerated()), id: \.element.id) { index, tab in
@@ -1744,7 +1753,7 @@ struct SettingsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         appearanceSection
-                        tabMenuSettingsSection
+                        ninetySecondModeSection
                         llmSection
                         watchSection
                         linkedAppsSection

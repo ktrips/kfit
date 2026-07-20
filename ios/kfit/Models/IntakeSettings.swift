@@ -88,6 +88,20 @@ final class ThumbnailCache {
         return image
     }
 
+    /// キャッシュヒット時はディスクI/Oを一切行わない遅延ロード版。
+    /// 旧 `image(for:data:maxPixel:)` はキーに data.count を含むため、キャッシュ確認の前に
+    /// 必ずファイル読み込みが必要だった。サムネイルはアイテム作成時に `{id}.jpg` として
+    /// 一度だけ保存され以後不変なので、id ベースのキーで安全にスキップできる。
+    /// - Parameter dataProvider: キャッシュミス時のみ呼ばれるデータ読み込みクロージャ
+    func image(for key: String, maxPixel: CGFloat, dataProvider: () -> Data?) -> UIImage? {
+        let cacheKey = "\(key)|\(Int(maxPixel))" as NSString
+        if let cached = cache.object(forKey: cacheKey) { return cached }
+        guard let data = dataProvider(),
+              let image = Self.downsample(data: data, maxPixel: maxPixel) else { return nil }
+        cache.setObject(image, forKey: cacheKey)
+        return image
+    }
+
     /// 画像データを指定の最大ピクセルまで縮小してデコードする。
     static func downsample(data: Data, maxPixel: CGFloat) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
@@ -378,22 +392,20 @@ struct PhotoLogHistoryItem: Codable, Identifiable {
         self.isPublic          = isPublic
     }
 
-    /// フィード等の大きめ表示用（ファイルキャッシュ優先、旧データは thumbnailData フォールバック）
+    /// フィード等の大きめ表示用（キャッシュヒット時はディスクI/Oなし）
     var thumbnail: UIImage? {
-        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
-            return ThumbnailCache.shared.image(for: "photo_\(id)", data: data, maxPixel: 1024)
-        }
-        guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: "photo_\(id)", data: data, maxPixel: 1024)
+        ThumbnailCache.shared.image(for: "photo_\(id)", maxPixel: 1024) { loadThumbnailData() }
     }
 
     /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
     var smallThumbnail: UIImage? {
-        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
-            return ThumbnailCache.shared.image(for: "photo_sm_\(id)", data: data, maxPixel: 240)
-        }
-        guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: "photo_sm_\(id)", data: data, maxPixel: 240)
+        ThumbnailCache.shared.image(for: "photo_sm_\(id)", maxPixel: 240) { loadThumbnailData() }
+    }
+
+    /// ファイルキャッシュ優先、旧データは thumbnailData フォールバック
+    private func loadThumbnailData() -> Data? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) { return data }
+        return thumbnailData
     }
 
     var displayName: String {
@@ -539,22 +551,20 @@ struct EduLogHistoryItem: Codable, Identifiable {
         self.isPublic       = isPublic
     }
 
-    /// フィード等の大きめ表示用（ファイルキャッシュ優先、旧データは thumbnailData フォールバック）
+    /// フィード等の大きめ表示用（キャッシュヒット時はディスクI/Oなし）
     var thumbnail: UIImage? {
-        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
-            return ThumbnailCache.shared.image(for: "edu_\(id)", data: data, maxPixel: 1024)
-        }
-        guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: "edu_\(id)", data: data, maxPixel: 1024)
+        ThumbnailCache.shared.image(for: "edu_\(id)", maxPixel: 1024) { loadThumbnailData() }
     }
 
     /// 一覧の小サムネイル用（長辺240pxまで縮小・キャッシュ）
     var smallThumbnail: UIImage? {
-        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) {
-            return ThumbnailCache.shared.image(for: "edu_sm_\(id)", data: data, maxPixel: 240)
-        }
-        guard let data = thumbnailData else { return nil }
-        return ThumbnailCache.shared.image(for: "edu_sm_\(id)", data: data, maxPixel: 240)
+        ThumbnailCache.shared.image(for: "edu_sm_\(id)", maxPixel: 240) { loadThumbnailData() }
+    }
+
+    /// ファイルキャッシュ優先、旧データは thumbnailData フォールバック
+    private func loadThumbnailData() -> Data? {
+        if let path = thumbnailPath, let data = ThumbnailFileStore.load(path: path) { return data }
+        return thumbnailData
     }
 
     /// authorNameが空（旧データ）の場合はUserDefaultsキャッシュのユーザー名でフォールバック

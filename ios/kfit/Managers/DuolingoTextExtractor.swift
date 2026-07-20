@@ -181,25 +181,52 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
         return words
     }
 
-    /// 抽出済みの各単語に発音記号（読み方）を生成して埋める
+    /// 抽出済みの各単語に発音記号（読み方）を生成して埋める。
+    /// 中国語はローカルのピンイン変換（CFStringTransform）で埋め、残りは
+    /// 全単語をまとめた1回のLLM呼び出しで生成する（単語数ぶんの並列呼び出しは
+    /// AIProxyの回数制限・コスト・レイテンシの点で不可）。
     func fillReadings(for words: [VocabWord], settings: LLMSettings) async -> [VocabWord] {
         guard !words.isEmpty else { return words }
         var result = words
-        await withTaskGroup(of: (Int, String?).self) { group in
-            for (idx, word) in words.enumerated() {
-                group.addTask { @MainActor in
-                    if let pinyin = self.generatePronunciation(phrase: word.text, languageCode: word.languageCode) {
-                        return (idx, pinyin)
-                    }
-                    let langName = self.languageDisplayNamePublic(word.languageCode)
-                    let reading = await self.generatePhoneticPronunciation(
-                        phrase: word.text, languageName: langName, settings: settings)
-                    return (idx, reading)
-                }
+
+        for idx in result.indices {
+            result[idx].reading = generatePronunciation(
+                phrase: result[idx].text, languageCode: result[idx].languageCode)
+        }
+
+        let pending = result.filter { $0.reading == nil }
+        guard !pending.isEmpty else { return result }
+
+        let wordList = pending.map { "- \($0.text)" }.joined(separator: "\n")
+        let prompt = """
+あなたは語学学習アシスタントです。
+次の各単語の発音記号を返してください。
+IPA表記を基本とし、IPAで表しにくい言語の場合はカタカナ発音表記にしてください。
+回答は必ず以下のJSON配列形式のみで返してください（説明文は不要、順番は入力と同じ）:
+[
+  {"text": "<単語1>", "reading": "<発音記号1>"},
+  {"text": "<単語2>", "reading": "<発音記号2>"}
+]
+
+単語リスト:
+\(wordList)
+"""
+        guard let raw = await callLLMText(prompt: prompt, settings: settings) else { return result }
+
+        struct WordReading: Codable { let text: String; let reading: String? }
+        let jsonStr = extractJSON(from: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let data = jsonStr.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([WordReading].self, from: data) else { return result }
+
+        // text で照合して埋める（LLMの返却順ずれ・欠落に耐性を持たせる）
+        var readingByText: [String: String] = [:]
+        for entry in decoded {
+            if let reading = entry.reading, !reading.isEmpty {
+                readingByText[entry.text] = reading
             }
-            for await (idx, reading) in group {
-                result[idx].reading = reading
-            }
+        }
+        for idx in result.indices where result[idx].reading == nil {
+            result[idx].reading = readingByText[result[idx].text]
         }
         return result
     }

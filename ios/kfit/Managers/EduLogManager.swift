@@ -325,8 +325,18 @@ class EduLogManager: ObservableObject {
     private var _lastPersistedSignature: String = ""
     private func persistHistory() {
         let snapshot = history
-        // id + timestamp + isFavorite + likeCount でシグネチャを作成（変更なし検出）
-        let sig = snapshot.map { "\($0.id):\($0.timestamp.timeIntervalSince1970):\($0.isFavorite):\($0.likeCount)" }.joined(separator: ",")
+        // 変更なし検出用シグネチャ。作成後に書き換わるフィールド
+        // （LLM生成の翻訳・発音・例文・単語リスト、フィードコメント、コメント編集、公開設定）
+        // も含めないと、それらの更新が「変更なし」と誤判定されて永続化されない。
+        // hashValue はプロセス内でのみ安定だが、比較対象の _lastPersistedSignature も
+        // メモリ上の値なので問題ない。
+        let sig = snapshot.map {
+            "\($0.id):\($0.timestamp.timeIntervalSince1970):\($0.isFavorite):\($0.likeCount)"
+            + ":\($0.isPublic):\($0.feedComments.count):\($0.comment.hashValue)"
+            + ":\($0.translationJA?.hashValue ?? 0):\($0.pronunciation?.hashValue ?? 0)"
+            + ":\($0.grammarNote?.hashValue ?? 0):\($0.mistakeNote?.hashValue ?? 0)"
+            + ":\($0.exampleSentences?.count ?? -1):\($0.relatedWords?.count ?? -1):\($0.extractedWords?.count ?? -1)"
+        }.joined(separator: ",")
         guard sig != _lastPersistedSignature else { return }
         _lastPersistedSignature = sig
         Task.detached(priority: .utility) {

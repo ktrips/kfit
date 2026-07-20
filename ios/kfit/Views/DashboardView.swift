@@ -7338,9 +7338,10 @@ private struct MandalaSpiralCard: View {
 
 
     private var legendOverlay: some View {
-        let entries = todayCarouselEntries
+        // 件数のみの軽量集計（サムネイル読み込みなし）。エントリ本体はシート表示時に構築する。
+        let counts = countTodayCarouselEntries()
         return VStack(alignment: .leading, spacing: 2) {
-            legendRow
+            legendRow(counts: counts)
                 .padding(.vertical, 3)
                 .padding(.horizontal, 5)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -7349,7 +7350,7 @@ private struct MandalaSpiralCard: View {
                 .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
 
             // 今日の投稿があるときだけスライドアイコンを表示
-            if !entries.isEmpty {
+            if counts.total > 0 {
                 Button {
                     carouselSlotFilter = nil
                     showDayCarousel = true
@@ -7357,7 +7358,7 @@ private struct MandalaSpiralCard: View {
                     HStack(spacing: 3) {
                         Image(systemName: "rectangle.stack.fill")
                             .font(.system(size: 9, weight: .bold))
-                        Text("\(entries.count)件")
+                        Text("\(counts.total)件")
                             .font(.system(size: 9, weight: .bold))
                     }
                     .foregroundColor(Color(hex: "CE82FF"))
@@ -7371,11 +7372,6 @@ private struct MandalaSpiralCard: View {
         }
         .padding(.top, 6)
         .padding(.horizontal, 6)
-    }
-
-    // 今日の投稿エントリ（Edu + フォトログ）を時刻順で返す
-    private var todayCarouselEntries: [DayCarouselEntry] {
-        buildTodayCarouselEntries()
     }
 
     // ノード配列を1回だけスキャンして今日/スロット別/全体の完了数を収集する。
@@ -7407,9 +7403,8 @@ private struct MandalaSpiralCard: View {
         return (todayDone, todayTotal, slotCounts, visibleDone, visibleTotal)
     }
 
-    private var legendRow: some View {
+    private func legendRow(counts: (total: Int, bySlot: [TimeSlot: Int])) -> some View {
         let stats = nodeStats
-        let entries = todayCarouselEntries
         let pct = stats.visibleTotal > 0 ? Double(stats.visibleDone) / Double(stats.visibleTotal) : 0.0
         let abColor: Color = pct >= 1.0  ? Color(hex: "#4CAF50")
                            : pct >= 0.7  ? Color(hex: "#A5D63B")
@@ -7419,30 +7414,30 @@ private struct MandalaSpiralCard: View {
         return HStack(spacing: 2) {
             // 「今日」ボタン — 全件カルーセルを開く
             Button {
-                if !entries.isEmpty {
+                if counts.total > 0 {
                     carouselSlotFilter = nil
                     showDayCarousel = true
                 }
             } label: {
                 legendCell(label: "今日", color: Color(hex: "CE82FF"),
                            done: stats.todayDone, total: stats.todayTotal,
-                           hasEntries: !entries.isEmpty)
+                           hasEntries: counts.total > 0)
             }
             .buttonStyle(.plain)
 
             // スロットボタン — そのスロットでフィルタしてカルーセルを開く
             ForEach(visibleSlots, id: \.self) { slot in
                 let sc = stats.slotCounts[slot] ?? (0, 0)
-                let slotEntries = entries.filter { $0.slot == slot }
+                let slotCount = counts.bySlot[slot] ?? 0
                 Button {
-                    if !slotEntries.isEmpty {
+                    if slotCount > 0 {
                         carouselSlotFilter = slot
                         showDayCarousel = true
                     }
                 } label: {
                     legendCell(label: slot.displayName, color: slot.mandalaColor,
                                done: sc.done, total: sc.total,
-                               hasEntries: !slotEntries.isEmpty)
+                               hasEntries: slotCount > 0)
                 }
                 .buttonStyle(.plain)
             }
@@ -7458,7 +7453,8 @@ private struct MandalaSpiralCard: View {
             }
         }
         .sheet(isPresented: $showDayCarousel) {
-            DayCarouselSheet(allEntries: todayCarouselEntries, filterSlot: carouselSlotFilter, selectedTab: $selectedTab)
+            // エントリ本体（サムネイル含む）はシート表示時に一度だけ構築する
+            DayCarouselSheet(allEntries: buildTodayCarouselEntries(), filterSlot: carouselSlotFilter, selectedTab: $selectedTab)
         }
     }
 
@@ -9324,9 +9320,32 @@ extension DayCarouselEntry {
     }
 }
 
+/// 今日の投稿の件数だけを軽量に集計する（全体・スロット別）。
+/// buildTodayCarouselEntries() は各アイテムのサムネイル読み込み（ディスクI/O）を伴うため、
+/// 件数表示しか必要ない凡例（legendRow / legendOverlay）はこちらを使うこと。
+@MainActor
+func countTodayCarouselEntries() -> (total: Int, bySlot: [TimeSlot: Int]) {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: Date())
+    var total = 0
+    var bySlot: [TimeSlot: Int] = [:]
+    func tally(_ timestamp: Date) {
+        guard cal.startOfDay(for: timestamp) == today else { return }
+        total += 1
+        let slot = TimeSlot.forHour(cal.component(.hour, from: timestamp))
+        bySlot[slot, default: 0] += 1
+    }
+    for item in EduLogManager.shared.history { tally(item.timestamp) }
+    for item in PhotoLogManager.shared.history { tally(item.timestamp) }
+    return (total, bySlot)
+}
+
 /// 今日投稿されたエントリ一覧を構築する（EduLog + フォトログ、時刻順）。
 /// MandalaSpiralCard（スパイラル画面上の一覧）と DashboardView（スパイラル右上の共有）の
 /// 両方から使うため、シングルトンから直接構築する独立関数として定義する。
+/// 注意: 各アイテムのサムネイル読み込みを伴うため、シート表示・画像化などの
+/// 実際にエントリ内容が必要になったタイミングでのみ呼ぶこと。
+@MainActor
 func buildTodayCarouselEntries() -> [DayCarouselEntry] {
     let cal = Calendar.current
     let today = cal.startOfDay(for: Date())

@@ -253,8 +253,9 @@ class AuthenticationManager: ObservableObject {
             )
             await updateSummaryForExercise(userId: userId, exerciseId: exercise.id ?? exercise.name.lowercased(), reps: reps, points: points, timestamp: now)
 
-            // クライアント側でストリーク・ポイントを更新（Cloud Functions 未デプロイでも動作）
-            await updateStreakAndPoints(userId: userId, points: points, now: now)
+            // streak・totalPoints は Cloud Function (calculatePoints) が completed-exercises の
+            // 作成をトリガーに加算する。ここで重複加算しない（フォーム/streak/初回ボーナスは
+            // サーバー側でのみ計算されるため、クライアント側加算は二重カウントの原因になる）。
 
             // トレーニング記録 → 今日不要な通知をキャンセル + Watch通知 + Apple Health
             NotificationManager.shared.handleWorkoutRecorded()
@@ -829,8 +830,9 @@ class AuthenticationManager: ObservableObject {
             await updateSummaryForExercise(userId: userId, exerciseId: ex.exerciseId, reps: ex.reps, points: ex.points, timestamp: now)
         }
 
-        // ストリーク・ポイントをまとめて更新
-        await updateStreakAndPoints(userId: userId, points: set.totalXP, now: now)
+        // streak・totalPoints は上のループで書き込んだ completed-exercises の各ドキュメントに対して
+        // Cloud Function (calculatePoints) が加算するため、ここではクライアント側で加算しない
+        // （二重カウント防止）。
 
         // 時間帯の進捗を更新
         let hour = Calendar.current.component(.hour, from: now)
@@ -903,7 +905,8 @@ class AuthenticationManager: ObservableObject {
             .collection("completed-sets").addDocument(data: setDoc)
         await updateSummaryForSet(userId: userId, totalReps: reps, totalXP: points, timestamp: now)
 
-        await updateStreakAndPoints(userId: userId, points: points, now: now)
+        // streak・totalPoints は上で書き込んだ completed-exercises に対して Cloud Function
+        // (calculatePoints) が加算するため、ここではクライアント側で加算しない（二重カウント防止）。
         NotificationManager.shared.handleWorkoutRecorded()
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 
@@ -1484,7 +1487,8 @@ class AuthenticationManager: ObservableObject {
         guard let userId = Auth.auth().currentUser?.uid else {
             return WeeklySetProgress(completedSets: 0, dailyGoal: 2)
         }
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // 月曜始まり（他の「今週」計算と統一）
         let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
         let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
 

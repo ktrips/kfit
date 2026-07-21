@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, updateDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
 import { detectInAppBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
 
 interface UserProfile {
@@ -194,8 +194,12 @@ export const setDailyGoals = async (userId: string, date: string, goals: any[]) 
   }
 };
 
-// Exercise completion — streak/points updated client-side as fallback
-// (Cloud Functions will override if deployed)
+// Exercise completion — writes the exercise doc only.
+// streak/totalPoints/lastActiveDate are updated by the Cloud Function
+// (calculatePoints, triggered on completed-exercises create). Do NOT
+// also update them client-side here — it double-counts totalPoints,
+// since the Cloud Function increments its own bonus-adjusted points on
+// every write to this collection regardless of what the client does.
 export const recordExercise = async (userId: string, exerciseData: any) => {
   try {
     // キャッシュ無効化
@@ -210,41 +214,6 @@ export const recordExercise = async (userId: string, exerciseData: any) => {
 
     // 継続コホート計測（循環import回避のため動的import）
     import('./retentionService').then(m => m.markActiveToday(userId)).catch(() => {});
-
-    // Client-side streak + points update（Cloud Functions が未デプロイでも動作する）
-    const userRef = doc(db, 'users', userId);
-    const userSnap = await getDoc(userRef);
-    const profile = userSnap.data() || {};
-
-    const today   = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    let newStreak = profile.streak || 0;
-
-    if (profile.lastActiveDate) {
-      const last    = profile.lastActiveDate instanceof Timestamp
-        ? profile.lastActiveDate.toDate()
-        : new Date(profile.lastActiveDate);
-      const lastDay = new Date(last.getFullYear(), last.getMonth(), last.getDate());
-      const diffDays = Math.round((today.getTime() - lastDay.getTime()) / 86400000);
-
-      if (diffDays === 0) {
-        // 今日すでに記録済み — streak はそのまま
-      } else if (diffDays <= 3) {
-        // 1〜2日の休息は許容（週2チートデイ）
-        newStreak = (profile.streak || 0) + 1;
-      } else {
-        newStreak = 1; // streak リセット
-      }
-    } else {
-      newStreak = 1; // 初回記録
-    }
-
-    const points = exerciseData.points || 0;
-
-    await updateDoc(userRef, {
-      streak: newStreak,
-      totalPoints: increment(points),
-      lastActiveDate: Timestamp.fromDate(now),
-    });
 
     return docRef.id;
   } catch (error) {

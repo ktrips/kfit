@@ -63,7 +63,7 @@ enum MainMenuTabPreferences {
     static let defaultTabKey      = "mainTab.default"
     static let orderKey           = "mainTab.order"
 
-    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .mind, .goalingo, .tomo]
+    static let defaultOrder = [MainMenuTab.fit, .goal, .food, .tomo, .goalingo, .mind]
 
     static func visibleKey(for tab: MainMenuTab) -> String {
         switch tab {

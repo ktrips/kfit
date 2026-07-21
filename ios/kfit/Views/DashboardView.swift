@@ -689,12 +689,19 @@ struct DashboardView: View {
                                     )
                                 }
                             }
-                            xpSummaryCard
-                            if showPointsDetail {
-                                pointsDetailExpandedSection
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            if plus.isPlus {
+                                xpSummaryCard
+                                if showPointsDetail {
+                                    pointsDetailExpandedSection
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                                achievementCalendarSection
+                            } else {
+                                PlusLockedSection(
+                                    features: ["XPポイント詳細", "週間・月間の到達度カレンダー"],
+                                    onUpgrade: { showPlusViewFromDashboard = true }
+                                )
                             }
-                            achievementCalendarSection
                             relatedBooksSection
                         }
                         .padding(.horizontal, 10)

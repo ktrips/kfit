@@ -2302,6 +2302,45 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
+    // MARK: - GOAL画面共通データ取得（GoalView / GoalingoView）
+    //
+    // 体重・カロリー燃焼・食事量・今日のワークアウトは両画面が共通で必要とする。
+    // 体脂肪率（GoalView）、レース系ワークアウト・週間ワークアウト履歴（GoalingoView）
+    // は画面ごとに必要なものが異なるためフラグで指定する。
+    // 以前は .task / .refreshable / 手動更新ボタンの3箇所×2画面=6箇所に
+    // ほぼ同一のフェッチ列がベタ書きされていた。
+
+    /// GOAL画面（GoalView/GoalingoView）が必要とするHealthKitデータをまとめて取得し、
+    /// 呼び出し元がそのまま使う「今日のワークアウトセッション」を返す。
+    @discardableResult
+    func fetchGoalScreenHealthData(
+        includeBodyFat: Bool = false,
+        includeRaceWorkouts: Bool = false,
+        includeWeeklyWorkoutSessions: Bool = false,
+        forceGoalHealth: Bool = false
+    ) async -> [WorkoutSession] {
+        async let bodyMass: Void = fetchBodyMassHistory(days: 30)
+        async let burnData: Void = fetchWeeklyBurnData()
+        async let dietData: Void = fetchWeeklyDietarySamples()
+        async let workouts        = fetchTodayWorkoutSessions()
+
+        if forceGoalHealth || weeklyCalorieData.isEmpty {
+            await fetchGoalHealth(force: forceGoalHealth)
+        }
+        if includeBodyFat {
+            await fetchBodyFatHistory(days: 30)
+        }
+        if includeRaceWorkouts {
+            await fetchWeeklyRaceWorkouts()
+        }
+        if includeWeeklyWorkoutSessions {
+            await fetchWeeklyWorkoutSessions()
+        }
+
+        let (_, _, _, sessions) = await (bodyMass, burnData, dietData, workouts)
+        return sessions
+    }
+
     /// 今週（月曜日起算）の全ワークアウトを WorkoutSession として取得して weeklyWorkoutSessions を更新する
     func fetchWeeklyWorkoutSessions() async {
         var cal = Calendar(identifier: .gregorian)

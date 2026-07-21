@@ -121,20 +121,16 @@ struct GoalingoView: View {
                     .refreshable {
                         loadTodayWeekdayGoal()
                         async let s0: Void = timeSlotManager.loadTodaySettings()
-                        async let s1: Void = healthKit.fetchBodyMassHistory(days: 30)
-                        async let s2: Void = healthKit.fetchGoalHealth()
-                        async let s3: Void = healthKit.fetchWeeklyBurnData()
-                        async let s4: Void = healthKit.fetchWeeklyDietarySamples()
-                        async let s5: Void = healthKit.fetchWeeklyRaceWorkouts()
-                        async let s6: Void = healthKit.fetchWeeklyWorkoutSessions()
+                        async let sessions = healthKit.fetchGoalScreenHealthData(
+                            includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true
+                        )
                         async let ex   = authManager.getTodayExercises()
-                        async let ws   = healthKit.fetchTodayWorkoutSessions()
                         async let wsc  = authManager.fetchWeeklySetCounts()
                         async let wid  = authManager.fetchWeeklyIntakeData()
-                        let (exercises, sessions, setCounts, intakeData, _, _, _, _, _, _, _) =
-                            await (ex, ws, wsc, wid, s0, s1, s2, s3, s4, s5, s6)
+                        let (exercises, ws, setCounts, intakeData, _) =
+                            await (ex, sessions, wsc, wid, s0)
                         todayExercises       = exercises
-                        todayWorkoutSessions = sessions
+                        todayWorkoutSessions = ws
                         weeklySetCounts      = setCounts
                         weeklyIntakeData     = intakeData
                     }
@@ -195,22 +191,12 @@ struct GoalingoView: View {
                 await timeSlotManager.loadTodaySettings()
                 rebuildTrainingTotals()
 
-                async let bodyMass:  Void = healthKit.fetchBodyMassHistory(days: 30)
-                async let burnData:  Void = healthKit.fetchWeeklyBurnData()
-                async let dietData:  Void = healthKit.fetchWeeklyDietarySamples()
-                async let raceData:  Void = healthKit.fetchWeeklyRaceWorkouts()
-                async let weekWo:    Void = healthKit.fetchWeeklyWorkoutSessions()
-                async let exercises       = authManager.getTodayExercises()
-                async let workouts        = healthKit.fetchTodayWorkoutSessions()
-                async let setCountsData   = authManager.fetchWeeklySetCounts()
-                async let intakeData      = authManager.fetchWeeklyIntakeData()
-
-                if healthKit.weeklyCalorieData.isEmpty {
-                    async let goalHealth: Void = healthKit.fetchGoalHealth()
-                    _ = await (bodyMass, burnData, dietData, raceData, weekWo, goalHealth)
-                } else {
-                    _ = await (bodyMass, burnData, dietData, raceData, weekWo)
-                }
+                async let workouts       = healthKit.fetchGoalScreenHealthData(
+                    includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true
+                )
+                async let exercises      = authManager.getTodayExercises()
+                async let setCountsData  = authManager.fetchWeeklySetCounts()
+                async let intakeData     = authManager.fetchWeeklyIntakeData()
 
                 let (ex, wo, sc, id) = await (exercises, workouts, setCountsData, intakeData)
                 todayExercises        = ex
@@ -584,13 +570,9 @@ struct GoalingoView: View {
         guard !isRefreshingWatchData else { return }
         isRefreshingWatchData = true
         Task {
-            await healthKit.fetchGoalHealth(force: true)
-            await healthKit.fetchBodyMassHistory(days: 30)
-            await healthKit.fetchWeeklyBurnData()
-            await healthKit.fetchWeeklyDietarySamples()
-            await healthKit.fetchWeeklyRaceWorkouts()
-            await healthKit.fetchWeeklyWorkoutSessions()
-            let workouts = await healthKit.fetchTodayWorkoutSessions()
+            let workouts = await healthKit.fetchGoalScreenHealthData(
+                includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true, forceGoalHealth: true
+            )
             await MainActor.run {
                 todayWorkoutSessions = workouts
                 isRefreshingWatchData = false

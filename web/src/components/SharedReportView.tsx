@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { openIOSApp } from '../utils/openIOSApp';
 
 // 週間レポート共有カードの閲覧ページ（fit.ktrips.net/r/{shareId}）
 // iOS アプリからシェアされたカードを、未ログイン・未インストールでも閲覧できる。
@@ -96,14 +97,12 @@ export const SharedReportView: React.FC<{ shareId: string }> = ({ shareId }) => 
           運動のカウントも、食事の記録も、iPhoneとApple Watchが自動でサポート。
           まずは明日の朝、スクワット5回だけ。
         </p>
-        <a
-          href={APP_STORE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => openIOSApp(APP_STORE_URL)}
           className="inline-block bg-green-500 hover:bg-green-600 text-white font-black px-8 py-3.5 rounded-2xl shadow-lg transition-colors"
         >
           無料で始める（App Store）
-        </a>
+        </button>
         <div className="mt-4">
           <a href="/challenge-90" className="text-sm text-green-700 underline font-semibold">
             90日再検査チャレンジを見る →

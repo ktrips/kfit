@@ -3,6 +3,7 @@ import {
   collection, addDoc, getDocs, query, where, Timestamp, doc, setDoc, increment, getDoc
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { openIOSApp } from '../../utils/openIOSApp';
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 const CHALLENGE_ID = 'challenge-90';
@@ -459,14 +460,12 @@ function SuccessScreen({ name }: { name: string }) {
         {/* アプリDL誘導 */}
         <div className="bg-orange-50 rounded-2xl p-5 mb-6">
           <p className="text-sm font-bold text-orange-700 mb-3">📱 kfitアプリをダウンロード</p>
-          <a
-            href="https://apps.apple.com/jp/app/kfit/id6745174897"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block bg-black text-white font-bold py-3 rounded-xl text-sm hover:bg-gray-800 transition-colors"
+          <button
+            onClick={() => openIOSApp('https://apps.apple.com/jp/app/kfit/id6745174897')}
+            className="block w-full bg-black text-white font-bold py-3 rounded-xl text-sm hover:bg-gray-800 transition-colors"
           >
             App Store でダウンロード →
-          </a>
+          </button>
         </div>
 
         <div className="text-xs text-gray-400">

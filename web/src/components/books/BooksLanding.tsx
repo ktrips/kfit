@@ -1,5 +1,6 @@
 import React from 'react';
 import { BOOKS, BookId } from './BookViewer';
+import { openIOSApp } from '../../utils/openIOSApp';
 
 // App Store のリンク
 const APP_STORE_URL = 'https://apps.apple.com/jp/app/kfit-fitingo/id6746108484';
@@ -185,14 +186,12 @@ export const BooksLanding: React.FC<BooksLandingProps> = ({
               <p className="text-green-100 text-xs">本書で解説したアプリを App Store で入手</p>
             </div>
           </div>
-          <a
-            href={APP_STORE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => openIOSApp(APP_STORE_URL)}
             className="shrink-0 bg-white text-green-700 font-bold px-5 py-2 rounded-xl hover:bg-green-50 transition-colors text-sm"
           >
             App Store でダウンロード
-          </a>
+          </button>
         </div>
       </section>
 

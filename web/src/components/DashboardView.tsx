@@ -11,6 +11,7 @@ import { getCurrentTimeSlot } from '../types/timeSlot';
 import type { GlobalProgress } from '../services/timeSlotService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 import { getExerciseEmoji } from '../utils/exerciseEmoji';
+import { openIOSApp } from '../utils/openIOSApp';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
@@ -741,12 +742,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
           <div className="flex flex-col gap-3">
 
-            {/* iOS アプリ */}
-            <a
-              href="https://apps.apple.com/app/fitingo/id000000000"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 bg-white rounded-2xl p-4 hover:shadow-md active:scale-[0.98] transition-all"
+            {/* iOS アプリ（インストール済みなら起動、なければApp Storeへ） */}
+            <button
+              onClick={() => openIOSApp('https://apps.apple.com/app/fitingo/id000000000')}
+              className="flex items-center gap-4 bg-white rounded-2xl p-4 hover:shadow-md active:scale-[0.98] transition-all text-left"
               style={{ border: '2px solid #e5e5e5', boxShadow: '0 3px 0 #e5e5e5' }}
             >
               <div className="w-12 h-12 rounded-2xl bg-black flex items-center justify-center shrink-0">
@@ -760,7 +759,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
                 <p className="text-[10px] text-duo-gray mt-0.5">App Store でダウンロード</p>
               </div>
               <span className="text-duo-gray shrink-0">›</span>
-            </a>
+            </button>
 
             {/* AppleWatch Diet 本 */}
             <a

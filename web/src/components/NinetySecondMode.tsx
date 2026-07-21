@@ -6,6 +6,7 @@ import {
   collection, query, orderBy, limit, getDocs,
 } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
+import { openIOSApp, type FitingoDeepLinkHost } from '../utils/openIOSApp';
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
@@ -26,9 +27,13 @@ const MAX_DAYS = 5;
 const NS90_KEY = 'ns90.activeDates';
 const IOS_APP_STORE = 'https://apps.apple.com/jp/app/fitingo/id6742592440';
 
+// kfit の90秒モード → iOSアプリ側 FitingoDeepLink のホスト名への対応
+const MODE_TO_DEEPLINK_HOST: Record<string, FitingoDeepLinkHost> = {
+  fit: 'workout', diet: 'diet', food: 'food', edu: 'mind',
+};
+
 const openIOS = (mode: string) => {
-  window.location.href = `kfit://mode/${mode}`;
-  setTimeout(() => { window.location.href = IOS_APP_STORE; }, 2000);
+  openIOSApp(IOS_APP_STORE, MODE_TO_DEEPLINK_HOST[mode] ?? 'home');
 };
 
 const AppleLogo: React.FC<{ size?: number }> = ({ size = 16 }) => (

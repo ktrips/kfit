@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { signInWithGoogle, subscribeLiveCount, incrementLiveCount } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 import { detectInAppBrowser, openInExternalBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
+import { openIOSApp, type FitingoDeepLinkHost } from '../utils/openIOSApp';
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 export type Mode90 = 'fit' | 'diet' | 'food' | 'edu';
@@ -25,10 +26,13 @@ const MODES: {
 
 const IOS_APP_STORE = 'https://apps.apple.com/jp/app/fitingo/id6742592440';
 
-// カスタムURLスキーム → 未インストール時は App Store へ
+// kfit の90秒モード(Mode90) → iOSアプリ側 FitingoDeepLink のホスト名への対応
+const MODE_TO_DEEPLINK_HOST: Record<Mode90, FitingoDeepLinkHost> = {
+  fit: 'workout', diet: 'diet', food: 'food', edu: 'mind',
+};
+
 const openIOS = (mode: Mode90) => {
-  window.location.href = `kfit://mode/${mode}`;
-  setTimeout(() => { window.location.href = IOS_APP_STORE; }, 2000);
+  openIOSApp(IOS_APP_STORE, MODE_TO_DEEPLINK_HOST[mode]);
 };
 
 // Apple ロゴ SVG（白抜き）

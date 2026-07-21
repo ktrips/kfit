@@ -84,6 +84,8 @@ struct EdulingoView: View {
     @State private var todayPlayPoints: Int = 0
     // 今週の再生ポイント累計（セッション内）
     @State private var weekPlayPoints: Int = 0
+    // 今週の日付別再生ポイント（"yyyy-MM-dd" → pt）。週間ランキング内訳表示用
+    @State private var myPlayPointsByDay: [String: Int] = [:]
     // Firestore から取得したトータル EDU ポイント
     @State private var totalEduPoints: Int = 0
     // ポイントサマリーシートの表示
@@ -114,6 +116,12 @@ struct EdulingoView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "M/d(E)"
+        return f
+    }()
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
         return f
     }()
 
@@ -179,13 +187,18 @@ struct EdulingoView: View {
         }
         // 今週の再生ポイント（Firestore: users/{uid}/weeklyEduStats/{YYYY-WW}）
         let weekKey = currentWeekKey()
+        let dayKey = Self.dayKeyFormatter.string(from: Date())
         db.collection("users").document(currentUID)
             .collection("weeklyEduStats").document(weekKey)
-            .setData(["playPoints": FieldValue.increment(Int64(10))], merge: true) { _ in }
+            .setData([
+                "playPoints": FieldValue.increment(Int64(10)),
+                "playPointsByDay.\(dayKey)": FieldValue.increment(Int64(10))
+            ], merge: true) { _ in }
 
         todayPlayPoints += 10
         weekPlayPoints += 10
         totalEduPoints += 10
+        myPlayPointsByDay[dayKey, default: 0] += 10
     }
 
     /// 現在の週を "YYYY-WW" 形式で返す（月曜始まり）
@@ -572,6 +585,14 @@ struct EdulingoView: View {
                     let fetchedWeekPt = (wData["playPoints"] as? NSNumber)?.intValue ?? 0
                     if fetchedWeekPt > weekPlayPoints {
                         weekPlayPoints = fetchedWeekPt
+                    }
+                    if let byDay = wData["playPointsByDay"] as? [String: Any] {
+                        var merged = myPlayPointsByDay
+                        for (key, value) in byDay {
+                            let pt = (value as? NSNumber)?.intValue ?? 0
+                            merged[key] = max(merged[key] ?? 0, pt)
+                        }
+                        myPlayPointsByDay = merged
                     }
                 }
             }
@@ -1065,6 +1086,8 @@ struct EdulingoView: View {
                     let dayPosts = userPosts.filter { cal.isDate($0.timestamp, inSameDayAs: day) }
                     let count = dayPosts.count
                     let isToday = cal.isDateInToday(day)
+                    // 再生ポイントは現状「自分」のみ日別データを保持（フレンドは日別内訳未取得のため 0）
+                    let playPt = entry.isMe ? (myPlayPointsByDay[Self.dayKeyFormatter.string(from: day)] ?? 0) : 0
 
                     // その日に投稿されたカテゴリ絵文字（重複除去・順序保持）
                     let seenCats = dayPosts.reduce(into: [String]()) { acc, p in
@@ -1073,20 +1096,32 @@ struct EdulingoView: View {
                     }
                     let catLine = seenCats.compactMap { catEmojis[$0] }.joined(separator: " ")
 
-                    HStack(spacing: 6) {
-                        Text(dayFmt.string(from: day))
-                            .font(.system(size: 11 * UIScale.font,
-                                          weight: isToday ? .bold : .regular))
-                            .foregroundColor(isToday ? Color(hex: "#58CC02") : Color.duoDark)
-                            .frame(width: 64, alignment: .leading)
-                        Spacer()
-                        Text(count > 0 ? catLine : "—")
-                            .font(.system(size: 12 * UIScale.font))
-                            .foregroundColor(count > 0 ? Color.duoDark : Color.duoSubtitle)
-                        Text(count > 0 ? "+\(count * 10)pt" : "—")
-                            .font(.system(size: 11 * UIScale.font, weight: .bold))
-                            .foregroundColor(count > 0 ? Color(hex: "#58CC02") : Color.duoSubtitle)
-                            .frame(width: ptWidth, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(dayFmt.string(from: day))
+                                .font(.system(size: 11 * UIScale.font,
+                                              weight: isToday ? .bold : .regular))
+                                .foregroundColor(isToday ? Color(hex: "#58CC02") : Color.duoDark)
+                                .frame(width: 64, alignment: .leading)
+                            Spacer()
+                            Text(count > 0 ? catLine : "—")
+                                .font(.system(size: 12 * UIScale.font))
+                                .foregroundColor(count > 0 ? Color.duoDark : Color.duoSubtitle)
+                            Text(count > 0 ? "+\(count * 10)pt" : "—")
+                                .font(.system(size: 11 * UIScale.font, weight: .bold))
+                                .foregroundColor(count > 0 ? Color(hex: "#58CC02") : Color.duoSubtitle)
+                                .frame(width: ptWidth, alignment: .trailing)
+                        }
+                        if playPt > 0 {
+                            HStack(spacing: 3) {
+                                Spacer()
+                                Image(systemName: "speaker.wave.2.fill")
+                                    .font(.system(size: 8))
+                                Text("+\(playPt)pt 再生")
+                                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                            }
+                            .foregroundColor(Color(hex: "#1CB0F6"))
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 5)
@@ -1095,18 +1130,29 @@ struct EdulingoView: View {
             }
 
             // 合計行
-            HStack {
-                Text("今週合計")
-                    .font(.system(size: 11 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-                Text("\(userPosts.count)件")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoDark)
-                Text("+\(userPosts.count * 10)pt")
-                    .font(.system(size: 12 * UIScale.font, weight: .black))
-                    .foregroundColor(Color(hex: "#58CC02"))
-                    .frame(width: ptWidth, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack {
+                    Text("今週合計")
+                        .font(.system(size: 11 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Text("\(userPosts.count)件")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Text("+\(userPosts.count * 10)pt")
+                        .font(.system(size: 12 * UIScale.font, weight: .black))
+                        .foregroundColor(Color(hex: "#58CC02"))
+                        .frame(width: ptWidth, alignment: .trailing)
+                }
+                if entry.weeklyPlayPoints > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 9))
+                        Text("+\(entry.weeklyPlayPoints)pt 再生")
+                            .font(.system(size: 10 * UIScale.font, weight: .bold))
+                    }
+                    .foregroundColor(Color(hex: "#1CB0F6"))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 7)

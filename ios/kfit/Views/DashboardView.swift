@@ -579,6 +579,9 @@ struct DashboardView: View {
     @AppStorage("mainTab.goal.visible") private var goalTabVisible = true
     @State private var recordDetailItem: EduLogHistoryItem? = nil
     @State private var recordDetailNode: MandalaNodeData? = nil
+    // EduLogManager.history は再取得のたびに（内容が同じでも）republishされるため、
+    // 新規投稿があった時だけ autoCompleteDuolingoIfNeeded を呼ぶための直近ID集合
+    @State private var lastSeenEduHistoryIds: Set<String> = []
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -614,6 +617,12 @@ struct DashboardView: View {
                 Task { await autoCompleteDuolingoIfNeeded() }
             }
             .onReceive(EduLogManager.shared.$history) { newHistory in
+                // history は内容が変わらなくても再取得のたびにrepublishされるため、
+                // 新しいIDが実際に増えた時だけスパイラルの自動完了・Good Job演出を行う
+                let newIds = Set(newHistory.map(\.id))
+                let hasNewItem = !newIds.isSubset(of: lastSeenEduHistoryIds)
+                lastSeenEduHistoryIds = newIds
+                guard hasNewItem else { return }
                 // kedu/共有からの新規Edu投稿でスパイラルも即時更新
                 Task { await autoCompleteDuolingoIfNeeded(using: newHistory) }
             }

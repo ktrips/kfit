@@ -417,6 +417,7 @@ final class HealthKitManager: ObservableObject {
         var set = Set<HKSampleType>()
         let writeIds: [HKQuantityTypeIdentifier] = [
             .activeEnergyBurned,
+            .bodyMass,               // 体重（90秒モードの手入力記録用）
             .dietaryEnergyConsumed,
             .dietaryWater,
             .dietaryCaffeine,

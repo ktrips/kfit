@@ -1194,7 +1194,7 @@ struct NinetySecondModeCard: View {
                         .foregroundColor(accent)
                         .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
                     Text("「\(mode.modeName)」")
-                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .font(.system(size: 38, weight: .black, design: .rounded))
                         .foregroundColor(accent.opacity(0.85))
                 }
                 .multilineTextAlignment(.center)
@@ -1321,11 +1321,11 @@ struct NinetySecondModeCard: View {
     @ViewBuilder private var contentArea: some View {
         switch mode {
         case .fit:
-            // Fitingo ボタン画像がそのままアクショントリガー（旧: ワークアウトGIF）
+            // ワークアウトGIFがそのままアクショントリガー
             Button(action: triggerAction) {
-                Image("fitingo_button_mascot")
-                    .resizable().scaledToFit()
+                GIFAnimationView(gifName: "fitingo_workout")
                     .frame(width: 190, height: 190)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }

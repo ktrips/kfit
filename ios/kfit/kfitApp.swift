@@ -1201,46 +1201,48 @@ struct NinetySecondModeCard: View {
 
                 Spacer().frame(height: 16)
 
-                // ── コンテンツエリア（表示/非表示トグル付き）───────────────
-                if topWindowVisible {
-                    ZStack(alignment: .topTrailing) {
-                        contentArea
-                        // 隠すボタン
+                // ── コンテンツエリア（FIT/DIET のみ表示。FOOD/EDU は非表示）─────
+                if mode == .fit || mode == .diet {
+                    if topWindowVisible {
+                        ZStack(alignment: .topTrailing) {
+                            contentArea
+                            // 隠すボタン
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    topWindowVisible = false
+                                }
+                            } label: {
+                                Image(systemName: "chevron.up.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.white, accent.opacity(0.6))
+                                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(8)
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    } else {
+                        // 表示ボタン（コンパクト）
                         Button {
                             withAnimation(.easeInOut(duration: 0.25)) {
-                                topWindowVisible = false
+                                topWindowVisible = true
                             }
                         } label: {
-                            Image(systemName: "chevron.up.circle.fill")
-                                .font(.system(size: 22))
-                                .foregroundStyle(.white, accent.opacity(0.6))
-                                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.down.circle.fill")
+                                    .font(.system(size: 16))
+                                Text("動画を表示")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundStyle(accent)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .background(Capsule().fill(accent.opacity(0.1)))
                         }
                         .buttonStyle(.plain)
-                        .padding(8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.top, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                } else {
-                    // 表示ボタン（コンパクト）
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            topWindowVisible = true
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.down.circle.fill")
-                                .font(.system(size: 16))
-                            Text("動画を表示")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(Capsule().fill(accent.opacity(0.1)))
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 Spacer().frame(height: 14)
@@ -1565,15 +1567,26 @@ struct NinetySecondModeCard: View {
     // MARK: 連続日数（あと◯日で全開放）＋ 5日チェックマーク（ヘッダー用・1行＋ドット）
     private var streakHeader: some View {
         VStack(spacing: 10) {
-            // 🔥◯日連続（あと◯日で全開放）
+            // Fitingo ◯日連続（あと◯日で全開放）
             Group {
-                Text("🔥\(streak)日連続")
+                HStack(spacing: 6) {
+                    Image("fitingo_mascot")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 24, height: 24)
+                        .clipShape(Circle())
+                    Text("\(streak)日連続")
+                        .font(.system(size: 20, weight: .black))
+                        .foregroundColor(.duoDark)
+                }
+                +
+                Text(graduated ? "　🎉全機能開放中！" : "（あと\(max(0, 5 - activeDays))日で全開放）")
                     .font(.system(size: 20, weight: .black))
                     .foregroundColor(.duoDark)
                 +
                 Text(graduated ? "　🎉全機能開放中！" : "（あと\(max(0, 5 - activeDays))日で全開放）")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
             }
             .multilineTextAlignment(.center)
             // ドット

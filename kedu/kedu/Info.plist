@@ -31,6 +31,12 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Duolingo・読書・勉強・語学の記録写真をアップロードするために使用します。</string>
 	<key>NSCameraUsageDescription</key>

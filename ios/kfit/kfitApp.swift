@@ -905,15 +905,6 @@ enum NinetySecondModeType: Int, CaseIterable {
     case edu  = 2
     case diet = 3
 
-    var modeBadge: String {
-        switch self {
-        case .fit:  return "FIT 90秒"
-        case .food: return "FOOD"
-        case .edu:  return "EDU"
-        case .diet: return "DIET"
-        }
-    }
-
     /// 見出し「今度こそ、続く」の下に表示するモード名（かっこ書き）
     var modeName: String {
         switch self {
@@ -924,13 +915,13 @@ enum NinetySecondModeType: Int, CaseIterable {
         }
     }
 
-    /// バッジ（ボタン）の直後に続くメッセージ。例: 「FIT 90秒」＋「で始める、それだけ」
-    var actionMessageSuffix: String {
+    /// 下部に表示するシンプルな案内メッセージ（ボタンではなくプレーンテキスト）
+    var simpleActionMessage: String {
         switch self {
-        case .fit:  return "で始める、それだけ"
-        case .diet: return "ボタンで計測、それだけ"
-        case .food: return "ボタンで撮る、それだけ"
-        case .edu:  return "ボタンで例文、それだけ"
+        case .fit:  return "90秒始める、それだけ"
+        case .diet: return "測る、それだけ"
+        case .food: return "食事を撮る、それだけ"
+        case .edu:  return "Fitingoを送る、それだけ"
         }
     }
 
@@ -1161,8 +1152,6 @@ struct NinetySecondModeCard: View {
     let streak: Int
     let activeDays: Int
     let graduated: Bool
-    let gifIndex: Int
-    let exerciseGifs: [String]
     /// FOOD モード用：直近フォト（外から注入）
     var photoThumbnails: [UIImage] = []
     let onAction: () -> Void
@@ -1184,7 +1173,7 @@ struct NinetySecondModeCard: View {
             VStack(spacing: 0) {
 
                 // ── Fitingo ロゴマーク ─────────────────────────────────────
-                Image("mascot")
+                Image("fitingo_fire")
                     .resizable()
                     .scaledToFill()
                     .frame(width: 44, height: 44)
@@ -1201,11 +1190,11 @@ struct NinetySecondModeCard: View {
                 // ── 大見出し：今度こそ、続く／「モード名」────────────────
                 VStack(spacing: 2) {
                     Text("今度こそ、続く")
-                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .font(.system(size: 38, weight: .black, design: .rounded))
                         .foregroundColor(accent)
                         .shadow(color: accent.opacity(0.15), radius: 4, y: 2)
                     Text("「\(mode.modeName)」")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 21, weight: .black, design: .rounded))
                         .foregroundColor(accent.opacity(0.85))
                 }
                 .multilineTextAlignment(.center)
@@ -1261,31 +1250,18 @@ struct NinetySecondModeCard: View {
 
                 Spacer().frame(height: 14)
 
-                // ── モードバッジ（ボタン）+ メッセージ ─────────────────────
-                // 例: [FIT 90秒] で始める、それだけ（バッジ自体がアクショントリガー）
+                // ── シンプルな案内メッセージ（ボタンではなくプレーンテキスト）───
                 if doneToday {
                     // 実施後はシンプルな完了メッセージだけ（中心ボタンでもう1回できる）
                     Text("✅ 今日は完了！")
                         .font(.system(size: 20, weight: .black, design: .rounded))
                         .foregroundColor(.duoDark)
                 } else {
-                    HStack(spacing: 8) {
-                        Button(action: triggerAction) {
-                            Text(mode.modeBadge)
-                                .font(.system(size: 17, weight: .black))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16).padding(.vertical, 7)
-                                .background(Capsule().fill(accent))
-                                .scaleEffect(showBurst ? 0.92 : 1.0)
-                                .shadow(color: accent.opacity(0.35), radius: 6, y: 3)
-                        }
-                        .buttonStyle(.plain)
-                        Text(mode.actionMessageSuffix)
-                            .font(.system(size: 22, weight: .black, design: .rounded))
-                            .foregroundColor(.duoDark)
-                    }
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
+                    Text(mode.simpleActionMessage)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .foregroundColor(.duoDark)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
                 }
 
                 Spacer()
@@ -1345,26 +1321,17 @@ struct NinetySecondModeCard: View {
     @ViewBuilder private var contentArea: some View {
         switch mode {
         case .fit:
-            // GIF（高さ 156 = 旧 130 の 20%増）。窓全体がアクショントリガー
-            ZStack(alignment: .bottomTrailing) {
-                GIFAnimationView(
-                    gifName: exerciseGifs[gifIndex % max(1, exerciseGifs.count)],
-                    contentMode: .scaleAspectFit,
-                    maxFrames: 48
-                )
-                .id(gifIndex)
-                .frame(maxWidth: .infinity)
-                .frame(height: 156)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(accent)
-                    .padding(8)
+            // Fitingo ボタン画像がそのままアクショントリガー（旧: ワークアウトGIF）
+            Button(action: triggerAction) {
+                Image("fitingo_button_mascot")
+                    .resizable().scaledToFit()
+                    .frame(width: 190, height: 190)
+                    .scaleEffect(showBurst ? 0.92 : pulseScale)
+                    .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }
-            .contentShape(Rectangle())
-            .scaleEffect(showBurst ? 0.97 : 1.0)
-            .onTapGesture { triggerAction() }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
 
         case .food:
             // 直近フォトのスライドショー。窓全体がアクショントリガー（スワイプはページ送り）
@@ -1445,26 +1412,7 @@ struct NinetySecondModeCard: View {
             }
 
         case .diet:
-            // 窓全体がアクショントリガー
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(accent.opacity(0.08))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 156)
-                Text("⚖️")
-                    .font(.system(size: 80))
-            }
-            .contentShape(Rectangle())
-            .scaleEffect(showBurst ? 0.97 : 1.0)
-            .onTapGesture { triggerAction() }
-        }
-    }
-
-    // MARK: メインアクションボタン（モード別）
-    @ViewBuilder private var mainActionButton: some View {
-        switch mode {
-        case .fit, .diet:
-            // Fitingo 画像のみ（丸バック不要）・190px（旧158の20%増）
+            // Fitingo ボタン画像がそのままアクショントリガー（旧: ⚖️の静的ボックス）
             Button(action: triggerAction) {
                 Image("fitingo_button_mascot")
                     .resizable().scaledToFit()
@@ -1473,7 +1421,16 @@ struct NinetySecondModeCard: View {
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
             .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulseScale)
+        }
+    }
+
+    // MARK: メインアクションボタン（モード別: FOOD/EDUのみ。FIT/DIETはcontentAreaに統合済み）
+    @ViewBuilder private var mainActionButton: some View {
+        switch mode {
+        case .fit, .diet:
+            EmptyView()
 
         case .food:
             // AI食事フォトログ（Routine の photoLogButton スタイル）
@@ -1667,7 +1624,6 @@ struct NinetySecondModeView: View {
     var initialPage: Int = 0
 
     @State private var selectedPage: Int = 0
-    @State private var gifIndex: Int = 0
     @State private var showFoodLog    = false
     @State private var showEduLog     = false
     @State private var showDietSheet  = false
@@ -1683,13 +1639,6 @@ struct NinetySecondModeView: View {
     private var recentEduThumbnails: [UIImage] {
         eduLogMgr.history.prefix(5).compactMap { $0.thumbnail }
     }
-
-    private let exerciseGifs: [String] = [
-        "fItingo_wo_pushups",
-        "fitingo_wo_legs",
-        "fitingo_wo_burpee",
-        "fitingo_wo_range",
-    ]
 
     private var todayTraining: Int {
         TimeSlot.allCases.reduce(0) { $0 + (timeSlotMgr.progress.progressFor($1)?.trainingCompleted ?? 0) }
@@ -1729,8 +1678,6 @@ struct NinetySecondModeView: View {
                 streak: streak,
                 activeDays: activeDays,
                 graduated: graduated,
-                gifIndex: gifIndex,
-                exerciseGifs: exerciseGifs,
                 onAction: onStart,
                 onExit: onExit
             )
@@ -1743,8 +1690,6 @@ struct NinetySecondModeView: View {
                 streak: streak,
                 activeDays: activeDays,
                 graduated: graduated,
-                gifIndex: 0,
-                exerciseGifs: [],
                 onAction: { showDietSheet = true },
                 onExit: onExit
             )
@@ -1757,8 +1702,6 @@ struct NinetySecondModeView: View {
                 streak: streak,
                 activeDays: activeDays,
                 graduated: graduated,
-                gifIndex: 0,
-                exerciseGifs: [],
                 photoThumbnails: recentFoodThumbnails,
                 onAction: { showFoodLog = true },
                 onExit: onExit
@@ -1772,8 +1715,6 @@ struct NinetySecondModeView: View {
                 streak: streak,
                 activeDays: activeDays,
                 graduated: graduated,
-                gifIndex: 0,
-                exerciseGifs: [],
                 photoThumbnails: recentEduThumbnails,
                 onAction: { showEduLog = true },
                 onExit: onExit
@@ -1782,14 +1723,6 @@ struct NinetySecondModeView: View {
             }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .task { await timeSlotMgr.loadTodayProgress() }
-        .task(id: "gifRotation") {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    gifIndex = (gifIndex + 1) % exerciseGifs.count
-                }
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
             if !isPreview && todayTraining > 0 {
                 RetentionTracker.shared.recordFirstSetLatency(installedAt: installedAt)

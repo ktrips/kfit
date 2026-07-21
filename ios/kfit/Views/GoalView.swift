@@ -1491,12 +1491,7 @@ struct GoalView: View {
     // MARK: - 摂取カロリートレンドカード
 
     private var intakeTrendCard: some View {
-        var cal = Calendar.current
-        cal.firstWeekday = 2
-        let today = Date()
-        let weekStart = cal.date(
-            from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
-        ) ?? today
+        let weekStart = Calendar.current.mondayStart(for: Date())
 
         // HealthKit サンプルを日付キーでグルーピング
         var samplesByKey: [String: [DietarySample]] = [:]

@@ -1186,7 +1186,7 @@ struct DashboardView: View {
 
                     // スパイラル中央（centerCircle）と同じ達成率
                     if !cachedMandalaNodes.isEmpty {
-                        let pct = Int(Double(cachedMandalaNodes.filter(\.isCompleted).count) / Double(cachedMandalaNodes.count) * 100)
+                        let pct = mandalaCompletionPercent
                         Text("\(pct)%")
                             .font(.system(size: 13 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
@@ -1201,18 +1201,6 @@ struct DashboardView: View {
     }
 
     // MARK: - ヘッダー計算プロパティ
-
-    private var completionPercentage: Int {
-        let totalGoals = timeSlotManager.settings.goals.reduce(0) { $0 + $1.trainingGoal + $1.mindfulnessGoal }
-        guard totalGoals > 0 else { return 0 }
-
-        let totalCompleted = timeSlotManager.progress.progress.reduce(0) { $0 + $1.trainingCompleted + $1.mindfulnessCompleted }
-        return min(100, Int((Double(totalCompleted) / Double(totalGoals)) * 100))
-    }
-
-    private var todayCurrentProgressPercent: Int {
-        computeTodayProgressPercent()
-    }
 
     /// 達成度（%）を計算する。
     /// `trainingCompletedOverride` / `mindfulMinutesOverride` を指定すると、トレーニング回数・
@@ -2228,168 +2216,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - 時間帯別アクティビティアイコン（スタックオーバーフロー防止のため分離）
-
-    private func progressCheckIcon(emoji: String, done: Bool, color: Color) -> some View {
-        HStack(spacing: 2) {
-            Text(emoji).font(.caption)
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .font(.caption2)
-                .foregroundColor(done ? color : Color(.systemGray4))
-        }
-    }
-
-    // MARK: - 1日全体の達成フラグ（スロットアイコン用）
-
-    private var dailyTrainingAllDone: Bool {
-        let slots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
-        let totalGoal = slots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
-        let totalDone = slots.reduce(0) { $0 + countSetsInTimeSlot($1) }
-        return totalGoal > 0 && totalDone >= totalGoal
-    }
-
-    private var dailyMindfulnessAllDone: Bool {
-        let slots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
-        let totalGoal = slots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0) }
-        let totalDone = slots.reduce(0) {
-            let prog = timeSlotManager.progress.progressFor($1)
-            return $0 + (prog?.mindfulnessCompleted ?? 0) * 1 + (prog?.stretchSetsCompleted ?? 0) * 3
-        }
-        return totalGoal > 0 && totalDone >= totalGoal
-    }
-
-    private var dailyStandAllDone: Bool {
-        [TimeSlot.morning, .noon, .afternoon, .evening].contains {
-            (timeSlotManager.settings.goalFor($0)?.standGoal.enabled == true) &&
-            (timeSlotManager.progress.progressFor($0)?.standCompleted ?? 0) >= 1
-        }
-    }
-
-    private var dailyCompletedActivityNames: Set<String> {
-        var names: Set<String> = []
-        for slot in [TimeSlot.morning, .noon, .afternoon, .evening] {
-            guard let goal = timeSlotManager.settings.goalFor(slot),
-                  let prog = timeSlotManager.progress.progressFor(slot) else { continue }
-            for activity in goal.customActivities where activity.isEnabled && prog.completedActivityIds.contains(activity.id) {
-                names.insert(activity.name)
-            }
-        }
-        return names
-    }
-
-    private func slotActivityIcons(goal: TimeSlotGoal?, progress: TimeSlotProgress?, slot: TimeSlot) -> some View {
-        let standColor = Color(red: 0.0, green: 0.6, blue: 0.85)
-        let mindfulMinutes = (progress?.mindfulnessCompleted ?? 0) * 1 + (progress?.stretchSetsCompleted ?? 0) * 3
-
-        let trainingDone = dailyTrainingAllDone || (goal.map { countSetsInTimeSlot(slot) >= $0.trainingGoal } ?? false)
-        let mindDone = dailyMindfulnessAllDone || (goal.map { mindfulMinutes >= $0.mindfulnessGoal } ?? false)
-        let standDone = dailyStandAllDone || (progress?.standCompleted ?? 0) >= 1
-        let customs = goal?.customActivities.filter { $0.isEnabled } ?? []
-
-        return HStack(spacing: 2) {
-            if let goal = goal, goal.trainingGoal > 0 {
-                progressCheckIcon(emoji: "💪", done: trainingDone, color: Color.duoGreen)
-            }
-            if let goal = goal, goal.mindfulnessGoal > 0 {
-                progressCheckIcon(emoji: "🧘", done: mindDone, color: Color.duoGreen)
-            }
-            if let goal = goal, slot != .midnight, goal.standGoal.enabled {
-                progressCheckIcon(emoji: "🧍", done: standDone, color: standColor)
-            }
-            ForEach(customs) { act in
-                slotCustomActivityIcon(act: act, progress: progress, slot: slot)
-            }
-        }
-    }
-
-    private func slotCustomActivityIcon(act: CustomActivity, progress: TimeSlotProgress?, slot: TimeSlot) -> some View {
-        let done = dailyCompletedActivityNames.contains(act.name) || (progress?.completedActivityIds.contains(act.id) ?? false)
-        return Button {
-            Task { await timeSlotManager.toggleCustomActivity(id: act.id, at: slot) }
-        } label: {
-            progressCheckIcon(emoji: act.emoji, done: done, color: Color.duoGreen)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - 時間帯別の行表示
-    private func timeSlotRow(for slot: TimeSlot) -> some View {
-        let goal = timeSlotManager.settings.goalFor(slot)
-        let progress = timeSlotManager.progress.progressFor(slot)
-        let gp = timeSlotManager.progress.globalProgress
-        let gg = timeSlotManager.settings.globalGoals
-
-        return HStack(spacing: 8) {
-            // 時間帯アイコンと名前 + 時刻
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 4) {
-                    Text(slot.emoji).font(.subheadline)
-                    Text(slot.displayName)
-                        .font(.caption).fontWeight(.semibold).foregroundColor(Color.duoDark)
-                }
-                Text("~\(slot.endHour):00")
-                    .font(.system(size: 9 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-            .frame(width: 50, alignment: .leading)
-
-            if slot == .midnight {
-                // 夜中スロット: 睡眠スコア表示
-                if gg.sleepEnabled {
-                    if gp.sleepScore > 0 {
-                        let achieved = gp.sleepScore >= gg.sleepScoreThreshold
-                        HStack(spacing: 3) {
-                            Text("😴").font(.caption)
-                            Text("\(gp.sleepScore)点")
-                                .font(.caption2).fontWeight(.bold)
-                                .foregroundColor(achieved ? Color.duoGreen : Color.duoSubtitle)
-                            if gp.sleepHours > 0 {
-                                Text(String(format: "%.1fh", gp.sleepHours))
-                                    .font(.system(size: 9 * UIScale.font))
-                                    .foregroundColor(Color.duoSubtitle)
-                            }
-                            if achieved {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.caption2)
-                                    .foregroundColor(Color.duoGreen)
-                            }
-                        }
-                    } else {
-                        HStack(spacing: 3) {
-                            Text("😴").font(.caption)
-                            Text("データなし")
-                                .font(.caption2)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                    }
-                }
-            } else {
-                slotActivityIcons(goal: goal, progress: progress, slot: slot)
-            }
-
-            Spacer()
-
-            // ログ進捗バッジ（夜中以外）- 目標達成でチェック
-            if slot != .midnight, let goal = goal, let progress = progress {
-                HStack(spacing: 4) {
-                    if goal.logGoal.mealGoal > 0 {
-                        let mealDone = progress.logProgress.mealLogged >= goal.logGoal.mealGoal
-                        Image(systemName: mealDone ? "fork.knife.circle.fill" : "fork.knife.circle")
-                            .font(.title3)
-                            .foregroundColor(mealDone ? Color.duoGreen : Color(.systemGray4))
-                    }
-                    if goal.logGoal.drinkGoal > 0 {
-                        let drinkDone = progress.logProgress.drinkLogged >= goal.logGoal.drinkGoal
-                        Image(systemName: drinkDone ? "drop.circle.fill" : "drop.circle")
-                            .font(.title3)
-                            .foregroundColor(drinkDone ? Color.duoBlue : Color(.systemGray4))
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
     // MARK: - ハビットスタックカード
     // MARK: - Mandala Card
 
@@ -2432,6 +2258,15 @@ struct DashboardView: View {
         recordDailyAchievementPercentIfNeeded()
     }
 
+    /// スパイラル中央（MandalaSpiralCard の centerCircle）と同じ算出方法の達成率（%）。
+    /// 全ノード数に対する完了ノード数の割合（時間帯フィルタなし）。ヘッダー・共有画像・
+    /// 履歴の暫定表示など、DashboardView 内で「今日の達成率」を表示する箇所は全てここを参照する。
+    private var mandalaCompletionPercent: Int {
+        guard !cachedMandalaNodes.isEmpty else { return 0 }
+        let done = cachedMandalaNodes.filter(\.isCompleted).count
+        return Int((Double(done) / Double(cachedMandalaNodes.count) * 100).rounded())
+    }
+
     /// 1日の終わり（23:59以降）に、その日のスパイラル到達度パーセンテージを
     /// summaries/daily-{yyyy-MM-dd} に記録する（週次・月次カレンダー表示用）。
     /// 1日1回のみ記録する（UserDefaultsで判定）。
@@ -2447,12 +2282,8 @@ struct DashboardView: View {
         let defaultsKey = "dashboard.dailyAchievementPercent.\(dayKey)"
         guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
 
-        // スパイラル中央のパーセンテージ（centerCircle）と同じ計算方法
-        // （全ノード数に対する完了ノード数の割合。時間帯フィルタなし）
-        let total = cachedMandalaNodes.count
-        guard total > 0 else { return }
-        let done = cachedMandalaNodes.filter(\.isCompleted).count
-        let percent = Int((Double(done) / Double(total) * 100).rounded())
+        guard !cachedMandalaNodes.isEmpty else { return }
+        let percent = mandalaCompletionPercent
 
         UserDefaults.standard.set(true, forKey: defaultsKey)
         Task { await authManager.saveDailyAchievementPercent(percent, for: now) }
@@ -4620,8 +4451,7 @@ struct DashboardView: View {
         let day = Calendar.current.startOfDay(for: date)
         if let saved = store[day] { return saved }
         if Calendar.current.isDateInToday(day), !cachedMandalaNodes.isEmpty {
-            let done = cachedMandalaNodes.filter(\.isCompleted).count
-            return Int((Double(done) / Double(cachedMandalaNodes.count) * 100).rounded())
+            return mandalaCompletionPercent
         }
         return nil
     }
@@ -6362,10 +6192,7 @@ struct DashboardView: View {
             try? await Task.sleep(nanoseconds: 350_000_000)
 
             // スパイラル中央の達成率（centerCircle）と同じ計算方法（完了ノード数 ÷ 全ノード数）
-            let centerTotal = cachedMandalaNodes.count
-            let centerCompleted = cachedMandalaNodes.filter(\.isCompleted).count
-            let centerPercent = centerTotal > 0 ? Int(Double(centerCompleted) / Double(centerTotal) * 100) : 0
-            let headerText = "\(Self.slashMdHm.string(from: Date()))　\(centerPercent)%"
+            let headerText = "\(Self.slashMdHm.string(from: Date()))　\(mandalaCompletionPercent)%"
             let spiralRenderer = ImageRenderer(content:
                 VStack(spacing: 2) {
                     Text(headerText)
@@ -6700,9 +6527,7 @@ struct DashboardView: View {
         // progressStats（ヘッダーの%）は、スパイラル中央（centerCircle）と同じ
         // cachedMandalaNodes の完了率をそのまま使う（算出方法を一本化し、
         // 個別ゴールを再集計する重複ロジックを廃止）
-        let mandalaTotal = cachedMandalaNodes.count
-        let mandalaDone  = cachedMandalaNodes.filter(\.isCompleted).count
-        let progressPercent = mandalaTotal > 0 ? Int(Double(mandalaDone) / Double(mandalaTotal) * 100) : 0
+        let progressPercent = mandalaCompletionPercent
         let totalConsumed   = healthKit.todayTotalCalories
         let intake          = healthKit.todayIntakeCalories
         let balance         = intake - totalConsumed

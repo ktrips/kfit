@@ -137,12 +137,7 @@ final class TomoManager: ObservableObject {
 
     /// 今週の月曜日 0:00 を返す（週間ポイント集計の起点）
     static func thisMonday() -> Date {
-        var cal = Calendar.current
-        cal.firstWeekday = 2  // Monday
-        let today = cal.startOfDay(for: Date())
-        let weekday = cal.component(.weekday, from: today)
-        let daysFromMonday = (weekday + 5) % 7
-        return cal.date(byAdding: .day, value: -daysFromMonday, to: today) ?? today
+        Calendar.current.mondayStart(for: Date())
     }
 
     /// 2人のuidから決定的な friendship ドキュメントIDを生成
@@ -519,13 +514,8 @@ final class TomoManager: ObservableObject {
 
     /// 今週の合計ポイントとカテゴリ別・曜日別内訳を返す
     private func weeklyPointsWithBreakdown(userId: String) async -> (total: Int, daily: [DayBreakdown]) {
-        var cal = Calendar.current
-        cal.firstWeekday = 2  // 月曜始まり
-        let today = Date()
-        let weekday = cal.component(.weekday, from: today)
-        let daysSinceMonday = weekday == 1 ? 6 : weekday - 2
-        guard let monday = cal.date(byAdding: .day, value: -daysSinceMonday,
-                                    to: cal.startOfDay(for: today)) else { return (0, []) }
+        let cal = Calendar.current
+        let monday = cal.mondayStart(for: Date())
 
         let docs = (try? await withAsyncTimeout(seconds: 12) {
             try await Firestore.firestore()

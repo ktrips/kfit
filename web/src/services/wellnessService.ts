@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { markActiveToday } from './retentionService';
+import { localDateKey } from '../utils/date';
 import type {
   DietGoalSettings,
   DrinkType,
@@ -39,8 +40,7 @@ function endOfToday(): Date {
 }
 
 function todayKey(): string {
-  const today = startOfToday();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return localDateKey();
 }
 
 function toDate(value: unknown): Date {

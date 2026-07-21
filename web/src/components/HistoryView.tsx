@@ -1,23 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getRecentExercises, type DayExercises } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-
-const EXERCISE_EMOJI: Record<string, string> = {
-  'push-up': '💪', 'pushup': '💪',
-  'squat': '🏋️',
-  'sit-up': '🔥', 'situp': '🔥',
-  'lunge': '🦵',
-  'burpee': '⚡',
-  'plank': '🧘',
-};
-
-function getEmoji(name: string): string {
-  const key = (name ?? '').toLowerCase().replace(/\s+/g, '-');
-  for (const [k, v] of Object.entries(EXERCISE_EMOJI)) {
-    if (key.includes(k)) return v;
-  }
-  return '⚡';
-}
+import { getExerciseEmoji as getEmoji } from '../utils/exerciseEmoji';
 
 export const HistoryView: React.FC = () => {
   const user = useAppStore((s) => s.user);

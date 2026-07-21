@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
 import { detectInAppBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
+import { localDateKey } from '../utils/date';
 
 interface UserProfile {
   uid: string;
@@ -283,7 +284,7 @@ export const getRecentExercises = async (userId: string, days: number = 7): Prom
   snapshot.docs.forEach(d => {
     const data = d.data();
     const ts: Date = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
-    const key = `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')}`;
+    const key = localDateKey(ts);
     if (!byDay[key]) byDay[key] = [];
     byDay[key].push({ id: d.id, ...(data as Omit<CompletedExercise, 'id'>) });
   });
@@ -291,7 +292,7 @@ export const getRecentExercises = async (userId: string, days: number = 7): Prom
   const result: DayExercises[] = [];
   for (let i = 0; i < days; i++) {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const key = localDateKey(date);
     const label = i === 0 ? '今日' : i === 1 ? '昨日' : `${date.getMonth() + 1}/${date.getDate()}`;
     const exercises = byDay[key] ?? [];
     if (exercises.length > 0) {
@@ -449,10 +450,7 @@ export function getCurrentWeekId(): string {
   const { start } = getWeekBounds();
   // ローカル日付で月曜の yyyy-MM-dd（iOS の currentWeekId と同一キー）。
   // toISOString() は UTC 変換のため JST では日曜日付になり iOS とずれる。
-  const y = start.getFullYear();
-  const m = String(start.getMonth() + 1).padStart(2, '0');
-  const d = String(start.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`; // Monday's date, e.g. "2026-04-27"
+  return localDateKey(start); // Monday's date, e.g. "2026-04-27"
 }
 
 export function getActiveDaysElapsed(): number {
@@ -808,82 +806,6 @@ export const getLeaderboard = async (_period: string = 'week'): Promise<Leaderbo
       workouts: doc.data().workouts ?? 0,
       streak: doc.data().streak ?? 0,
     }));
-};
-
-// ── Daily Calorie Goal ────────────────────────────────────────────────────────
-
-export interface DailyCalorieGoal {
-  targetCalories: number;
-  consumedCalories: number;
-  percentAchieved: number;
-}
-
-/** 種目ごとのカロリー消費量（kcal/rep） */
-const CALORIES_PER_REP: Record<string, number> = {
-  'pushup': 0.5,
-  'push-up': 0.5,
-  'squat': 0.6,
-  'situp': 0.3,
-  'sit-up': 0.3,
-  'lunge': 0.5,
-  'burpee': 1.0,
-  'plank': 0.1,
-};
-
-/** カロリー目標を取得（カスタム設定またはデフォルト） */
-export const getCalorieTarget = async (userId: string): Promise<number> => {
-  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
-  const settingsSnap = await getDoc(settingsRef);
-
-  if (settingsSnap.exists() && settingsSnap.data().target) {
-    return settingsSnap.data().target;
-  }
-
-  // デフォルト: 週間目標から計算
-  const weeklyGoals = await getWeeklyGoals(userId);
-  if (weeklyGoals.length > 0) {
-    const dailyTotalReps = weeklyGoals.reduce((sum, g) => sum + ((g as any).dailyReps ?? 10), 0);
-    // 平均的な種目のカロリー消費率 0.5 kcal/rep で計算
-    return Math.round(dailyTotalReps * 0.5);
-  }
-
-  // フォールバック: 500kcal
-  return 500;
-};
-
-/** カロリー目標をカスタム設定 */
-export const setCalorieTarget = async (userId: string, targetCalories: number): Promise<void> => {
-  const settingsRef = doc(db, 'users', userId, 'settings', 'calorie-goal');
-  await setDoc(settingsRef, {
-    target: targetCalories,
-    updatedAt: Timestamp.now(),
-  });
-};
-
-/** 今日の目標カロリーと消費カロリーを取得 */
-export const getDailyCalorieGoal = async (userId: string): Promise<DailyCalorieGoal> => {
-  // カスタム目標または計算された目標を取得
-  const targetCalories = await getCalorieTarget(userId);
-
-  // 今日の運動記録からカロリー計算
-  const todayExercises = await getTodayExercises(userId);
-  const consumedCalories = Math.round(
-    todayExercises.reduce((total, ex) => {
-      const exerciseId = (ex as any).exerciseId?.toLowerCase() ?? '';
-      const calorieRate = CALORIES_PER_REP[exerciseId] ?? 0.4;
-      return total + (ex.reps ?? 0) * calorieRate;
-    }, 0)
-  );
-
-  const percentAchieved = targetCalories > 0
-    ? Math.round((consumedCalories / targetCalories) * 100)
-    : 0;
-
-  return {
-    targetCalories,
-    consumedCalories,
-    percentAchieved,
-  };
 };
 
 // ─── ライブカウンター（LP「今日 XX 人が挑戦中」）────────────────────────────

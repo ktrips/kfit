@@ -10,6 +10,7 @@ import { useAppStore } from '../store/appStore';
 import { getCurrentTimeSlot } from '../types/timeSlot';
 import type { GlobalProgress } from '../services/timeSlotService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
+import { getExerciseEmoji } from '../utils/exerciseEmoji';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
@@ -18,22 +19,6 @@ interface DashboardViewProps {
   onWorkoutPlan?: () => void;
   onDietGoal?: () => void;
   onFoodView?: () => void;
-}
-
-const EXERCISE_EMOJI: Record<string, string> = {
-  'push-up': '💪', 'pushup': '💪',
-  'squat':   '🏋️',
-  'sit-up':  '🔥', 'situp': '🔥',
-  'lunge':   '🦵',
-  'plank':   '🧘',
-};
-
-function getExerciseEmoji(name: string): string {
-  const key = (name ?? '').toLowerCase().replace(/\s+/g, '-');
-  for (const [k, v] of Object.entries(EXERCISE_EMOJI)) {
-    if (key.includes(k)) return v;
-  }
-  return '⚡';
 }
 
 function getTimePeriod(date: Date): { label: string; emoji: string } {

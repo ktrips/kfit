@@ -10,18 +10,7 @@ import {
   type CompletedSetRecord,
 } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
-
-const EXERCISE_EMOJI: Record<string, string> = {
-  pushup: '💪', 'push-up': '💪',
-  squat: '🏋️',
-  situp: '🔥', 'sit-up': '🔥',
-  lunge: '🦵',
-  burpee: '⚡',
-  plank: '🧘',
-};
-function emoji(id: string) {
-  return EXERCISE_EMOJI[id.toLowerCase()] ?? '🏃';
-}
+import { getExerciseEmoji as emoji } from '../utils/exerciseEmoji';
 
 const EX_COLORS = [
   { bg: '#D7FFB8', border: '#58CC02', text: '#2d7a00' },

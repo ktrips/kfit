@@ -506,6 +506,8 @@ struct DashboardView: View {
     @State private var weeklyAchievementPercents: [Date: Int] = [:]
     @State private var monthlyAchievementPercents: [Date: Int] = [:]
     @State private var hasLoadedAchievementCalendar = false
+    @State private var showMonthlyAchievement = false
+    @State private var hasLoadedMonthlyAchievement = false
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -681,9 +683,6 @@ struct DashboardView: View {
                             if healthKit.isAvailable && healthKit.isAuthorized {
                                 if plus.isPlus {
                                     tripleRingCard
-                                    if goalTabVisible {
-                                        calorieBalanceBarCard
-                                    }
                                 } else {
                                     PlusLockedSection(
                                         features: ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放"],
@@ -1487,27 +1486,41 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - XPサマリーカード（カロリー収支の下に表示）
+    // MARK: - XPサマリーカード
     private var xpSummaryCard: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail.toggle() }
         } label: {
-            HStack(spacing: 0) {
-                xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
 
-                Rectangle()
-                    .fill(Color(.systemGray5))
-                    .frame(width: 1, height: 32)
+                    Rectangle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 1, height: 32)
 
-                xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
+                    xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
 
-                Rectangle()
-                    .fill(Color(.systemGray5))
-                    .frame(width: 1, height: 32)
+                    Rectangle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 1, height: 32)
 
-                xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
+                    xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
+                }
+                .padding(.vertical, 14)
+
+                Divider()
+
+                HStack(spacing: 4) {
+                    Text("詳細")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(Color.duoSubtitle)
+                    Image(systemName: showPointsDetail ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.vertical, 6)
             }
-            .padding(.vertical, 14)
             .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
@@ -2441,9 +2454,12 @@ struct DashboardView: View {
         let defaultsKey = "dashboard.dailyAchievementPercent.\(dayKey)"
         guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
 
-        let count = cachedMandalaOverallCount
-        guard count.total > 0 else { return }
-        let percent = Int((Double(count.done) / Double(count.total) * 100).rounded())
+        // スパイラル中央のパーセンテージ（centerCircle）と同じ計算方法
+        // （全ノード数に対する完了ノード数の割合。時間帯フィルタなし）
+        let total = cachedMandalaNodes.count
+        guard total > 0 else { return }
+        let done = cachedMandalaNodes.filter(\.isCompleted).count
+        let percent = Int((Double(done) / Double(total) * 100).rounded())
 
         UserDefaults.standard.set(true, forKey: defaultsKey)
         Task { await authManager.saveDailyAchievementPercent(percent, for: now) }
@@ -3713,19 +3729,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - カロリー収支バーカード
-    private var calorieBalanceBarCard: some View {
-        CalorieBalanceBarCard(
-            totalConsumed: healthKit.todayTotalCalories,
-            intake: healthKit.todayIntakeCalories,
-            latestBodyMass: healthKit.latestBodyMass,
-            latestBodyFatPercentage: healthKit.latestBodyFatPercentage,
-            weeklyBodyMassChange: healthKit.weeklyBodyMassChange,
-            weeklyBodyFatChange: healthKit.weeklyBodyFatChange
-        )
-        .onTapGesture { openHealthApp(category: "ActiveEnergyBurned") }
-    }
-
     // MARK: - 旧カロリー収支カード（削除予定）
     private var calorieBalanceCard: some View {
         let totalConsumed = healthKit.todayTotalCalories  // 安静時＋アクティブ
@@ -4664,21 +4667,24 @@ struct DashboardView: View {
         return f
     }()
 
-    /// 指定日の到達度パーセント。今日は記録が無ければ現在のスパイラル進捗を暫定表示する。
+    /// 指定日の到達度パーセント。今日は記録が無ければ、スパイラル中央のパーセンテージ
+    /// （centerCircle と同じ計算方法）を暫定表示する。
     private func achievementPercent(for date: Date, from store: [Date: Int]) -> Int? {
         let day = Calendar.current.startOfDay(for: date)
         if let saved = store[day] { return saved }
-        if Calendar.current.isDateInToday(day), cachedMandalaOverallCount.total > 0 {
-            return Int((Double(cachedMandalaOverallCount.done) / Double(cachedMandalaOverallCount.total) * 100).rounded())
+        if Calendar.current.isDateInToday(day), !cachedMandalaNodes.isEmpty {
+            let done = cachedMandalaNodes.filter(\.isCompleted).count
+            return Int((Double(done) / Double(cachedMandalaNodes.count) * 100).rounded())
         }
         return nil
     }
 
     private var achievementCalendarSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // ── 週次（月〜日）──
-            VStack(alignment: .leading, spacing: 8) {
-                Text("📅 今週の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("📅 今週の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
+
+            VStack(spacing: 0) {
+                // ── 週次（月〜日）──
                 HStack(spacing: 6) {
                     ForEach(currentWeekDates, id: \.self) { date in
                         VStack(spacing: 4) {
@@ -4695,51 +4701,74 @@ struct DashboardView: View {
                     }
                 }
                 .padding(12)
-                .background(Color(.systemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
-            }
 
-            // ── 月次カレンダー ──
-            VStack(alignment: .leading, spacing: 8) {
-                Text("🗓️ \(Self.monthTitleFmt.string(from: Date()))の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
-                VStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        ForEach(["月","火","水","木","金","土","日"], id: \.self) { d in
-                            Text(d).font(.caption2).foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity)
-                        }
+                Divider()
+
+                // ── 月次表示トグル ──
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showMonthlyAchievement.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("🗓️ \(Self.monthTitleFmt.string(from: Date()))の到達度")
+                            .font(.caption2).fontWeight(.semibold)
+                            .foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                        Image(systemName: showMonthlyAchievement ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.duoSubtitle)
                     }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
-                        ForEach(Array(currentMonthGridDates.enumerated()), id: \.offset) { _, date in
-                            if let date = date {
-                                AchievementRingView(
-                                    percent: achievementPercent(for: date, from: monthlyAchievementPercents),
-                                    size: 26,
-                                    isToday: Calendar.current.isDateInToday(date),
-                                    isFuture: date > Date()
-                                )
-                            } else {
-                                Color.clear.frame(width: 26, height: 26)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                // ── 月次カレンダー（エクスパンド）──
+                if showMonthlyAchievement {
+                    Divider()
+                    VStack(spacing: 8) {
+                        HStack(spacing: 0) {
+                            ForEach(["月","火","水","木","金","土","日"], id: \.self) { d in
+                                Text(d).font(.caption2).foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity)
+                            }
+                        }
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                            ForEach(Array(currentMonthGridDates.enumerated()), id: \.offset) { _, date in
+                                if let date = date {
+                                    AchievementRingView(
+                                        percent: achievementPercent(for: date, from: monthlyAchievementPercents),
+                                        size: 26,
+                                        isToday: Calendar.current.isDateInToday(date),
+                                        isFuture: date > Date()
+                                    )
+                                } else {
+                                    Color.clear.frame(width: 26, height: 26)
+                                }
                             }
                         }
                     }
+                    .padding(12)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .padding(12)
-                .background(Color(.systemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
             }
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
         .task {
             guard !hasLoadedAchievementCalendar else { return }
             hasLoadedAchievementCalendar = true
-            let calendar = Calendar.current
             if let weekStart = currentWeekDates.first, let weekEnd = currentWeekDates.last {
-                async let weekly = authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
+                weeklyAchievementPercents = await authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
+            }
+        }
+        .onChange(of: showMonthlyAchievement) { _, expanded in
+            guard expanded, !hasLoadedMonthlyAchievement else { return }
+            hasLoadedMonthlyAchievement = true
+            Task {
+                let calendar = Calendar.current
                 let monthStart = calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
-                async let monthly = authManager.getDailyAchievementPercents(from: monthStart, to: Date())
-                weeklyAchievementPercents = await weekly
-                monthlyAchievementPercents = await monthly
+                monthlyAchievementPercents = await authManager.getDailyAchievementPercents(from: monthStart, to: Date())
             }
         }
     }
@@ -7995,162 +8024,6 @@ private struct WeeklyCalorieCard: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
-    }
-}
-
-// MARK: - カロリー収支バーカード
-
-private struct CalorieBalanceBarCard: View {
-    let totalConsumed: Double
-    let intake: Double
-    var latestBodyMass: Double = 0
-    var latestBodyFatPercentage: Double = 0
-    var weeklyBodyMassChange: Double? = nil
-    var weeklyBodyFatChange: Double? = nil
-
-    var body: some View {
-        let balance = intake - totalConsumed
-        let isPositive = balance > 0
-        let absBalance = abs(balance)
-        let circleSize: CGFloat = 35 + 20 * min(absBalance / 1000.0, 1.0)
-
-        let calLabel: String = {
-            if balance < -500 { return "大幅減" }
-            if balance < 0    { return "良好" }
-            if balance < 300  { return "普通" }
-            return "過剰"
-        }()
-        let calColor: Color = {
-            if balance < 0    { return Color.duoGreen }
-            if balance < 300  { return Color(hex: "#FFD900") }
-            return Color(hex: "#FF4B4B")
-        }()
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 10 * UIScale.font))
-                    .foregroundColor(Color.duoDark)
-                Text("カロリー収支")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold))
-                    .foregroundColor(Color.duoDark)
-                Spacer()
-                if totalConsumed > 0 || intake > 0 {
-                    let sign = balance >= 0 ? "+" : ""
-                    Text("\(sign)\(Int(balance)) kcal")
-                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(calColor)
-                    Text(calLabel)
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(calColor)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(calColor.opacity(0.15))
-                        .cornerRadius(10)
-                }
-            }
-            GeometryReader { geo in
-                barInner(consumed: totalConsumed, intake: intake,
-                         isPositive: isPositive, absBalance: absBalance,
-                         circleSize: circleSize, geo: geo)
-            }
-            .frame(height: 68)
-        }
-        .padding(8)
-        .background(Color.white.opacity(0.5))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .stroke(isPositive ? Color.red.opacity(0.3) : Color.duoGreen.opacity(0.3), lineWidth: 2))
-    }
-
-    private func barInner(consumed: Double, intake: Double, isPositive: Bool,
-                          absBalance: Double, circleSize: CGFloat, geo: GeometryProxy) -> some View {
-        let barWidth = geo.size.width - circleSize - 12
-        let maxValue = max(consumed, intake)
-        let cw = max(maxValue > 0 ? (consumed / maxValue) * barWidth * 0.5 : 0, 60)
-        let iw = max(maxValue > 0 ? (intake  / maxValue) * barWidth * 0.5 : 0, 60)
-        return VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 0) {
-                Text("消費Cal").font(.system(size: 8 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoGreen)
-                    .frame(width: cw, alignment: .center)
-                Text("摂取Cal").font(.system(size: 8 * UIScale.font, weight: .semibold)).foregroundColor(Color.duoRed)
-                    .frame(width: iw, alignment: .center)
-                Spacer()
-            }
-            HStack(alignment: .center, spacing: 0) {
-                consumedBar(consumed: consumed, width: cw)
-                intakeBar(intake: intake, width: iw)
-                Spacer()
-                balanceCircle(isPositive: isPositive, absBalance: absBalance, circleSize: circleSize)
-                    .padding(.trailing, 8)
-            }
-        }
-    }
-
-    private func consumedBar(consumed: Double, width: CGFloat) -> some View {
-        ZStack {
-            Rectangle().fill(Color.duoGreen)
-            HStack(spacing: 2) {
-                Spacer()
-                Text("\(Int(consumed))").font(.system(size: 13 * UIScale.font, weight: .black)).foregroundColor(.white)
-                Text("cal").font(.system(size: 8 * UIScale.font, weight: .medium)).foregroundColor(.white.opacity(0.9))
-                    .padding(.bottom, 1)
-            }
-        }
-        .frame(width: width, height: 36)
-        .cornerRadius(6, corners: [.topLeft, .bottomLeft])
-    }
-
-    private func intakeBar(intake: Double, width: CGFloat) -> some View {
-        ZStack {
-            Rectangle().fill(Color.duoRed)
-            HStack(spacing: 2) {
-                Text("\(Int(intake))").font(.system(size: 13 * UIScale.font, weight: .black)).foregroundColor(.white)
-                Text("cal").font(.system(size: 8 * UIScale.font, weight: .medium)).foregroundColor(.white.opacity(0.9))
-                    .padding(.bottom, 1)
-                Spacer()
-            }
-        }
-        .frame(width: width, height: 36)
-        .cornerRadius(6, corners: [.topRight, .bottomRight])
-    }
-
-    private func balanceCircle(isPositive: Bool, absBalance: Double, circleSize: CGFloat) -> some View {
-        let weightChangeG = Int(absBalance / 7200.0 * 1000)
-        return VStack(alignment: .trailing, spacing: 2) {
-            ZStack {
-                Circle().fill(isPositive ? Color.red : Color.duoGreen)
-                    .frame(width: circleSize, height: circleSize)
-                    .shadow(color: (isPositive ? Color.red : Color.duoGreen).opacity(0.3), radius: 2, y: 1)
-                VStack(spacing: -1) {
-                    Text(isPositive ? "+" : "-")
-                        .font(.system(size: circleSize * 0.20, weight: .bold)).foregroundColor(.white)
-                    Text("\(Int(absBalance))")
-                        .font(.system(size: circleSize * 0.30, weight: .black)).foregroundColor(.white)
-                    Text("cal")
-                        .font(.system(size: circleSize * 0.13)).foregroundColor(.white.opacity(0.9))
-                }
-            }
-            weightPrediction(isPositive: isPositive, absBalance: absBalance, grams: weightChangeG)
-        }
-    }
-
-    @ViewBuilder
-    private func weightPrediction(isPositive: Bool, absBalance: Double, grams: Int) -> some View {
-        if isPositive {
-            HStack(spacing: 1) {
-                Image(systemName: "arrow.up.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(.red)
-                Text("+\(grams)g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(.red)
-            }
-        } else if absBalance > 0 {
-            HStack(spacing: 1) {
-                Image(systemName: "arrow.down.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(Color.duoGreen)
-                Text("-\(grams)g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(Color.duoGreen)
-            }
-        } else {
-            HStack(spacing: 1) {
-                Image(systemName: "equal.circle.fill").font(.system(size: 6 * UIScale.font)).foregroundColor(Color.duoGreen)
-                Text("±0g").font(.system(size: 7 * UIScale.font, weight: .bold)).foregroundColor(Color.duoGreen)
-            }
-        }
     }
 }
 

@@ -87,6 +87,17 @@ export const LandingPage: React.FC<Props> = ({ onAuthenticated }) => {
     >
       {/* ── ヘッダー ─────────────────────────────────────────────── */}
       <div style={{ textAlign: 'center', padding: '52px 24px 28px' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <img
+            src="/mascot.png"
+            loading="lazy"
+            alt="Fitingo"
+            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '2px solid #58CC02' }}
+          />
+          <span style={{ fontSize: 22, fontWeight: 900, color: '#58CC02', letterSpacing: '-0.5px' }}>
+            Fitingo
+          </span>
+        </div>
         <h1
           style={{
             fontSize: 36,

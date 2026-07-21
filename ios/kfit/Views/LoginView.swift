@@ -33,6 +33,19 @@ struct LoginView: View {
             VStack(spacing: 0) {
                 // ── ヘッダー ─────────────────────────────────────────────────
                 VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image("mascot")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 40, height: 40)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.duoGreen, lineWidth: 2))
+                        Text("Fitingo")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundColor(.duoGreen)
+                    }
+                    .padding(.bottom, 12)
+
                     Text("今度こそ、続く。")
                         .font(.system(size: 34, weight: .black, design: .rounded))
                         .foregroundColor(.duoDark)

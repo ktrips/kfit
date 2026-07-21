@@ -638,8 +638,6 @@ struct TomoView: View {
     // PhotoLogManager は kfitApp から EnvironmentObject で配布済みのため
     // @StateObject による二重購読を解消（不要な View 再レンダリングを防ぐ）
     @EnvironmentObject private var photoLogManager: PhotoLogManager
-    @State private var selectedEduItem: EduLogHistoryItem? = nil
-    @State private var selectedFoodItem: PhotoLogHistoryItem? = nil   // FOOD投稿の詳細
     @State private var swipeDetailRequest: SwipeDetailRequest? = nil  // スワイプ詳細（item:で渡し空白バグ回避）
     @State private var commentTargetItem: EduLogHistoryItem? = nil
     @State private var shareTargetItem: EduLogHistoryItem? = nil
@@ -734,12 +732,6 @@ struct TomoView: View {
         .onChange(of: showOlderFeed) { _, _ in rebuildFeedCache() }
         .sheet(isPresented: $showShareSheet) {
             SystemShareSheet(items: inviteShareItems)
-        }
-        .sheet(item: $selectedEduItem) { item in
-            EduFeedDetailSheet(item: item)
-        }
-        .sheet(item: $selectedFoodItem) { item in
-            PhotoFeedDetailSheet(item: item)
         }
         .sheet(item: $swipeDetailRequest) { req in
             swipeDetailSheet(req)

@@ -1573,7 +1573,8 @@ struct GoalingoView: View {
     // MARK: - 摂取カロリートレンドカード
 
     private var intakeTrendCard: some View {
-        let weekStart = Calendar.current.mondayStart(for: Date())
+        let cal = Calendar.current
+        let weekStart = cal.mondayStart(for: Date())
 
         // HealthKit サンプルを日付キーでグルーピング
         var samplesByKey: [String: [DietarySample]] = [:]

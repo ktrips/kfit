@@ -501,7 +501,6 @@ struct DashboardView: View {
     @State private var cachedProgressStats = ProgressStats()
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
-    @State private var cachedMandalaOverallCount: (done: Int, total: Int) = (0, 0)
     // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent の履歴）
     @State private var weeklyAchievementPercents: [Date: Int] = [:]
     @State private var monthlyAchievementPercents: [Date: Int] = [:]
@@ -1185,10 +1184,9 @@ struct DashboardView: View {
                             .foregroundColor(.white.opacity(0.85))
                     }
 
-                    // Mandala現時点進捗率
-                    let nc = mandalaOverallCount
-                    if nc.total > 0 {
-                        let pct = Int(Double(nc.done) / Double(nc.total) * 100)
+                    // スパイラル中央（centerCircle）と同じ達成率
+                    if !cachedMandalaNodes.isEmpty {
+                        let pct = Int(Double(cachedMandalaNodes.filter(\.isCompleted).count) / Double(cachedMandalaNodes.count) * 100)
                         Text("\(pct)%")
                             .font(.system(size: 13 * UIScale.font, design: .rounded))
                             .fontWeight(.semibold)
@@ -2430,12 +2428,7 @@ struct DashboardView: View {
     // 時間帯カードと同じ実績ソース（countSetsInTimeSlot / HealthKit）を使い、スパイラルの完了を正確に反映する
     /// マンダラノードを再計算してキャッシュに格納する（入力変化時のみ呼ぶ）
     private func recomputeMandalaNodes() {
-        let nodes = computeMandalaNodes()
-        cachedMandalaNodes = nodes
-        // mandalaOverallCount のキャッシュも同時更新（body内での毎回走査を回避）
-        let visibleSlotSet = Set(mandalaVisibleSlots)
-        let visible = nodes.filter { $0.slot == nil || visibleSlotSet.contains($0.slot!) }
-        cachedMandalaOverallCount = (visible.filter(\.isCompleted).count, visible.count)
+        cachedMandalaNodes = computeMandalaNodes()
         recordDailyAchievementPercentIfNeeded()
     }
 
@@ -2691,18 +2684,6 @@ struct DashboardView: View {
     }
 
     private var currentMandalaHour: Int { Calendar.current.component(.hour, from: Date()) }
-
-    private var mandalaVisibleSlots: [TimeSlot] {
-        let h = currentMandalaHour
-        if h < 10 { return [.morning] }
-        else if h < 14 { return [.morning, .noon] }
-        else if h < 18 { return [.morning, .noon, .afternoon] }
-        else { return [.morning, .noon, .afternoon, .evening] }
-    }
-
-    private var mandalaOverallCount: (done: Int, total: Int) {
-        cachedMandalaOverallCount
-    }
 
     private func mandalaContextString(_ nodes: [MandalaNodeData]) -> String {
         let hour = currentMandalaHour
@@ -4291,7 +4272,6 @@ struct DashboardView: View {
 
     // MARK: - ポイント詳細シート
     private var pointsDetailExpandedSection: some View {
-        let totalPoints = authManager.userProfile?.totalPoints ?? 0
         let cal = Calendar.current
 
         // 種目別に集計（今日）
@@ -4336,7 +4316,7 @@ struct DashboardView: View {
         // 日付フォーマッター（body 評価毎の生成を避けるため static を参照）
         let dayFmt = Self.slashMdSpaceE
 
-        return VStack(spacing: 16) {
+        return VStack(spacing: 10) {
 
                     // ── ヘッダー（タイトル・閉じる）──
                     HStack {
@@ -4352,37 +4332,6 @@ struct DashboardView: View {
                         }
                     }
                     .padding(.horizontal, 4)
-
-                    // ── サマリーカード（今日 / 今週 / 累計）──
-                    HStack(spacing: 0) {
-                        VStack(spacing: 4) {
-                            Text("今日").font(.caption).foregroundColor(Color.duoSubtitle)
-                            Text("\(totalXP)")
-                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoGreen).minimumScaleFactor(0.6).lineLimit(1)
-                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }.frame(maxWidth: .infinity)
-                        Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
-                        VStack(spacing: 4) {
-                            Text("今週").font(.caption).foregroundColor(Color.duoSubtitle)
-                            Text("\(weeklyXP)")
-                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoBlue).minimumScaleFactor(0.6).lineLimit(1)
-                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }.frame(maxWidth: .infinity)
-                        Rectangle().fill(Color(.systemGray5)).frame(width: 1, height: 56)
-                        VStack(spacing: 4) {
-                            Text("累計").font(.caption).foregroundColor(Color.duoSubtitle)
-                            Text("\(totalPoints)")
-                                .font(.system(size: 28 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoOrange).minimumScaleFactor(0.6).lineLimit(1)
-                            Text("XP").font(.caption2).foregroundColor(Color.duoSubtitle)
-                        }.frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, 16)
-                    .background(Color(.systemBackground))
-                    .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
 
                     // ── 1週間ポイント内訳（日付別）──
                     VStack(alignment: .leading, spacing: 4) {
@@ -4417,8 +4366,8 @@ struct DashboardView: View {
                                         .foregroundColor(Color.duoSubtitle)
                                         .frame(width: 56, alignment: .trailing)
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
                                 .background(Color(.systemGroupedBackground))
 
                                 // 7日分の行
@@ -4468,8 +4417,8 @@ struct DashboardView: View {
                                             .minimumScaleFactor(0.6)
                                             .frame(width: 60, alignment: .trailing)
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
                                     .background(isToday ? Color.duoGreen.opacity(0.04) : Color(.systemBackground))
 
                                     if idx < days7.count - 1 { Divider().padding(.leading, 16) }
@@ -4489,31 +4438,31 @@ struct DashboardView: View {
                                 .foregroundColor(Color.duoSubtitle)
                                 .padding(.horizontal, 4)
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: 10) {
                                 Text("📷")
-                                    .font(.title3)
-                                    .frame(width: 36, height: 36)
+                                    .font(.subheadline)
+                                    .frame(width: 28, height: 28)
                                     .background(Color.duoBlue.opacity(0.1))
                                     .clipShape(Circle())
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 1) {
                                     Text("写真アップロード")
-                                        .font(.subheadline).fontWeight(.semibold)
+                                        .font(.caption).fontWeight(.semibold)
                                         .foregroundColor(Color.duoDark)
                                     Text("\(todayPhotos)枚 × 10 XP")
                                         .font(.caption2).foregroundColor(Color.duoSubtitle)
                                 }
                                 Spacer()
                                 Text("+\(todayPhotos * 10) XP")
-                                    .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                     .foregroundColor(Color.duoBlue)
-                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(Color.duoBlue.opacity(0.12))
                                     .cornerRadius(8)
                             }
-                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         }
                     }
 
@@ -4526,34 +4475,34 @@ struct DashboardView: View {
                                 .padding(.horizontal, 4)
                             VStack(spacing: 0) {
                                 ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: 10) {
                                         Text(s.emoji)
-                                            .font(.title3)
-                                            .frame(width: 36, height: 36)
+                                            .font(.subheadline)
+                                            .frame(width: 28, height: 28)
                                             .background(Color.duoGreen.opacity(0.1))
                                             .clipShape(Circle())
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 1) {
                                             Text(s.name)
-                                                .font(.subheadline).fontWeight(.semibold)
+                                                .font(.caption).fontWeight(.semibold)
                                                 .foregroundColor(Color.duoDark)
                                             Text("\(s.count)セット · \(s.totalReps) rep")
                                                 .font(.caption2).foregroundColor(Color.duoSubtitle)
                                         }
                                         Spacer()
                                         Text("+\(s.totalPoints) XP")
-                                            .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                             .foregroundColor(Color.duoGold)
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
                                             .background(Color.duoYellow.opacity(0.2))
                                             .cornerRadius(8)
                                     }
-                                    .padding(.horizontal, 16).padding(.vertical, 10)
-                                    if idx < summaries.count - 1 { Divider().padding(.leading, 64) }
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    if idx < summaries.count - 1 { Divider().padding(.leading, 50) }
                                 }
                             }
                             .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         }
                     }
 
@@ -4568,15 +4517,15 @@ struct DashboardView: View {
                                 ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
                                     let isReflect = s.sessionTypeLabel == "Reflect"
                                     let xp = isReflect ? 30 : 10
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: 10) {
                                         Text(s.sessionEmoji)
-                                            .font(.title3)
-                                            .frame(width: 36, height: 36)
+                                            .font(.subheadline)
+                                            .frame(width: 28, height: 28)
                                             .background(Color.duoPurple.opacity(0.1))
                                             .clipShape(Circle())
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 1) {
                                             Text(isReflect ? "3分ストレッチ" : "1分瞑想")
-                                                .font(.subheadline).fontWeight(.semibold)
+                                                .font(.caption).fontWeight(.semibold)
                                                 .foregroundColor(Color.duoDark)
                                             HStack(spacing: 6) {
                                                 Text(String(format: "%.0f分", s.durationMinutes))
@@ -4589,35 +4538,33 @@ struct DashboardView: View {
                                         }
                                         Spacer()
                                         Text("+\(xp) XP")
-                                            .font(.system(size: 15 * UIScale.font, weight: .black, design: .rounded))
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                                             .foregroundColor(Color(hex: "#FDCB6E"))
-                                            .padding(.horizontal, 8).padding(.vertical, 4)
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
                                             .background(Color(hex: "#FDCB6E").opacity(0.15))
                                             .cornerRadius(8)
                                     }
-                                    .padding(.horizontal, 16).padding(.vertical, 10)
-                                    if idx < mindfulSamples.count - 1 { Divider().padding(.leading, 64) }
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    if idx < mindfulSamples.count - 1 { Divider().padding(.leading, 50) }
                                 }
                             }
                             .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
                         }
                     }
 
                     if summaries.isEmpty && mindfulSamples.isEmpty && todayPhotos == 0 {
-                        VStack(spacing: 12) {
-                            Text("💪").font(.system(size: 48 * UIScale.font))
+                        VStack(spacing: 8) {
+                            Text("💪").font(.system(size: 36 * UIScale.font))
                             Text("今日はまだアクティビティを記録していません")
                                 .font(.subheadline).foregroundColor(Color.duoSubtitle)
                                 .multilineTextAlignment(.center)
                         }
-                        .frame(maxWidth: .infinity).padding(32)
+                        .frame(maxWidth: .infinity).padding(20)
                     }
-
-                    Spacer(minLength: 4)
                 }
-                .padding(16)
+                .padding(12)
                 .background(Color(.systemGroupedBackground))
                 .cornerRadius(20)
                 .task {
@@ -6722,8 +6669,10 @@ struct DashboardView: View {
             counts[slot.rawValue] = count
         }
         cachedSlotSetCounts = counts
-        rebuildDerivedCache(slotCounts: counts)
+        // rebuildDerivedCache がスパイラル中央と同じ cachedMandalaNodes を参照するため、
+        // 先にマンダラノードを最新化してから呼ぶ
         recomputeMandalaNodes()
+        rebuildDerivedCache(slotCounts: counts)
     }
 
     /// `rebuildSlotSetCounts` 後に呼び、angerLevel / todaySessions / progressStats をまとめて更新
@@ -6748,69 +6697,12 @@ struct DashboardView: View {
         cachedAngerLevel = totalExpectedSets > 0
             ? min(1.0, Double(missedSets) / Double(totalExpectedSets)) : 0
 
-        // progressStats（currentTimeSlotStats の重い計算をここに集約）
-        var completedSlots: [TimeSlot] = []
-        if currentHour >= 6  { completedSlots.append(.morning) }
-        if currentHour >= 10 { completedSlots.append(.noon) }
-        if currentHour >= 14 { completedSlots.append(.afternoon) }
-        if currentHour >= 18 { completedSlots.append(.evening) }
-
-        let trainDone  = completedSlots.reduce(0) { $0 + (slotCounts[$1.rawValue] ?? 0) }
-        let trainGoal  = completedSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.trainingGoal ?? 0) }
-        let mindDone   = completedSlots.reduce(0) { $0 + (timeSlotManager.progress.progressFor($1)?.mindfulnessCompleted ?? 0) }
-        let mindGoal   = completedSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.mindfulnessGoal ?? 0) }
-        let mealDone   = effectiveMealLogged
-        let mealGoal   = completedSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.logGoal.mealGoal ?? 0) }
-        let drinkDone  = Int(healthKit.todayIntakeWater)
-        let drinkGoal  = completedSlots.reduce(0) { $0 + (timeSlotManager.settings.goalFor($1)?.logGoal.drinkGoal ?? 0) }
-
-        var totalGoals = 0
-        var completedGoals = 0
-        if trainGoal > 0 { totalGoals += 1; if trainDone  >= trainGoal  { completedGoals += 1 } }
-        if mindGoal  > 0 { totalGoals += 1; if mindDone   >= mindGoal   { completedGoals += 1 } }
-        if mealGoal  > 0 { totalGoals += 1; if mealDone   >= mealGoal   { completedGoals += 1 } }
-        if drinkGoal > 0 { totalGoals += 1; if drinkDone  >= drinkGoal  { completedGoals += 1 } }
-        if dailyFixedGoals.foodEnabled {
-            totalGoals += 1; if healthKit.todayIntakeCalories >= 2000 { completedGoals += 1 }
-        }
-        if dailyFixedGoals.weightEnabled {
-            totalGoals += 1; if healthKit.todayBodyMassMeasurements > 0 { completedGoals += 1 }
-        }
-        if dailyFixedGoals.sleepEnabled {
-            totalGoals += 1
-            if healthKit.lastNightTotalHours >= Double(dailyFixedGoals.sleepHoursGoal)
-                || timeSlotManager.progress.globalProgress.sleepScore >= timeSlotManager.settings.globalGoals.sleepScoreThreshold {
-                completedGoals += 1
-            }
-        }
-        if let wg = todayWeekdayGoal {
-            let gp = timeSlotManager.progress.globalProgress
-            if wg.exerciseEnabled {
-                totalGoals += 1
-                if healthKit.activityMoveCalories >= healthKit.activityMoveGoal
-                    && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
-                    && healthKit.activityStandHours >= healthKit.activityStandGoal
-                    && healthKit.activityMoveGoal > 0 { completedGoals += 1 }
-            }
-            if wg.studyEnabled {
-                totalGoals += 1
-                if gp.completedCustomGoalIds.contains("wd_study_\(wg.weekday)") { completedGoals += 1 }
-            }
-            if wg.noAlcoholEnabled {
-                totalGoals += 1
-                if gp.completedCustomGoalIds.contains("wd_noalcohol_\(wg.weekday)") { completedGoals += 1 }
-            }
-            for cg in wg.customGoals {
-                totalGoals += 1
-                if gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)") { completedGoals += 1 }
-            }
-            for cg in dailyFixedGoals.customGoals {
-                totalGoals += 1
-                if gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)") { completedGoals += 1 }
-            }
-        }
-
-        let progressPercent = totalGoals > 0 ? Int(Double(completedGoals) / Double(totalGoals) * 100) : 0
+        // progressStats（ヘッダーの%）は、スパイラル中央（centerCircle）と同じ
+        // cachedMandalaNodes の完了率をそのまま使う（算出方法を一本化し、
+        // 個別ゴールを再集計する重複ロジックを廃止）
+        let mandalaTotal = cachedMandalaNodes.count
+        let mandalaDone  = cachedMandalaNodes.filter(\.isCompleted).count
+        let progressPercent = mandalaTotal > 0 ? Int(Double(mandalaDone) / Double(mandalaTotal) * 100) : 0
         let totalConsumed   = healthKit.todayTotalCalories
         let intake          = healthKit.todayIntakeCalories
         let balance         = intake - totalConsumed

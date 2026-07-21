@@ -93,8 +93,6 @@ struct SettingsView: View {
                     premiumSection
                     tabVisibilitySection
                     dailyHabitsSection
-                    motionSensitivitySection
-                    intakeSection
                     advancedSettingsSection
                     saveButton
                     permissionBanner
@@ -288,26 +286,6 @@ struct SettingsView: View {
                 }
                 .tint(Color.duoGreen)
                 .padding(12)
-
-                Divider().padding(.leading, 52)
-
-                // モードを切り替えずに画面だけ確認できるプレビュー
-                Button {
-                    showNinetySecondPreview = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("👀").font(.title3)
-                        Text("90秒モードの画面をプレビュー")
-                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoGreen)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
             }
             .background(Color(.systemBackground))
             .cornerRadius(16)
@@ -677,35 +655,6 @@ struct SettingsView: View {
 
                 // 曜日毎の目標
                 weekdayGoalsSection
-
-                // ゴール目標設定ボタン（レース・トライアスロン等）
-                Button { showRaceGoalSettings = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "flag.checkered")
-                            .font(.system(size: 15 * UIScale.font, weight: .bold))
-                            .foregroundColor(Color.duoOrange)
-                            .frame(width: 32, height: 32)
-                            .background(Color.duoOrange.opacity(0.12))
-                            .clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("ゴール目標設定")
-                                .font(.system(size: 13 * UIScale.font, weight: .black))
-                                .foregroundColor(Color.duoDark)
-                            Text("大会・レース目標を設定（スイム・バイク・ラン）")
-                                .font(.caption)
-                                .foregroundColor(Color.duoSubtitle)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(14)
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -1738,11 +1687,13 @@ struct SettingsView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         appearanceSection
+                        raceGoalSettingsSection
+                        motionSensitivitySection
+                        intakeSectionButton
+                        habitStackSection
                         ninetySecondModeSection
                         llmSection
                         watchSection
-                        habitStackSection
-                        linkedAppsSection
                         snsAccountSection
                         Spacer(minLength: 40)
                     }
@@ -1759,6 +1710,71 @@ struct SettingsView: View {
                         .fontWeight(.bold)
                 }
             }
+        }
+    }
+
+    // MARK: - ゴール目標設定セクション
+
+    private var raceGoalSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { showRaceGoalSettings = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Color.duoOrange)
+                        .frame(width: 32, height: 32)
+                        .background(Color.duoOrange.opacity(0.12))
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ゴール設定")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundColor(Color.duoDark)
+                        Text("大会・レース目標を設定（スイム・バイク・ラン）")
+                            .font(.caption)
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - 食事記録設定セクション
+
+    private var intakeSectionButton: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showIntakeSettings = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                        .foregroundColor(Color.duoOrange)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("食事記録設定")
+                            .font(.subheadline).fontWeight(.bold).foregroundColor(Color.duoDark)
+                        Text("カロリー量やアルコール種類など")
+                            .font(.caption).foregroundColor(Color.duoSubtitle)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption).foregroundColor(Color.duoSubtitle)
+                }
+                .padding(14)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+            .buttonStyle(.plain)
         }
     }
 

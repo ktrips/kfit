@@ -24,13 +24,17 @@ EXPORT_OPTIONS="build/ExportOptions-no-watch.plist"
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 mkdir -p build
 
-echo "1/4: アーカイブを作成中（Watchアプリも含めて通常通りビルド）..."
+echo "0/5: Xcodeキャッシュをクリア中..."
+rm -rf ~/Library/Developer/Xcode/DerivedData/kfit-*
+rm -rf ~/Library/Developer/Xcode/DerivedData/ModuleCache.noindex
+
+echo "1/5: アーカイブを作成中（Watchアプリも含めて通常通りビルド）..."
 xcodebuild archive \
   -workspace kfit.xcworkspace -scheme kfit \
   -archivePath "$ARCHIVE_PATH" \
   -destination 'generic/platform=iOS'
 
-echo "2/4: 生成されたアーカイブからWatchアプリを削除中..."
+echo "2/5: 生成されたアーカイブからWatchアプリを削除中..."
 WATCH_DIR="$ARCHIVE_PATH/Products/Applications/kfit.app/Watch"
 if [ -d "$WATCH_DIR" ]; then
   rm -rf "$WATCH_DIR"
@@ -39,7 +43,7 @@ else
   echo "   -> 警告: Watchディレクトリが見つかりませんでした（想定と違う構成の可能性）"
 fi
 
-echo "3/4: ExportOptions.plistを生成中..."
+echo "3/5: ExportOptions.plistを生成中..."
 TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:Team" "$ARCHIVE_PATH/Info.plist")
 cat > "$EXPORT_OPTIONS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -56,7 +60,7 @@ cat > "$EXPORT_OPTIONS" <<EOF
 </plist>
 EOF
 
-echo "4/4: IPAをエクスポート中..."
+echo "4/5: IPAをエクスポート中..."
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \

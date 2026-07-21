@@ -1326,7 +1326,7 @@ struct NinetySecondModeCard: View {
             // ワークアウトGIFがそのままアクショントリガー
             Button(action: triggerAction) {
                 GIFAnimationView(gifName: "fitingo_workout")
-                    .frame(width: 190, height: 190)
+                    .frame(width: 240, height: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 24))
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
@@ -1342,7 +1342,7 @@ struct NinetySecondModeCard: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(accent.opacity(0.08))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 156)
+                        .frame(height: 200)
                         .overlay(Text("📷").font(.system(size: 64)))
                 } else {
                     TabView(selection: $slideIndex) {
@@ -1351,13 +1351,13 @@ struct NinetySecondModeCard: View {
                                 .resizable()
                                 .scaledToFill()
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 156)
+                                .frame(height: 200)
                                 .clipped()
                                 .tag(i)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 156)
+                    .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     // スライドカウンターインジケータ
                     .overlay(alignment: .bottomTrailing) {
@@ -1383,7 +1383,7 @@ struct NinetySecondModeCard: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(accent.opacity(0.08))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 156)
+                        .frame(height: 200)
                         .overlay(Text("📚").font(.system(size: 64)))
                 } else {
                     TabView(selection: $slideIndex) {
@@ -1392,13 +1392,13 @@ struct NinetySecondModeCard: View {
                                 .resizable()
                                 .scaledToFill()
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 156)
+                                .frame(height: 200)
                                 .clipped()
                                 .tag(i)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 156)
+                    .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(alignment: .bottomTrailing) {
                         HStack(spacing: 4) {
@@ -1418,7 +1418,7 @@ struct NinetySecondModeCard: View {
             Button(action: triggerAction) {
                 Image("fitingo_button_mascot")
                     .resizable().scaledToFit()
-                    .frame(width: 190, height: 190)
+                    .frame(width: 240, height: 240)
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }
@@ -1485,7 +1485,7 @@ struct NinetySecondModeCard: View {
                         .foregroundColor(.white.opacity(0.9))
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 22)
+                .padding(.vertical, 28)
                 .background(
                     Color.instagramGradient
                         .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -1544,7 +1544,7 @@ struct NinetySecondModeCard: View {
                         .foregroundColor(.white.opacity(0.9))
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 22)
+                .padding(.vertical, 28)
                 .background(
                     LinearGradient(
                         colors: [Color(hex: "#1CB0F6"), Color(hex: "#0D8EC9")],

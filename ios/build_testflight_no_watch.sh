@@ -24,9 +24,14 @@ EXPORT_OPTIONS="build/ExportOptions-no-watch.plist"
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 mkdir -p build
 
-echo "0/5: Xcodeキャッシュをクリア中..."
-rm -rf ~/Library/Developer/Xcode/DerivedData/kfit-*
+echo "0/5: DerivedData をクリア中..."
+# kfit関連の全DerivedDataを削除
+find ~/Library/Developer/Xcode/DerivedData -maxdepth 1 -type d -name "kfit-*" -exec rm -rf {} + 2>/dev/null || true
+# モジュールキャッシュもクリア
 rm -rf ~/Library/Developer/Xcode/DerivedData/ModuleCache.noindex
+# ビルドキャッシュもクリア
+rm -rf ~/Library/Caches/com.apple.dt.Xcode 2>/dev/null || true
+echo "   → DerivedData をクリアしました"
 
 echo "1/5: アーカイブを作成中（Watchアプリも含めて通常通りビルド）..."
 xcodebuild archive \

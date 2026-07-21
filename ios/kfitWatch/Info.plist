@@ -36,5 +36,16 @@
 	<array>
 		<string>workout-processing</string>
 	</array>
+	<key>CFBundleIconFiles</key>
+	<array>
+		<string>Icon-24x24</string>
+		<string>Icon-27.5x27.5</string>
+		<string>Icon-40x40</string>
+		<string>Icon-44x44</string>
+		<string>Icon-50x50</string>
+		<string>Icon-86x86</string>
+		<string>Icon-98x98</string>
+		<string>Icon-108x108</string>
+	</array>
 </dict>
 </plist>

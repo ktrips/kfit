@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { openIOSApp } from '../../utils/openIOSApp';
+import { openIOSApp, IOS_DOWNLOAD_URL } from '../../utils/openIOSApp';
 
 // GitHub raw コンテンツのベース URL（画像パス変換に使用）
 const GITHUB_RAW = 'https://raw.githubusercontent.com/ktrips/kfit/main/docs';
@@ -98,9 +98,6 @@ function resolveImageSrc(src: string): string {
   // docs/ 以下の相対パスとして解決
   return `${GITHUB_RAW}/${src}`;
 }
-
-// App Store のリンク
-const APP_STORE_URL = 'https://apps.apple.com/jp/app/kfit-fitingo/id6746108484';
 
 interface BookViewerProps {
   bookId: BookId;
@@ -420,7 +417,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                         📚 Kindleで購入して続きを読む
                       </a>
                       <button
-                        onClick={() => openIOSApp(APP_STORE_URL)}
+                        onClick={() => openIOSApp(IOS_DOWNLOAD_URL)}
                         className="inline-flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold px-5 py-3 rounded-xl text-sm transition-colors"
                       >
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
@@ -452,7 +449,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
                     <button
-                      onClick={() => openIOSApp(APP_STORE_URL)}
+                      onClick={() => openIOSApp(IOS_DOWNLOAD_URL)}
                       className="inline-flex items-center gap-2 bg-white text-green-700 font-black px-6 py-3 rounded-xl text-sm shadow-md hover:bg-green-50 transition-colors"
                     >
                       <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -461,12 +458,12 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
                       アプリを開いて記録する
                     </button>
                     <a
-                      href={APP_STORE_URL}
+                      href={IOS_DOWNLOAD_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors"
                     >
-                      App Store でダウンロード
+                      TestFlightでダウンロード
                     </a>
                   </div>
                 </div>

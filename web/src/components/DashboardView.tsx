@@ -11,7 +11,7 @@ import { getCurrentTimeSlot } from '../types/timeSlot';
 import type { GlobalProgress } from '../services/timeSlotService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 import { getExerciseEmoji } from '../utils/exerciseEmoji';
-import { openIOSApp } from '../utils/openIOSApp';
+import { openIOSApp, IOS_DOWNLOAD_URL } from '../utils/openIOSApp';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
@@ -742,9 +742,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
           <div className="flex flex-col gap-3">
 
-            {/* iOS アプリ（インストール済みなら起動、なければApp Storeへ） */}
+            {/* iOS アプリ（インストール済みなら起動、なければTestFlightへ） */}
             <button
-              onClick={() => openIOSApp('https://apps.apple.com/app/fitingo/id000000000')}
+              onClick={() => openIOSApp(IOS_DOWNLOAD_URL)}
               className="flex items-center gap-4 bg-white rounded-2xl p-4 hover:shadow-md active:scale-[0.98] transition-all text-left"
               style={{ border: '2px solid #e5e5e5', boxShadow: '0 3px 0 #e5e5e5' }}
             >
@@ -756,7 +756,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
               <div className="flex-1 min-w-0">
                 <p className="font-black text-duo-dark text-sm">📱 Fitingo iOSアプリ</p>
                 <p className="text-xs text-duo-gray font-semibold mt-0.5">Apple Watch連携・モーションセンサーで本格トレーニング</p>
-                <p className="text-[10px] text-duo-gray mt-0.5">App Store でダウンロード</p>
+                <p className="text-[10px] text-duo-gray mt-0.5">TestFlightでダウンロード</p>
               </div>
               <span className="text-duo-gray shrink-0">›</span>
             </button>

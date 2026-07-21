@@ -490,7 +490,7 @@ struct PhotoLogView: View {
     @State private var selectedHistoryId: String?   // 選択中の履歴ID
     @State private var showManageView = false
     @State private var markAsFavorite = true   // FOODページへの保存（常にtrue）
-    @State private var isPublicPost = false   // TOMOフィードへの公開（デフォルトOff）
+    @State private var isPublicPost = true    // TOMOフィードへの公開（デフォルトOn）
     @State private var showPlusUpsell = false  // 10日以降フリーユーザーへのPlus誘導シート
 
     var body: some View {
@@ -1090,7 +1090,7 @@ struct PhotoLogView: View {
         fromHistory = false
         selectedHistoryId = nil
         markAsFavorite = true
-        isPublicPost = false   // TOMOフィード公開はデフォルトOff
+        isPublicPost = true    // TOMOフィード公開はデフォルトOn
     }
 
     private func analyzePhoto() async {

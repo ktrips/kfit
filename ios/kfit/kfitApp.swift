@@ -1568,7 +1568,7 @@ struct NinetySecondModeCard: View {
     private var streakHeader: some View {
         VStack(spacing: 10) {
             // Fitingo ◯日連続（あと◯日で全開放）
-            Group {
+            VStack(spacing: 4) {
                 HStack(spacing: 6) {
                     Image("fitingo_mascot")
                         .resizable()
@@ -1579,14 +1579,9 @@ struct NinetySecondModeCard: View {
                         .font(.system(size: 20, weight: .black))
                         .foregroundColor(.duoDark)
                 }
-                +
                 Text(graduated ? "　🎉全機能開放中！" : "（あと\(max(0, 5 - activeDays))日で全開放）")
-                    .font(.system(size: 20, weight: .black))
-                    .foregroundColor(.duoDark)
-                +
-                Text(graduated ? "　🎉全機能開放中！" : "（あと\(max(0, 5 - activeDays))日で全開放）")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(graduated ? .duoOrange : Color(.secondaryLabel))
             }
             .multilineTextAlignment(.center)
             // ドット

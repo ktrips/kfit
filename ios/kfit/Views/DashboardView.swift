@@ -679,15 +679,8 @@ struct DashboardView: View {
                         LazyVStack(spacing: 10) {
                             dailySetsCard
                             foodLogCard
-                            if healthKit.isAvailable && healthKit.isAuthorized {
-                                if plus.isPlus {
-                                    tripleRingCard
-                                } else {
-                                    PlusLockedSection(
-                                        features: ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放"],
-                                        onUpgrade: { showPlusViewFromDashboard = true }
-                                    )
-                                }
+                            if healthKit.isAvailable && healthKit.isAuthorized && plus.isPlus {
+                                tripleRingCard
                             }
                             if plus.isPlus {
                                 xpSummaryCard
@@ -698,7 +691,9 @@ struct DashboardView: View {
                                 achievementCalendarSection
                             } else {
                                 PlusLockedSection(
-                                    features: ["XPポイント詳細", "週間・月間の到達度カレンダー"],
+                                    features: healthKit.isAvailable && healthKit.isAuthorized
+                                        ? ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放", "XPポイント詳細", "週間・月間の到達度カレンダー"]
+                                        : ["XPポイント詳細", "週間・月間の到達度カレンダー"],
                                     onUpgrade: { showPlusViewFromDashboard = true }
                                 )
                             }

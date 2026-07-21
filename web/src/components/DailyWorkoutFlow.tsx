@@ -34,6 +34,7 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
   const [earnedXP, setEarnedXP] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [showGoalReached, setShowGoalReached] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // プランク専用
   const [plankSeconds, setPlankSeconds] = useState(0);
@@ -88,17 +89,27 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
   }, []);
 
   // セット完了記録（ログイン済みのみ保存）
-  useEffect(() => {
-    if (phase === 'done' && results.length > 0 && user && !setRecordedRef.current) {
+  const saveSet = useCallback(() => {
+    if (!user || results.length === 0 || setRecordedRef.current) return;
+    setSaveError(false);
+    recordCompletedSet(user.uid, results.map((r) => ({
+      exerciseId: r.exerciseId,
+      exerciseName: r.exerciseName,
+      reps: r.reps,
+      points: r.points,
+    }))).then(() => {
       setRecordedRef.current = true;
-      recordCompletedSet(user.uid, results.map((r) => ({
-        exerciseId: r.exerciseId,
-        exerciseName: r.exerciseName,
-        reps: r.reps,
-        points: r.points,
-      }))).catch(console.error);
-    }
-  }, [phase, results, user]);
+    }).catch((err) => {
+      // 保存失敗時はサイレントに諦めず、完了画面でリトライできるようにする
+      console.error('Failed to save completed set:', err);
+      setSaveError(true);
+    });
+  }, [user, results]);
+
+  useEffect(() => {
+    if (phase === 'done') saveSet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const handleDone = async () => {
     if (!current || isSaving) return;
@@ -173,6 +184,24 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
               </div>
             ))}
           </div>
+
+          {/* 記録保存に失敗した場合：リトライ導線 */}
+          {user && saveError && (
+            <div className="rounded-2xl p-4 text-left"
+              style={{ background: '#FFEBEE', border: '2px solid #FF4B4B' }}>
+              <p className="font-black text-sm mb-1" style={{ color: '#EA2B2B' }}>⚠️ 記録の保存に失敗しました</p>
+              <p className="text-xs text-duo-gray font-semibold mb-3">
+                通信状況をご確認の上、もう一度お試しください。XPは保存されるまで反映されません。
+              </p>
+              <button
+                onClick={saveSet}
+                className="w-full py-3 rounded-xl font-black text-sm text-white"
+                style={{ background: '#FF4B4B', boxShadow: '0 3px 0 #CC3B3B' }}
+              >
+                再試行する
+              </button>
+            </div>
+          )}
 
           {/* 未ログイン時：記録保存の促進バナー */}
           {!user && (

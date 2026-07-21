@@ -654,7 +654,7 @@ struct FoodView: View {
     private var mealRecordCard: some View {
         VStack(spacing: 0) {
             // ── 食事フォトログ ────────────────────────────────────────────
-            Button { plus.isPlus ? (showPhotoLog = true) : (showPlusViewFromFood = true) } label: {
+            Button { showPhotoLog = true } label: {
                 let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
                 HStack(spacing: 16) {
                     ZStack {
@@ -725,25 +725,6 @@ struct FoodView: View {
                         .stroke(Color.white.opacity(0.25), lineWidth: 1)
                 )
                 .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
-                .overlay(alignment: .topTrailing) {
-                    if !plus.isPlus {
-                        HStack(spacing: 3) {
-                            Text("+")
-                                .font(.system(size: 9 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .frame(width: 14, height: 14)
-                                .background(Color.duoGold)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
-                            Text("Plus限定")
-                                .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.black.opacity(0.45))
-                        .clipShape(Capsule())
-                        .padding(.top, 8).padding(.trailing, 20)
-                    }
-                }
                 .padding(.horizontal, 12)
             }
             .buttonStyle(.plain)

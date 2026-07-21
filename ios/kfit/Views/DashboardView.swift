@@ -5017,7 +5017,7 @@ struct DashboardView: View {
 
     private var photoLogButton: some View {
         let recentPhotos = photoLogManager.history.prefix(3).compactMap { $0.smallThumbnail }
-        return Button(action: { plus.isPlus ? (showPhotoLog = true) : (showPlusViewFromDashboard = true) }) {
+        return Button(action: { showPhotoLog = true }) {
             HStack(spacing: 16) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
@@ -5087,25 +5087,6 @@ struct DashboardView: View {
                     .stroke(Color.white.opacity(0.25), lineWidth: 1)
             )
             .shadow(color: Color(red: 0.84, green: 0.16, blue: 0.46).opacity(0.35), radius: 10, x: 0, y: 5)
-            .overlay(alignment: .topTrailing) {
-                if !plus.isPlus {
-                    HStack(spacing: 3) {
-                        Text("+")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundColor(.white)
-                            .frame(width: 14, height: 14)
-                            .background(Color.duoGold)
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
-                        Text("Plus限定")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.black.opacity(0.45))
-                    .clipShape(Capsule())
-                    .padding(.top, 8).padding(.trailing, 20)
-                }
-            }
             .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)

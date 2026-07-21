@@ -321,6 +321,11 @@ final class HealthKitManager: ObservableObject {
     private var previousMindfulnessSessions: Int = 0     // 前回のセッション数（差分検出用）
     private var lastFetchAllAt: Date? = nil
     private var lastScopedFetchAt: [String: Date] = [:]
+    /// 実行中のフェッチをスコープ単位で管理する（"all" は fetchAll 自身）。
+    /// 以前は単一の isLoading フラグで全スコープを共有していたため、
+    /// 例えば "mind" スコープの取得中に "goal" スコープの取得が来ても
+    /// ブロックされ、画面を素早く切り替えると更新が止まって見える不具合があった。
+    private var activeFetchScopes: Set<String> = []
     private let fetchAllTTL: TimeInterval = 20
     private var mindfulnessCacheResult: (minutes: Double, sessions: Int, samples: [MindfulSession])?
     private var mindfulnessCachedAt: Date?
@@ -559,12 +564,14 @@ final class HealthKitManager: ObservableObject {
     func fetchAll(force: Bool = false) async {
         guard isAvailable else { return }
         guard isAuthorized else { return }
-        if isLoading { return }
+        if activeFetchScopes.contains("all") { return }
         if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL { return }
+        activeFetchScopes.insert("all")
         isLoading = true
         defer {
             lastFetchAllAt = Date()
-            isLoading = false
+            activeFetchScopes.remove("all")
+            isLoading = !activeFetchScopes.isEmpty
         }
 
         async let steps    = fetchTodaySteps()
@@ -843,21 +850,22 @@ final class HealthKitManager: ObservableObject {
 
     private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval? = nil) -> Bool {
         guard isAvailable, isAuthorized else { return false }
-        if isLoading {
-            if force { isLoading = false }
-            else { return false }
+        if !force {
+            if activeFetchScopes.contains(scope) { return false }
+            let scopeTTL = ttl ?? fetchAllTTL
+            if let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < scopeTTL {
+                return false
+            }
         }
-        let scopeTTL = ttl ?? fetchAllTTL
-        if !force, let last = lastScopedFetchAt[scope], Date().timeIntervalSince(last) < scopeTTL {
-            return false
-        }
+        activeFetchScopes.insert(scope)
         isLoading = true
         return true
     }
 
     private func finishScopedFetch(_ scope: String) {
         lastScopedFetchAt[scope] = Date()
-        isLoading = false
+        activeFetchScopes.remove(scope)
+        isLoading = !activeFetchScopes.isEmpty
     }
 
     private func applyMindfulnessResult(_ mindfulnessResult: (minutes: Double, sessions: Int, samples: [MindfulSession])) {

@@ -49,21 +49,23 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
     /// 画像からDuolingo外国語フレーズを抽出する
     func extract(from image: UIImage) async -> DuolingoExtractResult? {
         guard let cgImage = image.cgImage else { return nil }
+        let lines = await Self.recognizeTextLines(in: cgImage)
+        // 日本語・英語・ロゴ行を除いて外国語フレーズを特定
+        return parseDuolingoLines(lines)
+    }
 
-        return await withCheckedContinuation { continuation in
+    /// Vision の文字認識（重い同期処理）をメインアクタから切り離して実行する。
+    /// nonisolated + バックグラウンドキューへの明示ディスパッチにより、
+    /// OCR実行中にUIがブロックされるのを防ぐ。extract / extractWords で共有。
+    nonisolated private static func recognizeTextLines(in cgImage: CGImage) async -> [String] {
+        await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 guard error == nil,
                       let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: [])
                     return
                 }
-
-                // 認識したすべての行を取得
-                let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-
-                // 日本語・英語・ロゴ行を除いて外国語フレーズを特定
-                let result = self.parseDuolingoLines(lines)
-                continuation.resume(returning: result)
+                continuation.resume(returning: observations.compactMap { $0.topCandidates(1).first?.string })
             }
 
             // 多言語認識を有効化
@@ -75,8 +77,10 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
 
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try? handler.perform([request])
+            DispatchQueue.global(qos: .userInitiated).async {
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                try? handler.perform([request])
+            }
         }
     }
 
@@ -139,26 +143,7 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
     /// OCR行ごとに1単語として扱い、日本語訳行・UIロゴ文字列は除外する。
     func extractWords(from image: UIImage, maxCount: Int = 12) async -> [VocabWord] {
         guard let cgImage = image.cgImage else { return [] }
-
-        let lines: [String] = await withCheckedContinuation { continuation in
-            let request = VNRecognizeTextRequest { request, error in
-                guard error == nil,
-                      let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: [])
-                    return
-                }
-                continuation.resume(returning: observations.compactMap { $0.topCandidates(1).first?.string })
-            }
-            request.recognitionLanguages = [
-                "zh-Hans", "zh-Hant",
-                "en-US", "fr-FR", "es-ES", "de-DE",
-                "ko-KR", "pt-BR", "it-IT", "ja-JP"
-            ]
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try? handler.perform([request])
-        }
+        let lines = await Self.recognizeTextLines(in: cgImage)
 
         let skipWords: Set<String> = ["duolingo", "Duolingo", "この文を訳してください",
                                       "コンボ", "ライフ", "ハート"]

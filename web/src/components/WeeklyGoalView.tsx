@@ -102,7 +102,7 @@ export const WeeklyGoalView: React.FC = () => {
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <img src="/mascot.png" alt="" className="w-20 h-20 rounded-full object-cover animate-wiggle" />
+          <img src="/mascot.png" loading="lazy" alt="" className="w-20 h-20 rounded-full object-cover animate-wiggle" />
           <p className="text-duo-green font-extrabold text-lg">読み込み中...</p>
         </div>
       </div>
@@ -116,7 +116,7 @@ export const WeeklyGoalView: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/mascot.png" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
+            <img src="/mascot.png" loading="lazy" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
             <div>
               <h2 className="text-2xl font-black text-duo-dark">週間目標</h2>
               <p className="text-duo-gray font-bold text-sm">📅 {getWeekLabel()}</p>

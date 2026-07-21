@@ -21,7 +21,7 @@ export const HistoryView: React.FC = () => {
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <img src="/mascot.png" alt="" className="w-20 h-20 rounded-full object-cover animate-wiggle" />
+          <img src="/mascot.png" loading="lazy" alt="" className="w-20 h-20 rounded-full object-cover animate-wiggle" />
           <p className="text-duo-green font-extrabold text-lg">読み込み中...</p>
         </div>
       </div>
@@ -33,7 +33,7 @@ export const HistoryView: React.FC = () => {
       <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
 
         <div className="flex items-center gap-3 mb-2">
-          <img src="/mascot.png" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
+          <img src="/mascot.png" loading="lazy" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
           <div>
             <h2 className="text-2xl font-black text-duo-dark">トレーニング履歴</h2>
             <p className="text-duo-gray font-bold text-sm">過去14日間の記録</p>
@@ -42,7 +42,7 @@ export const HistoryView: React.FC = () => {
 
         {history.length === 0 ? (
           <div className="duo-card p-8 text-center flex flex-col items-center gap-4">
-            <img src="/mascot.png" alt="" className="w-24 h-24 rounded-full object-cover" />
+            <img src="/mascot.png" loading="lazy" alt="" className="w-24 h-24 rounded-full object-cover" />
             <p className="text-duo-dark font-extrabold text-lg">まだ履歴がありません</p>
             <p className="text-duo-gray font-bold text-sm">トレーニングを記録すると、ここに表示されます！</p>
           </div>

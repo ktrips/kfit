@@ -176,7 +176,7 @@ function App() {
               onClick={() => navigate('dashboard')}
               className="flex items-center gap-1.5 hover:opacity-80 transition-opacity shrink-0"
             >
-              <img src="/mascot.png" alt="Fitingo" className="w-7 h-7 rounded-full object-cover" />
+              <img src="/mascot.png" loading="lazy" alt="Fitingo" className="w-7 h-7 rounded-full object-cover" />
               <span className="text-lg font-black text-duo-green tracking-tight">Fitingo</span>
             </button>
 

@@ -156,7 +156,7 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
     return (
       <div className="min-h-screen bg-duo-gray-light flex flex-col items-center justify-center px-4 pb-10">
         <div className="max-w-md w-full text-center space-y-5">
-          <img src="/mascot.png" alt="" className="w-32 h-32 rounded-full object-cover mx-auto animate-wiggle"
+          <img src="/mascot.png" loading="lazy" alt="" className="w-32 h-32 rounded-full object-cover mx-auto animate-wiggle"
             style={{ border: '4px solid #58CC02' }} />
           <h2 className="text-4xl font-black text-duo-dark">完了！🎉</h2>
           <p className="text-duo-green font-extrabold text-lg">今日のメニュー全部やったね！</p>

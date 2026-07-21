@@ -134,7 +134,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess,
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="text-center animate-bounce_in flex flex-col items-center gap-4">
-          <img src="/mascot.png" alt="mascot" className="w-36 h-36 rounded-full object-cover animate-wiggle" style={{ border: '4px solid #58CC02' }} />
+          <img src="/mascot.png" loading="lazy" alt="mascot" className="w-36 h-36 rounded-full object-cover animate-wiggle" style={{ border: '4px solid #58CC02' }} />
           <p className="text-5xl font-black text-duo-green">やったー！🎉</p>
           <div
             className="px-8 py-4 rounded-2xl font-black text-3xl"
@@ -162,7 +162,7 @@ export const ExerciseTrackerView: React.FC<ExerciseTrackerProps> = ({ onSuccess,
               <span className="text-duo-gray font-black text-lg">←</span>
             </button>
           )}
-          <img src="/mascot.png" alt="mascot" className="w-14 h-14 rounded-full object-cover shrink-0" />
+          <img src="/mascot.png" loading="lazy" alt="mascot" className="w-14 h-14 rounded-full object-cover shrink-0" />
           <div className="flex-1">
             <h2 className="text-2xl font-black text-duo-dark">トレーニング記録</h2>
             <p className="text-duo-gray font-bold text-sm">種目を選んで記録しよう！</p>

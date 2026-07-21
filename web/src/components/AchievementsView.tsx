@@ -48,7 +48,7 @@ export const AchievementsView: React.FC = () => {
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <img src="/mascot.png" alt="mascot" className="w-24 h-24 rounded-full object-cover animate-wiggle" />
+          <img src="/mascot.png" loading="lazy" alt="mascot" className="w-24 h-24 rounded-full object-cover animate-wiggle" />
           <p className="text-duo-green font-extrabold text-xl">読み込み中...</p>
         </div>
       </div>

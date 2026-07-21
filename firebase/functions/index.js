@@ -138,14 +138,29 @@ exports.checkAchievements = functions.firestore
 
     try {
       const userRef = db.collection('users').doc(userId);
-      const userDoc = await userRef.get();
-      const userProfile = userDoc.data();
-
-      const allExercises = await userRef.collection('completed-exercises').get();
       const achievementsRef = userRef.collection('achievements');
+      const ACHIEVEMENT_COUNT = 7;
 
       const earnedAchievements = await achievementsRef.get();
       const earnedIds = new Set(earnedAchievements.docs.map((d) => d.id));
+
+      // 全実績を獲得済みなら、completed-exercises 全件読み取りすら不要
+      // （書き込みのたびに毎回フルスキャンしていたコストを回避）
+      if (earnedIds.size >= ACHIEVEMENT_COUNT) return null;
+
+      const userDoc = await userRef.get();
+      const userProfile = userDoc.data();
+
+      // completed-exercises の全件取得は、実際に必要な実績チェックが
+      // 発生するまで遅延させ、1回の呼び出しにつき最大1回のみ実行する
+      // （以前は early_bird 用にもう一度同じ全件取得をしていた）
+      let allExercisesPromise = null;
+      const getAllExercises = () => {
+        if (!allExercisesPromise) {
+          allExercisesPromise = userRef.collection('completed-exercises').get();
+        }
+        return allExercisesPromise;
+      };
 
       const achievementsList = [
         {
@@ -153,7 +168,7 @@ exports.checkAchievements = functions.firestore
           name: 'Early Bird',
           description: '9時前に10回トレーニング達成',
           check: async () => {
-            const docs = await userRef.collection('completed-exercises').get();
+            const docs = await getAllExercises();
             let count = 0;
             docs.forEach((doc) => {
               const t = doc.data().timestamp?.toDate?.();
@@ -167,8 +182,9 @@ exports.checkAchievements = functions.firestore
           name: 'Form Master',
           description: 'フォームスコア90以上を50回達成',
           check: async () => {
+            const docs = await getAllExercises();
             let n = 0;
-            allExercises.forEach((doc) => {
+            docs.forEach((doc) => {
               if (doc.data().formScore >= 90) n++;
             });
             return n >= 50;
@@ -202,8 +218,9 @@ exports.checkAchievements = functions.firestore
           name: 'Push Master',
           description: 'プッシュアップ累計500rep',
           check: async () => {
+            const docs = await getAllExercises();
             let n = 0;
-            allExercises.forEach((d) => {
+            docs.forEach((d) => {
               if (d.data().exerciseId === 'pushup') n += d.data().reps || 0;
             });
             return n >= 500;
@@ -214,8 +231,9 @@ exports.checkAchievements = functions.firestore
           name: 'Quad Destroyer',
           description: 'スクワット累計500rep',
           check: async () => {
+            const docs = await getAllExercises();
             let n = 0;
-            allExercises.forEach((d) => {
+            docs.forEach((d) => {
               if (d.data().exerciseId === 'squat') n += d.data().reps || 0;
             });
             return n >= 500;
@@ -226,8 +244,9 @@ exports.checkAchievements = functions.firestore
           name: 'Core Strength',
           description: 'シットアップ累計500rep',
           check: async () => {
+            const docs = await getAllExercises();
             let n = 0;
-            allExercises.forEach((d) => {
+            docs.forEach((d) => {
               if (d.data().exerciseId === 'situp') n += d.data().reps || 0;
             });
             return n >= 500;
@@ -268,13 +287,14 @@ exports.generateWeeklyLeaderboard = functions.pubsub
       const period = `week-${now.getFullYear()}-${String(weekNumber).padStart(2, '0')}`;
 
       const usersSnapshot = await db.collection('users').get();
-      const entries = [];
+      const weekStart = getWeekStart(now);
+      const weekEnd   = new Date(weekStart.getTime() + 7 * 86400000);
 
-      for (const userDoc of usersSnapshot.docs) {
+      // ユーザーごとのクエリを直列awaitしていたため、ユーザー数が多いほど
+      // 実行時間が線形に伸びていた（N+1）。独立したクエリなので並列実行する。
+      const entries = (await Promise.all(usersSnapshot.docs.map(async (userDoc) => {
         const userId = userDoc.id;
         const profile = userDoc.data();
-        const weekStart = getWeekStart(now);
-        const weekEnd   = new Date(weekStart.getTime() + 7 * 86400000);
 
         const weekDocs = await db
           .collection('users').doc(userId)
@@ -286,10 +306,8 @@ exports.generateWeeklyLeaderboard = functions.pubsub
         let weeklyPoints = 0;
         weekDocs.forEach((d) => { weeklyPoints += d.data().pointsEarned || d.data().points || 0; });
 
-        if (weeklyPoints > 0) {
-          entries.push({ userId, username: profile.username, points: weeklyPoints });
-        }
-      }
+        return weeklyPoints > 0 ? { userId, username: profile.username, points: weeklyPoints } : null;
+      }))).filter((e) => e !== null);
 
       entries.sort((a, b) => b.points - a.points);
 
@@ -363,13 +381,17 @@ exports.computeRetentionStats = functions.pubsub
 
     const userRefs = await db.collection('users').listDocuments();
 
-    for (const userRef of userRefs) {
+    // ユーザーごとの retention/summary 読み取りを直列awaitしていたため、
+    // ユーザー数が多いほど実行時間が線形に伸びていた（N+1）。
+    // 各ユーザーの読み取り・スパン計算は独立しているので並列実行し、
+    // buckets への集計だけ後段でまとめて行う。
+    const perUserResults = await Promise.all(userRefs.map(async (userRef) => {
       try {
         const snap = await userRef.collection('retention').doc('summary').get();
-        if (!snap.exists) continue;
+        if (!snap.exists) return null;
         const data = snap.data() || {};
         const days = Object.keys(data.days || {}).sort();
-        if (days.length === 0) continue;
+        if (days.length === 0) return null;
 
         // 3日猶予の最長継続スパンを計算
         let runStart = new Date(days[0]);
@@ -387,15 +409,20 @@ exports.computeRetentionStats = functions.pubsub
 
         const firstDay = new Date(data.firstActiveDay || days[0]);
         const daysSinceFirst = Math.round((today - firstDay) / MS_DAY);
-
-        for (const n of MILESTONES) {
-          if (daysSinceFirst >= n) {
-            buckets[n].eligible += 1;
-            if (longestSpan >= n) buckets[n].reached += 1;
-          }
-        }
+        return { daysSinceFirst, longestSpan };
       } catch (e) {
         console.error(`retention read failed for ${userRef.id}:`, e);
+        return null;
+      }
+    }));
+
+    for (const result of perUserResults) {
+      if (!result) continue;
+      for (const n of MILESTONES) {
+        if (result.daysSinceFirst >= n) {
+          buckets[n].eligible += 1;
+          if (result.longestSpan >= n) buckets[n].reached += 1;
+        }
       }
     }
 

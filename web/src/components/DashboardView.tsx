@@ -120,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
     return (
       <div className="min-h-screen bg-duo-gray-light flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <img src="/mascot.png" alt="mascot" className="w-24 h-24 rounded-full object-cover animate-wiggle" />
+          <img src="/mascot.png" loading="lazy" alt="mascot" className="w-24 h-24 rounded-full object-cover animate-wiggle" />
           <p className="text-duo-green font-extrabold text-xl">読み込み中...</p>
         </div>
       </div>
@@ -159,7 +159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
 
         {/* Welcome banner */}
         <div className="duo-card p-5 flex items-center gap-4">
-          <img src="/mascot.png" alt="mascot" className="w-16 h-16 rounded-full object-cover shrink-0" style={{ border: '3px solid #58CC02' }} />
+          <img src="/mascot.png" loading="lazy" alt="mascot" className="w-16 h-16 rounded-full object-cover shrink-0" style={{ border: '3px solid #58CC02' }} />
           <div className="flex-1 min-w-0">
             <p className="text-duo-gray font-bold text-xs uppercase tracking-wider">おかえり！</p>
             <h1 className="text-2xl font-black text-duo-dark truncate">

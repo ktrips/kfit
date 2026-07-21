@@ -5,6 +5,13 @@ struct DailyIntakeView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var healthKit = HealthKitManager.shared
     @State private var todaySummary = TodayIntakeSummary()
+    /// todaySummary.meals / alcoholLogs をタイプ別（timestamp降順）に事前集計したキャッシュ。
+    /// body 評価のたびに filter/sort をやり直すのを避ける（FoodView.foodHistoryCache と同じ方針）。
+    private struct IntakeHistoryCache {
+        var mealsByType: [MealType: [MealLog]] = [:]
+        var alcoholByType: [AlcoholType: [AlcoholLog]] = [:]
+    }
+    @State private var intakeHistoryCache = IntakeHistoryCache()
     @State private var isLoading = true
     @State private var showSettings = false
     @State private var isRefreshingHealth = false
@@ -146,7 +153,7 @@ struct DailyIntakeView: View {
                     intakeButton(
                         emoji: mealType.emoji,
                         title: mealType.displayName,
-                        logs: todaySummary.meals.filter { $0.mealType == mealType },
+                        logs: intakeHistoryCache.mealsByType[mealType] ?? [],
                         action: { await authManager.recordMeal(mealType: mealType) }
                     )
                 }
@@ -210,7 +217,7 @@ struct DailyIntakeView: View {
                     intakeButton(
                         emoji: alcoholType.emoji,
                         title: alcoholType.displayName,
-                        logs: todaySummary.alcoholLogs.filter { $0.alcoholType == alcoholType },
+                        logs: intakeHistoryCache.alcoholByType[alcoholType] ?? [],
                         action: { await authManager.recordAlcohol(alcoholType: alcoholType) }
                     )
                 }
@@ -347,7 +354,7 @@ struct DailyIntakeView: View {
             } else {
                 VStack(spacing: 6) {
                     ForEach(MealType.allCases, id: \.self) { mealType in
-                        let logs = todaySummary.meals.filter { $0.mealType == mealType }
+                        let logs = intakeHistoryCache.mealsByType[mealType] ?? []
                         if !logs.isEmpty {
                             let cal = logs.reduce(0) { $0 + $1.calories }
                             HStack(spacing: 8) {
@@ -357,7 +364,7 @@ struct DailyIntakeView: View {
                                     Text(mealType.displayName)
                                         .font(.system(size: 13, weight: .semibold))
                                         .foregroundColor(Color.duoText)
-                                    if let last = logs.sorted(by: { $0.timestamp > $1.timestamp }).first {
+                                    if let last = logs.first {
                                         Text(timeString(last.timestamp))
                                             .font(.system(size: 10))
                                             .foregroundColor(Color.duoSubtitle)
@@ -444,9 +451,16 @@ struct DailyIntakeView: View {
     private func loadData() async {
         isLoading = true
         todaySummary = await authManager.getTodayIntakeSummary()
+        rebuildIntakeHistoryCache()
         await healthKit.fetchIntakeHealth()
         pfcAnalysis = healthKit.analyzePFCBalance()
         isLoading = false
+    }
+
+    private func rebuildIntakeHistoryCache() {
+        intakeHistoryCache.mealsByType = Dictionary(grouping: todaySummary.meals, by: \.mealType)
+            .mapValues { $0.sorted { $0.timestamp > $1.timestamp } }
+        intakeHistoryCache.alcoholByType = Dictionary(grouping: todaySummary.alcoholLogs, by: \.alcoholType)
     }
 }
 

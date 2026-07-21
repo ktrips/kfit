@@ -132,7 +132,7 @@ export const MindView: React.FC = () => {
       <div className="max-w-2xl mx-auto px-4 pt-6 space-y-4">
         <div className="duo-card p-5" style={{ background: 'linear-gradient(135deg, #6D5DF6 0%, #1CB0F6 100%)' }}>
           <div className="flex items-center gap-3">
-            <img src="/mascot.png" alt="Mindingo" className="w-10 h-10 rounded-full object-cover" />
+            <img src="/mascot.png" loading="lazy" alt="Mindingo" className="w-10 h-10 rounded-full object-cover" />
             <div>
               <h1 className="text-2xl font-black text-white">Mindingo</h1>
               <p className="text-sm font-bold text-white/80">Webでは手入力・Firestore保存値でストレスを確認します。</p>

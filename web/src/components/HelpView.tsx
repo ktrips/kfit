@@ -469,7 +469,7 @@ export const HelpView: React.FC = () => {
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
-          <img src="/mascot.png" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
+          <img src="/mascot.png" loading="lazy" alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
           <div>
             <h2 className="text-2xl font-black text-duo-dark">ヘルプ・使い方</h2>
             <p className="text-duo-gray font-bold text-sm">Fitingo の使い方ガイド</p>

@@ -1,59 +1,19 @@
 import SwiftUI
 import UIKit
 
-// MARK: - RoundedCorner / cornerRadius extension
-// DashboardView.swift で定義されている Shape と View 拡張を kedu 用に提供します。
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
-    }
-}
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
+// RoundedCorner / cornerRadius(_:corners:) / UserAvatarView / FeedCommentsSheet /
+// SocialShareSheet / CategoryGroupListSheet は
+// Views/Components/SharedFeedViews.swift の共有定義（kfit本体と共通）を使用するため、
+// ここでのスタブ提供は不要になりました。
+//
+// 以下は kedu 側に対応するインフラ（Plus課金・AIクォータ・HealthKit連携）が無いため、
+// 引き続き空実装スタブとして提供する型です。
 
 // MARK: - FoodView.swift が提供するビュー（TomoView が参照）
-
-struct UserAvatarView: View {
-    let name: String
-    let photoURL: String
-    let gradient: LinearGradient
-    let size: CGFloat
-
-    init(name: String,
-         photoURL: String = "",
-         gradient: LinearGradient = LinearGradient(
-            colors: [Color.duoBlue, Color.duoPurple],
-            startPoint: .topLeading, endPoint: .bottomTrailing),
-         size: CGFloat = 36) {
-        self.name     = name
-        self.photoURL = photoURL
-        self.gradient = gradient
-        self.size     = size
-    }
-
-    var body: some View { EmptyView() }
-}
 
 struct PhotoFeedDetailSheet: View {
     let item: PhotoLogHistoryItem
     var embedded: Bool = false
-    var body: some View { EmptyView() }
-}
-
-struct EduFeedDetailSheet: View {
-    let item: EduLogHistoryItem
     var body: some View { EmptyView() }
 }
 
@@ -65,28 +25,5 @@ struct EduPhotoLogSheet: View {
 }
 
 struct PhotoLogView: View {
-    var body: some View { EmptyView() }
-}
-
-struct FeedCommentsSheet: View {
-    let item: EduLogHistoryItem
-    var eduLogManager: EduLogManager = EduLogManager.shared
-    var photoLogManager: PhotoLogManager? = nil
-    var body: some View { EmptyView() }
-}
-
-struct SocialShareSheet: View {
-    let item: EduLogHistoryItem
-    var shareURL: URL? = nil
-    var overrideImage: UIImage? = nil
-    var body: some View { EmptyView() }
-}
-
-struct CategoryGroupListSheet: View {
-    let group: TomoView.FeedCategoryGroup
-    var onTapItem: ((EduLogHistoryItem) -> Void)? = nil
-    var onLike: ((EduLogHistoryItem) -> Void)? = nil
-    var onComment: ((EduLogHistoryItem) -> Void)? = nil
-    var onShare: ((EduLogHistoryItem) -> Void)? = nil
     var body: some View { EmptyView() }
 }

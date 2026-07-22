@@ -2066,6 +2066,25 @@ class AuthenticationManager: ObservableObject {
         return result
     }
 
+    private static let yyyyMMFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM"
+        return f
+    }()
+
+    /// 指定月の月平均到達度パーセンテージを取得する（6ヶ月より前の月表示用）。
+    /// 日次データは Cloud Functions の pruneAchievementHistory によって集約・削除済みのため、
+    /// summaries/monthly-avg-{yyyy-MM} の平均値のみを参照する。
+    func getMonthlyAverageAchievementPercent(for monthDate: Date) async -> Int? {
+        guard let userId = Auth.auth().currentUser?.uid else { return nil }
+        let key = Self.yyyyMMFmt.string(from: monthDate)
+        let snap = try? await summaryDocument(userId: userId, id: "monthly-avg-\(key)").getDocument()
+        return snap?.data()?["averageAchievementPercent"] as? Int
+    }
+
     func performEndOfDayWaterTopUpIfNeeded(now: Date = Date(), targetWaterMl: Int? = nil) async {
         guard TimeSlotManager.shared.settings.globalGoals.drinkEnabled else { return }
         let targetWaterMl = targetWaterMl ?? TimeSlotManager.shared.settings.globalGoals.dailyDrinkMl

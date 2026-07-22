@@ -345,6 +345,62 @@ exports.generateWeeklyLeaderboard = functions.pubsub
     }
   });
 
+// ===== ACHIEVEMENT HISTORY RETENTION =====
+// 週次・月次到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent）は
+// 直近6ヶ月分のみ日次データを保持する。それより前の月は平均値だけを
+// summaries/monthly-avg-{yyyy-MM} に集約し、日次ドキュメントからは
+// achievementPercent フィールドを削除する（他の日次集計フィールドは残す）。
+// 保持月数は iOS 側 DashboardView.achievementHistoryRetentionMonths と揃えること。
+const ACHIEVEMENT_HISTORY_RETENTION_MONTHS = 6;
+
+exports.pruneAchievementHistory = functions.pubsub
+  .schedule('0 4 1 * *') // 毎月1日 04:00 JST
+  .timeZone('Asia/Tokyo')
+  .onRun(async () => {
+    const now = new Date();
+    const targetMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    targetMonthStart.setMonth(targetMonthStart.getMonth() - ACHIEVEMENT_HISTORY_RETENTION_MONTHS);
+    const monthKey = `${targetMonthStart.getFullYear()}-${String(targetMonthStart.getMonth() + 1).padStart(2, '0')}`;
+
+    const startId = `daily-${monthKey}-01`;
+    const endId = `daily-${monthKey}-31`;
+
+    const userRefs = await db.collection('users').listDocuments();
+    let processedUsers = 0;
+
+    await Promise.all(userRefs.map(async (userRef) => {
+      const summariesRef = userRef.collection('summaries');
+      const snap = await summariesRef
+        .where(admin.firestore.FieldPath.documentId(), '>=', startId)
+        .where(admin.firestore.FieldPath.documentId(), '<=', endId)
+        .get();
+
+      const withPercent = snap.docs.filter((d) => typeof d.data().achievementPercent === 'number');
+      if (withPercent.length === 0) return;
+
+      const total = withPercent.reduce((sum, d) => sum + d.data().achievementPercent, 0);
+      const average = Math.round(total / withPercent.length);
+
+      const batch = db.batch();
+      batch.set(summariesRef.doc(`monthly-avg-${monthKey}`), {
+        averageAchievementPercent: average,
+        daysRecorded: withPercent.length,
+        computedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      withPercent.forEach((d) => {
+        batch.update(d.ref, {
+          achievementPercent: admin.firestore.FieldValue.delete(),
+          achievementPercentUpdatedAt: admin.firestore.FieldValue.delete(),
+        });
+      });
+      await batch.commit();
+      processedUsers += 1;
+    }));
+
+    console.log(`[pruneAchievementHistory] month=${monthKey} processedUsers=${processedUsers}`);
+    return null;
+  });
+
 // ===== UTILITY =====
 function getWeekNumber(date) {
   const start = new Date(date.getFullYear(), 0, 1);

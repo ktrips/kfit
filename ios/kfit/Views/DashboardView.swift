@@ -502,11 +502,15 @@ struct DashboardView: View {
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
     // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent の履歴）
+    // 6ヶ月より前の月は日次データがサーバー側で集約・削除され、月平均値のみが残る（summaries/monthly-avg-{yyyy-MM}）。
     @State private var weeklyAchievementPercents: [Date: Int] = [:]
     @State private var monthlyAchievementPercents: [Date: Int] = [:]
-    @State private var hasLoadedAchievementCalendar = false
+    @State private var monthlyAverageAchievementPercent: Int? = nil
+    @State private var loadedAchievementWeekKey: String? = nil
+    @State private var loadedAchievementMonthKey: String? = nil
+    @State private var achievementWeekAnchor: Date = Date()
+    @State private var achievementMonthAnchor: Date = Date()
     @State private var showMonthlyAchievement = false
-    @State private var hasLoadedMonthlyAchievement = false
     @State private var todayExercises: [CompletedExercise] = []
     @State private var totalReps     = 0
     @State private var totalCalories = 0
@@ -652,15 +656,23 @@ struct DashboardView: View {
             // ① キャッシュ優先の loadData を最初に実行し、スピナーを最短で解除する。
             //    Firestore/HealthKit の取得を待たないことで初期表示を高速化。
             await loadData()
-            // ② 残りの取得（認可・時間帯別設定/進捗）はスピナー解除後にバックグラウンドで実行。
-            if healthKit.isAvailable && !healthKit.isAuthorized {
-                await healthKit.requestAuthorization()
-            }
-            await timeSlotManager.loadTodaySettings()
+            // ② HealthKit認可とtime-slot設定の読み込みは互いに独立しているため並列化し、
+            //    スパイラル表示までの直列待ち時間を短縮する。
+            //    loadTodayProgress() は settings.goalFor() とHealthKit認可状態の両方に
+            //    依存する（内部で updateGlobalProgressFromHealthKit() を呼ぶ）ため、
+            //    この2つが完了してから実行する必要がある。
+            async let authTask: Void = ensureHealthKitAuthorizationIfNeeded()
+            async let settingsTask: Void = timeSlotManager.loadTodaySettings()
+            _ = await (authTask, settingsTask)
             await timeSlotManager.loadTodayProgress()
             // 今日の Edu 記録があればスパイラルを自動完了
             await autoCompleteDuolingoIfNeeded()
         }
+    }
+
+    private func ensureHealthKitAuthorizationIfNeeded() async {
+        guard healthKit.isAvailable, !healthKit.isAuthorized else { return }
+        await healthKit.requestAuthorization()
     }
 
     // MARK: - コアビュー（シート・アラート群）
@@ -4263,42 +4275,6 @@ struct DashboardView: View {
                         }
                     }
 
-                    // ── 今日の写真アップロード内訳 ──
-                    if todayPhotos > 0 {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("📸 今日の写真投稿")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.horizontal, 4)
-
-                            HStack(spacing: 10) {
-                                Text("📷")
-                                    .font(.subheadline)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.duoBlue.opacity(0.1))
-                                    .clipShape(Circle())
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("写真アップロード")
-                                        .font(.caption).fontWeight(.semibold)
-                                        .foregroundColor(Color.duoDark)
-                                    Text("\(todayPhotos)枚 × 10 XP")
-                                        .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                }
-                                Spacer()
-                                Text("+\(todayPhotos * 10) XP")
-                                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(Color.duoBlue)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Color.duoBlue.opacity(0.12))
-                                    .cornerRadius(8)
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(14)
-                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-                        }
-                    }
-
                     // ── 今日のトレーニング内訳 ──
                     if !summaries.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
@@ -4410,21 +4386,20 @@ struct DashboardView: View {
 
     // MARK: - 週次・月次 到達度カレンダー
 
-    /// 今週（月〜日）の日付一覧
+    /// 表示中の週（月〜日）の日付一覧。前週・翌週ナビゲーションで achievementWeekAnchor が変わる。
     private var currentWeekDates: [Date] {
         var calendar = Calendar.current
         calendar.firstWeekday = 2  // 月曜始まり
-        let today = calendar.startOfDay(for: Date())
-        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
+        let anchorDay = calendar.startOfDay(for: achievementWeekAnchor)
+        let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchorDay)) ?? anchorDay
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
     }
 
-    /// 今月のカレンダーグリッド（月曜始まり）。月初の空きマスは nil。
+    /// 表示中の月のカレンダーグリッド（月曜始まり）。月初の空きマスは nil。
     private var currentMonthGridDates: [Date?] {
         var calendar = Calendar.current
         calendar.firstWeekday = 2
-        let today = Date()
-        guard let monthInterval = calendar.dateInterval(of: .month, for: today) else { return [] }
+        guard let monthInterval = calendar.dateInterval(of: .month, for: achievementMonthAnchor) else { return [] }
         let monthStart = monthInterval.start
         let daysInMonth = calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 30
         let leadingEmpty = (calendar.component(.weekday, from: monthStart) - calendar.firstWeekday + 7) % 7
@@ -4447,6 +4422,45 @@ struct DashboardView: View {
         return f
     }()
 
+    private static let weekRangeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d"
+        return f
+    }()
+
+    private static let dayKeyFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// 到達度の日次データがサーバーに保持される期間（カレンダー月換算、当月含む）。
+    /// これより前の月は firebase/functions/index.js の pruneAchievementHistory によって
+    /// 日次データが月平均値に集約・削除される（summaries/monthly-avg-{yyyy-MM}）。
+    private static let achievementHistoryRetentionMonths = 6
+
+    private var isCurrentAchievementWeek: Bool {
+        Calendar.current.isDate(achievementWeekAnchor, equalTo: Date(), toGranularity: .weekOfYear)
+    }
+
+    private var isCurrentAchievementMonth: Bool {
+        Calendar.current.isDate(achievementMonthAnchor, equalTo: Date(), toGranularity: .month)
+    }
+
+    /// 表示中の月が保存期間（6ヶ月）より前で、日次データが月平均値のみに集約済みかどうか。
+    private var isArchivedAchievementMonth: Bool {
+        let calendar = Calendar.current
+        guard let currentMonthStart = calendar.dateInterval(of: .month, for: Date())?.start,
+              let monthStart = calendar.dateInterval(of: .month, for: achievementMonthAnchor)?.start,
+              let retentionBoundary = calendar.date(byAdding: .month, value: -(Self.achievementHistoryRetentionMonths - 1), to: currentMonthStart)
+        else { return false }
+        return monthStart < retentionBoundary
+    }
+
     /// 指定日の到達度パーセント。今日は記録が無ければ、スパイラル中央のパーセンテージ
     /// （centerCircle と同じ計算方法）を暫定表示する。
     private func achievementPercent(for date: Date, from store: [Date: Int]) -> Int? {
@@ -4458,9 +4472,60 @@ struct DashboardView: View {
         return nil
     }
 
+    private func changeAchievementWeek(by weeks: Int) {
+        guard let newAnchor = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: achievementWeekAnchor) else { return }
+        achievementWeekAnchor = min(newAnchor, Date())
+    }
+
+    private func changeAchievementMonth(by months: Int) {
+        guard let newAnchor = Calendar.current.date(byAdding: .month, value: months, to: achievementMonthAnchor) else { return }
+        achievementMonthAnchor = min(newAnchor, Date())
+    }
+
+    private func loadWeeklyAchievementIfNeeded() async {
+        guard let weekStart = currentWeekDates.first, let weekEnd = currentWeekDates.last else { return }
+        let key = Self.dayKeyFmt.string(from: weekStart)
+        guard loadedAchievementWeekKey != key else { return }
+        loadedAchievementWeekKey = key
+        weeklyAchievementPercents = await authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
+    }
+
+    private func loadMonthlyAchievementIfNeeded() async {
+        let calendar = Calendar.current
+        guard let monthInterval = calendar.dateInterval(of: .month, for: achievementMonthAnchor) else { return }
+        let key = Self.dayKeyFmt.string(from: monthInterval.start)
+        guard loadedAchievementMonthKey != key else { return }
+        loadedAchievementMonthKey = key
+
+        if isArchivedAchievementMonth {
+            monthlyAverageAchievementPercent = await authManager.getMonthlyAverageAchievementPercent(for: monthInterval.start)
+            monthlyAchievementPercents = [:]
+        } else {
+            let monthEnd = min(monthInterval.end.addingTimeInterval(-1), Date())
+            monthlyAchievementPercents = await authManager.getDailyAchievementPercents(from: monthInterval.start, to: monthEnd)
+            monthlyAverageAchievementPercent = nil
+        }
+    }
+
     private var achievementCalendarSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("📅 今週の到達度").font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle).padding(.horizontal, 4)
+            // ── 週次ヘッダー（前週・翌週ナビゲーション）──
+            HStack(spacing: 4) {
+                Text(isCurrentAchievementWeek
+                     ? "📅 今週の到達度"
+                     : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
+                    .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Button { changeAchievementWeek(by: -1) } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
+                }
+                Button { changeAchievementWeek(by: 1) } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isCurrentAchievementWeek ? Color(.systemGray4) : Color.duoSubtitle)
+                }
+                .disabled(isCurrentAchievementWeek)
+            }
+            .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
                 // ── 週次（月〜日）──
@@ -4483,72 +4548,94 @@ struct DashboardView: View {
 
                 Divider()
 
-                // ── 月次表示トグル ──
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showMonthlyAchievement.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("🗓️ \(Self.monthTitleFmt.string(from: Date()))の到達度")
-                            .font(.caption2).fontWeight(.semibold)
-                            .foregroundColor(Color.duoSubtitle)
-                        Spacer()
-                        Image(systemName: showMonthlyAchievement ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color.duoSubtitle)
+                // ── 月次表示トグル + 前月・翌月ナビゲーション ──
+                HStack(spacing: 4) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showMonthlyAchievement.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("🗓️ \(Self.monthTitleFmt.string(from: achievementMonthAnchor))の到達度")
+                                .font(.caption2).fontWeight(.semibold)
+                                .foregroundColor(Color.duoSubtitle)
+                            Image(systemName: showMonthlyAchievement ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    Spacer()
+                    if showMonthlyAchievement {
+                        Button { changeAchievementMonth(by: -1) } label: {
+                            Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
+                        }
+                        Button { changeAchievementMonth(by: 1) } label: {
+                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isCurrentAchievementMonth ? Color(.systemGray4) : Color.duoSubtitle)
+                        }
+                        .disabled(isCurrentAchievementMonth)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
                 // ── 月次カレンダー（エクスパンド）──
                 if showMonthlyAchievement {
                     Divider()
-                    VStack(spacing: 8) {
-                        HStack(spacing: 0) {
-                            ForEach(["月","火","水","木","金","土","日"], id: \.self) { d in
-                                Text(d).font(.caption2).foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity)
+                    if isArchivedAchievementMonth {
+                        // 6ヶ月より前は日次データが集約済みのため、月平均のみ表示する
+                        HStack(spacing: 12) {
+                            AchievementRingView(percent: monthlyAverageAchievementPercent, size: 44, isToday: false, isFuture: false)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("月平均の到達度").font(.caption2).fontWeight(.semibold).foregroundColor(Color.duoSubtitle)
+                                Text("日別の記録は6ヶ月を過ぎると月平均のみが残ります").font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
                             }
+                            Spacer()
                         }
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
-                            ForEach(Array(currentMonthGridDates.enumerated()), id: \.offset) { _, date in
-                                if let date = date {
-                                    AchievementRingView(
-                                        percent: achievementPercent(for: date, from: monthlyAchievementPercents),
-                                        size: 26,
-                                        isToday: Calendar.current.isDateInToday(date),
-                                        isFuture: date > Date()
-                                    )
-                                } else {
-                                    Color.clear.frame(width: 26, height: 26)
+                        .padding(12)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    } else {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 0) {
+                                ForEach(["月","火","水","木","金","土","日"], id: \.self) { d in
+                                    Text(d).font(.caption2).foregroundColor(Color.duoSubtitle).frame(maxWidth: .infinity)
+                                }
+                            }
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                                ForEach(Array(currentMonthGridDates.enumerated()), id: \.offset) { _, date in
+                                    if let date = date {
+                                        AchievementRingView(
+                                            percent: achievementPercent(for: date, from: monthlyAchievementPercents),
+                                            size: 26,
+                                            isToday: Calendar.current.isDateInToday(date),
+                                            isFuture: date > Date()
+                                        )
+                                    } else {
+                                        Color.clear.frame(width: 26, height: 26)
+                                    }
                                 }
                             }
                         }
+                        .padding(12)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    .padding(12)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             .background(Color(.systemBackground))
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
-        .task {
-            guard !hasLoadedAchievementCalendar else { return }
-            hasLoadedAchievementCalendar = true
-            if let weekStart = currentWeekDates.first, let weekEnd = currentWeekDates.last {
-                weeklyAchievementPercents = await authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
-            }
+        .task { await loadWeeklyAchievementIfNeeded() }
+        .onChange(of: achievementWeekAnchor) { _, _ in
+            Task { await loadWeeklyAchievementIfNeeded() }
         }
         .onChange(of: showMonthlyAchievement) { _, expanded in
-            guard expanded, !hasLoadedMonthlyAchievement else { return }
-            hasLoadedMonthlyAchievement = true
-            Task {
-                let calendar = Calendar.current
-                let monthStart = calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
-                monthlyAchievementPercents = await authManager.getDailyAchievementPercents(from: monthStart, to: Date())
-            }
+            guard expanded else { return }
+            Task { await loadMonthlyAchievementIfNeeded() }
+        }
+        .onChange(of: achievementMonthAnchor) { _, _ in
+            guard showMonthlyAchievement else { return }
+            Task { await loadMonthlyAchievementIfNeeded() }
         }
     }
 
@@ -6659,13 +6746,6 @@ struct DashboardView: View {
 
 }
 
-// MARK: - View Extensions
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: radius, corners: corners))
-    }
-}
-
 // MARK: - デイリーセットカード ボタン群（独立Viewでレンダリング境界を作り、スタックオーバーフローを防止）
 
 private struct DailySetsCardButtonsView: View {
@@ -7427,19 +7507,8 @@ private struct MandalaSpiralCard: View {
     }
 }
 
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: corners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        return Path(path.cgPath)
-    }
-}
+// NOTE: RoundedCorner / cornerRadius(_:corners:) は
+// Views/Components/SharedFeedViews.swift の共有定義を使用（kedu とも共有）
 
 private struct HeartRateHRVItem: View {
     let latestHeartRate: Double

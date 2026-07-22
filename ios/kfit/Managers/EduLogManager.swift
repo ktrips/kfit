@@ -68,6 +68,34 @@ class EduLogManager: ObservableObject {
             Task { await AuthenticationManager.shared.awardPoints(10) }
         }
 
+        // コメントが「勉強」で始まる投稿は、写真のOCRテキスト＋コメントを結合して
+        // 読み上げ用テキストを生成する（ローカルVision OCRのみ・AI課金なし）。
+        let isStudyPost = comment.hasPrefix("勉強")
+        if isStudyPost {
+            let itemID = item.id
+            let strippedComment = Self.stripStudyPrefix(comment)
+            Task { @MainActor in
+                var ocrText: String? = nil
+                if let image {
+                    ocrText = await DuolingoTextExtractor.shared.extractRawText(from: image)
+                }
+                let parts = [ocrText, strippedComment]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                guard !parts.isEmpty else { return }
+                let combinedText = parts.joined(separator: "\n")
+                let langSource = (ocrText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                    ? ocrText! : strippedComment
+                let langCode = DuolingoTextExtractor.shared.detectLanguagePublic(langSource) ?? "ja"
+                if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
+                    self.history[idx].readAloudText         = combinedText
+                    self.history[idx].readAloudLanguageCode = langCode
+                    self.persistHistory()
+                    PublicFeedPublisher.publishEduDebounced(self.history[idx])
+                }
+            }
+        }
+
         let isDuolingo = activityName.localizedCaseInsensitiveContains("Duolingo")
                       || activityEmoji == "🦉"
         let needsOCR = isDuolingo && extractedPhrase == nil
@@ -192,6 +220,17 @@ class EduLogManager: ObservableObject {
                 }
             }
         }
+    }
+
+    /// コメント冒頭の「勉強」トリガー文字列と、それに続く区切り文字を取り除く
+    private static func stripStudyPrefix(_ comment: String) -> String {
+        guard comment.hasPrefix("勉強") else { return comment }
+        var rest = String(comment.dropFirst("勉強".count))
+        let leadingSeparators: Set<Character> = ["、", ",", "：", ":", " ", "\n", "・"]
+        while let first = rest.first, leadingSeparators.contains(first) {
+            rest.removeFirst()
+        }
+        return rest
     }
 
     static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
@@ -336,6 +375,7 @@ class EduLogManager: ObservableObject {
             + ":\($0.translationJA?.hashValue ?? 0):\($0.pronunciation?.hashValue ?? 0)"
             + ":\($0.grammarNote?.hashValue ?? 0):\($0.mistakeNote?.hashValue ?? 0)"
             + ":\($0.exampleSentences?.count ?? -1):\($0.relatedWords?.count ?? -1):\($0.extractedWords?.count ?? -1)"
+            + ":\($0.readAloudText?.hashValue ?? 0)"
         }.joined(separator: ",")
         guard sig != _lastPersistedSignature else { return }
         _lastPersistedSignature = sig

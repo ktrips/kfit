@@ -488,6 +488,11 @@ struct EduLogHistoryItem: Codable, Identifiable {
     var relatedWords: [ExampleSentence]? // 関連単語/文章（コメントに「単語」「文章」と入れた場合に LLM 生成）
     var extractedWords: [VocabWord]?     // 画像内の各単語（コメントに「単語」と入れた場合にOCR抽出、読み方付き）
 
+    // 「勉強」読み上げ用：コメントが「勉強」で始まる投稿の写真OCRテキスト＋コメントを
+    // 結合した読み上げ対象テキストと、その検出言語（Duolingoフレーズ用フィールドとは独立）
+    var readAloudText: String?
+    var readAloudLanguageCode: String?
+
     // 体重ログ用：記録時点の Apple Health 計測値
     var weightKg: Double?              // 体重（kg）
     var bodyFatPercent: Double?        // 体脂肪率（%）
@@ -537,6 +542,8 @@ struct EduLogHistoryItem: Codable, Identifiable {
         sharedTitle           = try c.decodeIfPresent(String.self,             forKey: .sharedTitle)
         sharedDescription     = try c.decodeIfPresent(String.self,             forKey: .sharedDescription)
         sharedImageURL        = try c.decodeIfPresent(String.self,             forKey: .sharedImageURL)
+        readAloudText         = try c.decodeIfPresent(String.self,             forKey: .readAloudText)
+        readAloudLanguageCode = try c.decodeIfPresent(String.self,             forKey: .readAloudLanguageCode)
     }
 
     // 明示的な通常のinitも定義（コード内で直接生成するため）

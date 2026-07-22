@@ -54,6 +54,18 @@ final class DuolingoTextExtractor: NSObject, ObservableObject {
         return parseDuolingoLines(lines)
     }
 
+    /// 画像内の文字をそのまま（Duolingo特化パースなし）抽出する。
+    /// 「勉強」投稿の読み上げ用：教科書・ノートなど任意の写真から
+    /// 認識できた行をすべて結合して返す。
+    func extractRawText(from image: UIImage) async -> String? {
+        guard let cgImage = image.cgImage else { return nil }
+        let lines = await Self.recognizeTextLines(in: cgImage)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return nil }
+        return lines.joined(separator: "\n")
+    }
+
     /// Vision の文字認識（重い同期処理）をメインアクタから切り離して実行する。
     /// nonisolated + バックグラウンドキューへの明示ディスパッチにより、
     /// OCR実行中にUIがブロックされるのを防ぐ。extract / extractWords で共有。

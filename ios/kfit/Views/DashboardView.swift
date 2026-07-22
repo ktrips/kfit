@@ -7138,6 +7138,14 @@ private struct EduPostHistorySection: View {
                         }
                         Spacer()
 
+                        // 読み上げボタン（「勉強」投稿など readAloudText がある場合）
+                        if let readText = item.readAloudText, !readText.isEmpty {
+                            StudyReadAloudButton(
+                                text: readText,
+                                languageCode: item.readAloudLanguageCode ?? "ja"
+                            )
+                        }
+
                         // 完了バッジ
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 14))

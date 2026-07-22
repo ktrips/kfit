@@ -4,6 +4,45 @@ import SwiftUI
 // TOMOページの詳細画面（コメント欄・SNS共有・カテゴリ一覧）を kfit/kedu で
 // 同じ見た目・機能にするため、DashboardView.swift / FoodView.swift から移設。
 
+// MARK: - Study Read Aloud Button
+// 「勉強」投稿（コメント冒頭が「勉強」）の readAloudText を読み上げるボタン。
+// EduPostHistorySection（一覧）・SwipeableTomoDetailSheet（詳細）で共通使用。
+
+struct StudyReadAloudButton: View {
+    let text: String
+    let languageCode: String
+
+    @ObservedObject private var tts = DuolingoTextExtractor.shared
+    @State private var isPlayingLocally = false
+
+    var body: some View {
+        Button {
+            if isPlayingLocally {
+                tts.stopSpeaking()
+                isPlayingLocally = false
+            } else {
+                isPlayingLocally = true
+                tts.speak(phrase: text, languageCode: languageCode)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isPlayingLocally ? "stop.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(isPlayingLocally ? "停止" : "読み上げ")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(isPlayingLocally ? Color.red : Color(hex: "#CE82FF"))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onChange(of: tts.isSpeaking) { _, speaking in
+            if !speaking { isPlayingLocally = false }
+        }
+    }
+}
+
 // MARK: - RoundedCorner Shape
 
 struct RoundedCorner: Shape {

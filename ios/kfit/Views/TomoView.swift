@@ -70,6 +70,8 @@ struct FriendPostData: Sendable {
     let grammarNote: String?
     let mistakeNote: String?
     let exampleSentences: [ExampleSentence]?
+    let readAloudText: String?
+    let readAloudLanguageCode: String?
 }
 
 @MainActor
@@ -386,7 +388,9 @@ final class TomoManager: ObservableObject {
                       let decoded = try? JSONDecoder().decode([ExampleSentence].self, from: d)
                 else { return nil }
                 return decoded
-            }()
+            }(),
+            readAloudText: data["readAloudText"] as? String,
+            readAloudLanguageCode: data["readAloudLanguageCode"] as? String
         )
     }
 
@@ -414,6 +418,8 @@ final class TomoManager: ObservableObject {
         item.grammarNote = p.grammarNote
         item.mistakeNote = p.mistakeNote
         item.exampleSentences = p.exampleSentences
+        item.readAloudText = p.readAloudText
+        item.readAloudLanguageCode = p.readAloudLanguageCode
         return item
     }
 
@@ -3247,6 +3253,15 @@ struct SwipeableTomoDetailSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(.systemGray6))
                     .padding(.horizontal, 16).padding(.top, 12)
+                }
+
+                // ── 読み上げボタン（「勉強」投稿など readAloudText がある場合）─
+                if let readText = item.readAloudText, !readText.isEmpty {
+                    StudyReadAloudButton(
+                        text: readText,
+                        languageCode: item.readAloudLanguageCode ?? "ja"
+                    )
+                    .padding(.horizontal, 16).padding(.top, 10)
                 }
 
                 // ── FOOD 栄養詳細（FOOD投稿のみ）──────────────────────────

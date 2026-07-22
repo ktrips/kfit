@@ -2565,6 +2565,8 @@ enum PublicFeedPublisher {
         if let v = item.sharedTitle       { data["sharedTitle"]       = v }
         if let v = item.sharedDescription { data["sharedDescription"] = v }
         if let v = item.sharedImageURL    { data["sharedImageURL"]    = v }
+        if let v = item.readAloudText         { data["readAloudText"]         = v }
+        if let v = item.readAloudLanguageCode { data["readAloudLanguageCode"] = v }
         write(uid: uid, postId: item.id, data: data)
     }
 

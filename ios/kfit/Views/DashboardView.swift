@@ -6073,8 +6073,11 @@ struct DashboardView: View {
             return
         }
 
-        // 1.5秒以内の重複呼び出しをスキップ（デバウンス）
+        // 1.5秒以内の重複呼び出しをスキップ（デバウンス）。
+        // isLoading が true のまま呼び出し元に戻ると、直前の handleOnAppear が
+        // 立てたスピナーが解除されずスパイラルがいつまでも表示されないため、ここでも必ず解除する。
         if let last = lastLoadDataTime, Date().timeIntervalSince(last) < 1.5 {
+            isLoading = false
             return
         }
         lastLoadDataTime = Date()

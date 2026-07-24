@@ -358,8 +358,28 @@ struct TimeSlotGoalsView: View {
 
     private let activeSlots: [TimeSlot] = [.morning, .noon, .afternoon, .evening]
 
-    // HealthKit実施時間ベースで計算したスパイラルノード
-    private var precomputedMandalaNodes: [MandalaNodeData] {
+    // HealthKit実施時間ベースで計算したスパイラルノード。
+    // computed property のままだと timeSlotManager/healthKit の @Published が
+    // 1つでも変化するたびに body 全体が再評価され、UserDefaults読み込み込みの
+    // 重い buildNodes() が毎回再実行されてしまう（DashboardView.cachedMandalaNodes
+    // と同じ問題）。@State にキャッシュし、関連する変化のみ debounce 付きで
+    // 明示的に再計算する。
+    @State private var cachedMandalaNodes: [MandalaNodeData] = []
+    @State private var mandalaRecomputeWork: DispatchWorkItem?
+
+    private func recomputeMandalaNodes() {
+        cachedMandalaNodes = computeMandalaNodes()
+    }
+
+    /// HealthKit fetch 完了バーストで何度も呼ばれても 0.3秒 debounce で1回にまとめる
+    private func scheduleMandalaRecompute() {
+        mandalaRecomputeWork?.cancel()
+        let work = DispatchWorkItem { recomputeMandalaNodes() }
+        mandalaRecomputeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    private func computeMandalaNodes() -> [MandalaNodeData] {
         let cal = Calendar.current
 
         // 時間帯別: マインドフルネス（HK優先、なければFirestore）
@@ -511,6 +531,7 @@ struct TimeSlotGoalsView: View {
                     await loadAll()
                     await HealthKitManager.shared.fetchGoalHealth(force: true)
                     widgetProgressPercent = UserDefaults(suiteName: "group.com.kfit.app")?.integer(forKey: "progressPercent") ?? 0
+                    recomputeMandalaNodes()
                 }
             }
         }
@@ -523,7 +544,14 @@ struct TimeSlotGoalsView: View {
                     .fontWeight(.bold)
             }
         }
-        .task { await loadAll() }
+        .task {
+            await loadAll()
+            recomputeMandalaNodes()
+        }
+        .onChange(of: healthKit.lastFetchedAt) { _, _ in scheduleMandalaRecompute() }
+        .onReceive(NotificationCenter.default.publisher(for: .timeSlotProgressDidSave)) { _ in
+            recomputeMandalaNodes()
+        }
     }
 
     // MARK: - Load / Save
@@ -683,7 +711,7 @@ struct TimeSlotGoalsView: View {
             MandalaChartView(
                 settings: timeSlotManager.settings,
                 progress: timeSlotManager.progress,
-                precomputedNodes: precomputedMandalaNodes,
+                precomputedNodes: cachedMandalaNodes,
                 onTapNode: { node in
                     withAnimation(.easeInOut(duration: 0.4)) {
                         scrollProxy.scrollTo(node.slot?.rawValue ?? "global", anchor: .top)

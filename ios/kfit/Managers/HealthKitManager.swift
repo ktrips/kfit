@@ -671,6 +671,7 @@ final class HealthKitManager: ObservableObject {
         todayToothbrushingSamples = await toothbrushing
         todayMealCalBySlot      = await mealBySlot
         weeklyCalorieData       = await fetchWeeklyCalories()
+        lastFetchedAt           = Date()
     }
 
     func fetchDashboardHealth(force: Bool = false) async {

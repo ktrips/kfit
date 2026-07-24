@@ -502,8 +502,11 @@ struct DashboardView: View {
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
     // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent の履歴）
-    // 6ヶ月より前の月は日次データがサーバー側で集約・削除され、月平均値のみが残る（summaries/monthly-avg-{yyyy-MM}）。
+    // 当月・前月より前の月は日次データがサーバー側で集約・削除され、月平均値のみが残る（summaries/monthly-avg-{yyyy-MM}）。
     @State private var weeklyAchievementPercents: [Date: Int] = [:]
+    // 今日すでに保存した到達度%（同値の重複書き込みを避けるためのセッション内キャッシュ）
+    @State private var lastSavedAchievementDayKey: String? = nil
+    @State private var lastSavedAchievementPercent: Int = -1
     @State private var monthlyAchievementPercents: [Date: Int] = [:]
     @State private var monthlyAverageAchievementPercent: Int? = nil
     @State private var loadedAchievementWeekKey: String? = nil
@@ -2281,25 +2284,28 @@ struct DashboardView: View {
         return Int((Double(done) / Double(cachedMandalaNodes.count) * 100).rounded())
     }
 
-    /// 1日の終わり（23:59以降）に、その日のスパイラル到達度パーセンテージを
-    /// summaries/daily-{yyyy-MM-dd} に記録する（週次・月次カレンダー表示用）。
-    /// 1日1回のみ記録する（UserDefaultsで判定）。
+    /// その日のスパイラル到達度パーセンテージを summaries/daily-{yyyy-MM-dd} に記録する
+    /// （週次・月次カレンダー表示用）。
+    ///
+    /// 以前は「23:59以降の1分間だけ」保存していたため、その瞬間にアプリで
+    /// スパイラルを再計算していない限り値が保存されず、過去の到達度が残らなかった。
+    /// 現在は到達度が変化するたびに当日ドキュメントを上書き保存する。値は1日を通して
+    /// 更新され、その日最後に計算された値（≒最終到達度）が残る。同値の連続書き込みは
+    /// セッション内キャッシュでスキップし、Firestore書き込みを最小化する。
     private func recordDailyAchievementPercentIfNeeded() {
-        let calendar = Calendar.current
-        let now = Date()
-        let comps = calendar.dateComponents([.hour, .minute], from: now)
-        let isEndOfToday = (comps.hour ?? 0) > 23
-            || ((comps.hour ?? 0) == 23 && (comps.minute ?? 0) >= 59)
-        guard isEndOfToday else { return }
-
-        let dayKey = DashboardView.yyyyMMdd.string(from: calendar.startOfDay(for: now))
-        let defaultsKey = "dashboard.dailyAchievementPercent.\(dayKey)"
-        guard !UserDefaults.standard.bool(forKey: defaultsKey) else { return }
-
         guard !cachedMandalaNodes.isEmpty else { return }
+
+        let now = Date()
+        let dayKey = DashboardView.yyyyMMdd.string(from: Calendar.current.startOfDay(for: now))
         let percent = mandalaCompletionPercent
 
-        UserDefaults.standard.set(true, forKey: defaultsKey)
+        // 同じ日・同じ%なら重複書き込みを避ける
+        if lastSavedAchievementDayKey == dayKey && lastSavedAchievementPercent == percent {
+            return
+        }
+        lastSavedAchievementDayKey = dayKey
+        lastSavedAchievementPercent = percent
+
         Task { await authManager.saveDailyAchievementPercent(percent, for: now) }
     }
 
@@ -4439,9 +4445,10 @@ struct DashboardView: View {
     }()
 
     /// 到達度の日次データがサーバーに保持される期間（カレンダー月換算、当月含む）。
-    /// これより前の月は firebase/functions/index.js の pruneAchievementHistory によって
-    /// 日次データが月平均値に集約・削除される（summaries/monthly-avg-{yyyy-MM}）。
-    private static let achievementHistoryRetentionMonths = 6
+    /// 2 = 当月＋前月の日次データを保持。これより前の月は firebase/functions/index.js の
+    /// pruneAchievementHistory によって日次データが月平均値に集約・削除される
+    /// （summaries/monthly-avg-{yyyy-MM}）。iOS と Cloud Function で値を揃えること。
+    private static let achievementHistoryRetentionMonths = 2
 
     private var isCurrentAchievementWeek: Bool {
         Calendar.current.isDate(achievementWeekAnchor, equalTo: Date(), toGranularity: .weekOfYear)
@@ -4451,7 +4458,7 @@ struct DashboardView: View {
         Calendar.current.isDate(achievementMonthAnchor, equalTo: Date(), toGranularity: .month)
     }
 
-    /// 表示中の月が保存期間（6ヶ月）より前で、日次データが月平均値のみに集約済みかどうか。
+    /// 表示中の月が保存期間（当月＋前月）より前で、日次データが月平均値のみに集約済みかどうか。
     private var isArchivedAchievementMonth: Bool {
         let calendar = Calendar.current
         guard let currentMonthStart = calendar.dateInterval(of: .month, for: Date())?.start,
@@ -4583,12 +4590,12 @@ struct DashboardView: View {
                 if showMonthlyAchievement {
                     Divider()
                     if isArchivedAchievementMonth {
-                        // 6ヶ月より前は日次データが集約済みのため、月平均のみ表示する
+                        // 前月より前は日次データが集約済みのため、月平均のみ表示する
                         HStack(spacing: 12) {
                             AchievementRingView(percent: monthlyAverageAchievementPercent, size: 44, isToday: false, isFuture: false)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("月平均の到達度").font(.caption2).fontWeight(.semibold).foregroundColor(Color.duoSubtitle)
-                                Text("日別の記録は6ヶ月を過ぎると月平均のみが残ります").font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                                Text("日別の記録は当月・前月分まで、それ以前は月平均のみが残ります").font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
                             }
                             Spacer()
                         }

@@ -102,6 +102,9 @@ struct FoodView: View {
     @State private var confirmMessage    = ""
     // フォトログ集計キャッシュ（photoLogManager.history 変化時のみ再計算）
     @State private var cachedPhotoLogTotals: (protein: Double, fat: Double, carbs: Double, calories: Int) = (0, 0, 0, 0)
+    // 食事スライドエントリキャッシュ（FoodViewLifecycleが検知する変化時のみ再計算。
+    // computed propertyのままだと body 評価毎に再計算され複数箇所から二重に呼ばれていた）
+    @State private var cachedMealSlideEntries: [MealSlideEntry] = []
     @State private var swipeFoodItems: [PhotoLogHistoryItem] = []
     @State private var swipeFoodStart: Int = 0
     @State private var showFoodHistory = false
@@ -153,7 +156,7 @@ struct FoodView: View {
         .refreshable { await loadData() }
         .background(Color.duoBg.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) { foodHeader }
-        .task { await loadData(); recomputePhotoLogTotals(); rebuildFoodHistory() }
+        .task { await loadData(); recomputePhotoLogTotals(); rebuildFoodHistory(); rebuildMealSlideEntries() }
         .modifier(FoodViewLifecycle(
             historyVersion:    photoLogManager.historyVersion,
             mealsCount:        todayIntake.meals.count,
@@ -168,12 +171,13 @@ struct FoodView: View {
             }(),
             onHistoryVersionChange: {
                 // フォトログのHK保存完了後: HKデータを先に再取得してから合計を再計算
-                Task { await loadData(); recomputePhotoLogTotals(); rebuildFoodHistory() }
+                Task { await loadData(); recomputePhotoLogTotals(); rebuildFoodHistory(); rebuildMealSlideEntries() }
             },
-            onFoodHistoryChange: { rebuildFoodHistory() },
+            onFoodHistoryChange: { rebuildFoodHistory(); rebuildMealSlideEntries() },
             onForeground: {
                 Task { await loadData() }
                 recomputePhotoLogTotals()
+                rebuildMealSlideEntries()
                 rebuildFoodHistory()
             }
         ))
@@ -331,7 +335,11 @@ struct FoodView: View {
         }
     }
 
-    private var todayMealSlideEntries: [MealSlideEntry] {
+    private func rebuildMealSlideEntries() {
+        cachedMealSlideEntries = computeMealSlideEntries()
+    }
+
+    private func computeMealSlideEntries() -> [MealSlideEntry] {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         var entries: [MealSlideEntry] = []
@@ -903,7 +911,7 @@ struct FoodView: View {
         let breakdown = todayMealBreakdown
         let maxKcal = max(breakdown.map(\.kcal).max() ?? 1, 1)
         let totalKcal = breakdown.reduce(0) { $0 + $1.kcal }
-        let slideEntries = todayMealSlideEntries
+        let slideEntries = cachedMealSlideEntries
         let hasEntries = !slideEntries.isEmpty
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -1003,7 +1011,7 @@ struct FoodView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .sheet(isPresented: $showPhotoCarousel) {
-            PhotoMealCarouselSheet(allEntries: todayMealSlideEntries, filterSlot: mealSlideFilter)
+            PhotoMealCarouselSheet(allEntries: cachedMealSlideEntries, filterSlot: mealSlideFilter)
         }
     }
 
@@ -1040,7 +1048,7 @@ struct FoodView: View {
             .padding(12)
         }
         .buttonStyle(.plain)
-        .disabled(todayMealSlideEntries.isEmpty)
+        .disabled(cachedMealSlideEntries.isEmpty)
     }
 
     private func pfcRow(color: Color, label: String, name: String, percent: Double, grams: Double, target: Int) -> some View {

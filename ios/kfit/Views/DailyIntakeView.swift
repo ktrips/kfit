@@ -632,8 +632,11 @@ struct PhotoLogView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(photoLogManager.history) { item in
+                LazyHStack(spacing: 10) {
+                    // 「最近の記録から追加」用なので直近30件のみで十分。
+                    // 全件（利用期間が長いほど数百件規模）を都度描画すると
+                    // 開くたびのレイアウト計算コストが線形に増えるため上限を設ける。
+                    ForEach(photoLogManager.history.prefix(30)) { item in
                         historyCard(item)
                     }
                 }

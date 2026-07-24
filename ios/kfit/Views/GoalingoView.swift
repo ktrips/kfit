@@ -33,6 +33,14 @@ struct GoalingoView: View {
     @State private var swipeWeightItems: [EduLogHistoryItem] = []
     @State private var swipeWeightStart: Int = 0
     @State private var showOlderWeightFeed = false
+    // 体重ログ一覧キャッシュ（eduLog.history全件フィルタをbody評価毎に繰り返さないため）
+    @State private var cachedWeightLogs: [EduLogHistoryItem] = []
+
+    private func recomputeWeightLogs() {
+        cachedWeightLogs = eduLog.history.filter {
+            $0.activityName == "体重ログ" && ($0.thumbnailPath != nil || $0.thumbnailData != nil)
+        }
+    }
 
     // MARK: - Static formatters（毎呼び出しで DateFormatter を生成しないよう共有）
     private static let yyyyMMddFmt: DateFormatter = {
@@ -190,6 +198,7 @@ struct GoalingoView: View {
                 loadTodayWeekdayGoal()
                 await timeSlotManager.loadTodaySettings()
                 rebuildTrainingTotals()
+                recomputeWeightLogs()
 
                 async let workouts       = healthKit.fetchGoalScreenHealthData(
                     includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true
@@ -206,6 +215,7 @@ struct GoalingoView: View {
                 rebuildTrainingTotals()
             }
             .onChange(of: todayExercises.count) { _, _ in rebuildTrainingTotals() }
+            .onChange(of: eduLog.history.count) { _, _ in recomputeWeightLogs() }
             // DailyTimeSlotSettings は Equatable 非準拠のため objectWillChange で監視
             .onReceive(timeSlotManager.objectWillChange) { _ in rebuildTrainingTotals() }
         }
@@ -1611,7 +1621,7 @@ struct GoalingoView: View {
 
     private var weightFeedSection: some View {
         let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let allLogs   = eduLog.history.filter { $0.activityName == "体重ログ" && ($0.thumbnailPath != nil || $0.thumbnailData != nil) }
+        let allLogs   = cachedWeightLogs
         let recent    = allLogs.filter { $0.timestamp >= twoWeeksAgo }
         let older     = allLogs.filter { $0.timestamp < twoWeeksAgo }
         let displayed = showOlderWeightFeed ? allLogs : recent

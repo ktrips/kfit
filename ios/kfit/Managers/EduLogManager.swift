@@ -45,10 +45,6 @@ class EduLogManager: ObservableObject {
             authorPhotoURL: authorPhotoURL,
             isPublic: isPublic
         )
-        if let image, let thumbData = EduLogManager.makeThumbnailHQ(from: image) {
-            item.thumbnailPath = ThumbnailFileStore.save(thumbData, id: "edu_\(item.id)")
-        }
-
         item.extractedPhrase       = extractedPhrase
         item.extractedLanguageCode = extractedLanguageCode
         item.translationJA         = translationJA
@@ -64,8 +60,20 @@ class EduLogManager: ObservableObject {
         persistHistory()
         PublicFeedPublisher.publishEduDebounced(item)
 
-        if image != nil {
+        if let image {
             Task { await AuthenticationManager.shared.awardPoints(10) }
+
+            // サムネイル生成（Core Image補正・JPEG圧縮・ディスク書込）は重いため、
+            // 保存後にバックグラウンドで実行し、完了後にthumbnailPathを反映する
+            let itemID = item.id
+            Task {
+                guard let path = await Self.generateAndSaveThumbnail(from: image, id: "edu_\(itemID)") else { return }
+                if let idx = self.history.firstIndex(where: { $0.id == itemID }) {
+                    self.history[idx].thumbnailPath = path
+                    self.persistHistory()
+                    PublicFeedPublisher.publishEduDebounced(self.history[idx])
+                }
+            }
         }
 
         // コメントが「勉強」で始まる投稿は、写真のOCRテキスト＋コメントを結合して
@@ -233,7 +241,21 @@ class EduLogManager: ObservableObject {
         return rest
     }
 
-    static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
+    /// サムネイル生成＋ディスク保存を非同期化。Core Image補正・JPEG圧縮・ファイル書込は
+    /// 重いため、メインスレッド（@MainActor）から切り離してバックグラウンドで実行する。
+    nonisolated private static func generateAndSaveThumbnail(from image: UIImage, id: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let thumbData = makeThumbnailHQ(from: image) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: ThumbnailFileStore.save(thumbData, id: id))
+            }
+        }
+    }
+
+    nonisolated static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
         let enhanced = image.enhancedForUpload()
         let size = enhanced.size
         let maxSide = max(size.width, size.height)
@@ -375,7 +397,7 @@ class EduLogManager: ObservableObject {
             + ":\($0.translationJA?.hashValue ?? 0):\($0.pronunciation?.hashValue ?? 0)"
             + ":\($0.grammarNote?.hashValue ?? 0):\($0.mistakeNote?.hashValue ?? 0)"
             + ":\($0.exampleSentences?.count ?? -1):\($0.relatedWords?.count ?? -1):\($0.extractedWords?.count ?? -1)"
-            + ":\($0.readAloudText?.hashValue ?? 0)"
+            + ":\($0.readAloudText?.hashValue ?? 0):\($0.thumbnailPath?.hashValue ?? 0)"
         }.joined(separator: ",")
         guard sig != _lastPersistedSignature else { return }
         _lastPersistedSignature = sig

@@ -1024,10 +1024,14 @@ class AuthenticationManager: ObservableObject {
         let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)) ?? today
 
         var counts: [String: Int] = [:]
-        for offset in 0..<7 {
-            let date = cal.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
-            let summary = await getDailyActivitySummary(for: date, userId: userId)
-            if summary.completedSets > 0 {
+        await withTaskGroup(of: (Date, DailyActivitySummary).self) { group in
+            for offset in 0..<7 {
+                let date = cal.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
+                group.addTask {
+                    (date, await self.getDailyActivitySummary(for: date, userId: userId))
+                }
+            }
+            for await (date, summary) in group where summary.completedSets > 0 {
                 counts[Self.yyyyMMddFmt.string(from: date)] = summary.completedSets
             }
         }
@@ -1045,16 +1049,22 @@ class AuthenticationManager: ObservableObject {
 
         var result: [String: [String: Int]] = [:]
 
-        for offset in 0..<7 {
-            let date = cal.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
-            guard date < weekEnd else { continue }
-            let summary = await getDailyActivitySummary(for: date, userId: userId)
-            guard summary.intakeCalories > 0 || summary.intakeWaterMl > 0 else { continue }
-            let key = Self.yyyyMMddFmt.string(from: date)
-            for (mealType, calories) in summary.mealCalories {
-                result[key, default: [:]][mealType, default: 0] += calories
+        await withTaskGroup(of: (Date, DailyActivitySummary).self) { group in
+            for offset in 0..<7 {
+                let date = cal.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
+                guard date < weekEnd else { continue }
+                group.addTask {
+                    (date, await self.getDailyActivitySummary(for: date, userId: userId))
+                }
             }
-            result[key, default: [:]]["waterMl", default: 0] += summary.intakeWaterMl
+            for await (date, summary) in group {
+                guard summary.intakeCalories > 0 || summary.intakeWaterMl > 0 else { continue }
+                let key = Self.yyyyMMddFmt.string(from: date)
+                for (mealType, calories) in summary.mealCalories {
+                    result[key, default: [:]][mealType, default: 0] += calories
+                }
+                result[key, default: [:]]["waterMl", default: 0] += summary.intakeWaterMl
+            }
         }
 
         return result
@@ -1439,18 +1449,25 @@ class AuthenticationManager: ObservableObject {
 
         var result: [String: MotionSensitivity] = [:]
 
-        for (exerciseId, defaultSetting) in MotionSensitivity.defaultSettings {
-            let doc = try? await db.collection("users").document(userId)
-                .collection("settings").document("motion-sensitivity-\(exerciseId)").getDocument()
+        await withTaskGroup(of: (String, MotionSensitivity).self) { group in
+            for (exerciseId, defaultSetting) in MotionSensitivity.defaultSettings {
+                group.addTask {
+                    let doc = try? await self.db.collection("users").document(userId)
+                        .collection("settings").document("motion-sensitivity-\(exerciseId)").getDocument()
 
-            if let data = doc?.data() {
-                result[exerciseId] = MotionSensitivity(
-                    exerciseId: exerciseId,
-                    threshold: data["threshold"] as? Double ?? defaultSetting.threshold,
-                    minInterval: data["minInterval"] as? Double ?? defaultSetting.minInterval
-                )
-            } else {
-                result[exerciseId] = defaultSetting
+                    if let data = doc?.data() {
+                        return (exerciseId, MotionSensitivity(
+                            exerciseId: exerciseId,
+                            threshold: data["threshold"] as? Double ?? defaultSetting.threshold,
+                            minInterval: data["minInterval"] as? Double ?? defaultSetting.minInterval
+                        ))
+                    } else {
+                        return (exerciseId, defaultSetting)
+                    }
+                }
+            }
+            for await (exerciseId, sensitivity) in group {
+                result[exerciseId] = sensitivity
             }
         }
 
@@ -2662,7 +2679,7 @@ class PhotoLogManager: ObservableObject {
     private func persistHistory() {
         let snapshot = history
         // savedToHealthKit の変化も検知できるようシグネチャに含める
-        let sig = snapshot.map { "\($0.id):\($0.savedToHealthKit)" }.joined(separator: ",")
+        let sig = snapshot.map { "\($0.id):\($0.savedToHealthKit):\($0.thumbnailPath ?? "")" }.joined(separator: ",")
         guard sig != _lastPersistedSignature else { return }  // 変更なし → スキップ
         _lastPersistedSignature = sig
         historyVersion &+= 1  // 変化を監視側に通知
@@ -2809,16 +2826,26 @@ class PhotoLogManager: ObservableObject {
             isFavorite: entry.isFavorite,
             isPublic: entry.isPublic
         )
-        // サムネイルをファイルシステムに保存（UserDefaultsに画像バイナリを含めない）
-        if let image = entry.image, let thumbData = makeThumbnailHQ(from: image) {
-            item.thumbnailPath = ThumbnailFileStore.save(thumbData, id: "photo_\(item.id)")
-        }
         history.insert(item, at: 0)
         persistHistory()
         PublicFeedPublisher.publishFood(item)
 
         // 写真アップロードボーナス: +10 XP
         Task { await AuthenticationManager.shared.awardPoints(10) }
+
+        // サムネイル生成（Core Image補正・JPEG圧縮・ディスク書込）は重いため、
+        // 保存後にバックグラウンドで実行し、完了後にthumbnailPathを反映する
+        if let image = entry.image {
+            let itemId = item.id
+            Task {
+                guard let path = await Self.generateAndSaveThumbnail(from: image, id: "photo_\(itemId)") else { return }
+                if let idx = self.history.firstIndex(where: { $0.id == itemId }) {
+                    self.history[idx].thumbnailPath = path
+                    self.persistHistory()
+                    PublicFeedPublisher.publishFood(self.history[idx])
+                }
+            }
+        }
 
         // HealthKitに栄養素を保存（Apple Healthとの摂取カロリー一致のため）
         // 保存完了後に savedToHealthKit = true をセットして二重計算を防ぐ
@@ -2865,8 +2892,22 @@ class PhotoLogManager: ObservableObject {
         return thumb.jpegData(compressionQuality: 0.6)
     }
 
+    /// サムネイル生成＋ディスク保存を非同期化。Core Image補正・JPEG圧縮・ファイル書込は
+    /// 重いため、メインスレッド（@MainActor）から切り離してバックグラウンドで実行する。
+    nonisolated private static func generateAndSaveThumbnail(from image: UIImage, id: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let thumbData = makeThumbnailHQ(from: image) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: ThumbnailFileStore.save(thumbData, id: id))
+            }
+        }
+    }
+
     /// 高画質サムネイル（アスペクト比を保持して最大1200px・Retina対応 + 写真補正）
-    private func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
+    nonisolated private static func makeThumbnailHQ(from image: UIImage, maxDimension: CGFloat = 1200) -> Data? {
         // アップロード前に明るさ・コントラスト・彩度を自動補正
         let enhanced = image.enhancedForUpload()
         let size = enhanced.size

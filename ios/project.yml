@@ -30,7 +30,7 @@ targets:
       path: kfit/Info.plist
       properties:
         CFBundleDisplayName: kfit
-        CFBundleShortVersionString: "1.0"
+        CFBundleShortVersionString: "0.2"
         CFBundleVersion: "1"
         NSMotionUsageDescription: "kfit uses motion sensors to accurately count your exercise reps and measure form quality."
         NSCameraUsageDescription: "kfit may use camera for form analysis in the future."
@@ -76,7 +76,7 @@ targets:
       path: kfitWatch/Info.plist
       properties:
         CFBundleDisplayName: kfit
-        CFBundleShortVersionString: "1.0"
+        CFBundleShortVersionString: "0.2"
         CFBundleVersion: "1"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.kfitappduo.app

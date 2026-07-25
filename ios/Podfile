@@ -23,6 +23,9 @@ post_install do |installer|
       config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'NO'
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
+      # FirebaseFirestoreInternal等のプリビルドXCFrameworkはdSYMが生成されず
+      # アーカイブ時に "Upload Symbols Failed" になるため、Pod全体でdSYM生成を強制する
+      config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
     end
   end
 end

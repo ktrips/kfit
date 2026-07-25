@@ -2,7 +2,7 @@ name: kfit
 options:
   bundleIdPrefix: com.kfit
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "17.0"
     watchOS: "8.0"
   xcodeVersion: "15"
 
@@ -15,7 +15,7 @@ targets:
   kfit:
     type: application
     platform: iOS
-    deploymentTarget: "15.0"
+    deploymentTarget: "17.0"
     sources:
       - path: kfit
         excludes:
@@ -29,6 +29,7 @@ targets:
     info:
       path: kfit/Info.plist
       properties:
+        GADApplicationIdentifier: "ca-app-pub-5882080850213183~2390690731"
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "0.2"
         CFBundleVersion: "1"
@@ -39,18 +40,27 @@ targets:
         NSHealthUpdateUsageDescription: "kfit may write workout data to Apple Health."
         NSBonjourServices:
           - _firebase._tcp
+        LSApplicationQueriesSchemes:
+          - wiscale2
+          - healthmate
+          - withings
         UILaunchScreen:
           UIColorName: LaunchBackground
-        UIRequiredDeviceCapabilities:
-          - accelerometer
-          - gyroscope
+        UIStatusBarHidden: false
+        UIRequiresFullScreen: true
+        UIViewControllerBasedStatusBarAppearance: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationPortraitUpsideDown
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
               - com.googleusercontent.apps.447854410903-9p4cdpet97v8qecmv4lk61egqudq4t21
+          - CFBundleTypeRole: Viewer
+            CFBundleURLName: com.kfit.app.deeplink
+            CFBundleURLSchemes:
+              - fitingo
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app
@@ -59,14 +69,77 @@ targets:
       path: kfit/kfit.entitlements
       properties:
         com.apple.developer.healthkit: true
+        com.apple.security.application-groups:
+          - group.com.kfit.app
+    prebuildScripts:
+      - name: "Bump Build Number (Archive only)"
+        script: |
+          "${SRCROOT}/bump_version.sh"
+        runOnlyWhenInstalling: true
+        basedOnDependencyAnalysis: false
     dependencies:
       - target: kfitWatch
+      - target: kfitWidget
+      - target: kfitShare
       - sdk: HealthKit.framework
+
+  kfitWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: kfitWidget
+        excludes:
+          - "**/*.plist"
+      - path: kfitWidget/Assets.xcassets
+    info:
+      path: kfitWidget/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.kfitWidget
+        INFOPLIST_FILE: kfitWidget/Info.plist
+    entitlements:
+      path: kfitWidget/kfitWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.kfit.app
+
+  kfitShare:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: kfitShare
+        excludes:
+          - "**/*.plist"
+    info:
+      path: kfitShare/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionPointIdentifier: com.apple.share-services
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.kfitShare
+        INFOPLIST_FILE: kfitShare/Info.plist
+    entitlements:
+      path: kfitShare/kfitShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.kfit.app
 
   kfitWatch:
     type: application
     platform: watchOS
-    deploymentTarget: "8.0"
+    deploymentTarget: "10.0"
     sources:
       - path: kfitWatch
         excludes:
@@ -80,9 +153,58 @@ targets:
         CFBundleVersion: "1"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.kfitappduo.app
+        WKWatchOnly: false
+        NSHealthShareUsageDescription: "kfit reads heart rate, steps, and calories from Apple Health to show your fitness summary on Apple Watch."
+        NSHealthUpdateUsageDescription: "kfit writes workout data to Apple Health."
+        NSMotionUsageDescription: "kfit uses motion sensors to automatically count your exercise reps and track workout form."
+        WKBackgroundModes:
+          - workout-processing
+        CFBundleIconFiles:
+          - Icon-24x24
+          - Icon-27.5x27.5
+          - Icon-40x40
+          - Icon-44x44
+          - Icon-50x50
+          - Icon-86x86
+          - Icon-98x98
+          - Icon-108x108
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.watchkitapp
         INFOPLIST_FILE: kfitWatch/Info.plist
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "4AY62KCVSN"
+    entitlements:
+      path: kfitWatch/kfitWatch.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.security.application-groups:
+          - group.com.kfit.app
+    dependencies:
+      - target: kfitWatchComplication
+
+  kfitWatchComplication:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: "kfit​Watch​Complication"
+        excludes:
+          - "**/*.plist"
+      - path: "kfit​Watch​Complication/Assets.xcassets"
+    info:
+      path: "kfit​Watch​Complication/Info.plist"
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kfitappduo.app.watchkitapp.kfit-Watch-Complication
+        INFOPLIST_FILE: "kfit​Watch​Complication/Info.plist"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "4AY62KCVSN"
+    entitlements:
+      path: "kfit​Watch​ComplicationExtension.entitlements"
+      properties:
+        com.apple.security.application-groups:
+          - group.com.kfit.app

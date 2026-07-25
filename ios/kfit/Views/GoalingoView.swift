@@ -19,6 +19,9 @@ struct GoalingoView: View {
     @State private var showCharts = false
     @State private var showActivityHistory = false
     @State private var showRaceWorkoutHistory = false
+    // 大会カードの画像共有用
+    @State private var raceCardShareImage: UIImage?
+    @State private var showRaceCardShareSheet = false
     @State private var expandedActivitySetIds: Set<Int> = []
     @State private var todayExercises: [CompletedExercise] = []
     @State private var todayWorkoutSessions: [WorkoutSession] = []
@@ -101,8 +104,11 @@ struct GoalingoView: View {
                             // 2. Apple Watch アクティビティ起動ボタン
                             watchActivityButton
 
-                            // 3. 今日のアクティビティ＋体重目標＋週間実績など
-                            todayActivityWithHistoryCard
+                            // 3. 今日のアクティビティ履歴（リングカードは削除済み）
+                            activityHistoryExpandable
+                                .background(Color(.systemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
 
                             // 体重目標と到達度
                             goalHeroCard
@@ -163,6 +169,11 @@ struct GoalingoView: View {
             .sheet(isPresented: $showPlusViewFromFit) { PlusView() }
             .sheet(isPresented: $showRaceGoalSettings) {
                 NavigationView { RaceGoalSettingsView() }
+            }
+            .sheet(isPresented: $showRaceCardShareSheet) {
+                if let image = raceCardShareImage {
+                    SystemShareSheet(items: [image])
+                }
             }
             .sheet(isPresented: $showWeightPhotoLog) {
                 EduPhotoLogSheet(
@@ -1063,206 +1074,6 @@ struct GoalingoView: View {
         .disabled(!available)
     }
 
-    private var todayActivityWithHistoryCard: some View {
-        VStack(spacing: 0) {
-            todayActivityCard
-            Divider()
-                .padding(.horizontal, 18)
-            activityHistoryExpandable
-        }
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-    }
-
-    private var todayActivityCard: some View {
-        let allRingsDone = healthKit.activityMoveCalories >= healthKit.activityMoveGoal
-            && healthKit.activityExerciseMinutes >= healthKit.activityExerciseGoal
-            && healthKit.activityStandHours >= healthKit.activityStandGoal
-        let isGoal = todayWeekdayGoal?.exerciseEnabled == true
-
-        let moveProgress = healthKit.activityMoveGoal > 0 ? min(healthKit.activityMoveCalories / healthKit.activityMoveGoal, 1.0) : 0
-        let exerciseProgress = healthKit.activityExerciseGoal > 0 ? min(Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal), 1.0) : 0
-        let standProgress = healthKit.activityStandGoal > 0 ? min(Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal), 1.0) : 0
-        let activeCount = (healthKit.activityMoveGoal > 0 ? 1 : 0)
-            + (healthKit.activityExerciseGoal > 0 ? 1 : 0)
-            + (healthKit.activityStandGoal > 0 ? 1 : 0)
-        let activityScore = activeCount > 0 ? Int((moveProgress + exerciseProgress + standProgress) / Double(activeCount) * 100) : 0
-
-        let nowComponents = Calendar.current.dateComponents([.hour, .minute], from: Date())
-        let nowDecimal = Double(nowComponents.hour ?? 0) + Double(nowComponents.minute ?? 0) / 60.0
-        let expectedPace = nowDecimal <= 6 ? 0 : nowDecimal >= 24 ? 1 : (nowDecimal - 6) / 18.0
-        let paceDiff = activityScore - Int(expectedPace * 100)
-        let (paceLabel, paceColor): (String, Color) = {
-            if nowDecimal < 6 { return ("開始前", Color.duoSubtitle) }
-            if activityScore >= 100 { return ("達成！", Color.duoGreen) }
-            if paceDiff >= 0 { return ("順調", Color.duoGreen) }
-            if paceDiff >= -15 { return ("やや遅れ", Color(hex: "#FF9600")) }
-            return ("遅れ気味", Color(hex: "#FF4B4B"))
-        }()
-
-        return Button {
-            let schemes = ["x-apple-fitness://", "x-apple-health://"]
-            for scheme in schemes {
-                if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
-                    UIApplication.shared.open(url)
-                    return
-                }
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: "figure.walk.circle.fill")
-                        .foregroundColor(Color(red: 0.98, green: 0.07, blue: 0.31))
-                        .font(.system(size: 14 * UIScale.font))
-                    Text("今日のアクティビティ")
-                        .font(.system(size: 13 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                    if isGoal && allRingsDone {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11 * UIScale.font))
-                            .foregroundColor(Color.duoGreen)
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        HStack(spacing: 2) {
-                            Text("\(activityScore)")
-                                .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(paceColor)
-                            Text("%")
-                                .font(.system(size: 8 * UIScale.font, weight: .bold))
-                                .foregroundColor(paceColor)
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        Text(paceLabel)
-                            .font(.system(size: 11 * UIScale.font, weight: .bold))
-                            .foregroundColor(paceColor)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(paceColor.opacity(0.15))
-                            .cornerRadius(10)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-
-                HStack(spacing: 16) {
-                    ZStack {
-                        ActivityRingView(
-                            progress: healthKit.activityMoveGoal > 0 ? healthKit.activityMoveCalories / healthKit.activityMoveGoal : 0,
-                            color: Color(red: 0.98, green: 0.07, blue: 0.31),
-                            diameter: 90,
-                            lineWidth: 10
-                        )
-                        ActivityRingView(
-                            progress: healthKit.activityExerciseGoal > 0 ? Double(healthKit.activityExerciseMinutes) / Double(healthKit.activityExerciseGoal) : 0,
-                            color: Color(red: 0.57, green: 0.91, blue: 0.16),
-                            diameter: 66,
-                            lineWidth: 10
-                        )
-                        ActivityRingView(
-                            progress: healthKit.activityStandGoal > 0 ? Double(healthKit.activityStandHours) / Double(healthKit.activityStandGoal) : 0,
-                            color: Color(red: 0.12, green: 0.89, blue: 0.94),
-                            diameter: 42,
-                            lineWidth: 10
-                        )
-                    }
-                    .frame(width: 90, height: 90)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        goalActivityRingLegend(color: Color(red: 0.98, green: 0.07, blue: 0.31), label: "ムーブ", value: "\(Int(healthKit.activityMoveCalories))", goal: "\(Int(healthKit.activityMoveGoal)) kcal")
-                        goalActivityRingLegend(color: Color(red: 0.57, green: 0.91, blue: 0.16), label: "エクササイズ", value: "\(healthKit.activityExerciseMinutes)", goal: "\(healthKit.activityExerciseGoal) 分")
-                        goalActivityRingLegend(color: Color(red: 0.12, green: 0.89, blue: 0.94), label: "スタンド", value: "\(healthKit.activityStandHours)", goal: "\(healthKit.activityStandGoal) 時間")
-                    }
-
-                    Spacer()
-
-                    if healthKit.latestBodyMass > 0 || healthKit.latestBodyFatPercentage > 0 {
-                        VStack(alignment: .trailing, spacing: 8) {
-                            if healthKit.latestBodyMass > 0 {
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "scalemass.fill")
-                                            .font(.system(size: 8 * UIScale.font))
-                                            .foregroundColor(Color(hex: "#1CB0F6"))
-                                        Text("体重")
-                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(Color.duoSubtitle)
-                                    }
-                                    Text(String(format: "%.1f kg", healthKit.latestBodyMass))
-                                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                        .foregroundColor(Color.duoDark)
-                                    if let change = healthKit.weeklyBodyMassChange {
-                                        let sign = change >= 0 ? "+" : ""
-                                        Text(String(format: "%@%.1f kg/7日", sign, change))
-                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B") : change < -0.05 ? Color.duoGreen : Color.duoSubtitle)
-                                    }
-                                }
-                            }
-                            if healthKit.latestBodyFatPercentage > 0 {
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "percent")
-                                            .font(.system(size: 8 * UIScale.font))
-                                            .foregroundColor(Color(hex: "#CE82FF"))
-                                        Text("体脂肪")
-                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(Color.duoSubtitle)
-                                    }
-                                    Text(String(format: "%.1f%%", healthKit.latestBodyFatPercentage))
-                                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                        .foregroundColor(Color.duoDark)
-                                    if let change = healthKit.weeklyBodyFatChange {
-                                        let sign = change >= 0 ? "+" : ""
-                                        Text(String(format: "%@%.1f%%/7日", sign, change))
-                                            .font(.system(size: 8 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(change > 0.05 ? Color(hex: "#FF4B4B") : change < -0.05 ? Color.duoGreen : Color.duoSubtitle)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                goalStepsProgressBar
-                goalBurnedCaloriesBar
-
-                GoalCalorieBalanceBarCard(
-                    totalConsumed: healthKit.todayTotalCalories,
-                    intake: healthKit.todayIntakeCalories
-                )
-            }
-            .padding(12)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func goalActivityRingLegend(color: Color, label: String, value: String, goal: String) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-                HStack(alignment: .lastTextBaseline, spacing: 3) {
-                    Text(value)
-                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoDark)
-                    Text("/ \(goal)")
-                        .font(.system(size: 9 * UIScale.font))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-            }
-        }
-    }
-
     private func goalHealthMetricTile(icon: String, value: String, unit: String, bg: Color, healthCategory: String) -> some View {
         Button {
             if let url = URL(string: "x-apple-health://\(healthCategory)") {
@@ -1285,109 +1096,6 @@ struct GoalingoView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(bg)
-            .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var goalStepsProgressBar: some View {
-        let goal = 10000.0
-        let steps = Double(healthKit.todaySteps)
-        let progress = min(1.0, steps / goal)
-        return Button {
-            if let url = URL(string: "x-apple-health://StepCount") {
-                UIApplication.shared.open(url)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color(hex: "#1CB0F6"))
-                    Text("今日の歩数")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                    Spacer()
-                    Text("\(healthKit.todaySteps.formatted()) / \(Int(goal).formatted())歩")
-                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(progress >= 1 ? Color(hex: "#1CB0F6") : Color.duoDark)
-                }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color(.systemGray5))
-                        Capsule()
-                            .fill(LinearGradient(
-                                colors: [Color(hex: "#1CB0F6"), Color(hex: "#84D8FF")],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ))
-                            .frame(width: max(8, geo.size.width * CGFloat(progress)))
-                    }
-                }
-                .frame(height: 10)
-            }
-            .padding(10)
-            .background(Color(hex: "#E5F6FF"))
-            .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var goalBurnedCaloriesBar: some View {
-        let resting = healthKit.todayRestingCalories
-        let active = healthKit.todayActiveCalories
-        let total = max(resting + active, 1)
-        return Button {
-            if let url = URL(string: "x-apple-health://ActiveEnergyBurned") {
-                UIApplication.shared.open(url)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoGreen)
-                    Text("今日の消費カロリー")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold))
-                        .foregroundColor(Color.duoDark)
-                    Spacer()
-                    Text("\(Int(resting + active)) kcal")
-                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
-                        .foregroundColor(Color.duoDark)
-                }
-
-                GeometryReader { geo in
-                    let restingWidth = geo.size.width * CGFloat(resting / total)
-                    let activeWidth = geo.size.width * CGFloat(active / total)
-                    HStack(spacing: 0) {
-                        ZStack {
-                            Rectangle().fill(Color.duoGreen.opacity(0.72))
-                            Text("\(Int(resting)) 安静")
-                                .font(.system(size: 10 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                        }
-                        .frame(width: max(44, restingWidth), height: 28)
-
-                        ZStack {
-                            Rectangle().fill(Color(red: 0.18, green: 0.72, blue: 0.18))
-                            Text("\(Int(active)) 活動")
-                                .font(.system(size: 10 * UIScale.font, weight: .black))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                        }
-                        .frame(width: max(44, activeWidth), height: 28)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .frame(height: 28)
-            }
-            .padding(10)
-            .background(Color(red: 0.90, green: 1.0, blue: 0.86))
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
@@ -1845,6 +1553,13 @@ struct GoalingoView: View {
                     }
                     Spacer()
                     Button {
+                        shareRaceProgressCard()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    Button {
                         showRaceGoalSettings = true
                     } label: {
                         Image(systemName: "gearshape.fill")
@@ -2063,6 +1778,21 @@ struct GoalingoView: View {
         .background(Color.white)
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.07), radius: 6, y: 2)
+    }
+
+    /// 大会カード（週間アクティビティの展開状態を含む、現在表示中の内容そのまま）を
+    /// 画像として書き出し、共有シートを表示する
+    @MainActor
+    private func shareRaceProgressCard() {
+        let renderer = ImageRenderer(content:
+            raceProgressCard
+                .frame(width: 390)
+                .background(Color(.systemBackground))
+        )
+        renderer.scale = UIScreen.main.scale
+        guard let image = renderer.uiImage else { return }
+        raceCardShareImage = image
+        showRaceCardShareSheet = true
     }
 
     /// 大会カード用：今週の通常ワークアウト（Fitingoセット除く）を日付付き・距離で表示

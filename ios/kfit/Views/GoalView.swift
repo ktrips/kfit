@@ -92,11 +92,8 @@ struct GoalView: View {
                                     .transition(.opacity)
                             }
                             fitingoTrainingButton
-                            // 今日のアクティビティ（履歴は週間カロリーカードと統合）
-                            todayActivityCard
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            // 今日のアクティビティ＋アクティビティ履歴を一体化
+                            todayActivityWithHistoryCard
                             if plus.isPlus {
                                 progressCard
                                 HStack(spacing: 6) {
@@ -112,8 +109,7 @@ struct GoalView: View {
                                 .padding(.bottom, -4)
                                 weeklyBurnCard
                                 intakeTrendCard
-                                // 週間カロリーカード ＋ アクティビティ履歴を一体化
-                                weeklyCalorieWithHistoryCard
+                                weeklyCalorieCard
                                 // 体重カードを週間カロリー+アクティビティ履歴の下へ
                                 weightFeedSection
                             } else {
@@ -1512,20 +1508,6 @@ struct GoalView: View {
             data: healthKit.weeklyCalorieData,
             dailyGoal: dietManager.settings.dailyDeficitGoal
         )
-    }
-
-    // MARK: - 週間カロリーカード ＋ アクティビティ履歴 統合カード
-
-    private var weeklyCalorieWithHistoryCard: some View {
-        VStack(spacing: 0) {
-            GoalWeeklyCalorieCard(
-                data: healthKit.weeklyCalorieData,
-                dailyGoal: dietManager.settings.dailyDeficitGoal
-            )
-            Divider()
-                .padding(.horizontal, 12)
-            activityHistoryExpandable
-        }
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)

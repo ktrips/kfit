@@ -1172,17 +1172,10 @@ struct NinetySecondModeCard: View {
 
             VStack(spacing: 0) {
 
-                // ── Fitingo ロゴマーク ─────────────────────────────────────
-                Image("fitingo_fire")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-                    .padding(.top, 12)
-
-                Spacer().frame(height: 10)
+                Spacer().frame(height: 12)
 
                 // ── 連続日数（あと◯日で全開放）＋ 5日チェックマーク ─────────
+                // Fitingo ロゴマーク（旧: 単独表示）は「◯日連続」の左側に統合済み
                 streakHeader
 
                 Spacer().frame(height: 18)
@@ -1326,8 +1319,8 @@ struct NinetySecondModeCard: View {
             // ワークアウトGIFがそのままアクショントリガー
             Button(action: triggerAction) {
                 GIFAnimationView(gifName: "fitingo_workout")
-                    .frame(width: 240, height: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .frame(width: 280, height: 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 40))
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }
@@ -1339,10 +1332,10 @@ struct NinetySecondModeCard: View {
             // 直近フォトのスライドショー。窓全体がアクショントリガー（スワイプはページ送り）
             ZStack {
                 if photoThumbnails.isEmpty {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 24)
                         .fill(accent.opacity(0.08))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 200)
+                        .frame(height: 230)
                         .overlay(Text("📷").font(.system(size: 64)))
                 } else {
                     TabView(selection: $slideIndex) {
@@ -1351,14 +1344,14 @@ struct NinetySecondModeCard: View {
                                 .resizable()
                                 .scaledToFill()
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 200)
+                                .frame(height: 230)
                                 .clipped()
                                 .tag(i)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .frame(height: 230)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     // スライドカウンターインジケータ
                     .overlay(alignment: .bottomTrailing) {
                         HStack(spacing: 4) {
@@ -1380,10 +1373,10 @@ struct NinetySecondModeCard: View {
             // 直近 Duolingo 投稿のスライドショー（FOOD と同じ構造）
             ZStack {
                 if photoThumbnails.isEmpty {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 24)
                         .fill(accent.opacity(0.08))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 200)
+                        .frame(height: 230)
                         .overlay(Text("📚").font(.system(size: 64)))
                 } else {
                     TabView(selection: $slideIndex) {
@@ -1392,14 +1385,14 @@ struct NinetySecondModeCard: View {
                                 .resizable()
                                 .scaledToFill()
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 200)
+                                .frame(height: 230)
                                 .clipped()
                                 .tag(i)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .frame(height: 230)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     .overlay(alignment: .bottomTrailing) {
                         HStack(spacing: 4) {
                             ForEach(0..<photoThumbnails.count, id: \.self) { i in
@@ -1418,7 +1411,8 @@ struct NinetySecondModeCard: View {
             Button(action: triggerAction) {
                 Image("fitingo_button_mascot")
                     .resizable().scaledToFit()
-                    .frame(width: 240, height: 240)
+                    .frame(width: 280, height: 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 40))
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
             }
@@ -1570,10 +1564,10 @@ struct NinetySecondModeCard: View {
             // Fitingo ◯日連続（あと◯日で全開放）
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Image("fitingo_mascot")
+                    Image("fitingo_fire")
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 24, height: 24)
+                        .frame(width: 32, height: 32)
                         .clipShape(Circle())
                     Text("\(streak)日連続")
                         .font(.system(size: 20, weight: .black))

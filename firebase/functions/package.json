@@ -14,7 +14,8 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "check-first-set-seconds": "node scripts/check-first-set-seconds.js"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",

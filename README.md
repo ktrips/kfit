@@ -43,7 +43,7 @@ FIT → DIET → FOOD → EDU の4モードを横スワイプで切り替え、�
 | **AIフォトログ**（撮るだけでカロリー・PFC自動解析） | — | ✅ | — |
 | **AI語学記録**（Duolingoスクショ→例文・発音生成） | — | ✅ | — |
 | Diet Goal / GOALタブ（体重・体脂肪・カロリー計画） | ✅ | ✅ | — |
-| MIND（睡眠・HRVストレス分析、Freeは概要のみ・詳細はPlus） | ✅ | ✅ | — |
+| MIND（睡眠・HRVストレス分析、**Plus限定**・Freeは完全ロック） | ✅ | ✅ | — |
 | **TOMOフィード**（「今日やった」だけを友達と共有） | ✅ | ✅ | — |
 | 時間帯別目標（夜中/朝/昼/午後/夜） | ✅ | ✅ | ✅ |
 | 90日チャレンジ（連続記録） | ✅ | ✅ | — |
@@ -245,8 +245,14 @@ kfit/
 │   │   ├── WatchHealthKitManager.swift   # HealthKit統合
 │   │   └── WatchConnectivityManager.swift
 │   └── kfitWatch.entitlements
+├── ios/kfitWidget/                # iOSホーム画面ウィジェット（App Extension）
+├── ios/kfitShare/                 # 共有シート拡張（App Extension）
+├── ios/kfitWatchComplication/     # Watchコンプリケーション（App Extension）
+├── ios/project.yml                # XcodeGen定義（.xcodeprojのソース・オブ・トゥルース）
+├── ios/bump_version.sh            # Version/Build番号の一括更新（アーカイブ時に自動実行）
 │
 ├── firebase/functions/index.js    # aiProxy / generateWeeklyReport / computeRetentionStats 等
+├── firebase/functions/scripts/    # 運用スクリプト（check-first-set-seconds.js 等）
 ├── SHARED_CONSTANTS.md            # プラットフォーム間共通定数
 ├── PERFORMANCE_OPTIMIZATIONS.md   # 最適化詳細
 ├── PLATFORM_FEATURES.md           # プラットフォーム別機能一覧
@@ -292,6 +298,18 @@ leaderboards/{weekId}/entries/
 ---
 
 ## 🎮 最近の主なアップデート
+
+### 2026-07-12〜07-25
+- ✅ **90秒モードのTestFlight検証**: 内部テスター3人へ配布完了。初回起動から最初の1セット完了までの秒数（`firstSetSeconds`）を計測し、全ユーザー分をまとめて確認する `firebase/functions/scripts/check-first-set-seconds.js` を追加
+- ✅ **90秒モードのUI仕上げ**: Fitingoブランドに統一したデザインへ刷新。全ボタンを拡大、モード名の文字サイズを見出しと揃えて統一、連続日数の炎アイコンをFitingoアイコンに変更、食事/語学モードの動画表示を削除
+- ✅ **バージョン管理の整備**: `CFBundleShortVersionString`/`CFBundleVersion` を `project.yml`（XcodeGenのソース・オブ・トゥルース）とInfo.plistで統一し `0.2 (1)` から再起動。`ios/bump_version.sh` でVersion/Build更新を一括化し、Xcodeアーカイブ時（`prebuildScripts`）に自動実行
+- ✅ **TestFlightアップロード安定化**: FirebaseFirestoreInternal等のdSYM欠落によるアップロード失敗、WatchアプリAppIconの単一サイズ形式エラー、iPadマルチタスキング必須のオリエンテーション要件エラー、アイコン不足エラーなどApp Store Connect検証まわりの不具合を解消
+- ✅ **Fitingo Plusの範囲拡大**: MINDタブを（睡眠スコアのみFree公開だった状態から）GOALタブと同じ完全ロック方式に変更。ROUTINページのXPカード・到達度カレンダーもPlus限定化。SETUPのタブ設定でGOAL/MINDタブをTOMOタブの下へ再配置
+- ✅ **AI食事フォトログをFreeにも一部解放**: 1日1回までを上限にFreeユーザーでも利用可能に。TOMOフィードへの公開はデフォルトON
+- ✅ **Routinページ刷新**: 日次到達度％を記録し週次・月次カレンダーで表示、XPポイントカードをタップでインライン展開、カロリー収支カードを削除し到達度計算をスパイラル中央と統一
+- ✅ **SETUP画面の再構成**: 「詳細設定」を新設しテーマ・メニュー・AI・Watch・連動アプリ・SNS設定を集約、タブ設定はメイン画面に残しつつ通知バナー移動・見出し整理
+- ✅ **バグ修正各種**: ポイント/ストリークの二重加算と週起算日の不一致を修正、90秒モードのセット記録保存失敗を握りつぶさないよう修正、SETUP画面の水分目標保存不具合を修正、スパイラル表示のたびにGood Job演出が誤発火する不具合を修正、Web版iOS起動ボタンが実際にはアプリを開けていなかったバグを修正（未公開のためTestFlightへフォールバック）
+- ✅ **kedu**: EDU週間ランキングに日別の再生ポイント内訳を追加
 
 ### 2026-07（a.1.7.x系）
 - ✅ **Good Job! 称賛演出**: 禁酒・勉強・語学などその日のタスクを完了すると、マスコットと称賛メッセージのオーバーレイでやる気を維持（iOS/Web）
@@ -408,7 +426,8 @@ npm run lint         # ESLint
 戦略プランの詳細: [docs/SamBezThieMuskJobs_plan.md](docs/SamBezThieMuskJobs_plan.md)
 
 ### 短期（次のアクション）
-- [ ] 90秒モードをTestFlightで3〜5人に配布し、初回セットまでの時間を検証
+- [x] 90秒モードをTestFlightで内部テスター3人に配布
+- [ ] firstSetSecondsの計測結果を確認（全員120秒以内に1セット完了しているか判定）
 - [ ] 90日再検査チャレンジLPをSNSに投稿し、登録率を検証
 - [ ] App Store Connectにストア文言を反映
 - [ ] AIクォータ残回数の常時表示UI
@@ -435,4 +454,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Updated: 2026-07-11*
+*Updated: 2026-07-25*

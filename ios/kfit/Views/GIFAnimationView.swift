@@ -47,6 +47,8 @@ struct GIFAnimationView: UIViewRepresentable {
         imageView.clipsToBounds = true
         imageView.layer.magnificationFilter = .trilinear
         imageView.layer.minificationFilter = .trilinear
+        // タップを親のSwiftUI Button（90秒モードのGIFタップ等）に確実に透過させる
+        imageView.isUserInteractionEnabled = false
         context.coordinator.imageView = imageView
 
         let name = gifName

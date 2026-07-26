@@ -1320,6 +1320,7 @@ struct NinetySecondModeCard: View {
             Button(action: triggerAction) {
                 GIFAnimationView(gifName: "fitingo_workout")
                     .frame(width: 280, height: 280)
+                    .contentShape(RoundedRectangle(cornerRadius: 40))
                     .clipShape(RoundedRectangle(cornerRadius: 40))
                     .scaleEffect(showBurst ? 0.92 : pulseScale)
                     .shadow(color: accent.opacity(0.25), radius: 16, y: 8)
@@ -1431,55 +1432,55 @@ struct NinetySecondModeCard: View {
         case .food:
             // AI食事フォトログ（Routine の photoLogButton スタイル）
             Button(action: triggerAction) {
-                HStack(spacing: 16) {
+                HStack(spacing: 18) {
                     // 最近の写真サムネイル or カメラアイコン
                     ZStack {
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 18)
                             .fill(Color.white.opacity(0.22))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                RoundedRectangle(cornerRadius: 18)
                                     .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
                             )
-                            .frame(width: 76, height: 76)
+                            .frame(width: 88, height: 88)
                         if let firstPhoto = photoThumbnails.first {
                             Image(uiImage: firstPhoto)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 76, height: 76)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .frame(width: 88, height: 88)
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
                         } else {
                             VStack(spacing: 3) {
                                 Image(systemName: "camera.fill")
-                                    .font(.system(size: 28, weight: .semibold))
+                                    .font(.system(size: 32, weight: .semibold))
                                     .foregroundColor(.white)
                                 Text("AI")
-                                    .font(.system(size: 10, weight: .black))
+                                    .font(.system(size: 11, weight: .black))
                                     .foregroundColor(.white.opacity(0.95))
                             }
                         }
                     }
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("📸 AI食事フォトログ")
-                            .font(.system(size: 18, weight: .black))
+                            .font(.system(size: 20, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1).minimumScaleFactor(0.7)
                         if photoThumbnails.isEmpty {
                             Text("写真を撮ってAIカロリー計算")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.92))
                         } else {
                             Text("最近の記録 \(photoThumbnails.count)件")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.92))
                         }
                     }
                     Spacer()
                     Image(systemName: "sparkles")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white.opacity(0.9))
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 28)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 36)
                 .background(
                     Color.instagramGradient
                         .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -1497,48 +1498,48 @@ struct NinetySecondModeCard: View {
         case .edu:
             // Duolingo 記録ボタン（例文作成 + 発話）
             Button(action: triggerAction) {
-                HStack(spacing: 16) {
+                HStack(spacing: 18) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 16)
+                        RoundedRectangle(cornerRadius: 18)
                             .fill(Color.white.opacity(0.22))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16)
+                                RoundedRectangle(cornerRadius: 18)
                                     .stroke(Color.white.opacity(0.55), lineWidth: 1.2)
                             )
-                            .frame(width: 76, height: 76)
+                            .frame(width: 88, height: 88)
                         if let firstThumb = photoThumbnails.first {
                             Image(uiImage: firstThumb)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 76, height: 76)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .frame(width: 88, height: 88)
+                                .clipShape(RoundedRectangle(cornerRadius: 18))
                         } else {
                             Text("📚")
-                                .font(.system(size: 38))
+                                .font(.system(size: 42))
                         }
                     }
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("📚 Duolingo記録")
-                            .font(.system(size: 18, weight: .black))
+                            .font(.system(size: 20, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(1).minimumScaleFactor(0.7)
                         if photoThumbnails.isEmpty {
                             Text("スクショをアップしてAI例文 & 発話")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.92))
                         } else {
                             Text("最近の記録 \(photoThumbnails.count)件")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.92))
                         }
                     }
                     Spacer()
                     Image(systemName: "waveform")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white.opacity(0.9))
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 28)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 36)
                 .background(
                     LinearGradient(
                         colors: [Color(hex: "#1CB0F6"), Color(hex: "#0D8EC9")],

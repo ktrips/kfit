@@ -2033,12 +2033,13 @@ class AuthenticationManager: ObservableObject {
 
     // MARK: - 到達度パーセンテージ（週次・月次カレンダー表示用）
 
-    /// その日の到達度パーセンテージ（スパイラルの完了率）を daily summary に記録する
-    func saveDailyAchievementPercent(_ percent: Int, for date: Date = Date()) async {
+    /// その日の到達度パーセンテージ（スパイラルの完了率）とXPポイントを daily summary に記録する
+    func saveDailyAchievementPercent(_ percent: Int, xp: Int, for date: Date = Date()) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
         let dailyId = "daily-\(dayKey(for: date))"
         let data: [String: Any] = [
             "achievementPercent": percent,
+            "achievementXP": xp,
             "achievementPercentUpdatedAt": FieldValue.serverTimestamp()
         ]
         do {
@@ -2048,8 +2049,14 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
-    /// 指定期間（両端含む）の日別到達度パーセンテージを取得する（週次・月次カレンダー表示用）
-    func getDailyAchievementPercents(from startDate: Date, to endDate: Date) async -> [Date: Int] {
+    /// 日別到達度レコード（達成率％・XPポイント）
+    struct DailyAchievementRecord {
+        let percent: Int
+        let xp: Int
+    }
+
+    /// 指定期間（両端含む）の日別到達度％・XPポイントを取得する（週次・月次カレンダー表示用）
+    func getDailyAchievementRecords(from startDate: Date, to endDate: Date) async -> [Date: DailyAchievementRecord] {
         guard let userId = Auth.auth().currentUser?.uid else { return [:] }
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: startDate)
@@ -2064,8 +2071,8 @@ class AuthenticationManager: ObservableObject {
             cursor = next
         }
 
-        var result: [Date: Int] = [:]
-        await withTaskGroup(of: (Date, Int?).self) { group in
+        var result: [Date: DailyAchievementRecord] = [:]
+        await withTaskGroup(of: (Date, DailyAchievementRecord?).self) { group in
             for date in dates {
                 let key = Self.yyyyMMddFmt.string(from: date)
                 group.addTask {
@@ -2073,11 +2080,13 @@ class AuthenticationManager: ObservableObject {
                         .collection("users").document(userId)
                         .collection("summaries").document("daily-\(key)")
                         .getDocument()
-                    return (date, snap?.data()?["achievementPercent"] as? Int)
+                    guard let percent = snap?.data()?["achievementPercent"] as? Int else { return (date, nil) }
+                    let xp = snap?.data()?["achievementXP"] as? Int ?? 0
+                    return (date, DailyAchievementRecord(percent: percent, xp: xp))
                 }
             }
-            for await (date, percent) in group {
-                if let percent = percent { result[date] = percent }
+            for await (date, record) in group {
+                if let record = record { result[date] = record }
             }
         }
         return result

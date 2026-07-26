@@ -354,10 +354,12 @@ struct ActivityRingView: View {
     }
 }
 
-/// 週次・月次 到達度カレンダーの1セル（リングの中に%を表示）。
+/// 週次・月次 到達度カレンダーの1セル（リングの中に%とXPを表示）。
 /// percent が nil の場合（未記録・未来日）は空のリングのみ表示する。
+/// xp が nil の場合（月次グリッドなど狭いセル）は%のみ1行表示する。
 struct AchievementRingView: View {
     let percent: Int?
+    var xp: Int? = nil
     let size: CGFloat
     let isToday: Bool
     let isFuture: Bool
@@ -378,11 +380,26 @@ struct AchievementRingView: View {
                     .trim(from: 0, to: CGFloat(min(1.0, max(0, Double(percent) / 100.0))))
                     .stroke(ringColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Text("\(percent)")
-                    .font(.system(size: size * 0.32, weight: .black, design: .rounded))
-                    .foregroundColor(ringColor)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
+                if let xp = xp {
+                    VStack(spacing: 0) {
+                        Text("\(percent)%")
+                            .font(.system(size: size * 0.24, weight: .black, design: .rounded))
+                            .foregroundColor(ringColor)
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                        Text("\(xp)")
+                            .font(.system(size: size * 0.17, weight: .bold, design: .rounded))
+                            .foregroundColor(ringColor.opacity(0.8))
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("\(percent)")
+                        .font(.system(size: size * 0.32, weight: .black, design: .rounded))
+                        .foregroundColor(ringColor)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                }
             } else if !isFuture {
                 Text("-")
                     .font(.system(size: size * 0.32, weight: .bold))
@@ -501,13 +518,14 @@ struct DashboardView: View {
     @State private var cachedProgressStats = ProgressStats()
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
-    // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent の履歴）
+    // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent/achievementXP の履歴）
     // 当月・前月より前の月は日次データがサーバー側で集約・削除され、月平均値のみが残る（summaries/monthly-avg-{yyyy-MM}）。
-    @State private var weeklyAchievementPercents: [Date: Int] = [:]
-    // 今日すでに保存した到達度%（同値の重複書き込みを避けるためのセッション内キャッシュ）
+    @State private var weeklyAchievementPercents: [Date: AuthenticationManager.DailyAchievementRecord] = [:]
+    // 今日すでに保存した到達度%・XP（同値の重複書き込みを避けるためのセッション内キャッシュ）
     @State private var lastSavedAchievementDayKey: String? = nil
     @State private var lastSavedAchievementPercent: Int = -1
-    @State private var monthlyAchievementPercents: [Date: Int] = [:]
+    @State private var lastSavedAchievementXP: Int = -1
+    @State private var monthlyAchievementPercents: [Date: AuthenticationManager.DailyAchievementRecord] = [:]
     @State private var monthlyAverageAchievementPercent: Int? = nil
     @State private var loadedAchievementWeekKey: String? = nil
     @State private var loadedAchievementMonthKey: String? = nil
@@ -2298,15 +2316,17 @@ struct DashboardView: View {
         let now = Date()
         let dayKey = DashboardView.yyyyMMdd.string(from: Calendar.current.startOfDay(for: now))
         let percent = mandalaCompletionPercent
+        let xp = totalXP
 
-        // 同じ日・同じ%なら重複書き込みを避ける
-        if lastSavedAchievementDayKey == dayKey && lastSavedAchievementPercent == percent {
+        // 同じ日・同じ%・同じXPなら重複書き込みを避ける
+        if lastSavedAchievementDayKey == dayKey && lastSavedAchievementPercent == percent && lastSavedAchievementXP == xp {
             return
         }
         lastSavedAchievementDayKey = dayKey
         lastSavedAchievementPercent = percent
+        lastSavedAchievementXP = xp
 
-        Task { await authManager.saveDailyAchievementPercent(percent, for: now) }
+        Task { await authManager.saveDailyAchievementPercent(percent, xp: xp, for: now) }
     }
 
     /// 今日投稿された Edu 記録（共有・写真ログなど）があれば
@@ -4470,13 +4490,27 @@ struct DashboardView: View {
 
     /// 指定日の到達度パーセント。今日は記録が無ければ、スパイラル中央のパーセンテージ
     /// （centerCircle と同じ計算方法）を暫定表示する。
-    private func achievementPercent(for date: Date, from store: [Date: Int]) -> Int? {
+    private func achievementPercent(for date: Date, from store: [Date: AuthenticationManager.DailyAchievementRecord]) -> Int? {
         let day = Calendar.current.startOfDay(for: date)
-        if let saved = store[day] { return saved }
+        if let saved = store[day] { return saved.percent }
         if Calendar.current.isDateInToday(day), !cachedMandalaNodes.isEmpty {
             return mandalaCompletionPercent
         }
         return nil
+    }
+
+    /// 指定日のXPポイント。今日は記録が無ければ現在のtotalXPを暫定表示する。
+    private func achievementXP(for date: Date, from store: [Date: AuthenticationManager.DailyAchievementRecord]) -> Int? {
+        let day = Calendar.current.startOfDay(for: date)
+        if let saved = store[day] { return saved.xp }
+        if Calendar.current.isDateInToday(day) { return totalXP }
+        return nil
+    }
+
+    /// 表示中の週（currentWeekDates）のXP合計。今週なら totalXP/weeklyBaseXP を反映した最新値、
+    /// 過去週なら保存済みの日別XPの合計。
+    private var visibleWeekXPTotal: Int {
+        currentWeekDates.reduce(0) { $0 + (achievementXP(for: $1, from: weeklyAchievementPercents) ?? 0) }
     }
 
     private func changeAchievementWeek(by weeks: Int) {
@@ -4494,7 +4528,7 @@ struct DashboardView: View {
         let key = Self.dayKeyFmt.string(from: weekStart)
         guard loadedAchievementWeekKey != key else { return }
         loadedAchievementWeekKey = key
-        weeklyAchievementPercents = await authManager.getDailyAchievementPercents(from: weekStart, to: weekEnd)
+        weeklyAchievementPercents = await authManager.getDailyAchievementRecords(from: weekStart, to: weekEnd)
     }
 
     private func loadMonthlyAchievementIfNeeded() async {
@@ -4509,7 +4543,7 @@ struct DashboardView: View {
             monthlyAchievementPercents = [:]
         } else {
             let monthEnd = min(monthInterval.end.addingTimeInterval(-1), Date())
-            monthlyAchievementPercents = await authManager.getDailyAchievementPercents(from: monthInterval.start, to: monthEnd)
+            monthlyAchievementPercents = await authManager.getDailyAchievementRecords(from: monthInterval.start, to: monthEnd)
             monthlyAverageAchievementPercent = nil
         }
     }
@@ -4522,6 +4556,14 @@ struct DashboardView: View {
                      ? "📅 今週の到達度"
                      : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
                     .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                HStack(spacing: 2) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Color.duoOrange)
+                    Text("\(visibleWeekXPTotal)XP")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoOrange)
+                }
                 Spacer()
                 Button { changeAchievementWeek(by: -1) } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
@@ -4541,7 +4583,8 @@ struct DashboardView: View {
                         VStack(spacing: 4) {
                             AchievementRingView(
                                 percent: achievementPercent(for: date, from: weeklyAchievementPercents),
-                                size: 38,
+                                xp: achievementXP(for: date, from: weeklyAchievementPercents),
+                                size: 46,
                                 isToday: Calendar.current.isDateInToday(date),
                                 isFuture: date > Date()
                             )

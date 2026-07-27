@@ -4444,7 +4444,7 @@ struct DashboardView: View {
     private static let monthTitleFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年M月"
+        f.dateFormat = "M月"
         return f
     }()
 
@@ -4511,6 +4511,14 @@ struct DashboardView: View {
     /// 過去週なら保存済みの日別XPの合計。
     private var visibleWeekXPTotal: Int {
         currentWeekDates.reduce(0) { $0 + (achievementXP(for: $1, from: weeklyAchievementPercents) ?? 0) }
+    }
+
+    /// 表示中の月（currentMonthGridDates）のXP合計。日次データが集約済みの過去月（isArchivedAchievementMonth）は
+    /// 個別XPが残っていないため 0（呼び出し側で非表示にする）。
+    private var visibleMonthXPTotal: Int {
+        guard !isArchivedAchievementMonth else { return 0 }
+        return currentMonthGridDates.compactMap { $0 }
+            .reduce(0) { $0 + (achievementXP(for: $1, from: monthlyAchievementPercents) ?? 0) }
     }
 
     private func changeAchievementWeek(by weeks: Int) {
@@ -4614,6 +4622,16 @@ struct DashboardView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    if showMonthlyAchievement && !isArchivedAchievementMonth {
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color.duoOrange)
+                            Text("\(visibleMonthXPTotal)XP")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color.duoOrange)
+                        }
+                    }
                     Spacer()
                     if showMonthlyAchievement {
                         Button { changeAchievementMonth(by: -1) } label: {

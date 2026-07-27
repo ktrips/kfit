@@ -11,6 +11,7 @@ struct GoalView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject private var timeSlotManager: TimeSlotManager
     @EnvironmentObject private var plus: PlusManager
+    @EnvironmentObject private var photoLogManager: PhotoLogManager
     @State private var showDietGoalSettings = false
     @State private var showCharts = false
     @State private var showActivityHistory = false
@@ -30,6 +31,13 @@ struct GoalView: View {
     @State private var showOlderWeightFeed = false
     // 体重ログ一覧キャッシュ（eduLog.history全件フィルタをbody評価毎に繰り返さないため）
     @State private var cachedWeightLogs: [EduLogHistoryItem] = []
+    // XPポイントカード（Routinページから移動）
+    @State private var totalXP = 0
+    @State private var weeklyXP = 0
+    @State private var weeklyBaseXP = 0  // 今週の今日より前の合計XP（再計算用）
+    @State private var showPointsDetail = false
+    @State private var weeklyDailyStats: [(date: Date, exerciseXP: Int)] = []
+    @State private var isLoadingWeeklyStats = false
 
     private func recomputeWeightLogs() {
         cachedWeightLogs = eduLog.history.filter {
@@ -62,6 +70,12 @@ struct GoalView: View {
         f.dateFormat = "E"
         return f
     }()
+    private static let slashMdSpaceE: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M/d (E)"
+        return f
+    }()
 
     @State private var showPlusViewFromFit = false
     // V25: トレーニング合計を @State にキャッシュ（body 評価ごとの再計算を防止）
@@ -76,6 +90,18 @@ struct GoalView: View {
         cachedTotalTrainingGoalSets = TimeSlot.allCases.reduce(0) { sum, slot in
             sum + (timeSlotManager.settings.goalFor(slot)?.trainingGoal ?? 0)
         }
+    }
+
+    /// 今日・今週のXPを再計算する（Routinページと同じ算出方法: 運動+マインドフルネス+写真ログ）
+    private func recalcXPTotals() {
+        let cal = Calendar.current
+        let mindfulXP = healthKit.todayMindfulnessSamples.reduce(0) { total, s in
+            total + (s.sessionTypeLabel == "Reflect" ? 30 : 10)
+        }
+        let todayPhotoCount = photoLogManager.history.filter { cal.isDateInToday($0.timestamp) }.count
+            + eduLog.history.filter { cal.isDateInToday($0.timestamp) && $0.thumbnailPath != nil }.count
+        totalXP = todayExercises.reduce(0) { $0 + $1.points } + mindfulXP + todayPhotoCount * 10
+        weeklyXP = weeklyBaseXP + totalXP
     }
 
     var body: some View {
@@ -96,6 +122,11 @@ struct GoalView: View {
                             todayActivityWithHistoryCard
                             if plus.isPlus {
                                 progressCard
+                                xpSummaryCard
+                                if showPointsDetail {
+                                    pointsDetailExpandedSection
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
                                 HStack(spacing: 6) {
                                     Image(systemName: "chart.bar.doc.horizontal.fill")
                                         .font(.system(size: 14 * UIScale.font, weight: .bold))
@@ -137,12 +168,15 @@ struct GoalView: View {
                         async let ex   = authManager.getTodayExercises()
                         async let wsc  = authManager.fetchWeeklySetCounts()
                         async let wid  = authManager.fetchWeeklyIntakeData()
-                        let (exercises, ws, setCounts, intakeData, _) =
-                            await (ex, sessions, wsc, wid, s0)
+                        async let wXP  = authManager.getThisWeekXP()
+                        let (exercises, ws, setCounts, intakeData, fetchedWeeklyXP, _) =
+                            await (ex, sessions, wsc, wid, wXP, s0)
                         todayExercises       = exercises
                         todayWorkoutSessions = ws
                         weeklySetCounts      = setCounts
                         weeklyIntakeData     = intakeData
+                        weeklyBaseXP = max(0, fetchedWeeklyXP - exercises.reduce(0) { $0 + $1.points })
+                        recalcXPTotals()
                     }
             }
             .navigationBarHidden(true)
@@ -191,16 +225,23 @@ struct GoalView: View {
                 async let exercises      = authManager.getTodayExercises()
                 async let setCountsData  = authManager.fetchWeeklySetCounts()
                 async let intakeData     = authManager.fetchWeeklyIntakeData()
+                async let wXP            = authManager.getThisWeekXP()
 
-                let (ex, wo, sc, id) = await (exercises, workouts, setCountsData, intakeData)
+                let (ex, wo, sc, id, fetchedWeeklyXP) = await (exercises, workouts, setCountsData, intakeData, wXP)
                 todayExercises        = ex
                 todayWorkoutSessions  = wo
                 weeklySetCounts       = sc
                 weeklyIntakeData      = id
                 rebuildTrainingTotals()
+                weeklyBaseXP = max(0, fetchedWeeklyXP - ex.reduce(0) { $0 + $1.points })
+                recalcXPTotals()
             }
-            .onChange(of: todayExercises.count) { _, _ in rebuildTrainingTotals() }
-            .onChange(of: eduLog.history.count) { _, _ in recomputeWeightLogs() }
+            .onChange(of: todayExercises.count) { _, _ in rebuildTrainingTotals(); recalcXPTotals() }
+            .onChange(of: eduLog.history.count) { _, _ in recomputeWeightLogs(); recalcXPTotals() }
+            .onChange(of: photoLogManager.history.count) { _, _ in recalcXPTotals() }
+            .onChange(of: showPointsDetail) { _, isShown in
+                if isShown { weeklyDailyStats = [] }  // 開くたびに再取得
+            }
             // DailyTimeSlotSettings は Equatable 非準拠のため objectWillChange で監視
             .onReceive(timeSlotManager.objectWillChange) { _ in rebuildTrainingTotals() }
         }
@@ -1460,6 +1501,336 @@ struct GoalView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - XPサマリーカード（Routinページから移動）
+
+    private var xpSummaryCard: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail.toggle() }
+        } label: {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
+
+                    Rectangle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 1, height: 32)
+
+                    xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
+
+                    Rectangle()
+                        .fill(Color(.systemGray5))
+                        .frame(width: 1, height: 32)
+
+                    xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
+                }
+                .padding(.vertical, 14)
+
+                Divider()
+
+                HStack(spacing: 4) {
+                    Text("詳細")
+                        .font(.caption2).fontWeight(.semibold)
+                        .foregroundColor(Color.duoSubtitle)
+                    Image(systemName: showPointsDetail ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+                .padding(.vertical, 6)
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func xpSummaryItem(label: String, xp: Int, color: Color) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 12 * UIScale.font, weight: .bold))
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Text("\(xp)XP")
+                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - ポイント詳細シート（Routinページから移動）
+
+    private var pointsDetailExpandedSection: some View {
+        let cal = Calendar.current
+
+        // 種目別に集計（今日）
+        struct ExerciseSummary: Identifiable {
+            let id = UUID()
+            let name: String; let emoji: String
+            let totalReps: Int; let totalPoints: Int; let count: Int
+        }
+        var summaryMap: [String: (emoji: String, reps: Int, pts: Int, count: Int)] = [:]
+        for ex in todayExercises {
+            let emoji: String = {
+                let lower = ex.exerciseName.lowercased()
+                if lower.contains("push") || lower.contains("プッシュ") || lower.contains("腕立て") { return "💪" }
+                if lower.contains("squat") || lower.contains("スクワット") { return "🏋️" }
+                if lower.contains("sit") || lower.contains("腹筋") { return "🔥" }
+                if lower.contains("lunge") || lower.contains("ランジ") { return "🦵" }
+                if lower.contains("plank") || lower.contains("プランク") { return "🧘" }
+                return "⚡"
+            }()
+            let cur = summaryMap[ex.exerciseName] ?? (emoji, 0, 0, 0)
+            summaryMap[ex.exerciseName] = (emoji, cur.reps + ex.reps, cur.pts + ex.points, cur.count + 1)
+        }
+        let summaries = summaryMap.map { name, v in
+            ExerciseSummary(name: name, emoji: v.emoji, totalReps: v.reps, totalPoints: v.pts, count: v.count)
+        }.sorted { $0.totalPoints > $1.totalPoints }
+
+        let mindfulSamples = healthKit.todayMindfulnessSamples
+
+        // 今日の写真アップロード数（フォトログ + Eduログ）
+        let todayPhotos = photoLogManager.history.filter { cal.isDateInToday($0.timestamp) }.count
+            + eduLog.history.filter { cal.isDateInToday($0.timestamp) && $0.thumbnailPath != nil }.count
+
+        // 週間データに写真XPを合算する helper
+        func photoXP(for date: Date) -> Int {
+            let foodCount = photoLogManager.history.filter { cal.isDate($0.timestamp, inSameDayAs: date) }.count
+            let eduCount  = eduLog.history.filter {
+                cal.isDate($0.timestamp, inSameDayAs: date) && $0.thumbnailPath != nil
+            }.count
+            return (foodCount + eduCount) * 10
+        }
+
+        // 日付フォーマッター（body 評価毎の生成を避けるため static を参照）
+        let dayFmt = Self.slashMdSpaceE
+
+        return VStack(spacing: 10) {
+
+                    // ── ヘッダー（タイトル・閉じる）──
+                    HStack {
+                        Text("⭐ ポイント詳細")
+                            .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail = false }
+                        } label: {
+                            Text("閉じる")
+                                .font(.subheadline).fontWeight(.bold)
+                                .foregroundColor(Color.duoGreen)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+
+                    // ── 1週間ポイント内訳（日付別）──
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("📅 1週間のポイント内訳")
+                            .font(.caption).fontWeight(.bold)
+                            .foregroundColor(Color.duoSubtitle)
+                            .padding(.horizontal, 4)
+
+                        if isLoadingWeeklyStats {
+                            HStack { Spacer(); ProgressView().tint(Color.duoGreen); Spacer() }
+                                .padding(.vertical, 24)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(16)
+                        } else {
+                            VStack(spacing: 0) {
+                                // ヘッダー行
+                                HStack(spacing: 0) {
+                                    Text("日付")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("運動")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 48, alignment: .trailing)
+                                    Text("写真")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 48, alignment: .trailing)
+                                    Text("合計")
+                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
+                                        .foregroundColor(Color.duoSubtitle)
+                                        .frame(width: 56, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color(.systemGroupedBackground))
+
+                                // 7日分の行
+                                let days7: [Date] = (0..<7).compactMap {
+                                    cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: Date()))
+                                }
+                                ForEach(Array(days7.enumerated()), id: \.offset) { idx, date in
+                                    let isToday = cal.isDateInToday(date)
+                                    let exXP = weeklyDailyStats.first(where: {
+                                        cal.isDate($0.date, inSameDayAs: date)
+                                    })?.exerciseXP ?? (isToday ? summaries.reduce(0) { $0 + $1.totalPoints } : 0)
+                                    let pXP = photoXP(for: date)
+                                    let dayTotal = exXP + pXP
+                                    HStack(spacing: 0) {
+                                        HStack(spacing: 6) {
+                                            Text(dayFmt.string(from: date))
+                                                .font(.system(size: 13 * UIScale.font, weight: isToday ? .bold : .regular))
+                                                .foregroundColor(isToday ? Color.duoGreen : Color.duoDark)
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.7)
+                                            if isToday {
+                                                Text("今日")
+                                                    .font(.system(size: 9 * UIScale.font, weight: .bold))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                                    .background(Color.duoGreen)
+                                                    .clipShape(Capsule())
+                                                    .fixedSize()
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                        Text(exXP > 0 ? "+\(exXP)" : "—")
+                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                            .foregroundColor(exXP > 0 ? Color.duoGreen : Color.duoSubtitle)
+                                            .frame(width: 48, alignment: .trailing)
+
+                                        Text(pXP > 0 ? "+\(pXP)" : "—")
+                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                                            .foregroundColor(pXP > 0 ? Color.duoBlue : Color.duoSubtitle)
+                                            .frame(width: 48, alignment: .trailing)
+
+                                        Text(dayTotal > 0 ? "\(dayTotal) XP" : "—")
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(dayTotal > 0 ? Color.duoGold : Color.duoSubtitle)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.6)
+                                            .frame(width: 60, alignment: .trailing)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(isToday ? Color.duoGreen.opacity(0.04) : Color(.systemBackground))
+
+                                    if idx < days7.count - 1 { Divider().padding(.leading, 16) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+                        }
+                    }
+
+                    // ── 今日のトレーニング内訳 ──
+                    if !summaries.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("💪 今日のトレーニング内訳")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.horizontal, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
+                                    HStack(spacing: 10) {
+                                        Text(s.emoji)
+                                            .font(.subheadline)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color.duoGreen.opacity(0.1))
+                                            .clipShape(Circle())
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(s.name)
+                                                .font(.caption).fontWeight(.semibold)
+                                                .foregroundColor(Color.duoDark)
+                                            Text("\(s.count)セット · \(s.totalReps) rep")
+                                                .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                        }
+                                        Spacer()
+                                        Text("+\(s.totalPoints) XP")
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(Color.duoGold)
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
+                                            .background(Color.duoYellow.opacity(0.2))
+                                            .cornerRadius(8)
+                                    }
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    if idx < summaries.count - 1 { Divider().padding(.leading, 50) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                    }
+
+                    // ── 今日のマインドフルネス内訳 ──
+                    if !mindfulSamples.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("🧘 今日のマインドフルネス内訳")
+                                .font(.caption).fontWeight(.bold)
+                                .foregroundColor(Color.duoSubtitle)
+                                .padding(.horizontal, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
+                                    let isReflect = s.sessionTypeLabel == "Reflect"
+                                    let xp = isReflect ? 30 : 10
+                                    HStack(spacing: 10) {
+                                        Text(s.sessionEmoji)
+                                            .font(.subheadline)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color.duoPurple.opacity(0.1))
+                                            .clipShape(Circle())
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(isReflect ? "3分ストレッチ" : "1分瞑想")
+                                                .font(.caption).fontWeight(.semibold)
+                                                .foregroundColor(Color.duoDark)
+                                            HStack(spacing: 6) {
+                                                Text(String(format: "%.0f分", s.durationMinutes))
+                                                    .font(.caption2).foregroundColor(Color.duoPurple)
+                                                if s.averageHeartRate > 0 {
+                                                    Text("❤️ \(Int(s.averageHeartRate))")
+                                                        .font(.caption2).foregroundColor(Color.duoSubtitle)
+                                                }
+                                            }
+                                        }
+                                        Spacer()
+                                        Text("+\(xp) XP")
+                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                                            .foregroundColor(Color(hex: "#FDCB6E"))
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
+                                            .background(Color(hex: "#FDCB6E").opacity(0.15))
+                                            .cornerRadius(8)
+                                    }
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    if idx < mindfulSamples.count - 1 { Divider().padding(.leading, 50) }
+                                }
+                            }
+                            .background(Color(.systemBackground))
+                            .cornerRadius(14)
+                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+                        }
+                    }
+
+                    if summaries.isEmpty && mindfulSamples.isEmpty && todayPhotos == 0 {
+                        VStack(spacing: 8) {
+                            Text("💪").font(.system(size: 36 * UIScale.font))
+                            Text("今日はまだアクティビティを記録していません")
+                                .font(.subheadline).foregroundColor(Color.duoSubtitle)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity).padding(20)
+                    }
+                }
+                .padding(12)
+                .background(Color(.systemGroupedBackground))
+                .cornerRadius(20)
+                .task {
+                    guard weeklyDailyStats.isEmpty else { return }
+                    isLoadingWeeklyStats = true
+                    weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
+                    isLoadingWeeklyStats = false
+                }
     }
 
     // MARK: - 週間消費カロリーカード

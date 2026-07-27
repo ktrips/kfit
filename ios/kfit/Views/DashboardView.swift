@@ -551,9 +551,6 @@ struct DashboardView: View {
     @State private var hasLoadedOnce = false  // 1度だけロード実行するフラグ
     @State private var expandedSetId: String? = nil  // 展開中のセットID
     @State private var showCalorieGoalEdit = false  // カロリー目標編集モーダル
-    @State private var showPointsDetail   = false  // ポイント詳細シート
-    @State private var weeklyDailyStats: [(date: Date, exerciseXP: Int)] = []
-    @State private var isLoadingWeeklyStats = false
     @State private var tempCalorieTarget = 500  // 一時的なカロリー目標
     @State private var showMenu = false  // ハンバーガーメニューの表示状態
     @State private var showHealthGoalEdit = false  // 健康目標編集モーダル
@@ -716,17 +713,12 @@ struct DashboardView: View {
                                 tripleRingCard
                             }
                             if plus.isPlus {
-                                xpSummaryCard
-                                if showPointsDetail {
-                                    pointsDetailExpandedSection
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
-                                }
                                 achievementCalendarSection
                             } else {
                                 PlusLockedSection(
                                     features: healthKit.isAvailable && healthKit.isAuthorized
-                                        ? ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放", "XPポイント詳細", "週間・月間の到達度カレンダー"]
-                                        : ["XPポイント詳細", "週間・月間の到達度カレンダー"],
+                                        ? ["FIT・FOOD・MIND 統合レポート", "カロリー収支レポート", "Kindle書籍がWebで全文開放", "週間・月間の到達度カレンダー"]
+                                        : ["週間・月間の到達度カレンダー"],
                                     onUpgrade: { showPlusViewFromDashboard = true }
                                 )
                             }
@@ -779,11 +771,6 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showHabits) { NavigationView { HabitStackView() } }
             .sheet(isPresented: $showMandalaDetail) { NavigationView { TimeSlotGoalsView() } }
-            .onChange(of: showPointsDetail) { isShown in
-                if isShown {
-                    weeklyDailyStats = []  // 開くたびに再取得
-                }
-            }
             .sheet(isPresented: $showPlusViewFromDashboard) { PlusView() }
             .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
             .sheet(item: $recordDetailItem) { item in
@@ -1505,65 +1492,6 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-
-    // MARK: - XPサマリーカード
-    private var xpSummaryCard: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail.toggle() }
-        } label: {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
-
-                    Rectangle()
-                        .fill(Color(.systemGray5))
-                        .frame(width: 1, height: 32)
-
-                    xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
-
-                    Rectangle()
-                        .fill(Color(.systemGray5))
-                        .frame(width: 1, height: 32)
-
-                    xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
-                }
-                .padding(.vertical, 14)
-
-                Divider()
-
-                HStack(spacing: 4) {
-                    Text("詳細")
-                        .font(.caption2).fontWeight(.semibold)
-                        .foregroundColor(Color.duoSubtitle)
-                    Image(systemName: showPointsDetail ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.vertical, 6)
-            }
-            .background(Color(.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func xpSummaryItem(label: String, xp: Int, color: Color) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 12 * UIScale.font, weight: .bold))
-                    .foregroundColor(color)
-                Text(label)
-                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-            }
-            Text("\(xp)XP")
-                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
-                .foregroundColor(color)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 今日の状況カード ヘルパー（スタックオーバーフロー防止のため分離）
@@ -3129,97 +3057,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - ポイントカード
-    private var pointsCard: some View {
-        Button { showPointsDetail = true } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                // ヘッダー
-                HStack(spacing: 5) {
-                    Image(systemName: "star.fill")
-                        .foregroundColor(Color.duoGold)
-                    Text("ポイント")
-                        .fontWeight(.black)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .font(.caption)
-                .foregroundColor(Color.duoDark)
-
-                // ポイント表示（横一線に並べる）
-                HStack(spacing: 0) {
-                    // 今日のポイント
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("今日")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 2) {
-                            Text("\(totalXP)")
-                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoGreen)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                            Text("XP")
-                                .font(.system(size: 8 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Divider().frame(height: 28)
-
-                    // 今週のポイント（月〜日）
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("今週")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 2) {
-                            Text("\(weeklyXP)")
-                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoBlue)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                            Text("XP")
-                                .font(.system(size: 8 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 10)
-
-                    Divider().frame(height: 28)
-
-                    // 総ポイント
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("総ポイント")
-                            .font(.caption2)
-                            .foregroundColor(Color.duoSubtitle)
-                        HStack(alignment: .bottom, spacing: 2) {
-                            Text("\(authManager.userProfile?.totalPoints ?? 0)")
-                                .font(.system(size: 22 * UIScale.font, weight: .black, design: .rounded))
-                                .foregroundColor(Color.duoOrange)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                            Text("XP")
-                                .font(.system(size: 8 * UIScale.font, weight: .bold))
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.bottom, 3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 10)
-                }
-            }
-            .padding(12)
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-        }
-        .buttonStyle(.plain)
-    }
 
     // MARK: - コンパクトヘルスアイテム（半分幅）
     @ViewBuilder
@@ -4141,275 +3978,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - ポイント詳細シート
-    private var pointsDetailExpandedSection: some View {
-        let cal = Calendar.current
-
-        // 種目別に集計（今日）
-        struct ExerciseSummary: Identifiable {
-            let id = UUID()
-            let name: String; let emoji: String
-            let totalReps: Int; let totalPoints: Int; let count: Int
-        }
-        var summaryMap: [String: (emoji: String, reps: Int, pts: Int, count: Int)] = [:]
-        for ex in todayExercises {
-            let emoji: String = {
-                let lower = ex.exerciseName.lowercased()
-                if lower.contains("push") || lower.contains("プッシュ") || lower.contains("腕立て") { return "💪" }
-                if lower.contains("squat") || lower.contains("スクワット") { return "🏋️" }
-                if lower.contains("sit") || lower.contains("腹筋") { return "🔥" }
-                if lower.contains("lunge") || lower.contains("ランジ") { return "🦵" }
-                if lower.contains("plank") || lower.contains("プランク") { return "🧘" }
-                return "⚡"
-            }()
-            let cur = summaryMap[ex.exerciseName] ?? (emoji, 0, 0, 0)
-            summaryMap[ex.exerciseName] = (emoji, cur.reps + ex.reps, cur.pts + ex.points, cur.count + 1)
-        }
-        let summaries = summaryMap.map { name, v in
-            ExerciseSummary(name: name, emoji: v.emoji, totalReps: v.reps, totalPoints: v.pts, count: v.count)
-        }.sorted { $0.totalPoints > $1.totalPoints }
-
-        let mindfulSamples = healthKit.todayMindfulnessSamples
-
-        // 今日の写真アップロード数（フォトログ + Eduログ）
-        let todayPhotos = photoLogManager.history.filter { cal.isDateInToday($0.timestamp) }.count
-            + EduLogManager.shared.history.filter { cal.isDateInToday($0.timestamp) && $0.thumbnailPath != nil }.count
-
-        // 週間データに写真XPを合算する helper
-        func photoXP(for date: Date) -> Int {
-            let foodCount = photoLogManager.history.filter { cal.isDate($0.timestamp, inSameDayAs: date) }.count
-            let eduCount  = EduLogManager.shared.history.filter {
-                cal.isDate($0.timestamp, inSameDayAs: date) && $0.thumbnailPath != nil
-            }.count
-            return (foodCount + eduCount) * 10
-        }
-
-        // 日付フォーマッター（body 評価毎の生成を避けるため static を参照）
-        let dayFmt = Self.slashMdSpaceE
-
-        return VStack(spacing: 10) {
-
-                    // ── ヘッダー（タイトル・閉じる）──
-                    HStack {
-                        Text("⭐ ポイント詳細")
-                            .font(.headline).fontWeight(.black).foregroundColor(Color.duoDark)
-                        Spacer()
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { showPointsDetail = false }
-                        } label: {
-                            Text("閉じる")
-                                .font(.subheadline).fontWeight(.bold)
-                                .foregroundColor(Color.duoGreen)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-
-                    // ── 1週間ポイント内訳（日付別）──
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("📅 1週間のポイント内訳")
-                            .font(.caption).fontWeight(.bold)
-                            .foregroundColor(Color.duoSubtitle)
-                            .padding(.horizontal, 4)
-
-                        if isLoadingWeeklyStats {
-                            HStack { Spacer(); ProgressView().tint(Color.duoGreen); Spacer() }
-                                .padding(.vertical, 24)
-                                .background(Color(.systemBackground))
-                                .cornerRadius(16)
-                        } else {
-                            VStack(spacing: 0) {
-                                // ヘッダー行
-                                HStack(spacing: 0) {
-                                    Text("日付")
-                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                        .foregroundColor(Color.duoSubtitle)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    Text("運動")
-                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                        .foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 48, alignment: .trailing)
-                                    Text("写真")
-                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                        .foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 48, alignment: .trailing)
-                                    Text("合計")
-                                        .font(.system(size: 10 * UIScale.font, weight: .bold))
-                                        .foregroundColor(Color.duoSubtitle)
-                                        .frame(width: 56, alignment: .trailing)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color(.systemGroupedBackground))
-
-                                // 7日分の行
-                                let days7: [Date] = (0..<7).compactMap {
-                                    cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: Date()))
-                                }
-                                ForEach(Array(days7.enumerated()), id: \.offset) { idx, date in
-                                    let isToday = cal.isDateInToday(date)
-                                    let exXP = weeklyDailyStats.first(where: {
-                                        cal.isDate($0.date, inSameDayAs: date)
-                                    })?.exerciseXP ?? (isToday ? summaries.reduce(0) { $0 + $1.totalPoints } : 0)
-                                    let pXP = photoXP(for: date)
-                                    let dayTotal = exXP + pXP
-                                    HStack(spacing: 0) {
-                                        HStack(spacing: 6) {
-                                            Text(dayFmt.string(from: date))
-                                                .font(.system(size: 13 * UIScale.font, weight: isToday ? .bold : .regular))
-                                                .foregroundColor(isToday ? Color.duoGreen : Color.duoDark)
-                                                .lineLimit(1)
-                                                .minimumScaleFactor(0.7)
-                                            if isToday {
-                                                Text("今日")
-                                                    .font(.system(size: 9 * UIScale.font, weight: .bold))
-                                                    .foregroundColor(.white)
-                                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                                    .background(Color.duoGreen)
-                                                    .clipShape(Capsule())
-                                                    .fixedSize()
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                                        Text(exXP > 0 ? "+\(exXP)" : "—")
-                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(exXP > 0 ? Color.duoGreen : Color.duoSubtitle)
-                                            .frame(width: 48, alignment: .trailing)
-
-                                        Text(pXP > 0 ? "+\(pXP)" : "—")
-                                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                                            .foregroundColor(pXP > 0 ? Color.duoBlue : Color.duoSubtitle)
-                                            .frame(width: 48, alignment: .trailing)
-
-                                        Text(dayTotal > 0 ? "\(dayTotal) XP" : "—")
-                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                            .foregroundColor(dayTotal > 0 ? Color.duoGold : Color.duoSubtitle)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.6)
-                                            .frame(width: 60, alignment: .trailing)
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(isToday ? Color.duoGreen.opacity(0.04) : Color(.systemBackground))
-
-                                    if idx < days7.count - 1 { Divider().padding(.leading, 16) }
-                                }
-                            }
-                            .background(Color(.systemBackground))
-                            .cornerRadius(16)
-                            .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
-                        }
-                    }
-
-                    // ── 今日のトレーニング内訳 ──
-                    if !summaries.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("💪 今日のトレーニング内訳")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.horizontal, 4)
-                            VStack(spacing: 0) {
-                                ForEach(Array(summaries.enumerated()), id: \.element.id) { idx, s in
-                                    HStack(spacing: 10) {
-                                        Text(s.emoji)
-                                            .font(.subheadline)
-                                            .frame(width: 28, height: 28)
-                                            .background(Color.duoGreen.opacity(0.1))
-                                            .clipShape(Circle())
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(s.name)
-                                                .font(.caption).fontWeight(.semibold)
-                                                .foregroundColor(Color.duoDark)
-                                            Text("\(s.count)セット · \(s.totalReps) rep")
-                                                .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                        }
-                                        Spacer()
-                                        Text("+\(s.totalPoints) XP")
-                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                            .foregroundColor(Color.duoGold)
-                                            .padding(.horizontal, 8).padding(.vertical, 3)
-                                            .background(Color.duoYellow.opacity(0.2))
-                                            .cornerRadius(8)
-                                    }
-                                    .padding(.horizontal, 12).padding(.vertical, 6)
-                                    if idx < summaries.count - 1 { Divider().padding(.leading, 50) }
-                                }
-                            }
-                            .background(Color(.systemBackground))
-                            .cornerRadius(14)
-                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-                        }
-                    }
-
-                    // ── 今日のマインドフルネス内訳 ──
-                    if !mindfulSamples.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("🧘 今日のマインドフルネス内訳")
-                                .font(.caption).fontWeight(.bold)
-                                .foregroundColor(Color.duoSubtitle)
-                                .padding(.horizontal, 4)
-                            VStack(spacing: 0) {
-                                ForEach(Array(mindfulSamples.enumerated()), id: \.element.id) { idx, s in
-                                    let isReflect = s.sessionTypeLabel == "Reflect"
-                                    let xp = isReflect ? 30 : 10
-                                    HStack(spacing: 10) {
-                                        Text(s.sessionEmoji)
-                                            .font(.subheadline)
-                                            .frame(width: 28, height: 28)
-                                            .background(Color.duoPurple.opacity(0.1))
-                                            .clipShape(Circle())
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(isReflect ? "3分ストレッチ" : "1分瞑想")
-                                                .font(.caption).fontWeight(.semibold)
-                                                .foregroundColor(Color.duoDark)
-                                            HStack(spacing: 6) {
-                                                Text(String(format: "%.0f分", s.durationMinutes))
-                                                    .font(.caption2).foregroundColor(Color.duoPurple)
-                                                if s.averageHeartRate > 0 {
-                                                    Text("❤️ \(Int(s.averageHeartRate))")
-                                                        .font(.caption2).foregroundColor(Color.duoSubtitle)
-                                                }
-                                            }
-                                        }
-                                        Spacer()
-                                        Text("+\(xp) XP")
-                                            .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                                            .foregroundColor(Color(hex: "#FDCB6E"))
-                                            .padding(.horizontal, 8).padding(.vertical, 3)
-                                            .background(Color(hex: "#FDCB6E").opacity(0.15))
-                                            .cornerRadius(8)
-                                    }
-                                    .padding(.horizontal, 12).padding(.vertical, 6)
-                                    if idx < mindfulSamples.count - 1 { Divider().padding(.leading, 50) }
-                                }
-                            }
-                            .background(Color(.systemBackground))
-                            .cornerRadius(14)
-                            .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
-                        }
-                    }
-
-                    if summaries.isEmpty && mindfulSamples.isEmpty && todayPhotos == 0 {
-                        VStack(spacing: 8) {
-                            Text("💪").font(.system(size: 36 * UIScale.font))
-                            Text("今日はまだアクティビティを記録していません")
-                                .font(.subheadline).foregroundColor(Color.duoSubtitle)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity).padding(20)
-                    }
-                }
-                .padding(12)
-                .background(Color(.systemGroupedBackground))
-                .cornerRadius(20)
-                .task {
-                    guard weeklyDailyStats.isEmpty else { return }
-                    isLoadingWeeklyStats = true
-                    weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
-                    isLoadingWeeklyStats = false
-                }
-    }
-
     // MARK: - 週次・月次 到達度カレンダー
 
     /// 表示中の週（月〜日）の日付一覧。前週・翌週ナビゲーションで achievementWeekAnchor が変わる。
@@ -4513,14 +4081,6 @@ struct DashboardView: View {
         currentWeekDates.reduce(0) { $0 + (achievementXP(for: $1, from: weeklyAchievementPercents) ?? 0) }
     }
 
-    /// 表示中の月（currentMonthGridDates）のXP合計。日次データが集約済みの過去月（isArchivedAchievementMonth）は
-    /// 個別XPが残っていないため 0（呼び出し側で非表示にする）。
-    private var visibleMonthXPTotal: Int {
-        guard !isArchivedAchievementMonth else { return 0 }
-        return currentMonthGridDates.compactMap { $0 }
-            .reduce(0) { $0 + (achievementXP(for: $1, from: monthlyAchievementPercents) ?? 0) }
-    }
-
     private func changeAchievementWeek(by weeks: Int) {
         guard let newAnchor = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: achievementWeekAnchor) else { return }
         achievementWeekAnchor = min(newAnchor, Date())
@@ -4564,6 +4124,7 @@ struct DashboardView: View {
                      ? "📅 今週の到達度"
                      : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
                     .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
+                Spacer()
                 HStack(spacing: 2) {
                     Image(systemName: "star.fill")
                         .font(.system(size: 9, weight: .bold))
@@ -4572,7 +4133,6 @@ struct DashboardView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color.duoOrange)
                 }
-                Spacer()
                 Button { changeAchievementWeek(by: -1) } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
                 }
@@ -4622,17 +4182,15 @@ struct DashboardView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    if showMonthlyAchievement && !isArchivedAchievementMonth {
-                        HStack(spacing: 2) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(Color.duoOrange)
-                            Text("\(visibleMonthXPTotal)XP")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color.duoOrange)
-                        }
-                    }
                     Spacer()
+                    HStack(spacing: 2) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(Color.duoOrange)
+                        Text("\(authManager.userProfile?.totalPoints ?? 0)XP")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color.duoOrange)
+                    }
                     if showMonthlyAchievement {
                         Button { changeAchievementMonth(by: -1) } label: {
                             Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)

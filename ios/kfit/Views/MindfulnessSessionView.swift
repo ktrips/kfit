@@ -19,10 +19,10 @@ struct StretchSessionVideo: Identifiable {
         self.description = description
     }
 
+    // 「キャットとドッグ」「太陽礼拝」は該当GIF素材(fitingo_st_cat/fitingo_st_sun)が
+    // 存在せず空白表示になっていたため削除。素材を用意でき次第、復活させること。
     static let defaultStretchVideos: [StretchSessionVideo] = [
         StretchSessionVideo(name: "仰向けツイスト", gifName: "fitingo_st_twist", emoji: "🔄", description: "膝を倒して背骨をゆっくりねじる"),
-        StretchSessionVideo(name: "キャットとドッグ", gifName: "fitingo_st_cat", emoji: "🐱", description: "背中を丸め、反らして繰り返す"),
-        StretchSessionVideo(name: "太陽礼拝", gifName: "fitingo_st_sun", emoji: "☀️", description: "全身を使う流れるような動き"),
     ]
 }
 struct MindfulnessSessionView: View {

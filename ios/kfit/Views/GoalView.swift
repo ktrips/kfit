@@ -1769,22 +1769,10 @@ private struct GoalWeeklyCalorieCard: View {
     var dailyGoal: Int = -150
 
     private let halfBarH: CGFloat = 42
-    private var weeklyGoal: Int { dailyGoal * 7 }
-
-    private func statusBadge(weekTotal: Int) -> (label: String, color: Color) {
-        let today = Calendar.current.startOfDay(for: Date())
-        let daysElapsed = max(1, data.filter { Calendar.current.startOfDay(for: $0.date) <= today }.count)
-        let expected = daysElapsed * dailyGoal
-        if weekTotal <= weeklyGoal       { return ("🎉 達成！", Color.duoGreen) }
-        if weekTotal <= expected         { return ("👍 順調", Color(hex: "#1CB0F6")) }
-        if weekTotal < expected / 2      { return ("⚠️ 注意", Color(hex: "#FF9600")) }
-        return ("🚨 要注意", Color(hex: "#FF4B4B"))
-    }
 
     var body: some View {
         let weekTotal = data.reduce(0) { $0 + $1.balance }
         let maxAbs = max(data.map { abs($0.balance) }.max() ?? 0, 300)
-        let badge = statusBadge(weekTotal: weekTotal)
 
         let todayStart = Calendar.current.startOfDay(for: Date())
         let daysElapsed = max(1, data.filter { Calendar.current.startOfDay(for: $0.date) <= todayStart }.count)
@@ -1808,17 +1796,9 @@ private struct GoalWeeklyCalorieCard: View {
                 HStack(spacing: 6) {
                     Text("⚖️")
                         .font(.system(size: 17 * UIScale.font))
-                    HStack(spacing: 5) {
-                        Text("カロリー収支")
-                            .font(.system(size: 14 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                        Text(badge.label)
-                            .font(.system(size: 10 * UIScale.font, weight: .black))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(badge.color)
-                            .cornerRadius(6)
-                    }
+                    Text("カロリー収支")
+                        .font(.system(size: 14 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
                     Spacer()
                     HStack(alignment: .lastTextBaseline, spacing: 3) {
                         Text("平均 " + (dailyAvg >= 0 ? "+" : "") + "\(dailyAvg)")
@@ -1915,22 +1895,10 @@ private struct GoalWeeklyCalorieCard: View {
                         }
                     }
 
-                    // ─── グラフ下3指標 ───
+                    // ─── グラフ下2指標 ───
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("目標差異")
-                                .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                            HStack(alignment: .lastTextBaseline, spacing: 2) {
-                                Text((dailyGoal >= 0 ? "+" : "") + "\(dailyGoal)")
-                                    .font(.system(size: 14 * UIScale.font, weight: .black, design: .rounded))
-                                    .foregroundColor(dailyGoal <= 0 ? Color.duoGreen : Color(hex: "#FF4B4B"))
-                                Text("kcal/日")
-                                    .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
-                            }
-                        }
-                        Spacer()
-                        VStack(alignment: .center, spacing: 2) {
-                            Text("目標減少")
+                            Text("このペースでいくと")
                                 .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             HStack(alignment: .lastTextBaseline, spacing: 2) {
                                 Text(String(format: "%.2f", targetWeeklyKg))
@@ -1942,7 +1910,7 @@ private struct GoalWeeklyCalorieCard: View {
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text("実")
+                            Text("実際1週間で")
                                 .font(.system(size: 10 * UIScale.font)).foregroundColor(Color.duoSubtitle)
                             if let ch = actualChange {
                                 HStack(alignment: .lastTextBaseline, spacing: 2) {

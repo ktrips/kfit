@@ -14,6 +14,9 @@
 #
 # 実行後は必ず:
 #   xcodegen generate
+#   pod install     ← xcodegen generate は .xcodeproj を丸ごと再生成し、
+#                      CocoaPodsの統合（Pods xcconfig・Embed Frameworks）が
+#                      消えてしまうため必ずセットで実行すること
 #   open kfit.xcworkspace
 # を行ってからアーカイブすること。
 
@@ -60,4 +63,4 @@ done
 echo ""
 echo "✅ project.yml / Info.plist を更新しました"
 echo "次のコマンドでXcodeプロジェクトへ反映してください:"
-echo "   cd ios && xcodegen generate && open kfit.xcworkspace"
+echo "   cd ios && xcodegen generate && pod install && open kfit.xcworkspace"

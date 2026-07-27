@@ -57,11 +57,22 @@ A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Wat
 
 ### 1. Install Dependencies
 
+This project uses XcodeGen (`project.yml` → `kfit.xcodeproj`) together with CocoaPods.
+**`xcodegen generate` fully overwrites `kfit.xcodeproj`, which wipes out any existing
+CocoaPods integration** (Pods `.xcconfig` links, Embed Frameworks build phase). Always
+run `xcodegen generate` first, then `pod install` — never the other way around, and
+always re-run `pod install` after any `xcodegen generate`.
+
 ```bash
 cd ios
+xcodegen generate
 pod install
 open kfit.xcworkspace
 ```
+
+If Xcode reports `Unable to resolve module dependency: 'GoogleMobileAds'` (or any other
+pod-provided module), it almost always means `pod install` was skipped or is stale after
+a `xcodegen generate` — just re-run `pod install`.
 
 ### 2. Configure Firebase
 

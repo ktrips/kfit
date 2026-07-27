@@ -6,6 +6,9 @@ Markdownドキュメントを画像付きWord(.docx)ファイルに変換する�
 - 各見出しにブックマークを付与
 - 目次の各エントリーをそのブックマークへのハイパーリンクとして生成
 
+事前準備:
+  pip install -r requirements.txt
+
 使い方:
   python3 convert_to_docx.py              # Kindle電子書籍 (A5)
   python3 convert_to_docx.py --paperback  # KDPペーパーバック (210x257mm)
@@ -16,10 +19,6 @@ import os
 import re
 import io
 import unicodedata
-
-# .pip_pkgs はシステムに python-docx / lxml が無い場合のフォールバック。
-# insert(0) だと .pip_pkgs 内の古い lxml がシステムの正常版を隠すため append にする。
-sys.path.append(os.path.join(os.path.dirname(__file__), '.pip_pkgs'))
 
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Cm

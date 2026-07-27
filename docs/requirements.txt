@@ -1,0 +1,7 @@
+python-docx==1.2.0
+lxml==6.1.1
+numpy==2.0.2
+docx2pdf==0.1.8
+tqdm==4.68.1
+typing_extensions==4.15.0
+appscript==1.4.0; sys_platform == "darwin"

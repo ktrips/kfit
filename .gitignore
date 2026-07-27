@@ -57,3 +57,8 @@ kedu/build/
 kmind/build/
 Packages/*/build/
 __pycache__/
+
+# docs - local Python package cache (use docs/requirements.txt instead)
+docs/.pip_pkgs/
+docs/venv/
+docs/.venv/

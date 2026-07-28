@@ -6896,20 +6896,16 @@ private struct MandalaSpiralCard: View {
                 .padding(.trailing, 8)
             }
             .sheet(isPresented: $showWeightOptions) {
-                WeightRecordOptionsSheet(
-                    onWithings: {
-                        showWeightOptions = false
-                        openWithings()
-                    },
+                Diet90sWeightSheet(
                     onPhoto: {
-                        showWeightOptions = false
                         // 前のシートが閉じてから提示し、ブランク画面（提示競合）を回避
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             showWeightPhotoLog = true
                         }
                     }
                 )
-                .presentationDetents([.height(260)])
+                .environmentObject(HealthKitManager.shared)
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showWeightPhotoLog) {
@@ -6936,19 +6932,6 @@ private struct MandalaSpiralCard: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-    }
-
-    /// Withingsアプリを開く（複数スキームを試してApp Storeへフォールバック）
-    private func openWithings() {
-        let withingsSchemes = ["wiscale2://", "healthmate://", "withings://"]
-        let withingsAppStore = URL(string: "https://apps.apple.com/app/id542701020")!
-        if let scheme = withingsSchemes
-            .compactMap({ URL(string: $0) })
-            .first(where: { UIApplication.shared.canOpenURL($0) }) {
-            UIApplication.shared.open(scheme)
-        } else {
-            UIApplication.shared.open(withingsAppStore)
-        }
     }
 
     private var chart: some View {
@@ -7745,73 +7728,6 @@ struct EduPhotoLogSheet: View {
                     selectedImage = image
                 }
             }
-        }
-    }
-}
-
-// MARK: - 体重計測の記録方法選択シート
-
-private struct WeightRecordOptionsSheet: View {
-    let onWithings: () -> Void
-    let onPhoto: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 6) {
-                Text("⚖️").font(.system(size: 44 * UIScale.font))
-                Text("体重を記録")
-                    .font(.title3).fontWeight(.black)
-                    .foregroundColor(Color.duoDark)
-                Text("完了は Apple Health にその日の体重が記録されると自動で判定されます")
-                    .font(.system(size: 11 * UIScale.font))
-                    .foregroundColor(Color.duoSubtitle)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .padding(.top, 24)
-            .padding(.bottom, 14)
-
-            Divider()
-
-            VStack(spacing: 10) {
-                Button {
-                    onWithings()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "scalemass.fill")
-                            .font(.title3)
-                        Text("Withingsを開く")
-                            .font(.headline).fontWeight(.black)
-                        Spacer()
-                    }
-                    .foregroundColor(Color(hex: "#00A6A6"))
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-                    .background(Color(hex: "#00A6A6").opacity(0.1))
-                    .cornerRadius(14)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    onPhoto()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "camera.fill")
-                            .font(.title3)
-                        Text("写真で記録する")
-                            .font(.headline).fontWeight(.black)
-                        Spacer()
-                    }
-                    .foregroundColor(Color(hex: "#1CB0F6"))
-                    .padding(.horizontal, 20).padding(.vertical, 14)
-                    .background(Color(hex: "#1CB0F6").opacity(0.1))
-                    .cornerRadius(14)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-
-            Spacer()
         }
     }
 }

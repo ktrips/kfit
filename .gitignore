@@ -50,6 +50,11 @@ ios/*.xcworkspace/
 ios/*.xcuserstate
 ios/xcuserdata/
 
+# Xcode - per-developer IDE state (kedu/kmind/.swiftpm packages etc.)
+# Tracking these causes "modified" noise on every open regardless of real changes.
+**/xcuserdata/
+*.xcuserstate
+
 # iOS - Build artifacts
 ios/build/
 ios/DerivedData/

@@ -96,7 +96,6 @@ struct FoodView: View {
     @State private var showDetailLog       = false
     @State private var showPhotoCarousel   = false  // 今日の食事タップ→食事スライド
     @State private var mealSlideFilter: String? = nil  // nil=全件, "朝食"/"ランチ"/"スナック"/"夕食"
-    @State private var showDrinkRows       = false  // 飲料クイックボタン行の展開
     @State private var showIntakeConfirm = false
     @State private var pendingIntakeAction: (() -> Void)?
     @State private var confirmMessage    = ""
@@ -140,8 +139,8 @@ struct FoodView: View {
                     // 食事記録カード（フォトログ＋クイックログ＋詳細ログ）
                     mealRecordCard
 
-                    // FOODフィード（お気に入りのみ）
-                    if !photoLogManager.history.filter({ $0.isFavorite }).isEmpty {
+                    // FOODフィード（Plus限定・お気に入りのみ）
+                    if plus.isPlus && !photoLogManager.history.filter({ $0.isFavorite }).isEmpty {
                         photoFeedSection
                     }
 
@@ -761,93 +760,67 @@ struct FoodView: View {
                     }
                 }
 
-                // ── 飲料ログ展開ボタン ──────────────────────────────────────
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showDrinkRows.toggle() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: showDrinkRows ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10 * UIScale.font, weight: .bold))
-                            .foregroundColor(Color.duoBlue)
-                        Text(showDrinkRows ? "飲料ログを隠す" : "飲料ログを追加")
-                            .font(.system(size: 12 * UIScale.font, weight: .semibold))
-                            .foregroundColor(Color.duoBlue)
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Text("💧☕🥤🍺")
-                                .font(.system(size: 12))
+                // 行2b: 水・コーヒー・フルーツジュース
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "💧", label: "水", color: Color.duoBlue) {
+                        confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
+                            Task {
+                                await authManager.recordWater()
+                                await updateSlotForDrink(ml: intakeGoals.waterPerCup)
+                                await loadData()
+                            }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.duoBlue.opacity(0.07))
-                    .cornerRadius(10)
+                    quickBtn(emoji: "☕", label: "コーヒー", color: Color(hex: "#8B5E3C")) {
+                        confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
+                            Task {
+                                await authManager.recordCoffee()
+                                await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
+                                await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
+                                await loadData()
+                            }
+                        }
+                    }
+                    quickBtn(emoji: "🍊", label: "フルーツジュース", color: Color(hex: "#FF9600")) {
+                        confirm("フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？") {
+                            Task {
+                                await authManager.recordFruitJuice()
+                                await updateSlotForDrink(ml: 200)
+                                await loadData()
+                            }
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
 
-                if showDrinkRows {
-                    // 行2b: 水・コーヒー・フルーツジュース
-                    HStack(spacing: 8) {
-                        quickBtn(emoji: "💧", label: "水", color: Color.duoBlue) {
-                            confirm("水 \(intakeGoals.waterPerCup)ml を記録しますか？") {
-                                Task {
-                                    await authManager.recordWater()
-                                    await updateSlotForDrink(ml: intakeGoals.waterPerCup)
-                                    await loadData()
-                                }
-                            }
-                        }
-                        quickBtn(emoji: "☕", label: "コーヒー", color: Color(hex: "#8B5E3C")) {
-                            confirm("コーヒー \(intakeGoals.coffeePerCup)ml (カフェイン \(intakeGoals.caffeinePerCup)mg) を記録しますか？") {
-                                Task {
-                                    await authManager.recordCoffee()
-                                    await healthKit.saveWaterIntake(amountMl: Double(intakeGoals.coffeePerCup), timestamp: Date())
-                                    await updateSlotForDrink(ml: intakeGoals.coffeePerCup)
-                                    await loadData()
-                                }
-                            }
-                        }
-                        quickBtn(emoji: "🍊", label: "フルーツジュース", color: Color(hex: "#FF9600")) {
-                            confirm("フルーツジュース 200ml (76kcal / 糖質18g) を記録しますか？") {
-                                Task {
-                                    await authManager.recordFruitJuice()
-                                    await updateSlotForDrink(ml: 200)
-                                    await loadData()
-                                }
+                // 行3: ビール・ワイン・焼酎
+                HStack(spacing: 8) {
+                    quickBtn(emoji: "🍺", label: "ビール", color: Color.duoPurple) {
+                        confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .beer)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
+                                await loadData()
                             }
                         }
                     }
-
-                    // 行3: ビール・ワイン・焼酎
-                    HStack(spacing: 8) {
-                        quickBtn(emoji: "🍺", label: "ビール", color: Color.duoPurple) {
-                            confirm("ビール (アルコール \(String(format: "%.1f", AlcoholType.beer.alcoholG))g) を記録しますか？") {
-                                Task {
-                                    await authManager.recordAlcohol(alcoholType: .beer)
-                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.beer.amountMl), timestamp: Date())
-                                    await updateSlotForDrink(ml: AlcoholType.beer.amountMl)
-                                    await loadData()
-                                }
+                    quickBtn(emoji: "🍷", label: "ワイン", color: Color.duoPurple) {
+                        confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .wine)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
+                                await loadData()
                             }
                         }
-                        quickBtn(emoji: "🍷", label: "ワイン", color: Color.duoPurple) {
-                            confirm("ワイン (アルコール \(String(format: "%.1f", AlcoholType.wine.alcoholG))g) を記録しますか？") {
-                                Task {
-                                    await authManager.recordAlcohol(alcoholType: .wine)
-                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.wine.amountMl), timestamp: Date())
-                                    await updateSlotForDrink(ml: AlcoholType.wine.amountMl)
-                                    await loadData()
-                                }
-                            }
-                        }
-                        quickBtn(emoji: "🍶", label: "焼酎", color: Color.duoPurple) {
-                            confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
-                                Task {
-                                    await authManager.recordAlcohol(alcoholType: .chuhai)
-                                    await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
-                                    await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
-                                    await loadData()
-                                }
+                    }
+                    quickBtn(emoji: "🍶", label: "焼酎", color: Color.duoPurple) {
+                        confirm("焼酎・酎ハイ (アルコール \(String(format: "%.1f", AlcoholType.chuhai.alcoholG))g) を記録しますか？") {
+                            Task {
+                                await authManager.recordAlcohol(alcoholType: .chuhai)
+                                await healthKit.saveWaterIntake(amountMl: Double(AlcoholType.chuhai.amountMl), timestamp: Date())
+                                await updateSlotForDrink(ml: AlcoholType.chuhai.amountMl)
+                                await loadData()
                             }
                         }
                     }

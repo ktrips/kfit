@@ -38,6 +38,9 @@ struct GoalView: View {
     @State private var showPointsDetail = false
     @State private var weeklyDailyStats: [(date: Date, exerciseXP: Int)] = []
     @State private var isLoadingWeeklyStats = false
+    // Apple Watch Diet 書籍カード
+    @State private var showBooksSheet = false
+    @State private var booksSheetURL: URL = URL(string: "https://fit.ktrips.net/books")!
 
     private func recomputeWeightLogs() {
         cachedWeightLogs = eduLog.history.filter {
@@ -120,6 +123,7 @@ struct GoalView: View {
                             fitingoTrainingButton
                             // 今日のアクティビティ＋アクティビティ履歴を一体化
                             todayActivityWithHistoryCard
+                            relatedBooksSection
                             if plus.isPlus {
                                 progressCard
                                 xpSummaryCard
@@ -182,6 +186,7 @@ struct GoalView: View {
             .navigationBarHidden(true)
             .safeAreaInset(edge: .top, spacing: 0) { fitHeader }
             .sheet(isPresented: $showPlusViewFromFit) { PlusView() }
+            .sheet(isPresented: $showBooksSheet) { SafariView(url: booksSheetURL) }
             .sheet(isPresented: $showDietGoalSettings) {
                 NavigationView { DietGoalSettingsView() }
             }
@@ -1831,6 +1836,23 @@ struct GoalView: View {
                     weeklyDailyStats = await authManager.getWeeklyDailyStats(days: 7)
                     isLoadingWeeklyStats = false
                 }
+    }
+
+    // MARK: - Apple Watch Diet 書籍カード
+
+    private var relatedBooksSection: some View {
+        // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
+        Button {
+            if plus.isPlus {
+                booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
+                showBooksSheet = true
+            } else {
+                UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
+            }
+        } label: {
+            AppleWatchDietBookCard(isPlus: plus.isPlus)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 週間消費カロリーカード

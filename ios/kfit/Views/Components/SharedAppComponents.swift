@@ -876,3 +876,69 @@ struct AIRequiresPlusSheet: View {
         }
     }
 }
+
+// MARK: - Apple Watch Diet 書籍カード（Routin/FITページなど複数箇所から参照されます）
+
+struct AppleWatchDietBookCard: View {
+    let isPlus: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("⌚")
+                .font(.system(size: 24 * UIScale.font))
+                .frame(width: 50, height: 50)
+                .background(Color.duoBlue.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("アップルウォッチ・ダイエット2")
+                        .font(.system(size: 13 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("kindle")
+                        .font(.system(size: 8 * UIScale.font, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color(hex: "#FF9900"))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .fixedSize()
+                }
+                Text("AppleWatch Diet Ultra2")
+                    .font(.system(size: 9 * UIScale.font, weight: .medium))
+                    .foregroundColor(Color.duoSubtitle)
+                Text("Apple Watchでダイエットを最大化する方法")
+                    .font(.system(size: 11 * UIScale.font))
+                    .foregroundColor(Color.duoSubtitle)
+                if isPlus {
+                    HStack(spacing: 4) {
+                        Text("+")
+                            .font(.system(size: 9 * UIScale.font, weight: .black))
+                            .foregroundColor(.white)
+                            .frame(width: 14, height: 14)
+                            .background(Color.duoGold)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                        Text("Webで全文読めます →")
+                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                            .foregroundColor(Color.duoGold)
+                    }
+                } else {
+                    Text("Kindleで読む →")
+                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF9900"))
+                }
+            }
+            Spacer()
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                .foregroundColor(isPlus ? Color.duoGold.opacity(0.8) : Color.duoBlue.opacity(0.7))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(isPlus ? Color.duoGold.opacity(0.07) : Color.duoBlue.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(
+            isPlus ? Color.duoGold.opacity(0.25) : Color.duoBlue.opacity(0.18),
+            lineWidth: 1))
+    }
+}

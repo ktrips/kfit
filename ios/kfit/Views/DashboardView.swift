@@ -712,6 +712,7 @@ struct DashboardView: View {
                             if healthKit.isAvailable && healthKit.isAuthorized && plus.isPlus {
                                 tripleRingCard
                             }
+                            relatedBooksSection
                             if plus.isPlus {
                                 achievementCalendarSection
                             } else {
@@ -722,7 +723,6 @@ struct DashboardView: View {
                                     onUpgrade: { showPlusViewFromDashboard = true }
                                 )
                             }
-                            relatedBooksSection
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -6244,81 +6244,18 @@ struct DashboardView: View {
     }
 
     private var relatedBooksSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text("📚")
-                    .font(.system(size: 13 * UIScale.font))
-                Text("More to Read")
-                    .font(.system(size: 12 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoSubtitle)
-                Spacer()
+        // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
+        Button {
+            if plus.isPlus {
+                booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
+                showBooksSheet = true
+            } else {
+                UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
             }
-            // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
-            Button {
-                if plus.isPlus {
-                    booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
-                    showBooksSheet = true
-                } else {
-                    UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    Text("⌚")
-                        .font(.system(size: 24 * UIScale.font))
-                        .frame(width: 50, height: 50)
-                        .background(Color.duoBlue.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("AppleWatch Diet Ultra2")
-                            .font(.system(size: 13 * UIScale.font, weight: .black))
-                            .foregroundColor(Color.duoDark)
-                        Text("Apple Watchでダイエットを最大化する方法")
-                            .font(.system(size: 11 * UIScale.font))
-                            .foregroundColor(Color.duoSubtitle)
-                        if plus.isPlus {
-                            HStack(spacing: 4) {
-                                Text("+")
-                                    .font(.system(size: 9 * UIScale.font, weight: .black))
-                                    .foregroundColor(.white)
-                                    .frame(width: 14, height: 14)
-                                    .background(Color.duoGold)
-                                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                                Text("Webで全文読めます →")
-                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                                    .foregroundColor(Color.duoGold)
-                            }
-                        } else {
-                            HStack(spacing: 4) {
-                                Text("kindle")
-                                    .font(.system(size: 8 * UIScale.font, weight: .black))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 5).padding(.vertical, 2)
-                                    .background(Color(hex: "#FF9900"))
-                                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                                Text("Kindleで読む →")
-                                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#FF9900"))
-                            }
-                        }
-                    }
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                        .foregroundColor(plus.isPlus ? Color.duoGold.opacity(0.8) : Color.duoBlue.opacity(0.7))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(plus.isPlus ? Color.duoGold.opacity(0.07) : Color.duoBlue.opacity(0.07))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(
-                    plus.isPlus ? Color.duoGold.opacity(0.25) : Color.duoBlue.opacity(0.18),
-                    lineWidth: 1))
-            }
+        } label: {
+            AppleWatchDietBookCard(isPlus: plus.isPlus)
         }
-        .padding(14)
-        .background(Color(UIColor.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
+        .buttonStyle(.plain)
     }
 
     private func fitingoDailyGoal() -> Int {

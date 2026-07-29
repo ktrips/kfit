@@ -712,7 +712,6 @@ struct DashboardView: View {
                             if healthKit.isAvailable && healthKit.isAuthorized && plus.isPlus {
                                 tripleRingCard
                             }
-                            relatedBooksSection
                             if plus.isPlus {
                                 achievementCalendarSection
                             } else {
@@ -723,6 +722,7 @@ struct DashboardView: View {
                                     onUpgrade: { showPlusViewFromDashboard = true }
                                 )
                             }
+                            relatedBooksSection
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
@@ -6274,7 +6274,8 @@ struct DashboardView: View {
         if sessions == 0 {
             if hour < 10 { return "おはよう！朝のROUTINで一日をスタート！☀️" }
             if hour < 12 { return "午前中に始めよう！今日のROUTIN待ってるよ！" }
-            if hour < 17 { return "まだ間に合う！今すぐROUTINを始めよう！💪" }
+            if hour < 17 { return "トレーニングをすぐ始めよう！💪" }
+            if hour < 19 { return "夕方のトレーニングをスタート！🌆" }
             if hour < 21 { return "夜もROUTINできるよ！今日サボらないで！🔥" }
             return "今日のROUTINまだだよ！残り時間でやろう！"
         }

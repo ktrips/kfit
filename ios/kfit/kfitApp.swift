@@ -1651,20 +1651,40 @@ struct NinetySecondModeView: View {
     private var graduated: Bool  { activeDays >= 5 }
     private var streak: Int      { max(authManager.userProfile?.streak ?? 0, doneToday ? 1 : 0) }
 
-    // モード選択カスタムドット（TabViewの標準ドットとボタンの重なりを防ぐため独立配置）
+    // モード選択ボタン（筋トレ/ダイエット/食事/語学。アイコン+ラベル+案内メッセージ入り）
     private var modePageDots: some View {
         HStack(spacing: 8) {
             ForEach(NinetySecondModeType.allCases, id: \.rawValue) { m in
                 let isSelected = m.rawValue == selectedPage
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isSelected
-                          ? NinetySecondModeType(rawValue: selectedPage)!.accentColor
-                          : Color(.systemGray4))
-                    .frame(width: isSelected ? 28 : 8, height: 8)
-                    .animation(.easeInOut(duration: 0.25), value: selectedPage)
-                    .onTapGesture { withAnimation { selectedPage = m.rawValue } }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { selectedPage = m.rawValue }
+                } label: {
+                    VStack(spacing: 2) {
+                        Text(m.illustrationEmoji)
+                            .font(.system(size: 20))
+                        Text(m.modeName)
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(m.simpleActionMessage)
+                            .font(.system(size: 8, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .opacity(isSelected ? 0.9 : 0.6)
+                    }
+                    .foregroundColor(isSelected ? .white : Color(.systemGray))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(isSelected ? m.accentColor : Color(.systemGray6))
+                    )
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 0.25), value: selectedPage)
             }
         }
+        .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 4)
     }

@@ -123,7 +123,9 @@ struct GoalView: View {
                             fitingoTrainingButton
                             // 今日のアクティビティ＋アクティビティ履歴を一体化
                             todayActivityWithHistoryCard
-                            relatedBooksSection
+                            if !plus.isPlus {
+                                relatedBooksSection
+                            }
                             if plus.isPlus {
                                 progressCard
                                 xpSummaryCard

@@ -1,4 +1,4 @@
-# kfit iOS App (a.0.11.4)
+# kfit iOS App (1.2)
 
 A SwiftUI-based iOS fitness app with motion sensor exercise detection, Apple Watch support, Firebase backend integration, and AI-powered nutrition analysis.
 
@@ -218,6 +218,20 @@ xcodebuild -scheme kfit test
 
 ## Recent Updates
 
+### 1.2 (2026-07-29)
+- ✅ **Apple Watch Diet book card placement**: Redesigned with Japanese title + Kindle badge, added to FIT page. Moved to the very bottom of the ROUTIN page (below the Plus upsell); hidden entirely on the FIT page for Plus members
+- ✅ **ROUTIN training button messaging**: Added a dedicated "evening" (17:00–19:00) time-of-day message to the Fitingo CTA button copy
+- ✅ **90-second mode switcher redesign**: Replaced the small page dots with larger icon+label+message buttons for FIT/DIET/FOOD/EDU (筋トレ/ダイエット/食事ログ/語学); FIT video tap reliability fix, FOOD/EDU buttons enlarged
+- ✅ **ROUTIN achievement calendar**: Weekly card now shows this week's total XP plus per-day XP inside the ring; monthly heading shortened to "◯月" with XP total
+- ✅ **XP points card moved from ROUTIN to FIT page**, achievement XP display right-aligned
+- ✅ **FIT page calorie balance card cleanup**
+- ✅ **Weight-log spiral icon**: Tap now supports manual entry + Apple Health save
+- ✅ **FOOD feed restricted to Plus**; drink log remains always visible
+- ✅ **App size reduction**: removed duplicate GIFs (~30MB saved), recompressed/resized image assets, removed stale Watch icon remnants
+- ✅ **3-minute stretch menu**: removed entries with missing assets ("Cat & Dog", "Sun Salutation")
+- ✅ **Added CFBundleDisplayName to all 3 App Extensions** (Widget/Share/Watch Complication)
+- ✅ **Version management unified**: `project.yml`/Info.plist aligned on `1.2.x`; fixed archive-time build-number automation and dSYM-related TestFlight upload failures
+
 ### a.0.11.4 (2026-05-29)
 - ✅ **Mandala スパイラルチャート**: ダッシュボードとROUTINページに全目標を渦巻き状の曼荼羅チャートで表示。完了ノードは拡大・光るリング、未完了はフェード。中央に全体達成率（%）を表示
 - ✅ **Mandala タップルーティング**: 💪→ExerciseTracker、🧘→1分マインドフルネス、🤸→3分ストレッチ、💧→水200ml記録確認、🍽️→朝食400kcal記録確認、その他→時間帯スクロール
@@ -301,7 +315,7 @@ pod 'GoogleSignIn'
 
 ## Version
 
-Current version: **a.0.11.4** (2026-05-29)
+Current version: **1.2** (build 2, 2026-07-29)
 
 ## License
 

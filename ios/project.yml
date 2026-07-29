@@ -95,6 +95,7 @@ targets:
     info:
       path: kfitWidget/Info.plist
       properties:
+        CFBundleDisplayName: kfit
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -118,6 +119,7 @@ targets:
     info:
       path: kfitShare/Info.plist
       properties:
+        CFBundleDisplayName: kfit
         NSExtension:
           NSExtensionAttributes:
             NSExtensionActivationRule:
@@ -186,6 +188,7 @@ targets:
     info:
       path: "kfit​Watch​Complication/Info.plist"
       properties:
+        CFBundleDisplayName: kfit
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

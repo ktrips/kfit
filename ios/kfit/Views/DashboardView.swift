@@ -6280,10 +6280,14 @@ struct DashboardView: View {
             return "今日のROUTINまだだよ！残り時間でやろう！"
         }
         if progress < 0.5 {
-            if hour < 17 { return "いいスタート！続けて目標達成しよう！💪" }
-            return "あと半分以上！今すぐ続けよう🔥"
+            if hour < 12 { return "いいスタート！午前中にもう1セット行こう！💪" }
+            if hour < 17 { return "順調！続けて目標達成しよう！💪" }
+            if hour < 19 { return "夕方のうちに半分以上進めよう🔥" }
+            if hour < 21 { return "夜だけどまだ間に合う！追い込もう🔥" }
+            return "残り時間わずか！今すぐ続けよう⏰"
         }
-        return "あと少し！最後まで頑張れ！ラストスパート！🏃"
+        if hour < 21 { return "あと少し！最後まで頑張れ！ラストスパート！🏃" }
+        return "今日中にラストスパート！あと少しで達成🏃"
     }
 
     private func fitingoImageName(sessions: Int, dailyGoal: Int, angerLevel: Double) -> String {
@@ -6518,7 +6522,7 @@ private struct FitingoStartButton: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
             }
-            .frame(height: 170)
+            .frame(height: 190)
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }

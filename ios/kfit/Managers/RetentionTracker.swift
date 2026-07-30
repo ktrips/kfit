@@ -16,6 +16,13 @@ import FirebaseFirestore
 ///     totalActiveDays: Int,           // 累計活動日数
 ///     days: { "yyyy-MM-dd": true },   // 活動日マップ（1年で約365キー）
 ///     maxStreak: Int,                 // 既存ストリークの最高値（参考値）
+///     platforms: { ios: true, web: true },  // 利用したことのあるプラットフォーム
+///     firstPlatform: "ios" | "web",   // 初回活動のプラットフォーム（初回のみ設定）
+///     lastPlatform:  "ios" | "web",   // 直近の活動プラットフォーム（毎回更新）
+///     firstSource: String,            // 初回活動元の分類（初回のみ設定）
+///                                      // web: "direct" | "sns:x" | "webapp" | "referral:<host>" 等
+///                                      // ios: TestFlightはインストール元を取得できないため固定値 "ios-app"
+///     firstReferrer: String,          // web版のみ。firstSource分類のもとになった生referrer/host
 ///     updatedAt: Timestamp
 ///   }
 @MainActor
@@ -82,21 +89,27 @@ final class RetentionTracker {
             .collection("retention").document("summary")
 
         Task {
-            // firstActiveDay は初回のみ設定（既存があれば維持）
+            // firstActiveDay・firstPlatform・firstSource は初回のみ設定（既存があれば維持）。
+            // firstSource は Web 版（referrer/UTMから分類）と対になる指標だが、TestFlight配布の
+            // iOSはインストール元をアプリ側から取得できないため固定値 "ios-app" を記録する。
             let snap = try? await ref.getDocument()
             let firstActiveDay = (snap?.data()?["firstActiveDay"] as? String) ?? today
+            let firstPlatform = (snap?.data()?["firstPlatform"] as? String) ?? "ios"
+            let firstSource = (snap?.data()?["firstSource"] as? String) ?? "ios-app"
             let prevMaxStreak = (snap?.data()?["maxStreak"] as? Int) ?? 0
 
             let data: [String: Any] = [
                 "firstActiveDay": firstActiveDay,
                 "lastActiveDay": today,
+                "lastPlatform": "ios",
                 "totalActiveDays": FieldValue.increment(Int64(1)),
                 "days.\(today)": true,
+                "platforms.ios": true,
                 "maxStreak": max(prevMaxStreak, streak),
                 "updatedAt": FieldValue.serverTimestamp()
             ]
             do {
-                try await ref.setData(["firstActiveDay": firstActiveDay], merge: true)
+                try await ref.setData(["firstActiveDay": firstActiveDay, "firstPlatform": firstPlatform, "firstSource": firstSource], merge: true)
                 try await ref.updateData(data)
                 dlog("[RetentionTracker] ✅ marked active: \(today)")
 

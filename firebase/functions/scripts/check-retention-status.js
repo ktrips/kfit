@@ -54,6 +54,10 @@ async function main() {
     const firstSetSeconds = retentionData.firstSetSeconds;
     const firstActiveDay = retentionData.firstActiveDay ?? '-';
     const totalActiveDays = retentionData.totalActiveDays ?? 0;
+    const platforms = Object.keys(retentionData.platforms || {}).filter((k) => retentionData.platforms[k]);
+    const firstPlatform = retentionData.firstPlatform ?? '-';
+    const firstSource = retentionData.firstSource ?? '-';
+    const firstReferrer = retentionData.firstReferrer ?? '-';
 
     rows.push({
       uid: userDoc.id,
@@ -63,6 +67,10 @@ async function main() {
       firstActiveDay,
       totalActiveDays,
       firstSetSeconds,
+      platforms,
+      firstPlatform,
+      firstSource,
+      firstReferrer,
       status: classify({ totalPoints, streak, hasRetentionData, firstSetSeconds }),
     });
   }
@@ -79,6 +87,8 @@ async function main() {
       `  totalPoints=${r.totalPoints} streak=${r.streak} ` +
       `firstActiveDay=${r.firstActiveDay} totalActiveDays=${r.totalActiveDays} ` +
       `firstSetSeconds=${r.firstSetSeconds ?? '(なし)'}\n` +
+      `  platforms=[${r.platforms.join(', ') || '-'}] firstPlatform=${r.firstPlatform} ` +
+      `firstSource=${r.firstSource} firstReferrer=${r.firstReferrer}\n` +
       `  → ${r.status}\n`
     );
   }

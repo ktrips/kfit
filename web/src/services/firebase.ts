@@ -844,6 +844,11 @@ export interface RetentionDiagnosticRow {
   firstActiveDay: string | null;
   totalActiveDays: number;
   firstSetSeconds: number | null;
+  platforms: string[];
+  firstPlatform: string | null;
+  lastPlatform: string | null;
+  firstSource: string | null;
+  firstReferrer: string | null;
   status: 'preExisting' | 'recorded' | 'nonTrainingFirst' | 'noActivity';
 }
 

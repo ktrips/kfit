@@ -117,6 +117,24 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
     noActivity: '➖ 活動記録なし',
   };
 
+  /** 利用したことのある全プラットフォーム（iOS/Web両方使っていれば両方表示） */
+  const platformsLabel = (platforms: string[]): string =>
+    platforms.length === 0
+      ? '-'
+      : platforms.map((p) => (p === 'ios' ? '📱iOS' : p === 'web' ? '🌐Web' : p)).join('/');
+
+  /** 初回アクセス元の日本語ラベル（retentionService.ts の classifySource 分類に対応） */
+  const sourceLabel = (source: string | null): string => {
+    if (!source) return '-';
+    if (source === 'ios-app') return '📱 iOSアプリ（TestFlightのため詳細元は取得不可）';
+    if (source === 'direct') return '🔗 直リンク・ブックマーク';
+    if (source === 'webapp') return '🌐 Fitingoウェブアプリ内から';
+    if (source.startsWith('sns:')) return `📢 SNS(${source.slice(4)})`;
+    if (source.startsWith('utm:')) return `🎯 広告/キャンペーン(${source.slice(4)})`;
+    if (source.startsWith('referral:')) return `↪️ 外部サイト(${source.slice(9)})`;
+    return source;
+  };
+
   const handleFetchRetention = async () => {
     setRetentionLoading(true);
     setRetentionError(null);
@@ -464,6 +482,9 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
                         <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
                           {RETENTION_STATUS_LABEL[row.status]}
                           pt={row.totalPoints} streak={row.streak} 初回活動日={row.firstActiveDay ?? '-'} firstSetSeconds={row.firstSetSeconds != null ? `${row.firstSetSeconds}s` : '-'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                          利用端末: {platformsLabel(row.platforms)}　流入元: {sourceLabel(row.firstSource)}
                         </div>
                       </div>
                     ))}

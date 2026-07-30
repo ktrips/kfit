@@ -108,6 +108,11 @@ private struct RetentionDiagnosticRow: Identifiable {
     let firstActiveDay: String?
     let totalActiveDays: Int
     let firstSetSeconds: Int?
+    let platforms: [String]
+    let firstPlatform: String?
+    let lastPlatform: String?
+    let firstSource: String?
+    let firstReferrer: String?
     let status: String
 
     var statusLabel: String {
@@ -117,6 +122,23 @@ private struct RetentionDiagnosticRow: Identifiable {
         case "nonTrainingFirst": return "⚠️ 非トレーニング初回"
         default:                 return "➖ 活動記録なし"
         }
+    }
+
+    /// プラットフォーム表示（利用したことのある全プラットフォーム。iOS/Web両方使っていれば両方表示）
+    var platformsLabel: String {
+        platforms.isEmpty ? "-" : platforms.map { $0 == "ios" ? "📱iOS" : $0 == "web" ? "🌐Web" : $0 }.joined(separator: "/")
+    }
+
+    /// 初回アクセス元の日本語ラベル（Web版 classifySource の分類に対応）
+    var sourceLabel: String {
+        guard let source = firstSource, !source.isEmpty else { return "-" }
+        if source == "ios-app" { return "📱 iOSアプリ（TestFlightのため詳細元は取得不可）" }
+        if source == "direct" { return "🔗 直リンク・ブックマーク" }
+        if source == "webapp" { return "🌐 Fitingoウェブアプリ内から" }
+        if source.hasPrefix("sns:") { return "📢 SNS(\(source.dropFirst(4)))" }
+        if source.hasPrefix("utm:") { return "🎯 広告/キャンペーン(\(source.dropFirst(4)))" }
+        if source.hasPrefix("referral:") { return "↪️ 外部サイト(\(source.dropFirst(9)))" }
+        return source
     }
 }
 
@@ -683,6 +705,9 @@ struct PlusView: View {
                             Text("\(row.statusLabel)　pt=\(row.totalPoints) streak=\(row.streak) 初回活動日=\(row.firstActiveDay ?? "-") firstSetSeconds=\(row.firstSetSeconds.map { "\($0)s" } ?? "-")")
                                 .font(.system(size: 10))
                                 .foregroundColor(Color.duoSubtitle)
+                            Text("利用端末: \(row.platformsLabel)　流入元: \(row.sourceLabel)")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color.duoSubtitle)
                         }
                         .padding(.vertical, 2)
                     }
@@ -722,6 +747,11 @@ struct PlusView: View {
                         firstActiveDay: row["firstActiveDay"] as? String,
                         totalActiveDays: row["totalActiveDays"] as? Int ?? 0,
                         firstSetSeconds: row["firstSetSeconds"] as? Int,
+                        platforms: row["platforms"] as? [String] ?? [],
+                        firstPlatform: row["firstPlatform"] as? String,
+                        lastPlatform: row["lastPlatform"] as? String,
+                        firstSource: row["firstSource"] as? String,
+                        firstReferrer: row["firstReferrer"] as? String,
                         status: status
                     )
                 }

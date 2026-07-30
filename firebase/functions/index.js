@@ -554,6 +554,11 @@ exports.getRetentionDiagnostics = functions
         const firstSetSeconds = typeof retention.firstSetSeconds === 'number' ? retention.firstSetSeconds : null;
         const firstActiveDay = retention.firstActiveDay || null;
         const totalActiveDays = retention.totalActiveDays || 0;
+        const platforms = Object.keys(retention.platforms || {}).filter((k) => retention.platforms[k]);
+        const firstPlatform = retention.firstPlatform || null;
+        const lastPlatform = retention.lastPlatform || null;
+        const firstSource = retention.firstSource || null;
+        const firstReferrer = retention.firstReferrer || null;
 
         const isPreExistingUser = (totalPoints > 0 || streak > 0) && !hasRetentionData;
         let status;
@@ -572,6 +577,7 @@ exports.getRetentionDiagnostics = functions
           username: profile.username || null,
           totalPoints, streak,
           firstActiveDay, totalActiveDays, firstSetSeconds,
+          platforms, firstPlatform, lastPlatform, firstSource, firstReferrer,
           status,
         };
       } catch (e) {

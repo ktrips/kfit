@@ -125,13 +125,20 @@ private struct RetentionDiagnosticRow: Identifiable {
     }
 
     /// プラットフォーム表示（利用したことのある全プラットフォーム。iOS/Web両方使っていれば両方表示）
+    /// platforms/firstSource は今回追加したフィールドのため、既存ユーザーの過去データには残っていない。
+    /// 次回そのユーザーが何か活動した時点で自動的に記録される（既存データを遡って復元することはできない）。
     var platformsLabel: String {
-        platforms.isEmpty ? "-" : platforms.map { $0 == "ios" ? "📱iOS" : $0 == "web" ? "🌐Web" : $0 }.joined(separator: "/")
+        if !platforms.isEmpty {
+            return platforms.map { $0 == "ios" ? "📱 iOS" : $0 == "web" ? "🌐 Web" : $0 }.joined(separator: "  ")
+        }
+        return status == "preExisting" ? "対象外" : "未記録（次回活動時に記録）"
     }
 
     /// 初回アクセス元の日本語ラベル（Web版 classifySource の分類に対応）
     var sourceLabel: String {
-        guard let source = firstSource, !source.isEmpty else { return "-" }
+        guard let source = firstSource, !source.isEmpty else {
+            return status == "preExisting" ? "対象外" : "未記録（次回活動時に記録）"
+        }
         if source == "ios-app" { return "📱 iOSアプリ（TestFlightのため詳細元は取得不可）" }
         if source == "direct" { return "🔗 直リンク・ブックマーク" }
         if source == "webapp" { return "🌐 Fitingoウェブアプリ内から" }
@@ -698,18 +705,30 @@ struct PlusView: View {
                         .foregroundColor(Color.duoDark)
                     Divider()
                     ForEach(retentionRows) { row in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.username?.isEmpty == false ? row.username! : String(row.id.prefix(8)) + "…")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color.duoDark)
-                            Text("\(row.statusLabel)　pt=\(row.totalPoints) streak=\(row.streak) 初回活動日=\(row.firstActiveDay ?? "-") firstSetSeconds=\(row.firstSetSeconds.map { "\($0)s" } ?? "-")")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color.duoSubtitle)
-                            Text("利用端末: \(row.platformsLabel)　流入元: \(row.sourceLabel)")
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(row.username?.isEmpty == false ? row.username! : String(row.id.prefix(8)) + "…")
+                                    .font(.system(size: 14, weight: .black))
+                                    .foregroundColor(Color.duoDark)
+                                Spacer()
+                                Text(row.statusLabel)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.duoSubtitle)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color.duoSubtitle.opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+                            HStack(spacing: 8) {
+                                retentionBadge(icon: "iphone", text: row.platformsLabel, color: Color.duoBlue)
+                                retentionBadge(icon: "arrow.right.circle", text: row.sourceLabel, color: Color.duoPurple)
+                            }
+                            Text("pt=\(row.totalPoints) streak=\(row.streak) 初回活動日=\(row.firstActiveDay ?? "-") firstSetSeconds=\(row.firstSetSeconds.map { "\($0)s" } ?? "-")")
                                 .font(.system(size: 10))
                                 .foregroundColor(Color.duoSubtitle)
                         }
-                        .padding(.vertical, 2)
+                        .padding(10)
+                        .background(Color.duoBg)
+                        .cornerRadius(10)
                     }
                 } else {
                     Text("「取得」をタップするとFirestoreから全ユーザーの状況を集計します")
@@ -720,6 +739,17 @@ struct PlusView: View {
             .overlay(RoundedRectangle(cornerRadius: 14)
                 .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
         }
+    }
+
+    private func retentionBadge(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+            Text(text).font(.system(size: 12, weight: .bold))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private func fetchRetentionDiagnostics() {

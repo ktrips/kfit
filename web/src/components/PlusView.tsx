@@ -117,15 +117,22 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
     noActivity: '➖ 活動記録なし',
   };
 
+  // platforms/firstSource は今回追加したフィールドのため、既存ユーザーの過去データには
+  // 残っていない。次回そのユーザーが何か活動した時点で自動的に記録される
+  // （既存データを遡って復元することはできないため「未記録」として明示する）。
+  const notYetLabel = (row: RetentionDiagnosticRow): string =>
+    row.status === 'preExisting' ? '対象外' : '未記録（次回活動時に記録）';
+
   /** 利用したことのある全プラットフォーム（iOS/Web両方使っていれば両方表示） */
-  const platformsLabel = (platforms: string[]): string =>
-    platforms.length === 0
-      ? '-'
-      : platforms.map((p) => (p === 'ios' ? '📱iOS' : p === 'web' ? '🌐Web' : p)).join('/');
+  const platformsLabel = (row: RetentionDiagnosticRow): string =>
+    row.platforms.length === 0
+      ? notYetLabel(row)
+      : row.platforms.map((p) => (p === 'ios' ? '📱 iOS' : p === 'web' ? '🌐 Web' : p)).join('  ');
 
   /** 初回アクセス元の日本語ラベル（retentionService.ts の classifySource 分類に対応） */
-  const sourceLabel = (source: string | null): string => {
-    if (!source) return '-';
+  const sourceLabel = (row: RetentionDiagnosticRow): string => {
+    const source = row.firstSource;
+    if (!source) return notYetLabel(row);
     if (source === 'ios-app') return '📱 iOSアプリ（TestFlightのため詳細元は取得不可）';
     if (source === 'direct') return '🔗 直リンク・ブックマーク';
     if (source === 'webapp') return '🌐 Fitingoウェブアプリ内から';
@@ -134,6 +141,15 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
     if (source.startsWith('referral:')) return `↪️ 外部サイト(${source.slice(9)})`;
     return source;
   };
+
+  const RetentionBadge = ({ text, color }: { text: string; color: string }) => (
+    <span style={{
+      display: 'inline-block', fontSize: 12, fontWeight: 800, color,
+      background: `${color}1F`, padding: '5px 10px', borderRadius: 999,
+    }}>
+      {text}
+    </span>
+  );
 
   const handleFetchRetention = async () => {
     setRetentionLoading(true);
@@ -467,24 +483,32 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
                     非トレーニング初回{retentionSummary.nonTrainingFirst}／
                     活動なし{retentionSummary.noActivity}
                   </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {retentionRows.map((row) => (
                       <div
                         key={row.uid}
                         style={{
-                          padding: '8px 10px', borderRadius: 8,
+                          padding: '10px 12px', borderRadius: 10,
                           background: '#f8f8f8', border: '1px solid #f0f0f0',
                         }}
                       >
-                        <div style={{ fontSize: 11, fontWeight: 800, color: '#333' }}>
-                          {row.username || `${row.uid.slice(0, 8)}…`}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 14, fontWeight: 900, color: '#333' }}>
+                            {row.username || `${row.uid.slice(0, 8)}…`}
+                          </span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, color: '#888',
+                            background: '#88888820', padding: '3px 8px', borderRadius: 999,
+                          }}>
+                            {RETENTION_STATUS_LABEL[row.status]}
+                          </span>
                         </div>
-                        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                          {RETENTION_STATUS_LABEL[row.status]}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                          <RetentionBadge text={platformsLabel(row)} color="#1CB0F6" />
+                          <RetentionBadge text={sourceLabel(row)} color="#9247E8" />
+                        </div>
+                        <div style={{ fontSize: 10, color: '#999', marginTop: 8 }}>
                           pt={row.totalPoints} streak={row.streak} 初回活動日={row.firstActiveDay ?? '-'} firstSetSeconds={row.firstSetSeconds != null ? `${row.firstSetSeconds}s` : '-'}
-                        </div>
-                        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                          利用端末: {platformsLabel(row.platforms)}　流入元: {sourceLabel(row.firstSource)}
                         </div>
                       </div>
                     ))}

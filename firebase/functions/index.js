@@ -519,6 +519,79 @@ exports.computeRetentionStats = functions.pubsub
     return null;
   });
 
+// ===== RETENTION DIAGNOSTICS（Admin専用） =====
+// firebase/functions/scripts/check-retention-status.js のロジックを callable 化したもの。
+// Firestore rules ではユーザーは自分のドキュメントしか読めないため、全ユーザー横断の
+// 診断はサービスアカウント権限を持つ Cloud Function 経由でのみ可能。
+// 呼び出し元は SettingsView / PremiumView の管理者パネル（plus.isAdmin 表示時のみ）。
+const RETENTION_ADMIN_EMAIL = 'kenichiyoshida13@gmail.com';
+
+exports.getRetentionDiagnostics = functions
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
+    }
+    const email = (context.auth.token.email || '').toLowerCase();
+    if (email !== RETENTION_ADMIN_EMAIL.toLowerCase()) {
+      throw new functions.https.HttpsError('permission-denied', 'このレポートはAdminのみ閲覧できます');
+    }
+
+    const userRefs = await db.collection('users').listDocuments();
+
+    const rows = await Promise.all(userRefs.map(async (userRef) => {
+      try {
+        const [userSnap, summarySnap] = await Promise.all([
+          userRef.get(),
+          userRef.collection('retention').doc('summary').get(),
+        ]);
+        const profile = userSnap.data() || {};
+        const hasRetentionData = summarySnap.exists;
+        const retention = hasRetentionData ? summarySnap.data() : {};
+
+        const totalPoints = profile.totalPoints || 0;
+        const streak = profile.streak || 0;
+        const firstSetSeconds = typeof retention.firstSetSeconds === 'number' ? retention.firstSetSeconds : null;
+        const firstActiveDay = retention.firstActiveDay || null;
+        const totalActiveDays = retention.totalActiveDays || 0;
+
+        const isPreExistingUser = (totalPoints > 0 || streak > 0) && !hasRetentionData;
+        let status;
+        if (isPreExistingUser) {
+          status = 'preExisting';
+        } else if (firstSetSeconds !== null) {
+          status = 'recorded';
+        } else if (hasRetentionData) {
+          status = 'nonTrainingFirst';
+        } else {
+          status = 'noActivity';
+        }
+
+        return {
+          uid: userRef.id,
+          username: profile.username || null,
+          totalPoints, streak,
+          firstActiveDay, totalActiveDays, firstSetSeconds,
+          status,
+        };
+      } catch (e) {
+        console.error(`retention diagnostics failed for ${userRef.id}:`, e);
+        return null;
+      }
+    }));
+
+    const validRows = rows.filter(Boolean);
+    const summary = {
+      total: validRows.length,
+      preExisting: validRows.filter((r) => r.status === 'preExisting').length,
+      nonTrainingFirst: validRows.filter((r) => r.status === 'nonTrainingFirst').length,
+      recorded: validRows.filter((r) => r.status === 'recorded').length,
+      noActivity: validRows.filter((r) => r.status === 'noActivity').length,
+    };
+
+    return { rows: validRows, summary };
+  });
+
 // ===== WEEKLY REPORT AI COMMENT =====
 // 週次レポートカード用の AI コーチングコメントを生成する callable 関数。
 // WeeklyReportView（iOS）から呼ばれ、結果は shared-reports ドキュメントにも保存される。

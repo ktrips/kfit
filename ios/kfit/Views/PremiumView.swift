@@ -1,5 +1,10 @@
 import SwiftUI
 import StoreKit
+// kedu/kmind は FirebaseFunctions SDK をリンクしていないため canImport で分岐
+// （PremiumView.swift は両ターゲットで共有コンパイルされる）
+#if canImport(FirebaseFunctions)
+import FirebaseFunctions
+#endif
 
 // MARK: - Free vs Plus 比較データ
 
@@ -93,6 +98,36 @@ private let planFeatures: [PlanFeature] = [
 
 // MARK: - PlusView
 
+// MARK: - Admin専用: テスター状況レポート（getRetentionDiagnostics Cloud Function の結果）
+
+private struct RetentionDiagnosticRow: Identifiable {
+    let id: String
+    let username: String?
+    let totalPoints: Int
+    let streak: Int
+    let firstActiveDay: String?
+    let totalActiveDays: Int
+    let firstSetSeconds: Int?
+    let status: String
+
+    var statusLabel: String {
+        switch status {
+        case "preExisting":      return "🚫 既存ユーザー除外"
+        case "recorded":         return "✅ 記録済み"
+        case "nonTrainingFirst": return "⚠️ 非トレーニング初回"
+        default:                 return "➖ 活動記録なし"
+        }
+    }
+}
+
+private struct RetentionDiagnosticSummary {
+    let total: Int
+    let preExisting: Int
+    let nonTrainingFirst: Int
+    let recorded: Int
+    let noActivity: Int
+}
+
 struct PlusView: View {
     @StateObject private var plus = PlusManager.shared
     @Environment(\.dismiss) private var dismiss
@@ -103,6 +138,10 @@ struct PlusView: View {
     @State private var adminNewCode: String = ""
     @State private var adminCodeResult: String? = nil
     @State private var isUpdatingCode: Bool = false
+    @State private var retentionRows: [RetentionDiagnosticRow] = []
+    @State private var retentionSummary: RetentionDiagnosticSummary? = nil
+    @State private var isLoadingRetention: Bool = false
+    @State private var retentionError: String? = nil
     @FocusState private var codeFocused: Bool
     @State private var selectedTab: PlusTab = .compare
 
@@ -598,8 +637,118 @@ struct PlusView: View {
             .padding(14).background(Color(.systemBackground)).cornerRadius(14)
             .overlay(RoundedRectangle(cornerRadius: 14)
                 .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
+
+            #if canImport(FirebaseFunctions)
+            retentionDiagnosticsPanel
+            #endif
         }
     }
+
+    // kedu/kmind は FirebaseFunctions SDK 未リンクのためkfitのみ有効
+    #if canImport(FirebaseFunctions)
+    private var retentionDiagnosticsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("テスター状況レポート（90秒モード検証）")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+                Button {
+                    fetchRetentionDiagnostics()
+                } label: {
+                    if isLoadingRetention {
+                        ProgressView().frame(width: 16, height: 16)
+                    } else {
+                        Text("取得").font(.system(size: 12, weight: .bold))
+                    }
+                }
+                .disabled(isLoadingRetention)
+            }
+            .padding(.leading, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if let error = retentionError {
+                    Text("❌ \(error)")
+                        .font(.system(size: 11)).foregroundColor(.red)
+                } else if let summary = retentionSummary {
+                    Text("全\(summary.total)人／記録済み\(summary.recorded)／既存除外\(summary.preExisting)／非トレーニング初回\(summary.nonTrainingFirst)／活動なし\(summary.noActivity)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.duoDark)
+                    Divider()
+                    ForEach(retentionRows) { row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.username?.isEmpty == false ? row.username! : String(row.id.prefix(8)) + "…")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color.duoDark)
+                            Text("\(row.statusLabel)　pt=\(row.totalPoints) streak=\(row.streak) 初回活動日=\(row.firstActiveDay ?? "-") firstSetSeconds=\(row.firstSetSeconds.map { "\($0)s" } ?? "-")")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color.duoSubtitle)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } else {
+                    Text("「取得」をタップするとFirestoreから全ユーザーの状況を集計します")
+                        .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .padding(14).background(Color(.systemBackground)).cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
+        }
+    }
+
+    private func fetchRetentionDiagnostics() {
+        isLoadingRetention = true
+        retentionError = nil
+        Task {
+            do {
+                let fn = Functions.functions(region: "us-central1")
+                let result = try await fn.httpsCallable("getRetentionDiagnostics").call([String: Any]())
+                guard let data = result.data as? [String: Any],
+                      let rawRows = data["rows"] as? [[String: Any]] else {
+                    await MainActor.run {
+                        retentionError = "レスポンスの形式が不正です"
+                        isLoadingRetention = false
+                    }
+                    return
+                }
+                let rows: [RetentionDiagnosticRow] = rawRows.compactMap { row in
+                    guard let uid = row["uid"] as? String, let status = row["status"] as? String else { return nil }
+                    return RetentionDiagnosticRow(
+                        id: uid,
+                        username: row["username"] as? String,
+                        totalPoints: row["totalPoints"] as? Int ?? 0,
+                        streak: row["streak"] as? Int ?? 0,
+                        firstActiveDay: row["firstActiveDay"] as? String,
+                        totalActiveDays: row["totalActiveDays"] as? Int ?? 0,
+                        firstSetSeconds: row["firstSetSeconds"] as? Int,
+                        status: status
+                    )
+                }
+                var summary: RetentionDiagnosticSummary? = nil
+                if let s = data["summary"] as? [String: Any] {
+                    summary = RetentionDiagnosticSummary(
+                        total: s["total"] as? Int ?? 0,
+                        preExisting: s["preExisting"] as? Int ?? 0,
+                        nonTrainingFirst: s["nonTrainingFirst"] as? Int ?? 0,
+                        recorded: s["recorded"] as? Int ?? 0,
+                        noActivity: s["noActivity"] as? Int ?? 0
+                    )
+                }
+                await MainActor.run {
+                    retentionRows = rows
+                    retentionSummary = summary
+                    isLoadingRetention = false
+                }
+            } catch {
+                await MainActor.run {
+                    retentionError = error.localizedDescription
+                    isLoadingRetention = false
+                }
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - 後方互換エイリアス（削除予定）

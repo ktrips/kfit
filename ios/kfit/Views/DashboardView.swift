@@ -4125,6 +4125,9 @@ struct DashboardView: View {
                      : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
                     .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
                 Spacer()
+                Text("Weekly Points")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
                 HStack(spacing: 2) {
                     Image(systemName: "star.fill")
                         .font(.system(size: 9, weight: .bold))
@@ -4183,6 +4186,9 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
+                    Text("Total Points")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
                     HStack(spacing: 2) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 9, weight: .bold))
@@ -4693,21 +4699,9 @@ struct DashboardView: View {
 
     private var foodLogCard: some View {
         VStack(spacing: 0) {
-            // カードヘッダー
-            HStack(spacing: 5) {
-                Text("🍽️")
-                    .font(.system(size: 14 * UIScale.font))
-                Text("Food Log")
-                    .font(.system(size: 12 * UIScale.font, weight: .black))
-                    .foregroundColor(Color.duoSubtitle)
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-
             // フォトログボタン
             photoLogButton
+                .padding(.top, 14)
 
             // 区切り線
             Divider()
@@ -6345,8 +6339,6 @@ private struct DailySetsCardButtonsView: View {
             )
 
             // ── マインドフルネス ──────────────────────────────────────────
-            sectionHeader(icon: "🧘‍♀️", title: "Mindfulness")
-
             HStack(spacing: 8) {
                 compactActionButton(icon: "🧘", label: "1分瞑想",
                                     color: Color.duoPurple, action: onOpenMindfulness)
@@ -6356,24 +6348,10 @@ private struct DailySetsCardButtonsView: View {
                                     color: Color(red: 0.94, green: 0.27, blue: 0.15), action: onOpenStand)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
+            .padding(.top, 12)
             .padding(.bottom, 8)
 
         }
-    }
-
-    private func sectionHeader(icon: String, title: String) -> some View {
-        HStack(spacing: 5) {
-            Text(icon)
-                .font(.system(size: 13 * UIScale.font))
-            Text(title)
-                .font(.system(size: 12 * UIScale.font, weight: .black))
-                .foregroundColor(Color.duoSubtitle)
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 2)
     }
 
     private var fitingoButton: some View {

@@ -1,8 +1,12 @@
 import { useState } from 'react';
+import { useAppStore } from '../store/appStore';
+import { getRetentionDiagnostics, RetentionDiagnosticRow, RetentionDiagnosticSummary } from '../services/firebase';
 
 interface PlusViewProps {
   onBack: () => void;
 }
+
+const ADMIN_EMAIL = 'kenichiyoshida13@gmail.com';
 
 interface Feature {
   icon: string;
@@ -89,12 +93,42 @@ const PlusBadge = ({ size = 24 }: { size?: number }) => (
 );
 
 export const PlusView = ({ onBack }: PlusViewProps) => {
+  const user = useAppStore((state) => state.user);
+  const isAdmin = user?.email === ADMIN_EMAIL;
+
   const [codeInput, setCodeInput] = useState('');
   const [codeStatus, setCodeStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showCode, setShowCode] = useState(false);
 
+  const [showRetention, setShowRetention] = useState(false);
+  const [retentionRows, setRetentionRows] = useState<RetentionDiagnosticRow[]>([]);
+  const [retentionSummary, setRetentionSummary] = useState<RetentionDiagnosticSummary | null>(null);
+  const [retentionLoading, setRetentionLoading] = useState(false);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
+
   const handleCodeSubmit = () => {
     setCodeStatus(codeInput.trim() === 'kfit5526' ? 'success' : 'error');
+  };
+
+  const RETENTION_STATUS_LABEL: Record<RetentionDiagnosticRow['status'], string> = {
+    preExisting: '🚫 既存ユーザー除外',
+    recorded: '✅ 記録済み',
+    nonTrainingFirst: '⚠️ 非トレーニング初回',
+    noActivity: '➖ 活動記録なし',
+  };
+
+  const handleFetchRetention = async () => {
+    setRetentionLoading(true);
+    setRetentionError(null);
+    try {
+      const { rows, summary } = await getRetentionDiagnostics();
+      setRetentionRows(rows);
+      setRetentionSummary(summary);
+    } catch (e) {
+      setRetentionError(e instanceof Error ? e.message : '取得に失敗しました');
+    } finally {
+      setRetentionLoading(false);
+    }
   };
 
   return (
@@ -361,6 +395,91 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
           </div>
         )}
       </div>
+
+      {/* 管理者パネル: テスター状況レポート（Adminのみ表示） */}
+      {isAdmin && (
+        <div style={{
+          background: '#fff', borderRadius: 16, overflow: 'hidden',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+          border: '1.5px solid rgba(255,215,0,0.4)', marginBottom: 16,
+        }}>
+          <button
+            onClick={() => setShowRetention(!showRetention)}
+            style={{
+              width: '100%', padding: '14px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>👑</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#333' }}>
+                テスター状況レポート（90秒モード検証）
+              </span>
+            </div>
+            <span style={{ color: '#aaa', fontSize: 12 }}>{showRetention ? '▲' : '▼'}</span>
+          </button>
+
+          {showRetention && (
+            <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f5f5f5' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0 8px' }}>
+                <button
+                  onClick={handleFetchRetention}
+                  disabled={retentionLoading}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8,
+                    background: retentionLoading ? '#e5e5e5' : '#FF8C00',
+                    color: '#fff', fontWeight: 800, fontSize: 12,
+                    border: 'none', cursor: retentionLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {retentionLoading ? '取得中…' : '取得'}
+                </button>
+              </div>
+
+              {retentionError && (
+                <p style={{ color: '#FF4B4B', fontSize: 12, fontWeight: 700 }}>❌ {retentionError}</p>
+              )}
+
+              {!retentionError && retentionSummary && (
+                <>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#333', margin: '0 0 8px' }}>
+                    全{retentionSummary.total}人／記録済み{retentionSummary.recorded}／
+                    既存除外{retentionSummary.preExisting}／
+                    非トレーニング初回{retentionSummary.nonTrainingFirst}／
+                    活動なし{retentionSummary.noActivity}
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {retentionRows.map((row) => (
+                      <div
+                        key={row.uid}
+                        style={{
+                          padding: '8px 10px', borderRadius: 8,
+                          background: '#f8f8f8', border: '1px solid #f0f0f0',
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, color: '#333' }}>
+                          {row.username || `${row.uid.slice(0, 8)}…`}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                          {RETENTION_STATUS_LABEL[row.status]}
+                          pt={row.totalPoints} streak={row.streak} 初回活動日={row.firstActiveDay ?? '-'} firstSetSeconds={row.firstSetSeconds != null ? `${row.firstSetSeconds}s` : '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!retentionError && !retentionSummary && !retentionLoading && (
+                <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
+                  「取得」をタップするとFirestoreから全ユーザーの状況を集計します
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 注記 */}
       <p style={{ fontSize: 10, color: '#bbb', textAlign: 'center', lineHeight: 1.6 }}>

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs, getDoc, doc, setDoc, onSnapshot, Timestamp, increment } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { detectInAppBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
 import { localDateKey } from '../utils/date';
 
@@ -34,6 +35,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app, 'us-central1');
 
 // Firestoreキャッシュ設定（パフォーマンス最適化）
 import { enableIndexedDbPersistence } from 'firebase/firestore';
@@ -830,4 +832,40 @@ export const subscribeLiveCount = (callback: (count: number) => void): (() => vo
 export const incrementLiveCount = async (): Promise<void> => {
   const ref = doc(db, 'stats', 'live');
   await setDoc(ref, { [todayKey()]: increment(1) }, { merge: true });
+};
+
+// ─── Admin専用: テスター状況レポート ───────────────────────────────────────
+
+export interface RetentionDiagnosticRow {
+  uid: string;
+  username: string | null;
+  totalPoints: number;
+  streak: number;
+  firstActiveDay: string | null;
+  totalActiveDays: number;
+  firstSetSeconds: number | null;
+  status: 'preExisting' | 'recorded' | 'nonTrainingFirst' | 'noActivity';
+}
+
+export interface RetentionDiagnosticSummary {
+  total: number;
+  preExisting: number;
+  nonTrainingFirst: number;
+  recorded: number;
+  noActivity: number;
+}
+
+/**
+ * 90秒モードの検証指標（firstSetSeconds）が未記録のユーザーの原因切り分け。
+ * Cloud Function 側（getRetentionDiagnostics）で呼び出し元のemailが
+ * Adminメールと一致するかを再検証するため、UI側のisAdmin判定はあくまで
+ * 表示制御であり、実際のアクセス制御はサーバー側で担保される。
+ */
+export const getRetentionDiagnostics = async (): Promise<{
+  rows: RetentionDiagnosticRow[];
+  summary: RetentionDiagnosticSummary;
+}> => {
+  const fn = httpsCallable(functions, 'getRetentionDiagnostics');
+  const result = await fn();
+  return result.data as { rows: RetentionDiagnosticRow[]; summary: RetentionDiagnosticSummary };
 };

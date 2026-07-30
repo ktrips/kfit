@@ -347,17 +347,32 @@ struct MainTabView: View {
         )
     }
 
+    /// ROUTIN(ホーム)タブかどうか。switch の default ケース（0 および想定外の値）と同義。
+    private var isRoutinTab: Bool { !(1...7).contains(selectedTab) }
+
     @ViewBuilder
     private var mainContent: some View {
-        switch selectedTab {
-        case 1:  GoalView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-        case 2:  MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-        case 3:  FoodView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-        case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
-        case 5:  MoreView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu, overflowTabs: overflowPrimaryTabs)
-        case 6:  TomoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-        case 7:  GoalingoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
-        default: NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }.ignoresSafeArea(.keyboard)
+        ZStack {
+            // ROUTINは最も行き来が多いタブ。switch内の他ケースのように毎回破棄・再生成すると
+            // タブを離れて戻るたびにスピナー表示＋Firestore/HealthKit再取得が走り重く感じるため、
+            // 裏に維持したまま opacity で表示切替する（他タブは従来どおり非表示時に破棄）。
+            NavigationView { DashboardView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu) }
+                .ignoresSafeArea(.keyboard)
+                .opacity(isRoutinTab ? 1 : 0)
+                .allowsHitTesting(isRoutinTab)
+
+            if !isRoutinTab {
+                switch selectedTab {
+                case 1:  GoalView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                case 2:  MindView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                case 3:  FoodView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                case 4:  NavigationView { SettingsView(selectedTab: $selectedTab) }
+                case 5:  MoreView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu, overflowTabs: overflowPrimaryTabs)
+                case 6:  TomoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                case 7:  GoalingoView(selectedTab: $selectedTab, showRecordMenu: $showRecordMenu)
+                default: EmptyView()
+                }
+            }
         }
     }
 

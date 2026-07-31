@@ -289,34 +289,11 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
-    private func updateStreakAndPoints(userId: String, points: Int, now: Date) async {
-        // M3: addSnapshotListener で維持されている userProfile キャッシュを使用し
-        //     不要な Firestore getDocument() 読み取りを排除
+    /// streak は Cloud Functions の evaluateDailyStreak（毎日深夜、その日の到達度/XPを判定）
+    /// が一括管理するため、ここでは触らない。ポイント加算と最終活動日時の更新のみ行う。
+    private func addPointsAndUpdateLastActive(userId: String, points: Int, now: Date) async {
         let userRef = db.collection("users").document(userId)
-        let calendar = Calendar.current
-        let today    = calendar.startOfDay(for: now)
-
-        var newStreak: Int
-        if let cached = userProfile {
-            newStreak = cached.streak
-            let lastDay  = calendar.startOfDay(for: cached.lastActiveDate)
-            let diffDays = calendar.dateComponents([.day], from: lastDay, to: today).day ?? 0
-            if diffDays == 0 {
-                // 同日 — streak はそのまま、ポイントだけ加算
-            } else if diffDays <= 3 {
-                newStreak += 1
-            } else {
-                newStreak = 1
-            }
-        } else {
-            // キャッシュ未取得の場合のみフォールバック読み取り
-            guard let doc = try? await userRef.getDocument(), doc.exists else { return }
-            let profile = doc.data() ?? [:]
-            newStreak = profile["streak"] as? Int ?? 1
-        }
-
         try? await userRef.updateData([
-            "streak":         newStreak,
             "totalPoints":    FieldValue.increment(Int64(points)),
             "lastActiveDate": Timestamp(date: now),
         ])
@@ -1006,7 +983,7 @@ class AuthenticationManager: ObservableObject {
             dlog("⚠️ Set not counted: Some exercises did not meet target reps")
         }
 
-        await updateStreakAndPoints(userId: userId, points: totalXP, now: now)
+        await addPointsAndUpdateLastActive(userId: userId, points: totalXP, now: now)
         NotificationManager.shared.handleWorkoutRecorded()
         iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
 

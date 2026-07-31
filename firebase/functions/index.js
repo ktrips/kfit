@@ -4,6 +4,35 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+// ===== STREAK HELPERS =====
+// The streak counter increments the moment a day first crosses either bar
+// (XP >= 100 or achievement % >= 60) — not at day's end. A day that never
+// crosses the bar simply isn't counted; streak is never reset to 0, so
+// crossing the bar again on a later day resumes counting from wherever the
+// streak left off.
+
+// Calendar day key (yyyy-MM-dd) in Asia/Tokyo, matching the device-local
+// dayKey the iOS client uses for its daily summary docs.
+function jstDayKey(date) {
+  const jst = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  return `${jst.getFullYear()}-${String(jst.getMonth() + 1).padStart(2, '0')}-${String(jst.getDate()).padStart(2, '0')}`;
+}
+
+// Increments streak at most once per calendar day, guarded by
+// streakLastCountedDay so concurrent triggers (an exercise write and a
+// summary write landing close together) can't double-count the same day.
+async function incrementStreakOnceForDay(userRef, dayKey) {
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const profile = snap.data() || {};
+    if (profile.streakLastCountedDay === dayKey) return; // already counted today
+    tx.update(userRef, {
+      streak: (profile.streak || 0) + 1,
+      streakLastCountedDay: dayKey,
+    });
+  });
+}
+
 // ===== POINTS CALCULATION =====
 // Single source of truth: triggered when any exercise is recorded (web or iOS)
 // Handles base points + form bonus + streak bonus + first-exercise-of-day bonus
@@ -31,9 +60,9 @@ exports.calculatePoints = functions.firestore
       }
 
       // ── Streak bonus: +5% per consecutive day (max +50%) ─────────────────────
-      // Streak itself is no longer mutated here — it's evaluated once per day by
-      // evaluateDailyStreak based on that day's achievement% / XP. Just read the
-      // current value for the points bonus.
+      // The streak value used for this bonus reflects the day so far — it may
+      // still tick up later in this same function call if this exercise pushes
+      // today's XP over 100 (see below). Just read the current value here.
       const userRef = db.collection('users').doc(userId);
       const userDoc = await userRef.get();
       const profile = userDoc.data() || {};
@@ -71,7 +100,23 @@ exports.calculatePoints = functions.firestore
       // Store actual earned points back on the exercise record for history display
       await snap.ref.update({ pointsEarned: points });
 
-      console.log(`[calculatePoints] user=${userId} base=${exerciseData.reps * exercise.basePoints} earned=${points} streak=${streak}`);
+      // ── Streak: count today the moment cumulative exercise XP crosses 100 ────
+      // exerciseXP is a running total kept on the daily summary doc so this
+      // never needs a range query (and can't be thrown off by timezone-boundary
+      // mismatches the way a "today" query on the timestamp field would be).
+      const dayKey = jstDayKey(now);
+      const summaryRef = userRef.collection('summaries').doc(`daily-${dayKey}`);
+      const todayExerciseXP = await db.runTransaction(async (tx) => {
+        const summarySnap = await tx.get(summaryRef);
+        const newXP = (summarySnap.exists ? (summarySnap.data().exerciseXP || 0) : 0) + points;
+        tx.set(summaryRef, { exerciseXP: newXP }, { merge: true });
+        return newXP;
+      });
+      if (todayExerciseXP >= 100) {
+        await incrementStreakOnceForDay(userRef, dayKey);
+      }
+
+      console.log(`[calculatePoints] user=${userId} base=${exerciseData.reps * exercise.basePoints} earned=${points} streak=${streak} todayExerciseXP=${todayExerciseXP}`);
       return null;
     } catch (error) {
       console.error('Error calculating points:', error);
@@ -79,64 +124,29 @@ exports.calculatePoints = functions.firestore
     }
   });
 
-// ===== DAILY STREAK EVALUATION =====
-// Runs shortly after midnight (JST) and evaluates *yesterday* for each user:
-//   - that day's XP >= 100, OR
-//   - that day's achievement % (users/{uid}/summaries/daily-{yyyy-MM-dd}.achievementPercent,
-//     the iOS mandala completion metric — not written by Web) >= 60
-//   → streak += 1. Otherwise the streak is left untouched.
-// XP is taken as the max of two partial views, since either can under-count on
-// its own: the sum of pointsEarned across that day's completed-exercises docs
-// (platform-agnostic, but misses mindfulness/photo XP which never land there),
-// and achievementXP from the daily summary (iOS-only, includes those extras,
-// but only as of the last time the dashboard recomputed it that day).
-// A day that misses the bar is simply not counted — streak is never reset to
-// 0, so meeting the bar again on a later day resumes counting from wherever
-// the streak left off.
-exports.evaluateDailyStreak = functions.pubsub.schedule('every day 00:10')
-  .timeZone('Asia/Tokyo')
-  .onRun(async () => {
-    try {
-      const now = new Date();
-      const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
-      const yesterday = new Date(jstNow.getFullYear(), jstNow.getMonth(), jstNow.getDate() - 1);
-      const dayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-      const dayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
-      const dayEnd   = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+// ===== STREAK: ACHIEVEMENT%/XP CROSSING (real-time) =====
+// Fires whenever a daily summary doc (users/{uid}/summaries/daily-{yyyy-MM-dd})
+// is written — i.e. whenever the iOS dashboard recomputes today's mandala
+// completion % / XP. The moment either crosses its bar (percent >= 60 or
+// achievementXP >= 100) that day is counted immediately, guarded so it only
+// ever counts once (see incrementStreakOnceForDay). This is the "achievement
+// %" half of the streak rule; the "exercise XP" half is handled inline in
+// calculatePoints above so it counts the instant XP crosses 100 even before
+// the dashboard has recomputed the summary for the day.
+exports.evaluateStreakOnSummaryWrite = functions.firestore
+  .document('users/{userId}/summaries/{summaryId}')
+  .onWrite(async (change, context) => {
+    const { userId, summaryId } = context.params;
+    if (!summaryId.startsWith('daily-') || !change.after.exists) return null;
 
-      const usersSnapshot = await db.collection('users').get();
+    const data = change.after.data() || {};
+    const percent = data.achievementPercent || 0;
+    const xp = data.achievementXP || 0;
+    if (percent < 60 && xp < 100) return null;
 
-      for (const userDoc of usersSnapshot.docs) {
-        const profile = userDoc.data();
-        if (profile.streakLastCountedDay === dayKey) continue; // already counted (retry safety)
-
-        const [exercisesSnap, summarySnap] = await Promise.all([
-          userDoc.ref.collection('completed-exercises')
-            .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(dayStart))
-            .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(dayEnd))
-            .get(),
-          userDoc.ref.collection('summaries').doc(`daily-${dayKey}`).get(),
-        ]);
-
-        const exercisesXP = exercisesSnap.docs.reduce((sum, doc) => sum + (doc.data().pointsEarned || 0), 0);
-        const summary = summarySnap.exists ? summarySnap.data() : {};
-        const xp = Math.max(exercisesXP, summary.achievementXP || 0);
-        const percent = summary.achievementPercent || 0;
-
-        if (xp >= 100 || percent >= 60) {
-          await userDoc.ref.update({
-            streak: admin.firestore.FieldValue.increment(1),
-            streakLastCountedDay: dayKey,
-          });
-          console.log(`[evaluateDailyStreak] +1 streak for user ${userDoc.id} (day=${dayKey}, xp=${xp}, percent=${percent})`);
-        }
-        // else: bar not met — leave streak untouched, never reset to 0
-      }
-      return null;
-    } catch (error) {
-      console.error('Error evaluating daily streak:', error);
-      throw error;
-    }
+    const dayKey = summaryId.slice('daily-'.length);
+    await incrementStreakOnceForDay(db.collection('users').doc(userId), dayKey);
+    return null;
   });
 
 // ===== ACHIEVEMENT CHECKING =====
@@ -449,8 +459,8 @@ function getWeekStart(date) {
 //
 // 定義:
 //   継続日数 = 活動日マップ上で「3日以上空けずに」続いた期間の最長スパン
-//              （この cohort 指標独自の基準。evaluateDailyStreak が管理する
-//               ユーザー向け streak カウンター（到達度/XP基準・0にリセットしない）
+//              （この cohort 指標独自の基準。calculatePoints/evaluateStreakOnSummaryWrite
+//               が管理するユーザー向け streak カウンター（到達度/XP基準・0にリセットしない）
 //               とは別定義なので、streak の仕様変更時もここは追随不要）
 //   Dn 継続率 = 初回活動から n 日以上経過したユーザーのうち、
 //               継続日数が n 日以上に達した人の割合

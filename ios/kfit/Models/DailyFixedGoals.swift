@@ -13,6 +13,8 @@ struct DailyCustomGoal: Codable, Identifiable, Equatable {
 struct DailyFixedGoals: Codable, Equatable {
     var foodEnabled: Bool = false    // 🍽️ 食事2000kcal以上（Apple Health自動）
     var weightEnabled: Bool = false  // ⚖️ 体重計測（Apple Health自動）
+    var stepsEnabled: Bool = false   // 🚶 歩数計測（Apple Health自動）
+    var stepsGoal: Int = 10000       // 🚶 目標歩数
     var sleepEnabled: Bool = false   // 😴 睡眠計測（Apple Health自動）
     var sleepHoursGoal: Int = 7      // 😴 目標睡眠時間（時間）
     var customGoals: [DailyCustomGoal] = []  // 📱 カスタム項目（スクショで完了）

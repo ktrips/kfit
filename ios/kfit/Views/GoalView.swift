@@ -1031,7 +1031,7 @@ struct GoalView: View {
     }
 
     private var goalStepsProgressBar: some View {
-        let goal = 10000.0
+        let goal = Double(max(1, dailyFixedGoals.stepsGoal))
         let steps = Double(healthKit.todaySteps)
         let progress = min(1.0, steps / goal)
         return Button {
@@ -1210,18 +1210,19 @@ struct GoalView: View {
         } label: {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen)
+                    xpSummaryItem(label: "今日", xp: totalXP, color: Color.duoGreen, maxWidth: 96)
 
                     Rectangle()
                         .fill(Color(.systemGray5))
                         .frame(width: 1, height: 32)
 
-                    xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue)
+                    xpSummaryItem(label: "今週", xp: weeklyXP, color: Color.duoBlue, maxWidth: 96)
 
                     Rectangle()
                         .fill(Color(.systemGray5))
                         .frame(width: 1, height: 32)
 
+                    // 幅の上限を設けず、今日/今週で余った分を総計に回して改行を防ぐ
                     xpSummaryItem(label: "総計", xp: authManager.userProfile?.totalPoints ?? 0, color: Color.duoOrange)
                 }
                 .padding(.vertical, 14)
@@ -1245,7 +1246,7 @@ struct GoalView: View {
         .buttonStyle(.plain)
     }
 
-    private func xpSummaryItem(label: String, xp: Int, color: Color) -> some View {
+    private func xpSummaryItem(label: String, xp: Int, color: Color, maxWidth: CGFloat = .infinity) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: "star.fill")
@@ -1256,10 +1257,12 @@ struct GoalView: View {
                     .foregroundColor(Color.duoSubtitle)
             }
             Text("\(xp)XP")
-                .font(.system(size: 20 * UIScale.font, weight: .black, design: .rounded))
+                .font(.system(size: 18 * UIScale.font, weight: .black, design: .rounded))
                 .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: maxWidth)
     }
 
     // MARK: - ポイント詳細シート（Routinページから移動）

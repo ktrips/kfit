@@ -754,6 +754,43 @@ struct SettingsView: View {
             Divider().padding(.vertical, 10)
 
             Toggle(isOn: Binding(
+                get: { dailyFixedGoals.stepsEnabled },
+                set: { v in dailyFixedGoals.stepsEnabled = v; saveDailyFixedGoals() }
+            )) {
+                HStack(spacing: 8) {
+                    Text("🚶").font(.title3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("歩数を計測")
+                            .font(.subheadline).fontWeight(.semibold).foregroundColor(Color.duoDark)
+                        Text("Apple Healthの歩数データで自動判定")
+                            .font(.caption2).foregroundColor(Color.duoSubtitle)
+                    }
+                }
+            }.tint(Color.duoGreen)
+
+            if dailyFixedGoals.stepsEnabled {
+                Divider().padding(.vertical, 6)
+                HStack {
+                    Text("目標歩数")
+                        .font(.subheadline)
+                        .foregroundColor(Color.duoDark)
+                    Spacer()
+                    Stepper(
+                        "\(dailyFixedGoals.stepsGoal.formatted())歩",
+                        value: Binding(
+                            get: { dailyFixedGoals.stepsGoal },
+                            set: { v in dailyFixedGoals.stepsGoal = v; saveDailyFixedGoals() }
+                        ),
+                        in: 1000...30000, step: 500
+                    )
+                    .fixedSize()
+                }
+                .padding(.leading, 36)
+            }
+
+            Divider().padding(.vertical, 10)
+
+            Toggle(isOn: Binding(
                 get: { dailyFixedGoals.sleepEnabled },
                 set: { v in dailyFixedGoals.sleepEnabled = v; saveDailyFixedGoals() }
             )) {

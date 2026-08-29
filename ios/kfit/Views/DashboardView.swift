@@ -2478,7 +2478,8 @@ struct DashboardView: View {
             loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
             fixedGoals: dailyFixedGoals,
             todayEduItemCount: todayEduCount,
-            todayEduActivityNames: todayEduActivityNames
+            todayEduActivityNames: todayEduActivityNames,
+            todaySteps: healthKit.todaySteps
         )
     }
 
@@ -6868,7 +6869,7 @@ private struct MandalaSpiralCard: View {
                 case .mindfulness:    showMindfulnessSession = true
                 case .stretch:        showStretchSession = true
                 case .stand:          showStandSession = true
-                case .sleep, .activity: break
+                case .sleep, .activity, .steps: break
                 case .weight:
                     // 記録方法を選択（Withingsを開く / 写真で記録する）
                     showWeightOptions = true

@@ -500,7 +500,8 @@ struct TimeSlotGoalsView: View {
             dailyMindfulAndStandDone: dailyMindfulAndStandDone,
             loggedCompletionIds: MandalaCompletionLogger.shared.todayCompletedIds,
             todayEduItemCount: todayEduCount,
-            todayEduActivityNames: todayEduActivityNames
+            todayEduActivityNames: todayEduActivityNames,
+            todaySteps: healthKit.todaySteps
         )
     }
 
@@ -769,7 +770,7 @@ extension TimeSlot {
 // MARK: - Mandala Node Type
 
 enum MandalaNodeType {
-    case training, mindfulness, stretch, stand, meal, drink, sleep, pfc, custom, weight, activity
+    case training, mindfulness, stretch, stand, meal, drink, sleep, pfc, custom, weight, activity, steps
 }
 
 // MARK: - Mandala Node Data
@@ -859,7 +860,8 @@ struct MandalaChartView: View {
         loggedCompletionIds: Set<String> = [],   // MandalaCompletionLogger からの確定済み完了ID
         fixedGoals fixedGoalsOverride: DailyFixedGoals? = nil,  // 呼び出し側がキャッシュ済みなら渡す（UserDefaults/JSONデコード回避）
         todayEduItemCount: Int = 0,               // 今日の Duolingo / 語学履歴件数
-        todayEduActivityNames: Set<String> = []   // 今日の Edu 履歴 activityName 一覧（カスタム活動と照合）
+        todayEduActivityNames: Set<String> = [],  // 今日の Edu 履歴 activityName 一覧（カスタム活動と照合）
+        todaySteps: Int = 0                       // 今日の歩数（HealthKit）
     ) -> [MandalaNodeData] {
         var result: [MandalaNodeData] = []
 
@@ -1007,6 +1009,16 @@ struct MandalaChartView: View {
                     isCompleted: p.weightMeasured,
                     slot: nil,
                     type: .weight
+                ))
+            }
+            if fixed.stepsEnabled {
+                result.append(MandalaNodeData(
+                    id: "global-steps",
+                    emoji: "🚶",
+                    label: "歩数 \(fixed.stepsGoal.formatted())歩",
+                    isCompleted: todaySteps >= fixed.stepsGoal,
+                    slot: nil,
+                    type: .steps
                 ))
             }
         }

@@ -18,6 +18,20 @@ class TimeSlotManager: ObservableObject {
     private let db = Firestore.firestore()
     // LOW(M-6): 保存デバウンス — 500ms 以内の連続 record* 呼び出しを1回の Firestore 書き込みに集約
     private var pendingSaveTask: Task<Void, Never>?
+    // 目標設定（goals）の保存デバウンス。record* とは別カウンタで、
+    // ステッパー連打などで modifyGoal() が短時間に何度も呼ばれても
+    // Firestore への全ドキュメント書き込みを1回にまとめる。
+    private var pendingSaveSettingsTask: Task<Void, Never>?
+
+    // タブ切り替えのたびに同じ当日ドキュメントを毎回サーバーへ取りに行かないための
+    // 簡易キャッシュ。成功時のみ更新し、タイムアウト/エラー時は次回すぐ再試行できるようにする。
+    private var lastSettingsLoadedAt: Date?
+    private var lastProgressLoadedAt: Date?
+    private let loadCacheTTL: TimeInterval = 15
+
+    // Firestore/HealthKit の呼び出しが completion を返さないまま無期限にハングし、
+    // isLoading が固まって「スパイラルが読み込んだまま止まる」状態になるのを防ぐための上限。
+    private let networkTimeout: TimeInterval = 10
 
     private init() {}
 
@@ -30,22 +44,44 @@ class TimeSlotManager: ObservableObject {
         }
     }
 
+    /// modifyGoal() のようなステッパー連打を伴う編集元から呼ばれる想定の公開版。
+    /// 500ms 以内の連続呼び出しを1回の Firestore 全ドキュメント書き込みに集約する。
+    func debouncedSaveSettings() {
+        pendingSaveSettingsTask?.cancel()
+        pendingSaveSettingsTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await saveTodaySettings()
+        }
+    }
+
     // MARK: - 設定の読み込み
 
     /// 今日の時間帯別目標設定を取得
     func loadTodaySettings() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
+        if let last = lastSettingsLoadedAt, Date().timeIntervalSince(last) < loadCacheTTL {
+            return
+        }
         isLoading = true
         defer { isLoading = false }
 
         let today = Calendar.current.startOfDay(for: Date())
         let dateStr = dateString(from: today)
 
-        do {
-            let doc = try await db.collection("users").document(userId)
+        let doc = await withTimeout(seconds: networkTimeout, default: nil) { [db] in
+            try? await db.collection("users").document(userId)
                 .collection("time-slot-goals").document(dateStr).getDocument()
+        }
 
-            if doc.exists, let data = doc.data() {
+        guard let doc else {
+            dlog("❌ TimeSlotManager: Failed to load settings (timeout or error)")
+            settings = DailyTimeSlotSettings(date: today)
+            return
+        }
+        lastSettingsLoadedAt = Date()
+
+        if doc.exists, let data = doc.data() {
                 // Firestoreから読み込み
                 if let goalsData = data["goals"] as? [[String: Any]] {
                     var goals: [TimeSlotGoal] = []
@@ -159,10 +195,6 @@ class TimeSlotManager: ObservableObject {
                 }
                 applyGlobalMealDrinkToSlots()
                 await saveTodaySettings()
-            }
-        } catch {
-            dlog("❌ TimeSlotManager: Failed to load settings: \(error)")
-            settings = DailyTimeSlotSettings(date: today)
         }
     }
 
@@ -249,15 +281,28 @@ class TimeSlotManager: ObservableObject {
     /// 今日の時間帯別実績を取得
     func loadTodayProgress(syncHealthKit: Bool = true) async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
+        if !syncHealthKit, let last = lastProgressLoadedAt, Date().timeIntervalSince(last) < loadCacheTTL {
+            // syncHealthKit=true の呼び出しは HealthKit 実績を最新化する意図があるため
+            // キャッシュをスキップする。false（再読み込みのみ）の場合だけ短絡する。
+            return
+        }
 
         let today = Calendar.current.startOfDay(for: Date())
         let dateStr = dateString(from: today)
 
-        do {
-            let doc = try await db.collection("users").document(userId)
+        let doc = await withTimeout(seconds: networkTimeout, default: nil) { [db] in
+            try? await db.collection("users").document(userId)
                 .collection("time-slot-progress").document(dateStr).getDocument()
+        }
 
-            if doc.exists, let data = doc.data() {
+        guard let doc else {
+            dlog("❌ TimeSlotManager: Failed to load progress (timeout or error)")
+            progress = DailyTimeSlotProgress(date: today)
+            return
+        }
+        lastProgressLoadedAt = Date()
+
+        if doc.exists, let data = doc.data() {
                 if let progressData = data["progress"] as? [[String: Any]] {
                     var progressList: [TimeSlotProgress] = []
                     for progData in progressData {
@@ -327,14 +372,10 @@ class TimeSlotManager: ObservableObject {
                 progress = DailyTimeSlotProgress(date: today)
             }
 
-            if syncHealthKit {
-                await updateGlobalProgressFromHealthKit()
-            } else {
-                await syncMealProgressFromDietGoal(saveProgress: false)
-            }
-        } catch {
-            dlog("❌ TimeSlotManager: Failed to load progress: \(error)")
-            progress = DailyTimeSlotProgress(date: today)
+        if syncHealthKit {
+            await updateGlobalProgressFromHealthKit()
+        } else {
+            await syncMealProgressFromDietGoal(saveProgress: false)
         }
     }
 
@@ -347,12 +388,15 @@ class TimeSlotManager: ObservableObject {
             return
         }
 
+        // fetchTodayWorkout/fetchTodayStand は HealthKit の completion ハンドラを
+        // 待つだけの withCheckedContinuation ラッパーで、beginScopedFetch のような
+        // 保護もタイムアウトも無い。completion が呼ばれないケースに備えて上限を設ける。
         progress.globalProgress.workoutMinutes = healthKit.todayWorkoutMinutes > 0
             ? healthKit.todayWorkoutMinutes
-            : await healthKit.fetchTodayWorkout()
+            : await withTimeout(seconds: networkTimeout, default: 0) { await healthKit.fetchTodayWorkout() }
         progress.globalProgress.standHours = healthKit.todayStandHours > 0
             ? healthKit.todayStandHours
-            : await healthKit.fetchTodayStand()
+            : await withTimeout(seconds: networkTimeout, default: 0) { await healthKit.fetchTodayStand() }
 
         // 睡眠データを更新（ユーザー設定の目標時間を渡して同じ数値をカードと今日の状況で共有）
         let sleepAnalysis = healthKit.analyzeSleepScore(targetHours: Double(settings.globalGoals.sleepHoursGoal))

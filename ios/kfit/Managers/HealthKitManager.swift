@@ -326,6 +326,9 @@ final class HealthKitManager: ObservableObject {
     /// 例えば "mind" スコープの取得中に "goal" スコープの取得が来ても
     /// ブロックされ、画面を素早く切り替えると更新が止まって見える不具合があった。
     private var activeFetchScopes: Set<String> = []
+    /// スコープごとの「今のフェッチ試行」を識別するトークン。watchdog が古い試行の
+    /// ものだった場合に、後から始まった健全な試行を誤って強制終了しないようにする。
+    private var activeFetchGenerations: [String: UUID] = [:]
     private let fetchAllTTL: TimeInterval = 20
     private var mindfulnessCacheResult: (minutes: Double, sessions: Int, samples: [MindfulSession])?
     private var mindfulnessCachedAt: Date?
@@ -848,6 +851,7 @@ final class HealthKitManager: ObservableObject {
         applyMindfulnessResult(await mindfulness)
         todayWorkoutMinutes = await exerciseMinutes
         todayWorkoutCount = await workoutCount
+        lastFetchedAt = Date()
     }
 
     private func beginScopedFetch(_ scope: String, force: Bool, ttl: TimeInterval? = nil) -> Bool {
@@ -861,6 +865,9 @@ final class HealthKitManager: ObservableObject {
         }
         activeFetchScopes.insert(scope)
         isLoading = true
+        let generation = UUID()
+        activeFetchGenerations[scope] = generation
+        scheduleFetchWatchdog(scope, generation: generation)
         return true
     }
 
@@ -868,6 +875,25 @@ final class HealthKitManager: ObservableObject {
         lastScopedFetchAt[scope] = Date()
         activeFetchScopes.remove(scope)
         isLoading = !activeFetchScopes.isEmpty
+    }
+
+    /// fetchGoalHealth/fetchIntakeHealth/fetchWatchSnapshotHealth/fetchAll などは内部の
+    /// HKQuery が一つでも completion を返さないまま止まると、その関数自体が永久に
+    /// サスペンドして defer { finishScopedFetch(scope) } に到達できない。そうなると
+    /// activeFetchScopes にスコープが残り続け、isLoading が固まり、以後 force なしの
+    /// 再フェッチも黙って no-op になる（beginScopedFetch のガードに阻まれる）。
+    /// 一定時間後もスコープが残っていたら強制的に解放し、自己回復できるようにする。
+    /// generation はこの watchdog が紐づく試行の識別子。20秒の間に同じスコープで
+    /// 新しいフェッチ（force: true など）が始まっていたら generation が変わるため、
+    /// 古い watchdog は新しい健全な試行を誤って強制終了しない。
+    private func scheduleFetchWatchdog(_ scope: String, generation: UUID) {
+        Task {
+            try? await Task.sleep(nanoseconds: 20_000_000_000) // 20秒
+            guard activeFetchScopes.contains(scope),
+                  activeFetchGenerations[scope] == generation else { return }
+            dlog("⚠️ HealthKitManager: watchdog force-released stuck scope '\(scope)'")
+            finishScopedFetch(scope)
+        }
     }
 
     private func applyMindfulnessResult(_ mindfulnessResult: (minutes: Double, sessions: Int, samples: [MindfulSession])) {

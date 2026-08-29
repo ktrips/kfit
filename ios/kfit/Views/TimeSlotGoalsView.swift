@@ -68,7 +68,8 @@ struct TimeSlotGoalsCardsView: View {
         goals[slot.rawValue] = g
         timeSlotManager.settings.updateGoal(g)
         timeSlotManager.saveGoalTemplate()
-        Task { await timeSlotManager.saveTodaySettings() }
+        // ステッパー連打のたびに全ドキュメント書き込みが飛ばないようデバウンス
+        timeSlotManager.debouncedSaveSettings()
     }
     // MARK: - Time Slot Card
 

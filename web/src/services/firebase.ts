@@ -105,6 +105,13 @@ export const signInWithGoogle = async () => {
       });
     }
 
+    // ログインしたメールアドレスをTestFlightの外部テスターとして招待する。
+    // ログインフロー自体をブロックしないよう、結果を待たずfire-and-forgetで呼ぶ。
+    // 既に招待済みでもサーバー側で安全に扱われる（エラーにならない）。
+    inviteTestFlightTester().catch((err) => {
+      console.warn('TestFlight招待の送信に失敗しました（ログインには影響しません）:', err);
+    });
+
     return user;
   } catch (error) {
     console.error('Google sign-in error:', error);
@@ -112,6 +119,17 @@ export const signInWithGoogle = async () => {
   }
 };
 
+
+/**
+ * ログイン中ユーザーの認証済みメールアドレスを、App Store Connect API経由で
+ * kfitのTestFlight外部テストグループに招待する（Cloud Function: inviteTestFlightTester）。
+ * メールアドレスはクライアントから渡さず、サーバー側でIDトークンから取得する。
+ */
+export const inviteTestFlightTester = async (): Promise<{ status: 'invited' | 'already_invited' }> => {
+  const fn = httpsCallable(functions, 'inviteTestFlightTester');
+  const result = await fn();
+  return result.data as { status: 'invited' | 'already_invited' };
+};
 
 export const signOutUser = async () => {
   try {

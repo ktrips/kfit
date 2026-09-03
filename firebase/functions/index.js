@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const jwt = require('jsonwebtoken');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -834,4 +835,138 @@ exports.aiProxy = functions
     }
 
     return { text, usingCustomKey, isPlus };
+  });
+
+// ===== TESTFLIGHT: 招待の自動送信 =====
+// Webでログインしたユーザーの認証済みメールアドレスを、App Store Connect API
+// 経由で kfit の外部テストグループに追加する。Appleが自動でTestFlight招待
+// メールを送信してくれるので、こちら側でメール送信の仕組みを持つ必要はない。
+//
+// 認証情報の設定（Secret Manager。値そのものはコード/リポジトリに置かない）:
+//   firebase functions:secrets:set ASC_KEY_ID        # App Store Connect API キーのKey ID
+//   firebase functions:secrets:set ASC_ISSUER_ID     # Issuer ID
+//   firebase functions:secrets:set ASC_PRIVATE_KEY   # .p8 の中身をそのまま（BEGIN/END行含む）
+//
+// アプリ・外部テストグループのIDはハードコードせず、bundleId から都度解決する
+// （App Store Connect 側でグループを作り直しても追随できるようにするため）。
+const ASC_BUNDLE_ID = 'com.kfitappduo.app';
+const ASC_API_BASE = 'https://api.appstoreconnect.apple.com/v1';
+
+function ascToken() {
+  const keyId = process.env.ASC_KEY_ID;
+  const issuerId = process.env.ASC_ISSUER_ID;
+  const privateKey = process.env.ASC_PRIVATE_KEY;
+  if (!keyId || !issuerId || !privateKey) {
+    throw new Error('App Store Connect API の認証情報が未設定です（ASC_KEY_ID/ASC_ISSUER_ID/ASC_PRIVATE_KEY）');
+  }
+  // Secret Manager 経由だと改行が \n というリテラル文字列になっていることがあるため正規化
+  const pem = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
+  return jwt.sign({}, pem, {
+    algorithm: 'ES256',
+    expiresIn: '15m',
+    issuer: issuerId,
+    audience: 'appstoreconnect-v1',
+    keyid: keyId,
+  });
+}
+
+async function ascFetch(path, options = {}) {
+  const token = ascToken();
+  return fetch(`${ASC_API_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+}
+
+// コールドスタートまたぎのキャッシュ（App/グループIDは滅多に変わらないため）
+let ascAppAndGroupCache = null;
+
+async function resolveAscAppAndGroup() {
+  if (ascAppAndGroupCache) return ascAppAndGroupCache;
+
+  const appRes = await ascFetch(`/apps?filter[bundleId]=${encodeURIComponent(ASC_BUNDLE_ID)}`);
+  if (!appRes.ok) {
+    throw new Error(`App Store Connect: アプリ検索に失敗しました (HTTP ${appRes.status})`);
+  }
+  const appJson = await appRes.json();
+  const appId = appJson.data && appJson.data[0] && appJson.data[0].id;
+  if (!appId) {
+    throw new Error(`App Store Connect: bundleId=${ASC_BUNDLE_ID} のアプリが見つかりません`);
+  }
+
+  const groupsRes = await ascFetch(`/apps/${appId}/betaGroups`);
+  if (!groupsRes.ok) {
+    throw new Error(`App Store Connect: 外部テストグループの取得に失敗しました (HTTP ${groupsRes.status})`);
+  }
+  const groupsJson = await groupsRes.json();
+  const externalGroup = (groupsJson.data || []).find((g) => g.attributes && g.attributes.isInternalGroup === false);
+  if (!externalGroup) {
+    throw new Error('App Store Connect: 外部テストグループが見つかりません。App Store Connect で作成してください');
+  }
+
+  ascAppAndGroupCache = { appId, groupId: externalGroup.id };
+  return ascAppAndGroupCache;
+}
+
+exports.inviteTestFlightTester = functions
+  .runWith({ timeoutSeconds: 30, secrets: ['ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_PRIVATE_KEY'] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
+    }
+    // クライアントからemailを受け取らず、検証済みのIDトークンのclaimだけを信頼する
+    // （なりすましで任意のメールアドレスを招待できてしまうのを防ぐ）
+    const email = context.auth.token.email;
+    if (!email) {
+      throw new functions.https.HttpsError('failed-precondition', 'アカウントにメールアドレスが登録されていません');
+    }
+
+    const fullName = context.auth.token.name || '';
+    const [firstName, ...rest] = fullName.split(' ').filter(Boolean);
+    const lastName = rest.join(' ') || undefined;
+
+    try {
+      const { groupId } = await resolveAscAppAndGroup();
+
+      const res = await ascFetch('/betaTesters', {
+        method: 'POST',
+        body: JSON.stringify({
+          data: {
+            type: 'betaTesters',
+            attributes: {
+              email,
+              ...(firstName ? { firstName } : {}),
+              ...(lastName ? { lastName } : {}),
+            },
+            relationships: {
+              betaGroups: { data: [{ type: 'betaGroups', id: groupId }] },
+            },
+          },
+        }),
+      });
+
+      if (res.status === 201) {
+        console.log(`[inviteTestFlightTester] invited ${email}`);
+        return { status: 'invited' };
+      }
+
+      const body = await res.json().catch(() => ({}));
+      const errors = body.errors || [];
+      // 既に招待済み・登録済みの場合はエラー扱いにしない（呼び直しても安全なように）
+      const alreadyInvited = res.status === 409 || errors.some((e) => /already|exist/i.test(e.detail || e.title || ''));
+      if (alreadyInvited) {
+        return { status: 'already_invited' };
+      }
+
+      console.error('[inviteTestFlightTester] ASC error', res.status, JSON.stringify(body).slice(0, 500));
+      throw new functions.https.HttpsError('internal', 'TestFlight招待の送信に失敗しました');
+    } catch (error) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      console.error('[inviteTestFlightTester] error:', error);
+      throw new functions.https.HttpsError('internal', error.message || 'TestFlight招待でエラーが発生しました');
+    }
   });

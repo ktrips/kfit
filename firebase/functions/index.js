@@ -852,6 +852,23 @@ exports.aiProxy = functions
 const ASC_BUNDLE_ID = 'com.kfitappduo.app';
 const ASC_API_BASE = 'https://api.appstoreconnect.apple.com/v1';
 
+// Secret Manager への保存時、対話プロンプトへの貼り付けで改行が消えたり
+// BEGIN/END の枠が欠けたりしがち（複数行シークレットにありがちな事故）なため、
+// .p8 の中身がどんな形で保存されていても正しいPEMに正規化できるようにする。
+function normalizePrivateKeyPem(raw) {
+  let pem = raw.trim();
+  // "\n" というリテラル文字列で保存されているケース
+  if (pem.includes('\\n')) {
+    pem = pem.replace(/\\n/g, '\n');
+  }
+  // BEGIN/END の枠が無く、base64本体だけが保存されているケース
+  if (!pem.includes('BEGIN')) {
+    const body = pem.replace(/\s+/g, '');
+    pem = `-----BEGIN PRIVATE KEY-----\n${body.match(/.{1,64}/g).join('\n')}\n-----END PRIVATE KEY-----\n`;
+  }
+  return pem;
+}
+
 function ascToken() {
   const keyId = process.env.ASC_KEY_ID;
   const issuerId = process.env.ASC_ISSUER_ID;
@@ -859,8 +876,7 @@ function ascToken() {
   if (!keyId || !issuerId || !privateKey) {
     throw new Error('App Store Connect API の認証情報が未設定です（ASC_KEY_ID/ASC_ISSUER_ID/ASC_PRIVATE_KEY）');
   }
-  // Secret Manager 経由だと改行が \n というリテラル文字列になっていることがあるため正規化
-  const pem = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
+  const pem = normalizePrivateKeyPem(privateKey);
   return jwt.sign({}, pem, {
     algorithm: 'ES256',
     expiresIn: '15m',

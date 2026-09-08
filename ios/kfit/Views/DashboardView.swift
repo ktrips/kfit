@@ -5753,8 +5753,10 @@ struct DashboardView: View {
             await timeSlotManager.loadTodayProgress()
 
             // 体重履歴を取得（展開時に表示）
+            // fetchBodyMassHistory は保護されていない HKQuery ラッパーで、これがハングすると
+            // 後続の recomputeMandalaNodes() まで届かずスパイラルが更新されなくなるため上限を設ける。
             if healthKit.isAvailable && healthKit.isAuthorized {
-                await healthKit.fetchBodyMassHistory(days: 7)
+                await withTimeout(seconds: 15, default: ()) { await healthKit.fetchBodyMassHistory(days: 7) }
             }
 
             // PFC・睡眠データを取得してスコアを計算（fetchDashboardHealthでは未取得のため）

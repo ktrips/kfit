@@ -578,6 +578,14 @@ final class HealthKitManager: ObservableObject {
             isLoading = !activeFetchScopes.isEmpty
         }
 
+        // 内部のHKQueryが1つでもcompletionを返さないまま止まると、この関数自体が
+        // 永久にサスペンドしてしまい、呼び出し元（DashboardViewのloadData()等）も
+        // 一緒に固まって以後スパイラルが一切更新されなくなる。上限を設けて必ず
+        // 制御を返すようにする（タイムアウト時は取得できた範囲のデータのみ反映）。
+        await withTimeout(seconds: 20, default: ()) { [self] in await fetchAllBody() }
+    }
+
+    private func fetchAllBody() async {
         async let steps    = fetchTodaySteps()
         async let activeCalories = fetchTodayActiveCalories()
         async let restingCalories = fetchTodayRestingCalories()
@@ -680,7 +688,10 @@ final class HealthKitManager: ObservableObject {
     func fetchDashboardHealth(force: Bool = false) async {
         guard beginScopedFetch("dashboard", force: force) else { return }
         defer { finishScopedFetch("dashboard") }
+        await withTimeout(seconds: 15, default: ()) { [self] in await fetchDashboardHealthBody() }
+    }
 
+    private func fetchDashboardHealthBody() async {
         async let steps = fetchTodaySteps()
         async let activeCalories = fetchTodayActiveCalories()
         async let restingCalories = fetchTodayRestingCalories()
@@ -720,7 +731,10 @@ final class HealthKitManager: ObservableObject {
     func fetchMindHealth(force: Bool = false) async {
         guard beginScopedFetch("mind", force: force) else { return }
         defer { finishScopedFetch("mind") }
+        await withTimeout(seconds: 15, default: ()) { [self] in await fetchMindHealthBody() }
+    }
 
+    private func fetchMindHealthBody() async {
         async let latHR = fetchLatestHeartRate()
         async let restHR = fetchRestingHeartRate()
         async let hrv = fetchLatestHRV()
@@ -756,7 +770,10 @@ final class HealthKitManager: ObservableObject {
     func fetchGoalHealth(force: Bool = false) async {
         guard beginScopedFetch("goal", force: force) else { return }
         defer { finishScopedFetch("goal") }
+        await withTimeout(seconds: 15, default: ()) { [self] in await fetchGoalHealthBody() }
+    }
 
+    private func fetchGoalHealthBody() async {
         async let activeCalories = fetchTodayActiveCalories()
         async let restingCalories = fetchTodayRestingCalories()
         async let bodyMass = fetchLatestBodyMass()
@@ -796,7 +813,10 @@ final class HealthKitManager: ObservableObject {
     func fetchIntakeHealth(force: Bool = false) async {
         guard beginScopedFetch("intake", force: force) else { return }
         defer { finishScopedFetch("intake") }
+        await withTimeout(seconds: 15, default: ()) { [self] in await fetchIntakeHealthBody() }
+    }
 
+    private func fetchIntakeHealthBody() async {
         async let intakeCal = fetchTodayIntakeCalories()
         async let intakeWater = fetchTodayIntakeWater()
         async let intakeCaffeine = fetchTodayIntakeCaffeine()
@@ -824,7 +844,10 @@ final class HealthKitManager: ObservableObject {
     func fetchWatchSnapshotHealth(force: Bool = false) async {
         guard beginScopedFetch("watch", force: force, ttl: 10) else { return }
         defer { finishScopedFetch("watch") }
+        await withTimeout(seconds: 15, default: ()) { [self] in await fetchWatchSnapshotHealthBody() }
+    }
 
+    private func fetchWatchSnapshotHealthBody() async {
         async let steps = fetchTodaySteps()
         async let activeCalories = fetchTodayActiveCalories()
         async let restingCalories = fetchTodayRestingCalories()

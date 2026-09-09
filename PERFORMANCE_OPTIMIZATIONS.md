@@ -255,7 +255,37 @@ t.stop();
 5. **メモリ管理**: weak参照とクリーンアップ
 6. **エラーハンドリング**: キャッシュフォールバック
 
+### 11. 2026年9月の追加最適化
+
+#### HealthKit呼び出しのタイムアウト保護
+`withCheckedContinuation`でラップされたHealthKitクエリは、completionハンドラが呼ばれないまま無期限にハングするケース（HealthKitデーモンの不調、権限状態の遷移中など）への保護が無く、スパイラル画面が「読み込んだまま止まる」不具合の原因になっていた。
+
+```swift
+// Extensions/AsyncTimeout.swift（新設）
+func withTimeout<T>(seconds: TimeInterval, default: T, operation: @escaping @Sendable () async -> T) async -> T
+```
+
+`HealthKitManager`の全スコープ付きフェッチ（fetchAll/fetchGoalHealth/fetchIntakeHealth/fetchWatchSnapshotHealth/fetchGoalScreenHealthData/refreshMindfulness等）に適用。加えて、スコープ管理（`beginScopedFetch`/`finishScopedFetch`）に20秒のwatchdogを追加し、ハングしたフェッチが`isLoading`を永久にtrueのまま固定してしまう問題を自己回復できるようにした。
+
+**効果:** スパイラルの無限ローディング不具合を解消。
+
+#### Firestore読み取りの直列→並列化
+`calculatePoints`（全運動記録で毎回実行される最重要パス）が3つの独立したFirestore読み取り（exercise定義・ユーザープロフィール・当日の運動件数）を直列awaitしていたのをPromise.allに変更。`aiProxy`も同様に2読み取りを並列化。
+
+**効果:** 全運動記録・AI呼び出しのレイテンシを削減。
+
+#### TimeSlotManagerのキャッシュ・デバウンス
+`loadTodaySettings()`/`loadTodayProgress()`が9箇所以上の画面から呼ばれ、タブ切替のたびに同じ当日ドキュメントを毎回サーバーへ取得していたのを15秒TTLキャッシュで削減。目標編集（ステッパー連打）のFirestore書き込みも500msデバウンス化。
+
+#### Web: React.lazyによるコード分割
+本番ビルドが単一チャンク1,286KB（gzip 349KB）で、Vite自体がcode-splitting不足を警告していた。ログイン直後に必要な`LandingPage`/`DashboardView`のみ静的importのまま残し、他18コンポーネント（Settings/Help/Achievements/Leaderboard/BookViewer等）を`React.lazy` + `Suspense`に変更。
+
+**効果:** メインチャンク 1,286KB→745KB（gzip 349KB→191KB、約45%減）。
+
+#### 画像デコードキャッシュの配線
+`ThumbnailCache`（NSCacheでデコード済みUIImageを再利用する専用実装）が実装済みなのにどこからも呼ばれておらず、フィード（`EduPostHistorySection`）が毎回`UIImage(data:)`で同期デコードしメインスレッドを詰まらせていた。既存キャッシュ経由に変更。
+
 ---
 
-**実装者**: Claude Sonnet 4.5 + kenichi.yoshida  
-**最終更新**: 2026-05-09
+**実装者**: Claude Sonnet 4.5 + kenichi.yoshida
+**最終更新**: 2026-09-10

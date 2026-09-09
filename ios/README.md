@@ -218,6 +218,15 @@ xcodebuild -scheme kfit test
 
 ## Recent Updates
 
+### 1.2 (2026-09-10)
+- ✅ **ストリークロジック全面刷新**: 24時間無活動でリセットする方式から、1日の到達度60%以上またはXP100以上を達成した瞬間にリアルタイムでカウントアップする方式へ変更（0にはリセットされない）。iOS側の重複計算ロジックを削除しCloud Functions側に一本化
+- ✅ **ストリーク節目お祝い画面**: 5, 10, 20, 50, 75, 100, 150, 200日、以降50日毎の到達時にお祝いオーバーレイ＋100ポイントボーナスを付与
+- ✅ **毎日の目標に歩数を追加**: 設定 > 毎日の設定から目標歩数（デフォルト10,000歩）を設定でき、スパイラルにも歩数ノードを追加
+- ✅ **スパイラルの無限ローディング不具合を修正**: HealthKit/Firestoreフェッチにタイムアウト＋自己回復ウォッチドッグを追加
+- ✅ **共有機能（Duolingo/勉強/日記/食事）のカテゴリ分類を修正**: 食事キーワード判定の欠落・食事スパイラルノードとの未接続を修正、コメント無し画像共有へのOCRフォールバックを追加
+- ✅ **パフォーマンス改善**: Cloud Functionsの独立読み取り並列化、HealthKitタイムアウト保護の全経路拡充、フィードのサムネイル画像デコードをキャッシュ経由に変更
+- ✅ **署名チームID不整合を修正**（project.ymlのDEVELOPMENT_TEAM）
+
 ### 1.2 (2026-07-29)
 - ✅ **Apple Watch Diet book card placement**: Redesigned with Japanese title + Kindle badge, added to FIT page. Moved to the very bottom of the ROUTIN page (below the Plus upsell); hidden entirely on the FIT page for Plus members
 - ✅ **ROUTIN training button messaging**: Added a dedicated "evening" (17:00–19:00) time-of-day message to the Fitingo CTA button copy

@@ -2026,6 +2026,13 @@ class AuthenticationManager: ObservableObject {
         }
     }
 
+    /// ストリーク節目のお祝い画面を表示し終えたら呼ぶ。次回同じ節目で再表示されないようにする。
+    func clearPendingStreakMilestone() async {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        try? await db.collection("users").document(userId)
+            .updateData(["pendingStreakMilestone": FieldValue.delete()])
+    }
+
     /// 日別到達度レコード（達成率％・XPポイント）
     struct DailyAchievementRecord {
         let percent: Int
@@ -2165,6 +2172,10 @@ struct UserProfile: Codable {
     var streak: Int
     var joinDate: Date
     var lastActiveDate: Date
+    /// ストリークが節目（5, 10, 20, 50, 75, 100, 150, 200日、以降50日毎）に達した直後、
+    /// Cloud Functions（incrementStreakOnceForDay）がその節目の日数をセットする。
+    /// クライアントがお祝い画面を表示したら clearPendingStreakMilestone() で消す。
+    var pendingStreakMilestone: Int? = nil
 }
 
 struct Exercise: Codable, Identifiable {

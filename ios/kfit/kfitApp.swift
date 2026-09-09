@@ -121,6 +121,12 @@ struct MainTabView: View {
     @State private var taskCelebration: (name: String, emoji: String)? = nil
     @State private var celebrationDismissWork: DispatchWorkItem? = nil
 
+    // ── ストリーク節目お祝いの状態 ──
+    @State private var streakMilestoneCelebration: Int? = nil
+    // 表示済みの節目を記憶し、Firestoreの削除書き込みが反映される前に
+    // userProfile が再度同じ値でpublishされても二重表示しないようにする
+    @State private var lastShownStreakMilestone: Int? = nil
+
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
     private static let endOfDayTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -143,6 +149,17 @@ struct MainTabView: View {
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     .zIndex(99)
+                }
+            }
+            // ── ストリーク節目お祝い ──
+            .overlay {
+                if let days = streakMilestoneCelebration {
+                    StreakMilestoneCelebrationView(
+                        days: days,
+                        onDismiss: { dismissStreakMilestoneCelebration() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    .zIndex(100)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .dailyTaskCompleted)) { note in
@@ -180,8 +197,11 @@ struct MainTabView: View {
                 checkEndOfDayCalorieTopUp()
             }
             // プロフィール読み込み完了後に 90秒モードの初期判定を行う
-            .onReceive(authManager.$userProfile) { _ in
+            .onReceive(authManager.$userProfile) { profile in
                 initializeSimpleModeIfNeeded()
+                if let milestone = profile?.pendingStreakMilestone, milestone != lastShownStreakMilestone {
+                    showStreakMilestoneCelebration(days: milestone)
+                }
             }
             .onChange(of: fitVisible)      { _, _ in normalizeSelection() }
             .onChange(of: goalVisible)     { _, _ in normalizeSelection() }
@@ -213,6 +233,23 @@ struct MainTabView: View {
         withAnimation(.easeOut(duration: 0.25)) {
             taskCelebration = nil
         }
+    }
+
+    // ── ストリーク節目お祝い ────────────────────────────────────
+
+    private func showStreakMilestoneCelebration(days: Int) {
+        lastShownStreakMilestone = days
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            streakMilestoneCelebration = days
+        }
+    }
+
+    private func dismissStreakMilestoneCelebration() {
+        withAnimation(.easeOut(duration: 0.25)) {
+            streakMilestoneCelebration = nil
+        }
+        Task { await authManager.clearPendingStreakMilestone() }
     }
 
     // ── 90秒モード ──────────────────────────────────────────
@@ -716,6 +753,74 @@ struct GoodJobCelebrationView: View {
         .onAppear {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.55).delay(0.05)) {
                 mascotScale = 1.0
+            }
+        }
+    }
+}
+
+// MARK: - StreakMilestoneCelebrationView
+// ストリークが節目（5, 10, 20, 50, 75, 100, 150, 200日、以降50日毎）に達した直後に表示する
+// お祝いオーバーレイ。Cloud Functions（incrementStreakOnceForDay）が userProfile.pendingStreakMilestone
+// をセットし、MainTabView の .onReceive(authManager.$userProfile) が検知して表示する。
+
+struct StreakMilestoneCelebrationView: View {
+    let days: Int
+    let onDismiss: () -> Void
+
+    @State private var flameScale: CGFloat = 0.5
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                Text("🔥")
+                    .font(.system(size: 72))
+                    .scaleEffect(flameScale)
+
+                Text("\(days)日連続達成！")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoOrange)
+                    .multilineTextAlignment(.center)
+
+                Text("すごい継続力！この調子で続けよう")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.duoSubtitle)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(Color.duoOrange)
+                    Text("+100 XP ボーナス！")
+                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoOrange)
+                }
+                .padding(.top, 4)
+
+                Button(action: onDismiss) {
+                    Text("やったね！")
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.duoOrange)
+                        .clipShape(Capsule())
+                }
+                .padding(.top, 8)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 28)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.duoOrange.opacity(0.4), radius: 24, y: 10)
+            )
+            .padding(.horizontal, 40)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.55).delay(0.05)) {
+                flameScale = 1.0
             }
         }
     }

@@ -19,18 +19,37 @@ function jstDayKey(date) {
   return `${jst.getFullYear()}-${String(jst.getMonth() + 1).padStart(2, '0')}-${String(jst.getDate()).padStart(2, '0')}`;
 }
 
+// 節目日数: 5,10,20,50,75,100,150,200、それ以降は50日毎（250, 300, ...）。
+// 到達した瞬間だけtrueになる（streakは1日1回しか増えないため、この判定は
+// 「増分後の値がちょうど節目と一致するか」でよく、跨ぎ判定は不要）。
+const STREAK_MILESTONES = [5, 10, 20, 50, 75, 100, 150, 200];
+const STREAK_MILESTONE_BONUS = 100;
+function isStreakMilestone(streak) {
+  return STREAK_MILESTONES.includes(streak) || (streak > 200 && streak % 50 === 0);
+}
+
 // Increments streak at most once per calendar day, guarded by
 // streakLastCountedDay so concurrent triggers (an exercise write and a
 // summary write landing close together) can't double-count the same day.
+// When the new streak value lands exactly on a milestone (see
+// isStreakMilestone), also awards a one-time +100 point bonus and sets
+// pendingStreakMilestone so the iOS app can show a celebration screen
+// (cleared by the client via clearPendingStreakMilestone() once shown).
 async function incrementStreakOnceForDay(userRef, dayKey) {
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     const profile = snap.data() || {};
     if (profile.streakLastCountedDay === dayKey) return; // already counted today
-    tx.update(userRef, {
-      streak: (profile.streak || 0) + 1,
+    const newStreak = (profile.streak || 0) + 1;
+    const update = {
+      streak: newStreak,
       streakLastCountedDay: dayKey,
-    });
+    };
+    if (isStreakMilestone(newStreak)) {
+      update.pendingStreakMilestone = newStreak;
+      update.totalPoints = admin.firestore.FieldValue.increment(STREAK_MILESTONE_BONUS);
+    }
+    tx.update(userRef, update);
   });
 }
 

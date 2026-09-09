@@ -15,6 +15,7 @@ private struct ShareCategory {
     let activityName: String
     let activityEmoji: String
     let isDuolingo: Bool
+    var isMeal: Bool = false
 }
 
 /// コメントと共有元アプリ名からカテゴリを判定する。
@@ -93,6 +94,14 @@ private func detectCategory(comment: String, sourceApp: String) -> ShareCategory
         return ShareCategory(activityName: "コーヒーを淹れる", activityEmoji: "☕", isDuolingo: false)
     }
 
+    // ── 食事 ──────────────────────────────────────────────────────────────
+    let mealKeywords = ["食事", "ご飯", "ごはん", "ランチ", "lunch", "夕食", "晩ご飯", "dinner",
+                        "朝食", "breakfast", "meal", "food", "料理", "レシピ", "recipe",
+                        "カロリー", "calorie", "kcal", "外食", "自炊"]
+    if mealKeywords.contains(where: { text.contains($0) }) {
+        return ShareCategory(activityName: "食事", activityEmoji: "🍽️", isDuolingo: false, isMeal: true)
+    }
+
     // ── マッチなし → その他 ─────────────────────────────────────────────────
     return ShareCategory(activityName: "その他", activityEmoji: "✨", isDuolingo: false)
 }
@@ -140,6 +149,28 @@ private func detectsDuolingoByOCR(_ image: UIImage) async -> Bool {
         // 多言語認識
         request.recognitionLanguages = ["ja-JP", "en-US", "es-ES", "zh-Hant", "zh-Hans", "ko-KR"]
 
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([request])
+    }
+}
+
+/// Vision OCR で画像からテキストを抽出する（コメントの無い画像共有のカテゴリ判定フォールバック用）。
+/// Duolingo固有の判定（detectsDuolingoByOCR）はUI文言パターンで先に試すため、
+/// これはそれでも判定できなかった場合の最終手段として、抽出テキストを
+/// detectCategory() にそのまま渡し、勉強・日記・食事等の既存キーワードで再判定する。
+private func extractOCRText(_ image: UIImage) async -> String {
+    guard let cgImage = image.cgImage else { return "" }
+    return await withCheckedContinuation { continuation in
+        let request = VNRecognizeTextRequest { req, _ in
+            let observations = req.results as? [VNRecognizedTextObservation] ?? []
+            let allText = observations
+                .compactMap { $0.topCandidates(1).first?.string }
+                .joined(separator: " ")
+            continuation.resume(returning: allText)
+        }
+        request.recognitionLevel = .fast
+        request.usesLanguageCorrection = false
+        request.recognitionLanguages = ["ja-JP", "en-US", "es-ES", "zh-Hant", "zh-Hans", "ko-KR"]
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try? handler.perform([request])
     }
@@ -255,6 +286,18 @@ class PendingShareProcessor {
                         cat = ShareCategory(activityName: "Duolingo", activityEmoji: "🦉", isDuolingo: true)
                     }
                 }
+                // コメントにもDuolingo固有OCRパターンにもマッチしなかった場合、画像内の
+                // テキストを抽出して同じキーワード判定にかける（勉強・日記・食事などの
+                // コメント無し画像共有が一律「その他」になってしまう問題への対策）
+                if cat.activityName == "その他" {
+                    let ocrText = await extractOCRText(image)
+                    if !ocrText.isEmpty {
+                        let ocrCat = detectCategory(comment: ocrText, sourceApp: sourceApp)
+                        if ocrCat.activityName != "その他" {
+                            cat = ocrCat
+                        }
+                    }
+                }
             }
 
             let originalCommentEmpty = savedComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -326,6 +369,14 @@ class PendingShareProcessor {
                 return wd == 1 ? 7 : wd - 1
             }()
             Task { await TimeSlotManager.shared.completeCustomGoalIfNeeded(id: "wd_study_\(weekdayNum)") }
+        }
+        if cat.isMeal {
+            // EduLogManagerへの記録だけではスパイラルの食事ノード（.meal）は完了しない
+            // （HealthKit/logProgress.mealLoggedベースで判定されるため）。共有された時間帯の
+            // 食事ログとして記録し、実際にその時間帯の食事ノードを完了させる。
+            let hour = Calendar.current.component(.hour, from: Date())
+            let slot = TimeSlot.forHour(hour)
+            Task { await TimeSlotManager.shared.recordMealLog(at: slot) }
         }
         NotificationCenter.default.post(name: .duolingoShareProcessed, object: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

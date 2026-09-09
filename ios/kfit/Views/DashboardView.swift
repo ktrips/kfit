@@ -6652,9 +6652,13 @@ private struct EduPostHistorySection: View {
                             .frame(width: 38, alignment: .leading)
 
                         // サムネイル（あれば）
+                        // ThumbnailCache 経由でデコード済み画像をキャッシュから再利用し、
+                        // キャッシュヒット時はディスクI/O・JPEGデコードをスキップして
+                        // フィードスクロール中にメインスレッドが詰まるのを防ぐ。
                         if let path = item.thumbnailPath,
-                           let data = ThumbnailFileStore.load(path: path),
-                           let img = UIImage(data: data) {
+                           let img = ThumbnailCache.shared.image(for: item.id, maxPixel: 64, dataProvider: {
+                               ThumbnailFileStore.load(path: path)
+                           }) {
                             Image(uiImage: img)
                                 .resizable().scaledToFill()
                                 .frame(width: 32, height: 32)

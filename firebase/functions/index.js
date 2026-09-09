@@ -44,8 +44,28 @@ exports.calculatePoints = functions.firestore
     const exerciseData = snap.data();
 
     try {
-      // Get exercise definition for basePoints
-      const exerciseDoc = await db.collection('exercises').doc(exerciseData.exerciseId).get();
+      const now = exerciseData.timestamp?.toDate
+        ? exerciseData.timestamp.toDate()
+        : new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      const userRef = db.collection('users').doc(userId);
+
+      // 3つの読み取りは互いに独立している（このドキュメント自体は onCreate 時点で
+      // 既にコミット済みなので、todaySnapshot の並列実行タイミングに関わらず含まれる）ため、
+      // 直列awaitではなく並列実行してレイテンシを削減する。全運動記録のたびに
+      // 実行される最も呼び出し頻度の高い関数のため効果が大きい。
+      const [exerciseDoc, userDoc, todaySnapshot] = await Promise.all([
+        db.collection('exercises').doc(exerciseData.exerciseId).get(),
+        userRef.get(),
+        db.collection('users').doc(userId)
+          .collection('completed-exercises')
+          .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(todayStart))
+          .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
+          .limit(2) // "1件だけか、複数か" の判定にしか使わないため2件で十分
+          .get(),
+      ]);
+
       if (!exerciseDoc.exists) {
         console.error(`Exercise ${exerciseData.exerciseId} not found`);
         return null;
@@ -64,29 +84,13 @@ exports.calculatePoints = functions.firestore
       // The streak value used for this bonus reflects the day so far — it may
       // still tick up later in this same function call if this exercise pushes
       // today's XP over 100 (see below). Just read the current value here.
-      const userRef = db.collection('users').doc(userId);
-      const userDoc = await userRef.get();
       const profile = userDoc.data() || {};
-
-      const now = exerciseData.timestamp?.toDate
-        ? exerciseData.timestamp.toDate()
-        : new Date();
 
       const streak = profile.streak || 0;
       const streakMultiplier = Math.min(1 + streak * 0.05, 1.5);
       points = Math.round(points * streakMultiplier);
 
       // ── First-exercise-of-day bonus: +20% ─────────────────────────────────────
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-      const todaySnapshot = await db
-        .collection('users').doc(userId)
-        .collection('completed-exercises')
-        .where('timestamp', '>=', admin.firestore.Timestamp.fromDate(todayStart))
-        .where('timestamp', '<=', admin.firestore.Timestamp.fromDate(todayEnd))
-        .get();
-
       if (todaySnapshot.size === 1) {
         // This document is the only one today → first exercise of day
         points = Math.round(points * 1.2);
@@ -740,13 +744,15 @@ exports.aiProxy = functions
     }
 
     // ── ユーザー情報取得（Plus 判定 + カスタム API キー）──────────
-    const userSnap = await db.collection('users').doc(uid).get();
+    // 互いに独立した読み取りなので並列実行する
+    const [userSnap, settingsSnap] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.collection('users').doc(uid).collection('settings').doc('ai').get(),
+    ]);
     const userData = userSnap.data() || {};
     const isPlus = !!userData.isPlus;
 
     // カスタム API キー（Firestore: users/{uid}/settings.openaiApiKey）
-    const settingsSnap = await db.collection('users').doc(uid)
-      .collection('settings').doc('ai').get();
     const customApiKey = (settingsSnap.data() || {}).openaiApiKey || '';
     const usingCustomKey = customApiKey.length > 0;
 

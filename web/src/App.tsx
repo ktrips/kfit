@@ -1,31 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { onAuthChange, getExercises, getUserProfile, subscribeToUserProfile } from './services/firebase';
 import { useAppStore } from './store/appStore';
 // LoginView は LandingPage に置き換えたため未使用（将来の参照用に残す）
 // import { LoginView } from './components/LoginView';
+// ── ログイン直後の初回描画で必要な2画面だけは静的import（体感速度優先）。
+//    それ以外はReact.lazyで分割し、初期バンドルサイズを削減する。
 import { DashboardView } from './components/DashboardView';
-import { ExerciseTrackerView } from './components/ExerciseTrackerView';
-import { WeeklyGoalView } from './components/WeeklyGoalView';
-import { HistoryView } from './components/HistoryView';
-import { HelpView } from './components/HelpView';
-import { WorkoutPlanView } from './components/WorkoutPlanView';
-import { DailyWorkoutFlow } from './components/DailyWorkoutFlow';
-import { SettingsView } from './components/SettingsView';
-import { AchievementsView } from './components/AchievementsView';
-import { LeaderboardView } from './components/LeaderboardView';
-import TimeSlotGoals from './components/timeSlot/TimeSlotGoals';
-import { IntakeView } from './components/IntakeView';
-import { FoodView } from './components/FoodView';
-import { DietGoalView } from './components/DietGoalView';
-import { MindView } from './components/MindView';
-import { signOutUser } from './services/firebase';
-import { BooksLanding } from './components/books/BooksLanding';
-import { BookViewer, BookId } from './components/books/BookViewer';
-import { PlusView } from './components/PlusView';
-import { ChallengeLP } from './components/challenge/ChallengeLP';
-import { SharedReportView } from './components/SharedReportView';
-import { NinetySecondMode } from './components/NinetySecondMode';
 import { LandingPage, getActiveDays, NS90_MODE_KEY, type Mode90 } from './components/LandingPage';
+import { signOutUser } from './services/firebase';
+import type { BookId } from './components/books/BookViewer';
+
+const ExerciseTrackerView = lazy(() => import('./components/ExerciseTrackerView').then(m => ({ default: m.ExerciseTrackerView })));
+const WeeklyGoalView      = lazy(() => import('./components/WeeklyGoalView').then(m => ({ default: m.WeeklyGoalView })));
+const HistoryView         = lazy(() => import('./components/HistoryView').then(m => ({ default: m.HistoryView })));
+const HelpView            = lazy(() => import('./components/HelpView').then(m => ({ default: m.HelpView })));
+const WorkoutPlanView     = lazy(() => import('./components/WorkoutPlanView').then(m => ({ default: m.WorkoutPlanView })));
+const DailyWorkoutFlow    = lazy(() => import('./components/DailyWorkoutFlow').then(m => ({ default: m.DailyWorkoutFlow })));
+const SettingsView        = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
+const AchievementsView    = lazy(() => import('./components/AchievementsView').then(m => ({ default: m.AchievementsView })));
+const LeaderboardView     = lazy(() => import('./components/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
+const TimeSlotGoals       = lazy(() => import('./components/timeSlot/TimeSlotGoals'));
+const IntakeView          = lazy(() => import('./components/IntakeView').then(m => ({ default: m.IntakeView })));
+const FoodView            = lazy(() => import('./components/FoodView').then(m => ({ default: m.FoodView })));
+const DietGoalView        = lazy(() => import('./components/DietGoalView').then(m => ({ default: m.DietGoalView })));
+const MindView            = lazy(() => import('./components/MindView').then(m => ({ default: m.MindView })));
+const BooksLanding        = lazy(() => import('./components/books/BooksLanding').then(m => ({ default: m.BooksLanding })));
+const BookViewer          = lazy(() => import('./components/books/BookViewer').then(m => ({ default: m.BookViewer })));
+const PlusView            = lazy(() => import('./components/PlusView').then(m => ({ default: m.PlusView })));
+const ChallengeLP         = lazy(() => import('./components/challenge/ChallengeLP').then(m => ({ default: m.ChallengeLP })));
+const SharedReportView    = lazy(() => import('./components/SharedReportView').then(m => ({ default: m.SharedReportView })));
+const NinetySecondMode    = lazy(() => import('./components/NinetySecondMode').then(m => ({ default: m.NinetySecondMode })));
 
 type View = 'login' | 'dashboard' | 'tracker' | 'weekly' | 'history' | 'help' | 'plan' | 'workout' | 'settings' | 'achievements' | 'leaderboard' | 'timeSlots' | 'intake' | 'food' | 'dietGoal' | 'mind' | 'books' | 'bookDetail' | 'premium' | 'challenge' | 'sharedReport' | 'ninety';
 
@@ -316,6 +320,11 @@ function App() {
       )}
 
       <main>
+        <Suspense fallback={
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="animate-spin rounded-full h-10 w-10 border-4 border-duo-green border-t-transparent" />
+          </div>
+        }>
         {/* ── 書籍ページ（ログイン不要・全画面） ── */}
         {currentView === 'books' && (
           <BooksLanding
@@ -430,6 +439,7 @@ function App() {
         {currentView === 'premium' && user && (
           <PlusView onBack={() => navigate('dashboard')} />
         )}
+        </Suspense>
       </main>
 
       {/* ── ログイン後フッター: BooksリンクとPrivacyポリシー ── */}

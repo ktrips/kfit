@@ -2224,8 +2224,12 @@ final class HealthKitManager: ObservableObject {
     }
 
     /// マインドフルネスデータを手動で更新
+    /// fetchTodayMindfulness は最大50件のサンプルそれぞれにHR/HRVクエリを重ねる処理で、
+    /// 1つでもハングすると呼び出し元（セッション完了シート等）が固まるため上限を設ける。
     func refreshMindfulness() async {
-        let result = await fetchTodayMindfulness()
+        let result = await withTimeout(seconds: 20, default: (minutes: 0.0, sessions: 0, samples: [MindfulSession]())) { [self] in
+            await fetchTodayMindfulness()
+        }
         todayMindfulnessMinutes = result.minutes
         todayMindfulnessSessions = result.sessions
         todayMindfulnessSamples = result.samples
@@ -2369,6 +2373,25 @@ final class HealthKitManager: ObservableObject {
         includeRaceWorkouts: Bool = false,
         includeWeeklyWorkoutSessions: Bool = false,
         forceGoalHealth: Bool = false
+    ) async -> [WorkoutSession] {
+        // このスコープに固有のHKQueryのどれか1つでもハングすると、GoalView/GoalingoView
+        // 側のロード処理全体が止まってしまうため上限を設ける（他の6つのスコープ付き
+        // フェッチと同じ保護パターン）。
+        await withTimeout(seconds: 20, default: []) { [self] in
+            await fetchGoalScreenHealthDataBody(
+                includeBodyFat: includeBodyFat,
+                includeRaceWorkouts: includeRaceWorkouts,
+                includeWeeklyWorkoutSessions: includeWeeklyWorkoutSessions,
+                forceGoalHealth: forceGoalHealth
+            )
+        }
+    }
+
+    private func fetchGoalScreenHealthDataBody(
+        includeBodyFat: Bool,
+        includeRaceWorkouts: Bool,
+        includeWeeklyWorkoutSessions: Bool,
+        forceGoalHealth: Bool
     ) async -> [WorkoutSession] {
         async let bodyMass: Void = fetchBodyMassHistory(days: 30)
         async let burnData: Void = fetchWeeklyBurnData()

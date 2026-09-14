@@ -2029,8 +2029,14 @@ class AuthenticationManager: ObservableObject {
     /// ストリーク節目のお祝い画面を表示し終えたら呼ぶ。次回同じ節目で再表示されないようにする。
     func clearPendingStreakMilestone() async {
         guard let userId = Auth.auth().currentUser?.uid else { return }
-        try? await db.collection("users").document(userId)
-            .updateData(["pendingStreakMilestone": FieldValue.delete()])
+        do {
+            try await db.collection("users").document(userId)
+                .updateData(["pendingStreakMilestone": FieldValue.delete()])
+        } catch {
+            // 失敗してもUI側はUserDefaultsの永続ガードで再表示を防ぐため致命的ではないが、
+            // 原因究明のためログだけ残す（オフライン・権限エラー等）
+            dlog("[Streak] ⚠️ pendingStreakMilestoneのクリアに失敗: \(error.localizedDescription)")
+        }
     }
 
     /// 日別到達度レコード（達成率％・XPポイント）

@@ -452,13 +452,15 @@ final class HealthKitManager: ObservableObject {
             dlog("[HealthKit] HealthKit not available on this device")
             return
         }
-        do {
-            try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
-            isAuthorized = true
-            dlog("[HealthKit] ✅ Authorization granted")
-            await fetchAll()
-        } catch {
-            dlog("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
+        await withTimeout(seconds: 15, default: ()) { [self] in
+            do {
+                try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
+                isAuthorized = true
+                dlog("[HealthKit] ✅ Authorization granted")
+                await fetchAll()
+            } catch {
+                dlog("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
+            }
         }
     }
 

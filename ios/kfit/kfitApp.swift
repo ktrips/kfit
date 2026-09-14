@@ -124,8 +124,24 @@ struct MainTabView: View {
     // ── ストリーク節目お祝いの状態 ──
     @State private var streakMilestoneCelebration: Int? = nil
     // 表示済みの節目を記憶し、Firestoreの削除書き込みが反映される前に
-    // userProfile が再度同じ値でpublishされても二重表示しないようにする
+    // userProfile が再度同じ値でpublishされても二重表示しないようにする。
+    // @State のみだとFirestoreのpendingStreakMilestoneクリアが失敗（オフライン等で
+    // try?が握りつぶす）した場合に、次回起動時のonReceiveで再度同じ値を受け取り
+    // モーダルが再表示され続けてしまうため、UserDefaultsにも永続化してガードする。
     @State private var lastShownStreakMilestone: Int? = nil
+
+    private func lastShownStreakMilestoneKey(uid: String) -> String {
+        "lastShownStreakMilestone_\(uid)"
+    }
+
+    private func loadLastShownStreakMilestone(uid: String) -> Int? {
+        let key = lastShownStreakMilestoneKey(uid: uid)
+        return UserDefaults.standard.object(forKey: key) as? Int
+    }
+
+    private func persistLastShownStreakMilestone(uid: String, milestone: Int) {
+        UserDefaults.standard.set(milestone, forKey: lastShownStreakMilestoneKey(uid: uid))
+    }
 
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
@@ -199,8 +215,10 @@ struct MainTabView: View {
             // プロフィール読み込み完了後に 90秒モードの初期判定を行う
             .onReceive(authManager.$userProfile) { profile in
                 initializeSimpleModeIfNeeded()
-                if let milestone = profile?.pendingStreakMilestone, milestone != lastShownStreakMilestone {
-                    showStreakMilestoneCelebration(days: milestone)
+                if let milestone = profile?.pendingStreakMilestone, let uid = profile?.uid,
+                   milestone != lastShownStreakMilestone,
+                   milestone != loadLastShownStreakMilestone(uid: uid) {
+                    showStreakMilestoneCelebration(days: milestone, uid: uid)
                 }
             }
             .onChange(of: fitVisible)      { _, _ in normalizeSelection() }
@@ -237,8 +255,9 @@ struct MainTabView: View {
 
     // ── ストリーク節目お祝い ────────────────────────────────────
 
-    private func showStreakMilestoneCelebration(days: Int) {
+    private func showStreakMilestoneCelebration(days: Int, uid: String) {
         lastShownStreakMilestone = days
+        persistLastShownStreakMilestone(uid: uid, milestone: days)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             streakMilestoneCelebration = days

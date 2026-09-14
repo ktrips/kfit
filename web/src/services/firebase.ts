@@ -892,3 +892,14 @@ export const getRetentionDiagnostics = async (): Promise<{
   const result = await fn();
   return result.data as { rows: RetentionDiagnosticRow[]; summary: RetentionDiagnosticSummary };
 };
+
+/**
+ * Admin本人の連続記録(streak)を任意の日数に上書きする。
+ * Cloud Function側（setAdminStreak）で呼び出し元のemailを再検証するため、
+ * UI側のisAdmin判定はあくまで表示制御であり、実際のアクセス制御はサーバー側で担保される。
+ */
+export const setAdminStreak = async (streak: number): Promise<{ streak: number }> => {
+  const fn = httpsCallable(functions, 'setAdminStreak');
+  const result = await fn({ streak });
+  return result.data as { streak: number };
+};

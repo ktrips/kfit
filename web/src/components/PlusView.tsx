@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import { getRetentionDiagnostics, RetentionDiagnosticRow, RetentionDiagnosticSummary } from '../services/firebase';
+import { getRetentionDiagnostics, RetentionDiagnosticRow, RetentionDiagnosticSummary, setAdminStreak } from '../services/firebase';
 
 interface PlusViewProps {
   onBack: () => void;
@@ -106,6 +106,12 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [retentionError, setRetentionError] = useState<string | null>(null);
 
+  const [showStreakSetter, setShowStreakSetter] = useState(false);
+  const [streakInput, setStreakInput] = useState('');
+  const [streakSaving, setStreakSaving] = useState(false);
+  const [streakResult, setStreakResult] = useState<number | null>(null);
+  const [streakError, setStreakError] = useState<string | null>(null);
+
   const handleCodeSubmit = () => {
     setCodeStatus(codeInput.trim() === 'kfit5526' ? 'success' : 'error');
   };
@@ -162,6 +168,26 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
       setRetentionError(e instanceof Error ? e.message : '取得に失敗しました');
     } finally {
       setRetentionLoading(false);
+    }
+  };
+
+  const handleSetStreak = async () => {
+    const value = Number(streakInput);
+    if (!Number.isInteger(value) || value < 0) {
+      setStreakError('0以上の整数を入力してください');
+      setStreakResult(null);
+      return;
+    }
+    setStreakSaving(true);
+    setStreakError(null);
+    setStreakResult(null);
+    try {
+      const { streak } = await setAdminStreak(value);
+      setStreakResult(streak);
+    } catch (e) {
+      setStreakError(e instanceof Error ? e.message : '設定に失敗しました');
+    } finally {
+      setStreakSaving(false);
     }
   };
 
@@ -519,6 +545,74 @@ export const PlusView = ({ onBack }: PlusViewProps) => {
               {!retentionError && !retentionSummary && !retentionLoading && (
                 <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
                   「取得」をタップするとFirestoreから全ユーザーの状況を集計します
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 管理者パネル: 連続記録の手動設定（Adminのみ表示） */}
+      {isAdmin && (
+        <div style={{
+          background: '#fff', borderRadius: 16, overflow: 'hidden',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+          border: '1.5px solid rgba(255,215,0,0.4)', marginBottom: 16,
+        }}>
+          <button
+            onClick={() => setShowStreakSetter(!showStreakSetter)}
+            style={{
+              width: '100%', padding: '14px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🔥</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#333' }}>
+                連続記録を手動設定
+              </span>
+            </div>
+            <span style={{ color: '#aaa', fontSize: 12 }}>{showStreakSetter ? '▲' : '▼'}</span>
+          </button>
+
+          {showStreakSetter && (
+            <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f5f5f5' }}>
+              <p style={{ fontSize: 11, color: '#888', margin: '10px 0 8px' }}>
+                自分（Admin）アカウントの連続記録日数を直接上書きします。
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={streakInput}
+                  onChange={(e) => setStreakInput(e.target.value)}
+                  placeholder="例: 99"
+                  style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 8,
+                    border: '1px solid #ddd', fontSize: 13,
+                  }}
+                />
+                <button
+                  onClick={handleSetStreak}
+                  disabled={streakSaving || streakInput.trim() === ''}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8,
+                    background: streakSaving || streakInput.trim() === '' ? '#e5e5e5' : '#FF8C00',
+                    color: '#fff', fontWeight: 800, fontSize: 12,
+                    border: 'none', cursor: streakSaving || streakInput.trim() === '' ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {streakSaving ? '設定中…' : '設定'}
+                </button>
+              </div>
+
+              {streakError && (
+                <p style={{ color: '#FF4B4B', fontSize: 12, fontWeight: 700, marginTop: 8 }}>❌ {streakError}</p>
+              )}
+              {streakResult !== null && !streakError && (
+                <p style={{ color: '#58CC02', fontSize: 12, fontWeight: 800, marginTop: 8 }}>
+                  ✅ 連続記録を{streakResult}日に設定しました
                 </p>
               )}
             </div>

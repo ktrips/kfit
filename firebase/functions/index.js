@@ -643,6 +643,32 @@ exports.getRetentionDiagnostics = functions
     return { rows: validRows, summary };
   });
 
+// ===== ADMIN: 連続記録の手動設定 =====
+// 管理者パネル（PlusView.tsx）からのみ呼び出される。呼び出し元自身（context.auth.uid）の
+// streak を任意の日数に上書きする。他ユーザーのuidを受け取らない設計にすることで、
+// このAPIがAdmin本人の記録編集以外に転用されないようにしている。
+exports.setAdminStreak = functions
+  .runWith({ timeoutSeconds: 30, memory: '128MB' })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です');
+    }
+    const email = (context.auth.token.email || '').toLowerCase();
+    if (email !== RETENTION_ADMIN_EMAIL.toLowerCase()) {
+      throw new functions.https.HttpsError('permission-denied', 'この操作はAdminのみ実行できます');
+    }
+
+    const streak = Number(data && data.streak);
+    if (!Number.isInteger(streak) || streak < 0 || streak > 100000) {
+      throw new functions.https.HttpsError('invalid-argument', '連続記録は0〜100000の整数で指定してください');
+    }
+
+    const userRef = db.collection('users').doc(context.auth.uid);
+    await userRef.update({ streak });
+
+    return { streak };
+  });
+
 // ===== WEEKLY REPORT AI COMMENT =====
 // 週次レポートカード用の AI コーチングコメントを生成する callable 関数。
 // WeeklyReportView（iOS）から呼ばれ、結果は shared-reports ドキュメントにも保存される。

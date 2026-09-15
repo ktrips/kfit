@@ -6310,7 +6310,6 @@ struct DashboardView: View {
             ("ランジ", "fitingo_wo_range"),
             ("レッグレイズ", "fitingo_wo_legs"),
             ("バーピー", "fitingo_wo_burpee"),
-            ("その他トレーニング", "fitingo_workout"),
         ]
     }
 
@@ -6583,22 +6582,19 @@ struct TrainingVideoButton: View {
                 }
             }
 
-            if onTapVideo != nil {
-                Text("タップしてトレーニング開始")
-                    .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.duoGreen)
-            }
-
-            Button {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    showTrainingVideo = false
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        showTrainingVideo = false
+                    }
+                } label: {
+                    Text("動画は隠す")
+                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                        .foregroundColor(Color.duoSubtitle)
                 }
-            } label: {
-                Text("動画は隠す")
-                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
@@ -6613,6 +6609,11 @@ struct TrainingVideoButton: View {
     private func trainingVideoContent(_ video: (name: String, gifName: String), count: Int) -> some View {
         VStack(spacing: 6) {
             HStack {
+                if onTapVideo != nil {
+                    Text("タップでトレーニング：")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                }
                 Text(video.name)
                     .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
                     .foregroundColor(Color.duoDark)

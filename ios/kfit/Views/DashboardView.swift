@@ -6572,29 +6572,48 @@ struct TrainingVideoButton: View {
         let video = currentVideo
         let count = max(playlist.count, 1)
         return VStack(spacing: 6) {
+            // ヘッダー行。ROUTIN（onTapVideo != nil）では「動画は隠す」をここに配置し、
+            // 動画本体のタップ開始ボタンと重ならない独立したタップ領域にする
+            HStack {
+                if onTapVideo != nil {
+                    Text("タップでトレーニング")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                    Text(video.name)
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                    Spacer()
+                    hideVideoButton
+                } else {
+                    Text(video.name)
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\((trainingVideoIndex % count) + 1)/\(count)")
+                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .padding(.horizontal, 4)
+
             Group {
                 if let onTapVideo {
-                    Button(action: onTapVideo) { trainingVideoContent(video, count: count) }
+                    Button(action: onTapVideo) { videoGIFBody(video) }
                         .buttonStyle(.plain)
                 } else {
-                    trainingVideoContent(video, count: count)
+                    videoGIFBody(video)
                 }
             }
 
-            HStack {
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                        showTrainingVideo = false
-                    }
-                } label: {
-                    Text("動画は隠す")
-                        .font(.system(size: 9 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
+            if onTapVideo == nil {
+                HStack {
+                    Spacer()
+                    hideVideoButton
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
-            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
         .padding(8)
@@ -6605,35 +6624,29 @@ struct TrainingVideoButton: View {
         .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
 
-    private func trainingVideoContent(_ video: (name: String, gifName: String), count: Int) -> some View {
-        VStack(spacing: 6) {
-            HStack {
-                if onTapVideo != nil {
-                    Text("タップでトレーニング：")
-                        .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.duoGreen)
-                }
-                Text(video.name)
-                    .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
-                    .foregroundColor(Color.duoDark)
-                    .lineLimit(1)
-                Spacer()
-                Text("\((trainingVideoIndex % count) + 1)/\(count)")
-                    .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.duoSubtitle)
+    private var hideVideoButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                showTrainingVideo = false
             }
-            .padding(.horizontal, 4)
-
-            GeometryReader { geo in
-                GIFAnimationView(gifName: video.gifName)
-                    .id(video.gifName)
-                    .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
-                    .background(Color.black.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .clipped()
-            }
-            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        } label: {
+            Text("動画は隠す")
+                .font(.system(size: 9 * UIScale.font, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
         }
+        .buttonStyle(.plain)
+    }
+
+    private func videoGIFBody(_ video: (name: String, gifName: String)) -> some View {
+        GeometryReader { geo in
+            GIFAnimationView(gifName: video.gifName)
+                .id(video.gifName)
+                .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
+                .background(Color.black.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .clipped()
+        }
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
     }
 }
 

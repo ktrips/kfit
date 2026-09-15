@@ -299,6 +299,16 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 最近の主なアップデート
 
+### 2026-09-14〜09-15
+- ✅ **管理者パネルに連続記録の手動設定機能を追加**: Adminアカウント（kenichiyoshida13@gmail.com）自身のstreakをPlus画面から任意の日数に直接設定可能に（Cloud Function `setAdminStreak`でサーバー側もAdminメールを再検証）
+- ✅ **スパイラル無限ローディングの残存経路を修正**: `HealthKitManager.requestAuthorization()`にタイムアウト保護が漏れていたのを追加。ストリーク節目お祝いモーダルの再表示ガードをUserDefaultsで永続化し、Firestore書き込み失敗時に再起動のたびに同じモーダルが表示され続ける不具合を修正
+- ✅ **ROUTIN/FITページのトレーニング動画UIを刷新**: ROUTINはデフォルトで動画を表示しFitingoボタンは非表示（動画タップでトレーニング開始、「動画は隠す」で従来ボタンに切替・選択を永続化）。FITページにも同種の動画ボタンを追加し動画タップでトレーニング開始できるように統一。ヘッダー表示を「タップでトレーニング」に簡略化し、N/Nカウンターの位置に「動画は隠す」を移動（ROUTIN側）
+- ✅ **今日のアクティビティのエクスパンドをGOALページからFITページへ移動**し、今日のアクティビティカードと1枚のカードに統合
+- ✅ **Apple Watch Diet書籍カードを刷新**: 「AppleWatch Diet Ultra2」表示を削除し「AppleWatchだけでダイエットする100の方法」に変更、右上矢印を削除、「Plusユーザーなら全文無料で読める！」に統一
+- ✅ **トレーニング動画素材の整理**: ファイル名の表記ゆれ（`fItingo_wo_pushups`等）を解消、ランジ用GIFを新素材`fitingo_wo_lunge.gif`に差し替え、芝生背景版`fitingo_wo.gif`を追加。動画切替時にGIFのGIF→GIF変換で瞳が緑ににじむ不具合、GIF切替時の白フラッシュ（`key`によるimg再マウント起因）をそれぞれ修正
+- ✅ **FIT/GOALページのHealthKit再フェッチにTTLキャッシュを追加**: ROUTIN画面が常時バックグラウンド生存する設計のため、FIT/GOALタブ切替のたびに重複していたHealthKitクエリを15秒キャッシュで削減
+- ✅ **ディスク枯渇によるXcodeビルド失敗（Libtool/CodeSign/内部不整合エラー）に繰り返し対応**: DerivedData・古いiOS DeviceSupportの定期的なクリーンアップで解消
+
 ### 2026-08-29〜09-10
 - ✅ **ストリーク（連続記録）ロジックを全面刷新**: 「24時間活動なしでリセット」方式から、「1日の到達度60%以上 or XP100以上を達成した瞬間にリアルタイムでカウントアップ」方式へ変更。基準未達の日はカウントされないだけで0にリセットされない（Cloud Functions `calculatePoints`/`evaluateStreakOnSummaryWrite`が共通ヘルパー`incrementStreakOnceForDay`経由で判定、iOS側の重複計算ロジックは削除しサーバー側に一本化）
 - ✅ **ストリーク節目お祝い機能**: 5, 10, 20, 50, 75, 100, 150, 200日、以降50日毎の到達時にお祝い画面（🔥+日数+「+100 XPボーナス！」）を表示し、+100ポイントを自動付与
@@ -481,4 +491,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Updated: 2026-09-10*
+*Updated: 2026-09-15*

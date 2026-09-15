@@ -49,8 +49,8 @@ struct GoalView: View {
     private var trainingVideoPlaylist: [(name: String, gifName: String)] {
         [
             ("スクワット", "fitingo_wo_squat"),
-            ("腕立て", "fItingo_wo_pushups"),
-            ("腹筋", "fItingo_wo_pushups"),
+            ("腕立て", "fitingo_wo_pushups"),
+            ("腹筋", "fitingo_wo_pushups"),
             ("ランジ", "fitingo_wo_range"),
             ("レッグレイズ", "fitingo_wo_legs"),
             ("バーピー", "fitingo_wo_burpee"),

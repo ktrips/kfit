@@ -138,7 +138,10 @@ struct GoalView: View {
                             TrainingVideoButton(
                                 playlist: trainingVideoPlaylist,
                                 showTrainingVideo: $showFitTrainingVideo,
-                                trainingVideoIndex: $fitTrainingVideoIndex
+                                trainingVideoIndex: $fitTrainingVideoIndex,
+                                onTapVideo: {
+                                    NotificationCenter.default.post(name: .requestStartTraining, object: nil)
+                                }
                             )
                             VStack(spacing: 0) {
                                 todayActivityCard

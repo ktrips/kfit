@@ -39,6 +39,24 @@ struct GoalView: View {
     // Apple Watch Diet 書籍カード
     @State private var showBooksSheet = false
     @State private var booksSheetURL: URL = URL(string: "https://fit.ktrips.net/books")!
+    // 今日のアクティビティ履歴エクスパンド（GOALページから移動）
+    @State private var showActivityHistory = false
+    @State private var expandedActivitySetIds: Set<Int> = []
+    // トレーニング動画（元々のROUTINページと同様: デフォルトはボタンのみ、タップで動画展開）
+    @State private var showFitTrainingVideo = false
+    @State private var fitTrainingVideoIndex = 0
+
+    private var trainingVideoPlaylist: [(name: String, gifName: String)] {
+        [
+            ("スクワット", "fitingo_wo_squat"),
+            ("腕立て", "fItingo_wo_pushups"),
+            ("腹筋", "fItingo_wo_pushups"),
+            ("ランジ", "fitingo_wo_range"),
+            ("レッグレイズ", "fitingo_wo_legs"),
+            ("バーピー", "fitingo_wo_burpee"),
+            ("その他トレーニング", "fitingo_workout"),
+        ]
+    }
 
     private func recomputeWeightLogs() {
         cachedWeightLogs = eduLog.history.filter {
@@ -55,6 +73,9 @@ struct GoalView: View {
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "yyyy/M/d"
         return f
+    }()
+    private static let HHmmFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
     }()
     private static let MdFmt: DateFormatter = {
         let f = DateFormatter()
@@ -116,8 +137,16 @@ struct GoalView: View {
                                     .transition(.opacity)
                             }
                             fitingoTrainingButton
+                            TrainingVideoButton(
+                                playlist: trainingVideoPlaylist,
+                                showTrainingVideo: $showFitTrainingVideo,
+                                trainingVideoIndex: $fitTrainingVideoIndex
+                            )
                             todayActivityCard
                                 .background(Color(.systemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            activityHistoryExpandable
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                                 .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                             if !plus.isPlus {
@@ -980,6 +1009,302 @@ struct GoalView: View {
             .padding(12)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 今日のアクティビティ履歴エクスパンド（GOALページから移動）
+
+    private struct GoalActivityHistorySet: Identifiable {
+        let id: Int
+        let setNumber: Int
+        let startTime: Date
+        let exercises: [CompletedExercise]
+
+        var totalReps: Int { exercises.reduce(0) { $0 + $1.reps } }
+        var totalPoints: Int { exercises.reduce(0) { $0 + $1.points } }
+    }
+
+    private var activityHistoryExpandable: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    showActivityHistory.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 15 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                    Text(showActivityHistory ? "今日のアクティビティを閉じる" : "今日のアクティビティを表示")
+                        .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                    Spacer()
+                    Image(systemName: showActivityHistory ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14 * UIScale.font, weight: .black))
+                        .foregroundColor(Color.duoGreen)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(.systemBackground))
+            }
+            .buttonStyle(.plain)
+
+            if showActivityHistory {
+                activityHistoryContent
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(Color(.systemBackground))
+    }
+
+    @ViewBuilder
+    private var activityHistoryContent: some View {
+        let sets = buildActivityHistorySets(todayExercises)
+        let workouts = standaloneWorkoutSessions(todayWorkoutSessions, excludingSets: sets)
+        if sets.isEmpty && workouts.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .foregroundColor(Color.duoSubtitle)
+                Text("今日のワークアウト記録はまだありません")
+                    .font(.system(size: 12 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                Spacer()
+            }
+            .padding(12)
+            .background(Color.duoBg)
+            .cornerRadius(12)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                if !sets.isEmpty {
+                    historySubheader(
+                        "Fitingoセット",
+                        summary: "\(sets.count)セット  \(sets.reduce(0) { $0 + $1.totalReps }) rep"
+                    )
+                    ForEach(sets) { set in
+                        activityHistorySetCard(set)
+                    }
+                }
+
+                if !workouts.isEmpty {
+                    historySubheader(
+                        "通常ワークアウト",
+                        summary: "\(Int(workouts.reduce(0) { $0 + $1.durationMinutes }.rounded()))分  \(Int(workouts.reduce(0) { $0 + $1.calories }.rounded())) kcal"
+                    )
+                    ForEach(workouts) { workout in
+                        activityHistoryWorkoutRow(workout)
+                    }
+                }
+            }
+        }
+    }
+
+    private func historySubheader(_ title: String, summary: String? = nil) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 10 * UIScale.font, weight: .black))
+                .foregroundColor(Color.duoSubtitle)
+            Spacer()
+            if let summary {
+                Text(summary)
+                    .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.duoGreen.opacity(0.1))
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
+    }
+
+    private func activityHistorySetCard(_ set: GoalActivityHistorySet) -> some View {
+        let isExpanded = expandedActivitySetIds.contains(set.id)
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedActivitySetIds.remove(set.id)
+                    } else {
+                        expandedActivitySetIds.insert(set.id)
+                    }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Text(activityHistoryTimeString(set.startTime))
+                        .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoSubtitle)
+                        .frame(width: 38, alignment: .leading)
+                    Text("セット\(set.setNumber)")
+                        .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGreen)
+                    Spacer()
+                    Text("\(set.totalReps) rep")
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoDark)
+                    Text("+\(set.totalPoints) XP")
+                        .font(.system(size: 10 * UIScale.font, weight: .black, design: .rounded))
+                        .foregroundColor(Color.duoGold)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8 * UIScale.font, weight: .bold))
+                        .foregroundColor(Color.duoSubtitle)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 4) {
+                    ForEach(Array(set.exercises.enumerated()), id: \.offset) { _, exercise in
+                        activityHistoryExerciseRow(exercise)
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.duoGreen.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func activityHistoryWorkoutRow(_ workout: WorkoutSession) -> some View {
+        HStack(spacing: 7) {
+            Text(workout.emoji)
+                .font(.system(size: 15 * UIScale.font))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workout.activityName)
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text("\(activityHistoryTimeString(workout.startDate))-\(activityHistoryTimeString(workout.endDate)) ・ \(workout.sourceName)")
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+                    .lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(Int(workout.durationMinutes))分")
+                    .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+                if workout.calories > 0 {
+                    Text("\(Int(workout.calories)) kcal")
+                        .font(.system(size: 8 * UIScale.font, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.duoOrange)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.duoBlue.opacity(0.07))
+        .cornerRadius(10)
+    }
+
+    private func activityHistoryExerciseRow(_ exercise: CompletedExercise) -> some View {
+        HStack(spacing: 8) {
+            Text(activityHistoryExerciseEmoji(id: exercise.exerciseId, name: exercise.exerciseName))
+                .font(.system(size: 14 * UIScale.font))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(exercise.exerciseName)
+                    .font(.system(size: 11 * UIScale.font, weight: .bold))
+                    .foregroundColor(Color.duoDark)
+                Text(activityHistoryTimeString(exercise.timestamp))
+                    .font(.system(size: 8 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            Spacer()
+            Text("\(exercise.reps)回")
+                .font(.system(size: 11 * UIScale.font, weight: .black, design: .rounded))
+                .foregroundColor(Color.duoGreen)
+            if exercise.formScore > 0 {
+                Text("\(Int(exercise.formScore))%")
+                    .font(.system(size: 9 * UIScale.font, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.duoBlue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.duoBlue.opacity(0.12))
+                    .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.75))
+        .cornerRadius(9)
+    }
+
+    private func buildActivityHistorySets(_ exercises: [CompletedExercise]) -> [GoalActivityHistorySet] {
+        let sorted = exercises.sorted { $0.timestamp < $1.timestamp }
+        var sessions: [[CompletedExercise]] = []
+        var currentSession: [CompletedExercise] = []
+        var lastTime: Date?
+
+        for exercise in sorted {
+            if let lastTime, exercise.timestamp.timeIntervalSince(lastTime) <= 30 * 60 {
+                currentSession.append(exercise)
+            } else {
+                if !currentSession.isEmpty {
+                    sessions.append(currentSession)
+                }
+                currentSession = [exercise]
+            }
+            lastTime = exercise.timestamp
+        }
+
+        if !currentSession.isEmpty {
+            sessions.append(currentSession)
+        }
+
+        let nonZeroSessions = sessions.filter { session in
+            session.contains { $0.reps > 0 || $0.points > 0 }
+        }
+
+        return nonZeroSessions.enumerated().map { index, session in
+            GoalActivityHistorySet(
+                id: index,
+                setNumber: index + 1,
+                startTime: session.first?.timestamp ?? Date(),
+                exercises: session
+            )
+        }
+    }
+
+    private func activityHistoryTimeString(_ date: Date) -> String {
+        GoalView.HHmmFmt.string(from: date)
+    }
+
+    private func standaloneWorkoutSessions(
+        _ workouts: [WorkoutSession],
+        excludingSets sets: [GoalActivityHistorySet]
+    ) -> [WorkoutSession] {
+        workouts.filter { workout in
+            let source = "\(workout.sourceName) \(workout.sourceBundleId)".lowercased()
+            let isFromKfit = source.contains("kfit")
+                || source.contains("fitingo")
+                || source.contains("duofit")
+                || source.contains("kfitappduo")
+            let isEmptyKfitWorkout = isFromKfit && workout.durationMinutes < 1
+            if isEmptyKfitWorkout {
+                return false
+            }
+            let isOverlappingSet = sets.contains { set in
+                guard let first = set.exercises.first?.timestamp,
+                      let last = set.exercises.last?.timestamp else {
+                    return false
+                }
+                let setStart = first.addingTimeInterval(-60)
+                let setEnd = last.addingTimeInterval(60)
+                return workout.startDate <= setEnd && workout.endDate >= setStart
+                    && workout.activityName == "筋トレ"
+            }
+            return !isOverlappingSet
+        }
+    }
+
+    private func activityHistoryExerciseEmoji(id: String, name: String) -> String {
+        let key = "\(id) \(name)".lowercased()
+        if key.contains("push") || key.contains("腕立") { return "💪" }
+        if key.contains("squat") || key.contains("スクワット") { return "🏋️" }
+        if key.contains("sit") || key.contains("腹筋") { return "🔥" }
+        if key.contains("plank") || key.contains("プランク") { return "🧘" }
+        if key.contains("lunge") || key.contains("ランジ") { return "🦵" }
+        if key.contains("burpee") || key.contains("バーピー") { return "⚡" }
+        return "🏃"
     }
 
     private func goalActivityRingLegend(color: Color, label: String, value: String, goal: String) -> some View {

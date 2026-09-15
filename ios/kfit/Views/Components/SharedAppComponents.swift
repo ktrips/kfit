@@ -904,34 +904,14 @@ struct AppleWatchDietBookCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                         .fixedSize()
                 }
-                Text("AppleWatch Diet Ultra2")
-                    .font(.system(size: 9 * UIScale.font, weight: .medium))
-                    .foregroundColor(Color.duoSubtitle)
-                Text("Apple Watchでダイエットを最大化する方法")
+                Text("AppleWatchだけでダイエットする100の方法")
                     .font(.system(size: 11 * UIScale.font))
                     .foregroundColor(Color.duoSubtitle)
-                if isPlus {
-                    HStack(spacing: 4) {
-                        Text("+")
-                            .font(.system(size: 9 * UIScale.font, weight: .black))
-                            .foregroundColor(.white)
-                            .frame(width: 14, height: 14)
-                            .background(Color.duoGold)
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
-                        Text("Webで全文読めます →")
-                            .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                            .foregroundColor(Color.duoGold)
-                    }
-                } else {
-                    Text("Kindleで読む →")
-                        .font(.system(size: 10 * UIScale.font, weight: .semibold))
-                        .foregroundColor(Color(hex: "#FF9900"))
-                }
+                Text("Plusユーザーなら全文無料で読める！")
+                    .font(.system(size: 10 * UIScale.font, weight: .semibold))
+                    .foregroundColor(isPlus ? Color.duoGold : Color(hex: "#FF9900"))
             }
             Spacer()
-            Image(systemName: "arrow.up.right")
-                .font(.system(size: 11 * UIScale.font, weight: .semibold))
-                .foregroundColor(isPlus ? Color.duoGold.opacity(0.8) : Color.duoBlue.opacity(0.7))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

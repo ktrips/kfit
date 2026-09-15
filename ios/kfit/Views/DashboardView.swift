@@ -427,7 +427,7 @@ private final class DashboardDebouncer: ObservableObject {
 /// 動画カルーセルの自動送りタイマー。
 /// `showTrainingVideo == true` のときのみ View ツリーに存在するため、
 /// 動画非表示時にメインスレッドタイマーが常時発火するのを防ぐ。
-private struct VideoCarouselTicker: View {
+struct VideoCarouselTicker: View {
     let playlistCount: Int
     let onTick: (Int) -> Void
     @State private var index = 0
@@ -573,7 +573,9 @@ struct DashboardView: View {
     @State private var showMindfulnessSession = false  // アプリ内呼吸セッション
     @State private var showStretchSession = false  // アプリ内ストレッチセッション
     @State private var showStandSession = false  // 20分スタンドポモドーロセッション
-    @State private var showTrainingVideo = false  // トレーニング動画GIFの表示状態
+    // トレーニング動画GIFの表示状態。デフォルトは動画を開いた状態で、
+    // ユーザーが「動画は隠す」で切り替えた選択をUserDefaultsに永続化し次回起動時も引き継ぐ
+    @AppStorage("routinShowTrainingVideo") private var showTrainingVideo = true
     @State private var trainingVideoIndex = 0  // ホーム動画GIFの再生位置
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
@@ -6334,11 +6336,14 @@ private struct DailySetsCardButtonsView: View {
         VStack(spacing: 0) {
             Divider().padding(.horizontal, 16)
 
-            fitingoButton
+            if !showTrainingVideo {
+                fitingoButton
+            }
             TrainingVideoButton(
                 playlist: trainingVideoPlaylist,
                 showTrainingVideo: $showTrainingVideo,
-                trainingVideoIndex: $trainingVideoIndex
+                trainingVideoIndex: $trainingVideoIndex,
+                onTapVideo: onStartTracker
             )
 
             // ── マインドフルネス ──────────────────────────────────────────
@@ -6515,10 +6520,13 @@ private struct FitingoStartButton: View {
 
 // MARK: - トレーニング動画ボタン（独立Viewでレンダリング境界を作り、スタックオーバーフローを防止）
 
-private struct TrainingVideoButton: View {
+struct TrainingVideoButton: View {
     let playlist: [(name: String, gifName: String)]
     @Binding var showTrainingVideo: Bool
     @Binding var trainingVideoIndex: Int
+    /// 動画表示中に動画本体をタップした時の挙動（ROUTINページではトレーニング開始）。
+    /// nilの場合はタップしても何も起きない（FITページの「元のROUTIN」互換モード用）。
+    var onTapVideo: (() -> Void)? = nil
 
     private var currentVideo: (name: String, gifName: String) {
         playlist.isEmpty ? ("", "") : playlist[trainingVideoIndex % playlist.count]
@@ -6526,28 +6534,30 @@ private struct TrainingVideoButton: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    showTrainingVideo.toggle()
+            if !showTrainingVideo {
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        showTrainingVideo = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9 * UIScale.font, weight: .regular))
+                            .foregroundColor(Color.duoGreen)
+                        Text("トレーニング動画")
+                            .font(.system(size: 11 * UIScale.font, weight: .thin))
+                            .foregroundColor(Color.duoSubtitle)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9 * UIScale.font, weight: .light))
+                            .foregroundColor(Color.duoSubtitle)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 9 * UIScale.font, weight: .regular))
-                        .foregroundColor(Color.duoGreen)
-                    Text("トレーニング動画")
-                        .font(.system(size: 11 * UIScale.font, weight: .thin))
-                        .foregroundColor(Color.duoSubtitle)
-                    Spacer()
-                    Image(systemName: showTrainingVideo ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9 * UIScale.font, weight: .light))
-                        .foregroundColor(Color.duoSubtitle)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 7)
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             if showTrainingVideo {
                 trainingVideoExpanded
@@ -6564,6 +6574,44 @@ private struct TrainingVideoButton: View {
         let video = currentVideo
         let count = max(playlist.count, 1)
         return VStack(spacing: 6) {
+            Group {
+                if let onTapVideo {
+                    Button(action: onTapVideo) { trainingVideoContent(video, count: count) }
+                        .buttonStyle(.plain)
+                } else {
+                    trainingVideoContent(video, count: count)
+                }
+            }
+
+            if onTapVideo != nil {
+                Text("タップしてトレーニング開始")
+                    .font(.system(size: 10 * UIScale.font, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.duoGreen)
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    showTrainingVideo = false
+                }
+            } label: {
+                Text("動画は隠す")
+                    .font(.system(size: 11 * UIScale.font, weight: .semibold))
+                    .foregroundColor(Color.duoSubtitle)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+    }
+
+    private func trainingVideoContent(_ video: (name: String, gifName: String), count: Int) -> some View {
+        VStack(spacing: 6) {
             HStack {
                 Text(video.name)
                     .font(.system(size: 13 * UIScale.font, weight: .black, design: .rounded))
@@ -6586,13 +6634,6 @@ private struct TrainingVideoButton: View {
             }
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
         }
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .padding(.horizontal, 8)
-        .background(Color.white.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 16)
-        .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
 }
 

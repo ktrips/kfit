@@ -21,9 +21,12 @@ targets:
         excludes:
           - "**/*.plist"
           - "Images/**"
+          - "Videos/**"
       - path: kfit/GoogleService-Info.plist
         buildPhase: resources
       - path: kfit/Images
+        buildPhase: resources
+      - path: kfit/Videos
         buildPhase: resources
       - path: kfit/Assets.xcassets
     info:
@@ -32,7 +35,7 @@ targets:
         GADApplicationIdentifier: "ca-app-pub-5882080850213183~2390690731"
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "1.2"
-        CFBundleVersion: "8"
+        CFBundleVersion: "14"
         # 標準TLS/HTTPS(Firebase, URLSession等)のみ使用し独自暗号は無いため、
         # App Store Connectの輸出コンプライアンス質問をアップロードごとに聞かれないよう申告
         ITSAppUsesNonExemptEncryption: false
@@ -155,7 +158,7 @@ targets:
       properties:
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "1.2"
-        CFBundleVersion: "8"
+        CFBundleVersion: "14"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.kfitappduo.app
         WKWatchOnly: false

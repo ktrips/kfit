@@ -67,22 +67,22 @@ struct ExerciseTrackerView: View {
     private var isLast: Bool { stepIdx == flowSteps.count - 1 }
     private var isPlankSelected: Bool { current.id == "plank" }
 
-    private var currentWorkoutGIFName: String {
+    private var currentWorkoutVideoName: String {
         switch current.id {
         case "squat":
-            return "fitingo_wo_squat"
+            return "fitingo_mv_squat"
         case "lunge":
-            return "fitingo_wo_lunge"
+            return "fitingo_mv_lunge"
         case "pushup", "situp":
-            return "fitingo_wo_pushups"
+            return "fitingo_mv_pushups"
         case "legraise", "leg-raise", "legs":
-            return "fitingo_wo_legs"
+            return "fitingo_mv_legs"
         case "burpee":
-            return "fitingo_wo_burpee"
+            return "fitingo_mv_burpee"
         case "plank":
-            return "fitingo_wo_plank"
+            return "fitingo_mv_squat"
         default:
-            return "fitingo_workout"
+            return "fitingo_mv_squat"
         }
     }
 
@@ -239,13 +239,13 @@ struct ExerciseTrackerView: View {
                             .font(.system(size: 11 * UIScale.font, weight: .bold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                         Spacer()
-                        Text(currentWorkoutGIFName)
+                        Text(currentWorkoutVideoName)
                             .font(.system(size: 9 * UIScale.font, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.duoSubtitle)
                     }
 
                     GeometryReader { geo in
-                        GIFAnimationView(gifName: currentWorkoutGIFName)
+                        LoopingVideoView(videoName: currentWorkoutVideoName)
                             .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
                             .background(Color.black.opacity(0.04))
                             .clipShape(RoundedRectangle(cornerRadius: 14))

@@ -6302,13 +6302,13 @@ struct DashboardView: View {
         return "fitingo_simple"
     }
 
-    private var trainingVideoPlaylist: [(name: String, gifName: String)] {
+    private var trainingVideoPlaylist: [(name: String, videoName: String)] {
         [
-            ("スクワット", "fitingo_wo_squat"),
-            ("腕立て", "fitingo_wo_pushups"),
-            ("腹筋", "fitingo_wo_pushups"),
-            ("レッグレイズ", "fitingo_wo_legs"),
-            ("バーピー", "fitingo_wo_burpee"),
+            ("スクワット", "fitingo_mv_squat"),
+            ("腕立て", "fitingo_mv_pushups"),
+            ("腹筋", "fitingo_mv_pushups"),
+            ("レッグレイズ", "fitingo_mv_legs"),
+            ("バーピー", "fitingo_mv_burpee"),
         ]
     }
 
@@ -6317,7 +6317,7 @@ struct DashboardView: View {
 // MARK: - デイリーセットカード ボタン群（独立Viewでレンダリング境界を作り、スタックオーバーフローを防止）
 
 private struct DailySetsCardButtonsView: View {
-    let trainingVideoPlaylist: [(name: String, gifName: String)]
+    let trainingVideoPlaylist: [(name: String, videoName: String)]
     let mascotBounce: Bool
     @Binding var showTrainingVideo: Bool
     @Binding var trainingVideoIndex: Int
@@ -6519,14 +6519,14 @@ private struct FitingoStartButton: View {
 // MARK: - トレーニング動画ボタン（独立Viewでレンダリング境界を作り、スタックオーバーフローを防止）
 
 struct TrainingVideoButton: View {
-    let playlist: [(name: String, gifName: String)]
+    let playlist: [(name: String, videoName: String)]
     @Binding var showTrainingVideo: Bool
     @Binding var trainingVideoIndex: Int
     /// 動画表示中に動画本体をタップした時の挙動（ROUTINページではトレーニング開始）。
     /// nilの場合はタップしても何も起きない（FITページの「元のROUTIN」互換モード用）。
     var onTapVideo: (() -> Void)? = nil
 
-    private var currentVideo: (name: String, gifName: String) {
+    private var currentVideo: (name: String, videoName: String) {
         playlist.isEmpty ? ("", "") : playlist[trainingVideoIndex % playlist.count]
     }
 
@@ -6637,10 +6637,10 @@ struct TrainingVideoButton: View {
         .buttonStyle(.plain)
     }
 
-    private func videoGIFBody(_ video: (name: String, gifName: String)) -> some View {
+    private func videoGIFBody(_ video: (name: String, videoName: String)) -> some View {
         GeometryReader { geo in
-            GIFAnimationView(gifName: video.gifName)
-                .id(video.gifName)
+            LoopingVideoView(videoName: video.videoName)
+                .id(video.videoName)
                 .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
                 .background(Color.black.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 16))

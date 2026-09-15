@@ -313,18 +313,23 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
           {/* 種目カード */}
           <div className="duo-card overflow-hidden">
             <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
-              <img
+              <video
                 key={stepIdx}
                 src={
                   current.exerciseId === 'squat'
-                    ? '/fitingo_wo_squat.gif'
+                    ? '/fitingo_mv_squat.mp4'
                     : current.exerciseId === 'pushup' || current.exerciseId === 'situp'
-                    ? '/fitingo_wo_pushups.gif'
+                    ? '/fitingo_mv_pushups.mp4'
                     : current.exerciseId === 'plank'
-                    ? '/fitingo_wo_plank.gif'
-                    : '/fitingo_workout.gif'
+                    ? '/fitingo_mv_squat.mp4'
+                    : current.exerciseId === 'lunge'
+                    ? '/fitingo_mv_lunge.mp4'
+                    : '/fitingo_mv_squat.mp4'
                 }
-                alt={current.exerciseName}
+                autoPlay
+                muted
+                loop
+                playsInline
                 className="w-full h-full object-cover"
               />
               <div className="absolute top-3 right-3 w-11 h-11 rounded-2xl flex items-center justify-center text-2xl"

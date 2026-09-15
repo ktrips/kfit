@@ -46,13 +46,13 @@ struct GoalView: View {
     @State private var showFitTrainingVideo = false
     @State private var fitTrainingVideoIndex = 0
 
-    private var trainingVideoPlaylist: [(name: String, gifName: String)] {
+    private var trainingVideoPlaylist: [(name: String, videoName: String)] {
         [
-            ("スクワット", "fitingo_wo_squat"),
-            ("腕立て", "fitingo_wo_pushups"),
-            ("腹筋", "fitingo_wo_pushups"),
-            ("レッグレイズ", "fitingo_wo_legs"),
-            ("バーピー", "fitingo_wo_burpee"),
+            ("スクワット", "fitingo_mv_squat"),
+            ("腕立て", "fitingo_mv_pushups"),
+            ("腹筋", "fitingo_mv_pushups"),
+            ("レッグレイズ", "fitingo_mv_legs"),
+            ("バーピー", "fitingo_mv_burpee"),
         ]
     }
 

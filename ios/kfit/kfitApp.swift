@@ -1457,7 +1457,7 @@ struct NinetySecondModeCard: View {
         case .fit:
             // ワークアウトGIFがそのままアクショントリガー
             Button(action: triggerAction) {
-                GIFAnimationView(gifName: "fitingo_workout")
+                LoopingVideoView(videoName: "fitingo_mv_squat")
                     .frame(width: 280, height: 280)
                     .contentShape(RoundedRectangle(cornerRadius: 40))
                     .clipShape(RoundedRectangle(cornerRadius: 40))

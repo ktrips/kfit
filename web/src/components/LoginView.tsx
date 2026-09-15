@@ -129,9 +129,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks,
         className="w-full max-w-sm mt-6 overflow-hidden rounded-3xl relative active:scale-[0.98] transition-transform"
         style={{ border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}
       >
-        <img
-          src="/fitingo_workout.gif"
-          alt="Fitingo workout preview"
+        <video
+          src="/fitingo_mv_squat.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
           className="w-full object-cover block"
           style={{ maxHeight: '280px', objectPosition: 'center' }}
         />

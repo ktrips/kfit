@@ -129,7 +129,7 @@ struct GoalingoView: View {
                         loadTodayWeekdayGoal()
                         async let s0: Void = timeSlotManager.loadTodaySettings()
                         async let sessions = healthKit.fetchGoalScreenHealthData(
-                            includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true
+                            includeRaceWorkouts: true, includeWeeklyWorkoutSessions: true, force: true
                         )
                         async let ex   = authManager.getTodayExercises()
                         async let wsc  = authManager.fetchWeeklySetCounts()

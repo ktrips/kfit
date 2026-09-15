@@ -196,7 +196,7 @@ struct GoalView: View {
                         // async let で並列フェッチ（従来の直列 await から改善）
                         loadTodayWeekdayGoal()
                         async let s0: Void = timeSlotManager.loadTodaySettings()
-                        async let sessions = healthKit.fetchGoalScreenHealthData(includeBodyFat: true)
+                        async let sessions = healthKit.fetchGoalScreenHealthData(includeBodyFat: true, force: true)
                         async let ex   = authManager.getTodayExercises()
                         async let wsc  = authManager.fetchWeeklySetCounts()
                         async let wid  = authManager.fetchWeeklyIntakeData()

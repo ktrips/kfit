@@ -331,6 +331,9 @@ final class HealthKitManager: ObservableObject {
     private var activeFetchGenerations: [String: UUID] = [:]
     private let fetchAllTTL: TimeInterval = 20
     private var mindfulnessCacheResult: (minutes: Double, sessions: Int, samples: [MindfulSession])?
+    private var lastGoalScreenFetchAt: Date?
+    private var lastGoalScreenFetchFlags: (Bool, Bool, Bool)?
+    private var cachedGoalScreenWorkoutSessions: [WorkoutSession] = []
     private var mindfulnessCachedAt: Date?
     private let mindfulnessCacheTTL: TimeInterval = 30
 
@@ -452,15 +455,17 @@ final class HealthKitManager: ObservableObject {
             dlog("[HealthKit] HealthKit not available on this device")
             return
         }
-        await withTimeout(seconds: 15, default: ()) { [self] in
-            do {
-                try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
-                isAuthorized = true
-                dlog("[HealthKit] ✅ Authorization granted")
-                await fetchAll()
-            } catch {
-                dlog("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
-            }
+        await withTimeout(seconds: 15, default: ()) { [self] in await requestAuthorizationBody() }
+    }
+
+    private func requestAuthorizationBody() async {
+        do {
+            try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
+            isAuthorized = true
+            dlog("[HealthKit] ✅ Authorization granted")
+            await fetchAll()
+        } catch {
+            dlog("[HealthKit] ❌ 権限エラー: \(error.localizedDescription)")
         }
     }
 
@@ -2367,6 +2372,11 @@ final class HealthKitManager: ObservableObject {
     // 以前は .task / .refreshable / 手動更新ボタンの3箇所×2画面=6箇所に
     // ほぼ同一のフェッチ列がベタ書きされていた。
 
+    // ROUTIN(Dashboard)は常時バックグラウンドで生存し続けるため、FIT/GOALタブへの
+    // 切替のたびに.taskが再発火してもHealthKitへの再クエリを間引くための短命キャッシュ。
+    // 呼び出しフラグが前回と一致し、force指定がなければTTL内は再クエリせず前回値を返す。
+    private static let goalScreenCacheTTL: TimeInterval = 15
+
     /// GOAL画面（GoalView/GoalingoView）が必要とするHealthKitデータをまとめて取得し、
     /// 呼び出し元がそのまま使う「今日のワークアウトセッション」を返す。
     @discardableResult
@@ -2374,12 +2384,21 @@ final class HealthKitManager: ObservableObject {
         includeBodyFat: Bool = false,
         includeRaceWorkouts: Bool = false,
         includeWeeklyWorkoutSessions: Bool = false,
-        forceGoalHealth: Bool = false
+        forceGoalHealth: Bool = false,
+        force: Bool = false
     ) async -> [WorkoutSession] {
+        let flags = (includeBodyFat, includeRaceWorkouts, includeWeeklyWorkoutSessions)
+        if !force, !forceGoalHealth,
+           let lastAt = lastGoalScreenFetchAt, let lastFlags = lastGoalScreenFetchFlags,
+           lastFlags == flags,
+           Date().timeIntervalSince(lastAt) < Self.goalScreenCacheTTL {
+            return cachedGoalScreenWorkoutSessions
+        }
+
         // このスコープに固有のHKQueryのどれか1つでもハングすると、GoalView/GoalingoView
         // 側のロード処理全体が止まってしまうため上限を設ける（他の6つのスコープ付き
         // フェッチと同じ保護パターン）。
-        await withTimeout(seconds: 20, default: []) { [self] in
+        let sessions = await withTimeout(seconds: 20, default: []) { [self] in
             await fetchGoalScreenHealthDataBody(
                 includeBodyFat: includeBodyFat,
                 includeRaceWorkouts: includeRaceWorkouts,
@@ -2387,6 +2406,10 @@ final class HealthKitManager: ObservableObject {
                 forceGoalHealth: forceGoalHealth
             )
         }
+        lastGoalScreenFetchAt = Date()
+        lastGoalScreenFetchFlags = flags
+        cachedGoalScreenWorkoutSessions = sessions
+        return sessions
     }
 
     private func fetchGoalScreenHealthDataBody(

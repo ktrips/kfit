@@ -14,6 +14,8 @@ const GIFS = [
   '/fitingo_wo_pushups.gif',
   '/fitingo_workout.gif',
   '/fitingo_wo_squat.gif',
+  '/fitingo_wo_lunge.gif',
+  '/fitingo_wo.gif',
 ];
 
 const TIPS: Record<string, string[]> = {

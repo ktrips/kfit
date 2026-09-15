@@ -45,6 +45,15 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
+/** ホームトップの「トレーニングを始める」GIF。数秒おきに切り替える */
+const TOP_GIFS = [
+  '/fitingo_workout.gif',
+  '/fitingo_wo_squat.gif',
+  '/fitingo_wo_pushups.gif',
+  '/fitingo_wo_lunge.gif',
+  '/fitingo_wo.gif',
+];
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal, onFoodView }) => {
   const user = useAppStore((state) => state.user);
   const userProfile = useAppStore((state) => state.userProfile);
@@ -65,6 +74,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [isLoading, setIsLoading] = useState(true);
   const [intake, setIntake] = useState<IntakeSummary | null>(null);
   const [addingDrink, setAddingDrink] = useState<string | null>(null);
+  const [topGifIdx, setTopGifIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setTopGifIdx((i) => (i + 1) % TOP_GIFS.length), 10_000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +158,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           aria-label="トレーニングを始める"
         >
           <img
-            src="/fitingo_workout.gif"
+            src={TOP_GIFS[topGifIdx % TOP_GIFS.length]}
             alt="Fitingo workout"
             className="w-full object-cover"
             style={{ display: 'block', maxHeight: '320px', objectPosition: 'center' }}

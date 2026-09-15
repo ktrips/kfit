@@ -72,7 +72,7 @@ struct ExerciseTrackerView: View {
         case "squat":
             return "fitingo_wo_squat"
         case "lunge":
-            return "fitingo_wo_range"
+            return "fitingo_wo_lunge"
         case "pushup", "situp":
             return "fitingo_wo_pushups"
         case "legraise", "leg-raise", "legs":

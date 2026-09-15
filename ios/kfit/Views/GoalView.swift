@@ -51,7 +51,7 @@ struct GoalView: View {
             ("スクワット", "fitingo_wo_squat"),
             ("腕立て", "fitingo_wo_pushups"),
             ("腹筋", "fitingo_wo_pushups"),
-            ("ランジ", "fitingo_wo_range"),
+            ("ランジ", "fitingo_wo_lunge"),
             ("レッグレイズ", "fitingo_wo_legs"),
             ("バーピー", "fitingo_wo_burpee"),
             ("その他トレーニング", "fitingo_workout"),

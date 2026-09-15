@@ -51,6 +51,8 @@ const TOP_GIFS = [
   '/fitingo_mv_squat.mp4',
   '/fitingo_mv_pushups.mp4',
   '/fitingo_mv_lunge.mp4',
+  '/fitingo_mv_legs.mp4',
+  '/fitingo_mv_burpee.mp4',
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal, onFoodView }) => {

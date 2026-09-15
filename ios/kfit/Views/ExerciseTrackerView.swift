@@ -79,6 +79,8 @@ struct ExerciseTrackerView: View {
             return "fitingo_wo_legs"
         case "burpee":
             return "fitingo_wo_burpee"
+        case "plank":
+            return "fitingo_wo_plank"
         default:
             return "fitingo_workout"
         }

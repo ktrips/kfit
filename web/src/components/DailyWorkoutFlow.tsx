@@ -320,6 +320,8 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
                     ? '/fitingo_wo_squat.gif'
                     : current.exerciseId === 'pushup' || current.exerciseId === 'situp'
                     ? '/fitingo_wo_pushups.gif'
+                    : current.exerciseId === 'plank'
+                    ? '/fitingo_wo_plank.gif'
                     : '/fitingo_workout.gif'
                 }
                 alt={current.exerciseName}

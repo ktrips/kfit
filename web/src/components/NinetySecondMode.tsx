@@ -11,11 +11,9 @@ import { openIOSApp, IOS_DOWNLOAD_URL, type FitingoDeepLinkHost } from '../utils
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
 const GIFS = [
-  '/fitingo_wo_pushups.gif',
-  '/fitingo_workout.gif',
-  '/fitingo_wo_squat.gif',
-  '/fitingo_wo_lunge.gif',
-  '/fitingo_wo.gif',
+  '/fitingo_mv_pushups.mp4',
+  '/fitingo_mv_squat.mp4',
+  '/fitingo_mv_lunge.mp4',
 ];
 
 const TIPS: Record<string, string[]> = {
@@ -735,9 +733,13 @@ const ModeCard: React.FC<CardProps> = ({
                 <img src="/mascot.png" alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
                 <span style={{ color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: 1 }}>FITINGO</span>
               </div>
-              <img
+              <video
+                key={gifIdx % GIFS.length}
                 src={GIFS[gifIdx % GIFS.length]}
-                alt="お手本動画"
+                autoPlay
+                muted
+                loop
+                playsInline
                 style={{
                   position: 'relative',
                   width: '100%',

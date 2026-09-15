@@ -45,13 +45,11 @@ function estimateKcal(exerciseId: string, reps: number): number {
   return reps * rate;
 }
 
-/** ホームトップの「トレーニングを始める」GIF。数秒おきに切り替える */
+/** ホームトップの「トレーニングを始める」動画。数秒おきに切り替える */
 const TOP_GIFS = [
-  '/fitingo_workout.gif',
-  '/fitingo_wo_squat.gif',
-  '/fitingo_wo_pushups.gif',
-  '/fitingo_wo_lunge.gif',
-  '/fitingo_wo.gif',
+  '/fitingo_mv_squat.mp4',
+  '/fitingo_mv_pushups.mp4',
+  '/fitingo_mv_lunge.mp4',
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, onWeeklyGoal, onWorkoutPlan, onDietGoal, onFoodView }) => {
@@ -75,12 +73,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [intake, setIntake] = useState<IntakeSummary | null>(null);
   const [addingDrink, setAddingDrink] = useState<string | null>(null);
   const [topGifIdx, setTopGifIdx] = useState(0);
-
-  // 切替時にブラウザが毎回サーバーへ取りに行くと一瞬白く抜けるため、
-  // マウント時に全GIFをプリロードしてキャッシュに載せておく
-  useEffect(() => {
-    TOP_GIFS.forEach((src) => { const img = new Image(); img.src = src; });
-  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setTopGifIdx((i) => (i + 1) % TOP_GIFS.length), 10_000);
@@ -172,9 +164,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
             <img src="/mascot.png" alt="" className="w-14 h-14 rounded-full object-cover" />
             <span className="text-white font-black text-lg tracking-wide">FITINGO</span>
           </div>
-          <img
+          <video
+            key={topGifIdx % TOP_GIFS.length}
             src={TOP_GIFS[topGifIdx % TOP_GIFS.length]}
-            alt="Fitingo workout"
+            autoPlay
+            muted
+            loop
+            playsInline
             className="w-full h-full object-cover relative"
             style={{ display: 'block', objectPosition: 'center' }}
           />

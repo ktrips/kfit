@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { signInWithGoogle } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
 import { detectInAppBrowser, openInExternalBrowser, IN_APP_BROWSER_LABEL } from '../utils/inAppBrowser';
+import { useLoopTrim } from '../hooks/useLoopTrim';
 import { openIOSApp, IOS_DOWNLOAD_URL } from '../utils/openIOSApp';
 
 interface LoginViewProps {
@@ -15,6 +16,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks,
   const setUser = useAppStore((state) => state.setUser);
   const setError = useAppStore((state) => state.setError);
   const inAppBrowser = detectInAppBrowser();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useLoopTrim(videoRef);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -130,10 +133,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onOpenBooks: _onOpenBooks,
         style={{ border: '3px solid #58CC02', boxShadow: '0 6px 0 #46A302' }}
       >
         <video
+          ref={videoRef}
           src="/fitingo_mv_squat.mp4"
           autoPlay
           muted
-          loop
           playsInline
           className="w-full object-cover block"
           style={{ maxHeight: '280px', objectPosition: 'center' }}

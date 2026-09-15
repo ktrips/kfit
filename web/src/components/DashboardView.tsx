@@ -12,6 +12,7 @@ import type { GlobalProgress } from '../services/timeSlotService';
 import type { DietGoalSettings, IntakeSummary } from '../types/wellness';
 import { getExerciseEmoji } from '../utils/exerciseEmoji';
 import { openIOSApp, IOS_DOWNLOAD_URL } from '../utils/openIOSApp';
+import { RotatingVideo } from './RotatingVideo';
 
 interface DashboardViewProps {
   onStartWorkout?: () => void;
@@ -72,12 +73,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [isLoading, setIsLoading] = useState(true);
   const [intake, setIntake] = useState<IntakeSummary | null>(null);
   const [addingDrink, setAddingDrink] = useState<string | null>(null);
-  const [topGifIdx, setTopGifIdx] = useState(0);
-
-  useEffect(() => {
-    const t = setInterval(() => setTopGifIdx((i) => (i + 1) % TOP_GIFS.length), 10_000);
-    return () => clearInterval(t);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,21 +154,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
           }}
           aria-label="トレーニングを始める"
         >
-          {/* GIF切替の一瞬（デコード待ち）に白抜けしないよう背後にブランドを敷く */}
+          {/* 動画読み込み失敗時のフォールバック（通常は動画の下に隠れて見えない） */}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <img src="/mascot.png" alt="" className="w-14 h-14 rounded-full object-cover" />
             <span className="text-white font-black text-lg tracking-wide">FITINGO</span>
           </div>
-          <video
-            key={topGifIdx % TOP_GIFS.length}
-            src={TOP_GIFS[topGifIdx % TOP_GIFS.length]}
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full h-full object-cover relative"
-            style={{ display: 'block', objectPosition: 'center' }}
-          />
+          <RotatingVideo sources={TOP_GIFS} className="relative" />
           {/* オーバーレイ */}
           <div
             className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 py-4"

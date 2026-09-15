@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { openIOSApp, IOS_DOWNLOAD_URL, type FitingoDeepLinkHost } from '../utils/openIOSApp';
+import { RotatingVideo } from './RotatingVideo';
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
@@ -143,7 +144,6 @@ export const NinetySecondMode: React.FC<Props> = ({
     }
     return 0;
   });
-  const [gifIdx, setGifIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(0);
   const [activeDays, setActiveDays] = useState<string[]>(getActiveDays);
   const [pulse, setPulse] = useState(false);
@@ -180,18 +180,6 @@ export const NinetySecondMode: React.FC<Props> = ({
   const goToPage = (idx: number) => {
     scrollRef.current?.scrollTo({ left: idx * (scrollRef.current.clientWidth), behavior: 'smooth' });
   };
-
-  // ── GIF ローテーション（10秒）─────────────────────────────────────────────
-  // 切替時にブラウザが毎回サーバーへ取りに行くと一瞬白く抜けるため、
-  // マウント時に全GIFをプリロードしてキャッシュに載せておく
-  useEffect(() => {
-    GIFS.forEach((src) => { const img = new Image(); img.src = src; });
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(() => setGifIdx((i) => (i + 1) % GIFS.length), 10_000);
-    return () => clearInterval(t);
-  }, []);
 
   // ── 直近の食事ログ・語学アップロード写真を取得（大型ボタンのスライドショー用）──
   // iOS アプリが publicProfiles/{uid}/posts に kind:"food"/"edu" + base64 サムネイルで
@@ -306,7 +294,6 @@ export const NinetySecondMode: React.FC<Props> = ({
             key={m.id}
             mode={m}
             isActive={idx === activePage}
-            gifIdx={gifIdx}
             tipIdx={tipIdx}
             tipList={TIPS[m.id] ?? TIPS.fit}
             activeDays={activeDays}
@@ -454,7 +441,6 @@ export const NinetySecondMode: React.FC<Props> = ({
 interface CardProps {
   mode: ModeConfig;
   isActive: boolean;
-  gifIdx: number;
   tipIdx: number;
   tipList: string[];
   activeDays: string[];
@@ -472,7 +458,7 @@ interface CardProps {
 }
 
 const ModeCard: React.FC<CardProps> = ({
-  mode, gifIdx, tipIdx, tipList, activeDays, graduated, doneToday,
+  mode, tipIdx, tipList, activeDays, graduated, doneToday,
   pulse, foodPhotos, photoIdx, eduPhotos, eduPhotoIdx, onAction,
 }) => {
   const { accent, accentDark } = mode;
@@ -725,7 +711,7 @@ const ModeCard: React.FC<CardProps> = ({
                 justifyContent: 'center',
               }}
             >
-              {/* GIF切替の一瞬（デコード待ち）に白抜けしないよう背後にブランドを敷く */}
+              {/* 動画読み込み失敗時のフォールバック（通常は動画の下に隠れて見えない） */}
               <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -733,20 +719,7 @@ const ModeCard: React.FC<CardProps> = ({
                 <img src="/mascot.png" alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
                 <span style={{ color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: 1 }}>FITINGO</span>
               </div>
-              <video
-                key={gifIdx % GIFS.length}
-                src={GIFS[gifIdx % GIFS.length]}
-                autoPlay
-                muted
-                loop
-                playsInline
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                }}
-              />
+              <RotatingVideo sources={GIFS} />
             </div>
           ) : (
             <img

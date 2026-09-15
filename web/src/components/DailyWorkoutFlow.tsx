@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { recordExercise, recordCompletedSet } from '../services/firebase';
 import { useAppStore } from '../store/appStore';
+import { useLoopTrim } from '../hooks/useLoopTrim';
 
 const FLOW_STEPS = [
   { exerciseId: 'squat',  exerciseName: 'スクワット',   emoji: '🏋️', targetReps: 20, basePoints: 2 },
@@ -26,7 +27,9 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
   const user = useAppStore((s) => s.user);
 
   const steps = FLOW_STEPS;
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [stepIdx, setStepIdx] = useState(0);
+  useLoopTrim(videoRef, 1.0, [stepIdx]);
   const [reps, setReps] = useState(steps[0].targetReps);
   const [adjusting, setAdjusting] = useState(false);
   const [phase, setPhase] = useState<'exercise' | 'feedback' | 'done'>('exercise');
@@ -314,6 +317,7 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
           <div className="duo-card overflow-hidden">
             <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
               <video
+                ref={videoRef}
                 key={stepIdx}
                 src={
                   current.exerciseId === 'squat'
@@ -328,7 +332,6 @@ export const DailyWorkoutFlow: React.FC<Props> = ({ onFinish }) => {
                 }
                 autoPlay
                 muted
-                loop
                 playsInline
                 className="w-full h-full object-cover"
               />

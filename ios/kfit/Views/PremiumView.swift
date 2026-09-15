@@ -171,6 +171,9 @@ struct PlusView: View {
     @State private var retentionSummary: RetentionDiagnosticSummary? = nil
     @State private var isLoadingRetention: Bool = false
     @State private var retentionError: String? = nil
+    @State private var streakInput: String = ""
+    @State private var isSavingStreak: Bool = false
+    @State private var streakResult: String? = nil
     @FocusState private var codeFocused: Bool
     @State private var selectedTab: PlusTab = .compare
 
@@ -668,10 +671,78 @@ struct PlusView: View {
                 .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
 
             #if canImport(FirebaseFunctions)
+            streakSetterPanel
             retentionDiagnosticsPanel
             #endif
         }
     }
+
+    #if canImport(FirebaseFunctions)
+    private var streakSetterPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("連続記録を手動設定")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+                .padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("自分（Admin）アカウントの連続記録日数を直接上書きします。")
+                    .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                HStack(spacing: 8) {
+                    TextField("例: 99", text: $streakInput)
+                        .keyboardType(.numberPad)
+                        .padding(10).background(Color(.systemGray6)).cornerRadius(8)
+                    Button {
+                        setAdminStreak()
+                    } label: {
+                        if isSavingStreak {
+                            ProgressView().tint(.white).frame(width: 40)
+                        } else {
+                            Text("設定")
+                        }
+                    }
+                    .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Color(hex: "#FF8C00")).cornerRadius(8)
+                    .disabled(streakInput.trimmingCharacters(in: .whitespaces).isEmpty || isSavingStreak)
+                }
+                if let res = streakResult {
+                    Text(res)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(res.hasPrefix("✅") ? Color.duoGreen : .red)
+                }
+            }
+            .padding(14).background(Color(.systemBackground)).cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
+        }
+    }
+
+    private func setAdminStreak() {
+        guard let streak = Int(streakInput.trimmingCharacters(in: .whitespaces)) else {
+            streakResult = "❌ 数値を入力してください"
+            return
+        }
+        isSavingStreak = true
+        streakResult = nil
+        Task {
+            do {
+                let fn = Functions.functions(region: "us-central1")
+                let result = try await fn.httpsCallable("setAdminStreak").call(["streak": streak])
+                let data = result.data as? [String: Any]
+                let saved = data?["streak"] as? Int ?? streak
+                await MainActor.run {
+                    streakResult = "✅ 連続記録を\(saved)日に設定しました"
+                    isSavingStreak = false
+                }
+            } catch {
+                await MainActor.run {
+                    streakResult = "❌ 失敗: \(error.localizedDescription)"
+                    isSavingStreak = false
+                }
+            }
+        }
+    }
+    #endif
 
     // kedu/kmind は FirebaseFunctions SDK 未リンクのためkfitのみ有効
     #if canImport(FirebaseFunctions)

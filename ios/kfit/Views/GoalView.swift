@@ -142,13 +142,13 @@ struct GoalView: View {
                                 showTrainingVideo: $showFitTrainingVideo,
                                 trainingVideoIndex: $fitTrainingVideoIndex
                             )
-                            todayActivityCard
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-                            activityHistoryExpandable
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+                            VStack(spacing: 0) {
+                                todayActivityCard
+                                activityHistoryExpandable
+                            }
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
                             if !plus.isPlus {
                                 relatedBooksSection
                             }
@@ -1025,6 +1025,8 @@ struct GoalView: View {
 
     private var activityHistoryExpandable: some View {
         VStack(spacing: 0) {
+            Divider()
+                .padding(.horizontal, 14)
             Button {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                     showActivityHistory.toggle()

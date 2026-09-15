@@ -184,6 +184,12 @@ export const NinetySecondMode: React.FC<Props> = ({
   };
 
   // ── GIF ローテーション（10秒）─────────────────────────────────────────────
+  // 切替時にブラウザが毎回サーバーへ取りに行くと一瞬白く抜けるため、
+  // マウント時に全GIFをプリロードしてキャッシュに載せておく
+  useEffect(() => {
+    GIFS.forEach((src) => { const img = new Image(); img.src = src; });
+  }, []);
+
   useEffect(() => {
     const t = setInterval(() => setGifIdx((i) => (i + 1) % GIFS.length), 10_000);
     return () => clearInterval(t);
@@ -708,17 +714,38 @@ const ModeCard: React.FC<CardProps> = ({
           aria-label={doneToday ? 'もう1セット' : `${mode.modeName}を始める`}
         >
           {mode.id === 'fit' ? (
-            <img
-              key={gifIdx}
-              src={GIFS[gifIdx % GIFS.length]}
-              alt="お手本動画"
+            <div
               style={{
+                position: 'relative',
                 width: 'min(280px, calc(100vw - 96px))',
                 height: 200,
-                objectFit: 'cover',
                 borderRadius: 24,
+                overflow: 'hidden',
+                background: 'linear-gradient(135deg, #58CC02 0%, #46A302 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-            />
+            >
+              {/* GIF切替の一瞬（デコード待ち）に白抜けしないよう背後にブランドを敷く */}
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                <img src="/mascot.png" alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
+                <span style={{ color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: 1 }}>FITINGO</span>
+              </div>
+              <img
+                src={GIFS[gifIdx % GIFS.length]}
+                alt="お手本動画"
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+              />
+            </div>
           ) : (
             <img
               src="/mascot.png"

@@ -76,6 +76,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
   const [addingDrink, setAddingDrink] = useState<string | null>(null);
   const [topGifIdx, setTopGifIdx] = useState(0);
 
+  // 切替時にブラウザが毎回サーバーへ取りに行くと一瞬白く抜けるため、
+  // マウント時に全GIFをプリロードしてキャッシュに載せておく
+  useEffect(() => {
+    TOP_GIFS.forEach((src) => { const img = new Image(); img.src = src; });
+  }, []);
+
   useEffect(() => {
     const t = setInterval(() => setTopGifIdx((i) => (i + 1) % TOP_GIFS.length), 10_000);
     return () => clearInterval(t);
@@ -154,14 +160,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onStartWorkout, on
         <button
           onClick={onStartWorkout}
           className="w-full relative overflow-hidden rounded-3xl active:scale-[0.98] transition-transform"
-          style={{ boxShadow: '0 6px 0 #46A302', border: '3px solid #58CC02' }}
+          style={{
+            boxShadow: '0 6px 0 #46A302', border: '3px solid #58CC02',
+            aspectRatio: '16 / 9', maxHeight: 320,
+            background: 'linear-gradient(135deg, #58CC02 0%, #46A302 100%)',
+          }}
           aria-label="トレーニングを始める"
         >
+          {/* GIF切替の一瞬（デコード待ち）に白抜けしないよう背後にブランドを敷く */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <img src="/mascot.png" alt="" className="w-14 h-14 rounded-full object-cover" />
+            <span className="text-white font-black text-lg tracking-wide">FITINGO</span>
+          </div>
           <img
             src={TOP_GIFS[topGifIdx % TOP_GIFS.length]}
             alt="Fitingo workout"
-            className="w-full object-cover"
-            style={{ display: 'block', maxHeight: '320px', objectPosition: 'center' }}
+            className="w-full h-full object-cover relative"
+            style={{ display: 'block', objectPosition: 'center' }}
           />
           {/* オーバーレイ */}
           <div

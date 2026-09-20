@@ -289,3 +289,28 @@ func withTimeout<T>(seconds: TimeInterval, default: T, operation: @escaping @Sen
 
 **実装者**: Claude Sonnet 4.5 + kenichi.yoshida
 **最終更新**: 2026-09-10
+
+---
+
+## 追記: 動画・Webバンドル最適化（2026-09）
+
+### 1. GIF → MP4 移行
+- GIFはパレット方式で時間方向の圧縮が効かず、同内容のH.264より一桁大きい。iOSは`GIFAnimationView`（全フレームをUIImage展開＋NSCache）を廃止し、`LoopingVideoView`（AVQueuePlayer + AVPlayerLooper）へ。Assets.xcassets 54MB → 6.2MB
+- Webは`<video autoPlay muted loop playsInline>`へ。旧GIFは全て削除
+
+### 2. Web動画の再エンコード
+- `ffmpeg -an -vf scale=960:540 -c:v libx264 -crf 27 -preset slow -movflags +faststart`
+- 5本合計 17.7MB → 4.6MB（表示は最大でも約670px幅）。尺は10秒のまま（`useLoopTrim`が長さ前提）
+
+### 3. 動画切替の空白・ロゴカット除去（Web）
+- `RotatingVideo`: 2枚の`<video>`を交互に使い、裏で次の動画を事前ロードしてopacityのみ切替（`key`による再マウントで生じる空白を排除）
+- `useLoopTrim`: 各mp4の末尾約1秒に焼き込まれたロゴ/静止ポーズを見せないよう、終端1秒手前で`currentTime=0`へ巻き戻す（`loop`属性は使わない）
+
+### 4. バンドル分割・キャッシュ
+- `vite.config.ts`の`manualChunks`でfirebase(530KB)/react(261KB)を分離。メインJS 747KB → 74KB
+- `firebase.json`のheadersは**後勝ち**。汎用`**`を先頭に置かないと個別ルール（JS/CSSのimmutable）が上書きされ無効になる。現在: HTML 1時間／JS・CSS 1年immutable／mp4・画像 1週間
+- `mascot.png` 512px → 256px（383KB → 123KB）
+
+### 未対応
+- iOS動画の再エンコード（現在1280×720・約17MB）と、`LoopingVideoView`での末尾ロゴカットのトリム
+

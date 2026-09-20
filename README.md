@@ -34,7 +34,7 @@ FIT → DIET → FOOD → EDU の4モードを横スワイプで切り替え、�
 | 90秒モード（FIT/DIET/FOOD/EDU即実行ハブ） | ✅ | ✅ | — |
 | トレーニング記録（手動） | ✅ | ✅ | ✅ |
 | モーション自動検知 | — | ✅ | ✅ |
-| GIFフォームアニメ（スクワット/ランジ等） | ✅ | ✅ | ✅ |
+| フォーム動画（MP4：スクワット/腕立て/ランジ/レッグレイズ/バーピー） | ✅ | ✅ | ✅ |
 | カロリー目標トラッキング・カスタマイズ | ✅ | ✅ | ✅ |
 | HealthKit連携 | — | ✅ | ✅ |
 | PFCバランス分析・目標設定 | — | ✅ | — |
@@ -80,7 +80,7 @@ Cloud Functions（`aiProxy`）がサーバー側キーで代理呼び出しす�
 - **30秒キャッシュ**: Firestoreクエリを最大90%削減
 - **IndexedDB永続化**: オフライン対応
 - **デバウンス**: Watch通信を70%削減
-- **GIF描画**: バックグラウンド事前デコード + NSCacheでカクつき解消（90秒モード）
+- **動画再生**: GIFからMP4へ移行（iOS Assets 54MB→6MB）。Webは960×540・音声なしに再エンコード（17.7MB→4.6MB）、firebase/reactを別チャンク化（メインJS 747KB→74KB）、Cache-Control修正
 
 詳細: [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md)
 
@@ -299,6 +299,15 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 最近の主なアップデート
 
+### 2026-09-15〜09-20
+- ✅ **トレーニング動画をGIFからMP4へ全面移行**: iOSは新規`LoopingVideoView`（AVQueuePlayer + AVPlayerLooper、ミュート・無限ループ）で`GIFAnimationView`を置換、`ios/kfit/Videos/`にmp4を配置（`project.yml`で登録）。WebはDailyWorkoutFlow・LoginView・90秒モード・ホームトップを`<video autoPlay muted playsInline>`に変更。旧GIF計13ファイルはリポジトリから削除（iOS Assets.xcassets 54MB→6.2MB）
+- ✅ **動画素材**: `fitingo_mv_{squat,pushups,lunge,legs,burpee}.mp4`（iOS）、Webは同5種。プランク・種目不明時のデフォルトは`fitingo_mv_squat.mp4`を流用（専用の`fitingo_mv.mp4`/`fitingo_mv_plank.mp4`は使用しない）
+- ✅ **動画ローテーションのちらつき解消（Web）**: 新規`RotatingVideo`（2枚の`<video>`を裏でプリロードしopacityでクロスフェード）と`useLoopTrim`フック（各mp4末尾約1秒のロゴ/静止ポーズカットを再生せず、終端1秒手前で巻き戻す）。90秒モード/ホームトップのローテーションはスクワット/腕立て/ランジ/レッグレイズ/バーピーの5種目
+- ✅ **iOS管理者パネルに連続記録の手動設定を追加**: Web版と同じCloud Function `setAdminStreak`を呼び出し
+- ✅ **Webパフォーマンス改善**: mp4を960×540・音声なしに再エンコード（17.7MB→4.6MB）、`vite.config.ts`のmanualChunksでfirebase/reactを分離（メインJS 747KB→74KB、`dist` 20MB→7.4MB）、`mascot.png`を256pxに縮小、`firebase.json`のCache-Controlが`**`の後勝ちでJS/CSSの`immutable`を無効化していた不具合を修正（HTML 1時間／JS・CSS 1年／動画・画像 1週間）
+- ✅ **ディスク枯渇によるXcodeビルド失敗（Libtool等）が再発**: DerivedData削除で解消。定期クリーンアップを推奨
+- ⚠️ 未対応: iOS側mp4は1280×720のまま（約17MB）、iOSの動画にも末尾ロゴカットが含まれる（`LoopingVideoView`側でのトリムは未実装）
+
 ### 2026-09-14〜09-15
 - ✅ **管理者パネルに連続記録の手動設定機能を追加**: Adminアカウント（kenichiyoshida13@gmail.com）自身のstreakをPlus画面から任意の日数に直接設定可能に（Cloud Function `setAdminStreak`でサーバー側もAdminメールを再検証）
 - ✅ **スパイラル無限ローディングの残存経路を修正**: `HealthKitManager.requestAuthorization()`にタイムアウト保護が漏れていたのを追加。ストリーク節目お祝いモーダルの再表示ガードをUserDefaultsで永続化し、Firestore書き込み失敗時に再起動のたびに同じモーダルが表示され続ける不具合を修正
@@ -454,6 +463,9 @@ npm run lint         # ESLint
 | Web初回読み込み | 1.5s | 1.0s | 33% |
 | Webキャッシュ | 1.0s | 0.2s | 80% |
 | Firestoreクエリ | 8回 | 3回 | 63% |
+| Web メインJS | 747KB | 74KB | 90%削減 |
+| Web フォーム動画（5本） | 17.7MB | 4.6MB | 74%削減 |
+| iOS Assets.xcassets | 54MB | 6.2MB | 89%削減 |
 | Watch通信 | 100% | 30% | 70%削減 |
 
 ---

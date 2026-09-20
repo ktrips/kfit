@@ -13,7 +13,9 @@
         "firebase-debug.log",
         "firebase-functions-debug.log"
       ],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
     }
   ],
   "hosting": {
@@ -35,6 +37,15 @@
     ],
     "headers": [
       {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      },
+      {
         "source": "**/*.@(js|css|woff|woff2|ttf|eot)",
         "headers": [
           {
@@ -44,11 +55,11 @@
         ]
       },
       {
-        "source": "**",
+        "source": "**/*.@(mp4|png|jpg|jpeg|webp|svg|ico)",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "public, max-age=3600"
+            "value": "public, max-age=604800"
           }
         ]
       }

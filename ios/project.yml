@@ -35,7 +35,7 @@ targets:
         GADApplicationIdentifier: "ca-app-pub-5882080850213183~2390690731"
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "1.2"
-        CFBundleVersion: "14"
+        CFBundleVersion: "15"
         # 標準TLS/HTTPS(Firebase, URLSession等)のみ使用し独自暗号は無いため、
         # App Store Connectの輸出コンプライアンス質問をアップロードごとに聞かれないよう申告
         ITSAppUsesNonExemptEncryption: false
@@ -158,7 +158,7 @@ targets:
       properties:
         CFBundleDisplayName: kfit
         CFBundleShortVersionString: "1.2"
-        CFBundleVersion: "14"
+        CFBundleVersion: "15"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.kfitappduo.app
         WKWatchOnly: false

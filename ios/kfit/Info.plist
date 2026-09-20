@@ -40,9 +40,11 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>15</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-5882080850213183~2390690731</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>wiscale2</string>

@@ -295,9 +295,16 @@ class TimeSlotManager: ObservableObject {
                 .collection("time-slot-progress").document(dateStr).getDocument()
         }
 
+        // 取得中に行われたローカル操作（投稿による自動完了など）を失わないよう、
+        // 取得完了時点の今日分ローカル進捗を控えておく
+        let localToday: DailyTimeSlotProgress? =
+            Calendar.current.isDate(progress.date, inSameDayAs: today) ? progress : nil
+
         guard let doc else {
             dlog("❌ TimeSlotManager: Failed to load progress (timeout or error)")
-            progress = DailyTimeSlotProgress(date: today)
+            // タイムアウト時に空の進捗へ初期化すると、達成済みの％が0近くまで戻ってしまう。
+            // 今日分のローカル進捗があればそれを維持する。
+            if localToday == nil { progress = DailyTimeSlotProgress(date: today) }
             return
         }
         lastProgressLoadedAt = Date()
@@ -346,7 +353,13 @@ class TimeSlotManager: ObservableObject {
                     // デフォルト設定（全スロット含む）をベースにマージ
                     progress = DailyTimeSlotProgress(date: today)
                     for prog in progressList {
-                        progress.updateProgress(prog)
+                        // ローカルの方が新しく内容もある場合は、Firestoreの古い値で巻き戻さない
+                        if let local = localToday?.progressFor(prog.timeSlot),
+                           local.lastUpdated > prog.lastUpdated, Self.hasContent(local) {
+                            progress.updateProgress(local)
+                        } else {
+                            progress.updateProgress(prog)
+                        }
                     }
                 }
 
@@ -368,7 +381,7 @@ class TimeSlotManager: ObservableObject {
                     }
                     progress.globalProgress = globalProgress
                 }
-            } else {
+            } else if localToday == nil {
                 progress = DailyTimeSlotProgress(date: today)
             }
 
@@ -377,6 +390,16 @@ class TimeSlotManager: ObservableObject {
         } else {
             await syncMealProgressFromDietGoal(saveProgress: false)
         }
+    }
+
+    /// 初期値（何も記録されていない）ではない進捗か。`lastUpdated` は初期化時刻が入るため、
+    /// 「ローカルの方が新しい」判定には中身の有無も併せて見る必要がある。
+    private static func hasContent(_ p: TimeSlotProgress) -> Bool {
+        p.trainingCompleted > 0 || p.mindfulnessCompleted > 0
+            || p.stretchSetsCompleted > 0 || p.standCompleted > 0
+            || !p.completedActivityIds.isEmpty
+            || p.logProgress.mealLogged > 0 || p.logProgress.drinkLogged > 0
+            || p.logProgress.mindInputLogged > 0
     }
 
     /// HealthKitから1日全体の実績を更新
@@ -984,7 +1007,9 @@ class MandalaCompletionLogger: ObservableObject {
 
     /// 今日完了済みのノードIDセット（buildNodes に渡す）。
     var todayCompletedIds: Set<String> {
-        Set(todayRecords.map { $0.nodeId })
+        // todayRecords は起動時の日付で固定されるため、アプリを日付をまたいで開いたままだと
+        // 前日の完了が今日分として混ざる。毎回今日のキーで引き直す。
+        Set((allRecords[todayKey()] ?? []).map { $0.nodeId })
     }
 
     /// 指定日の完了記録（全件）。

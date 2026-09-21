@@ -299,6 +299,9 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 最近の主なアップデート
 
+### 2026-09-22
+- ✅ **スパイラルの不具合3件を修正（iOS）**: ①日記・勉強などを投稿しても「毎日/曜日別のカスタム目標」がスパイラルに反映されなかった（時間帯別カスタム活動と勉強ノードしか投稿と照合していなかった）→ 名前照合を追加。②投稿後の更新が遅かった（Firestore保存を待ってから再計算していた）→ 先に即時再計算。③％が戻る: `TimeSlotManager.loadTodayProgress()`がタイムアウト時に進捗を空へ初期化／取得中のローカル変更をFirestoreの古い値で上書きしていた→ 今日分のローカル進捗を維持しマージ。あわせて`MandalaCompletionLogger.todayCompletedIds`が日付をまたぐと前日分を含む問題も修正
+
 ### 2026-09-15〜09-20
 - ✅ **トレーニング動画をGIFからMP4へ全面移行**: iOSは新規`LoopingVideoView`（AVQueuePlayer + AVPlayerLooper、ミュート・無限ループ）で`GIFAnimationView`を置換、`ios/kfit/Videos/`にmp4を配置（`project.yml`で登録）。WebはDailyWorkoutFlow・LoginView・90秒モード・ホームトップを`<video autoPlay muted playsInline>`に変更。旧GIF計13ファイルはリポジトリから削除（iOS Assets.xcassets 54MB→6.2MB）
 - ✅ **動画素材**: `fitingo_mv_{squat,pushups,lunge,legs,burpee}.mp4`（iOS）、Webは同5種。プランク・種目不明時のデフォルトは`fitingo_mv_squat.mp4`を流用（専用の`fitingo_mv.mp4`/`fitingo_mv_plank.mp4`は使用しない）

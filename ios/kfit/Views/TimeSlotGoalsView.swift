@@ -1024,6 +1024,18 @@ struct MandalaChartView: View {
             }
         }
 
+        // 毎日/曜日別のカスタム目標（日記・勉強・読書など）も、今日の投稿の activityName と
+        // 名前照合して完了扱いにする（従来は時間帯別カスタム活動と勉強ノードだけが対象で、
+        // 日記などを投稿してもスパイラルに反映されなかった）
+        func eduPostMatches(_ goalName: String) -> Bool {
+            let name = goalName.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else { return false }
+            return todayEduActivityNames.contains { eduName in
+                !eduName.trimmingCharacters(in: .whitespaces).isEmpty
+                    && eduActivityNameMatchesSpiral(edu: eduName, spiral: name)
+            }
+        }
+
         // 今日の曜日別カスタム目標
         let weekdayNum: Int = {
             let wd = Calendar.current.component(.weekday, from: Date())
@@ -1071,7 +1083,8 @@ struct MandalaChartView: View {
                     id: "wd-\(cg.id.uuidString)",
                     emoji: cg.emoji,
                     label: cg.name,
-                    isCompleted: gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)"),
+                    isCompleted: gp.completedCustomGoalIds.contains("wd_\(cg.id.uuidString)")
+                        || eduPostMatches(cg.name),
                     slot: nil,
                     type: .custom
                 ))
@@ -1086,7 +1099,8 @@ struct MandalaChartView: View {
                     id: "daily-\(cg.id.uuidString)",
                     emoji: cg.emoji,
                     label: cg.name,
-                    isCompleted: gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)"),
+                    isCompleted: gp.completedCustomGoalIds.contains("daily_custom_\(cg.id.uuidString)")
+                        || eduPostMatches(cg.name),
                     slot: nil,
                     type: .custom
                 ))

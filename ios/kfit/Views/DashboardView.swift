@@ -2274,10 +2274,10 @@ struct DashboardView: View {
         let today = cal.startOfDay(for: Date())
 
         let todayItems = history.filter { $0.timestamp >= today }
-        guard !todayItems.isEmpty else {
-            recomputeMandalaNodes()
-            return
-        }
+        // ノードの完了は履歴との名前照合で導出されるため、Firestore保存（下の toggle）を
+        // 待たずに先に再計算して即時反映する。保存待ちの間スパイラルが更新されず遅く見えていた。
+        recomputeMandalaNodes()
+        guard !todayItems.isEmpty else { return }
 
         // ① 語学系の投稿があれば曜日別 wd_study ゴールを完了
         if todayItems.contains(where: { Self.isEduItem($0) }) {

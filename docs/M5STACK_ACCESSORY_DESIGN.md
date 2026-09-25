@@ -1,6 +1,6 @@
-# M5Stack CoreS3 アクセサリー連携 設計書（案）
+# FitinGO（M5Stack CoreS3）アクセサリー連携 設計書（案）
 
-M5Stack CoreS3 を Fitingo の**追加アクセサリー**として使い、①体温・脈拍、②筋トレの回数、③食事の写真を、Fitingo と Apple Health に連携する構成の設計案です。実装前の提案であり、コードはまだありません。
+M5Stack CoreS3 を「**FitinGO**」という名前の Fitingo **追加アクセサリー**として使い、①体温・脈拍、②筋トレの回数、③食事の写真を、Fitingo と Apple Health に連携する構成の設計案です。**持ち運んでどこでも記録でき、後から Fitingo アプリにつないでデータを取り込む**（オフラインファースト）ことを前提にしています。実装前の提案であり、コードはまだありません。
 
 > 前提: 「M5StackS3」は **M5Stack CoreS3** を指すものとして設計します（ESP32-S3、2.0 インチタッチ画面、カメラ GC0308 0.3MP、6 軸 IMU BMI270 + 磁気センサー、BLE 5 / Wi-Fi、RTC、バッテリー内蔵、Grove ポート）。カメラ付きの機種はこれです。AtomS3 系にはカメラも十分な画面もありません。
 
@@ -11,7 +11,7 @@ M5Stack CoreS3 を Fitingo の**追加アクセサリー**として使い、①�
 HealthKit は iPhone / Apple Watch 上のアプリ経由でのみ書き込めます。**M5Stack から直接 Apple Health へは書けません**。したがって経路は必ず次の形になります。
 
 ```
-M5Stack CoreS3 ──BLE──▶ Fitingo（iPhone）──┬─▶ Apple Health（HealthKit）
+FitinGO（M5Stack CoreS3）──BLE──▶ Fitingo（iPhone）──┬─▶ Apple Health（HealthKit）
                                             └─▶ Firestore（Web・ポイント・スパイラル）
 ```
 
@@ -23,7 +23,7 @@ Fitingo が「ゲートウェイ」になります。これは既存の構成と
 
 ```mermaid
 flowchart LR
-    subgraph M5["M5Stack CoreS3（ファームウェア）"]
+    subgraph M5["FitinGO デバイス（M5Stack CoreS3）"]
         S1["体温センサー<br/>MLX90614 / MAX30205"]
         S2["脈拍・SpO2<br/>MAX30102"]
         S3["IMU BMI270<br/>回数検出"]
@@ -92,7 +92,7 @@ I2C アドレスは重複しない組み合わせ（MLX90614 0x5A、MAX30102 0x5
 | 脈拍 | `heartRate` |
 | 酸素飽和度 | `oxygenSaturation` |
 
-- 各サンプルに `HKDevice`（名前 `M5Stack CoreS3`、製造元 `M5Stack`、ファーム版）を付けて、Health アプリ上で由来が分かるようにします。
+- 各サンプルに `HKDevice`（名前 `FitinGO`、モデル `M5Stack CoreS3`、製造元 `M5Stack`、ファーム版）を付けて、Health アプリ上で由来が分かるようにします。
 - **重複防止**: `HKMetadataKeySyncIdentifier` に「デバイス ID + シーケンス番号」を入れ、再送しても二重登録されないようにします。
 - **Apple Watch との競合**: Watch のワークアウト中に M5 の脈拍も書くと二重になります。既定では「M5 の脈拍は安静時測定のみ書く」とし、Watch がワークアウト中は書かない運用にします。
 
@@ -232,6 +232,82 @@ CharacterState {
 - 効果音は内蔵スピーカーで再生（短い WAV）
 - 節電: 表示は常時ではなく、動かした時・レップ検出時に点灯し、数十秒で暗くする
 
+### 3.5 FitinGO: 持ち運びと、後からの同期（オフラインファースト）
+
+FitinGO は**スマホが手元になくても単体で動き、あとで Fitingo アプリにつなぐと全部取り込まれる**デバイスです。ジム・公園・旅行先に持ち出し、帰宅後や翌日に同期する使い方を標準とします。
+
+**名前と識別**
+
+| 場所 | 名前 |
+|---|---|
+| 画面・アプリ表示 | FitinGO（アプリでは「FitinGO デバイス」） |
+| BLE 広告名 | `FitinGO-XXXX` |
+| Apple Health の `HKDevice` | 名前 `FitinGO` / モデル `M5Stack CoreS3` |
+| Firestore | `users/{uid}/devices/{deviceId}`（名前、ファーム版、最終同期、最後に受け取った `seq`、電池残量） |
+
+> 「FitinGO」（GO が大文字）はご指定の表記です。アプリ名の「Fitingo」と綴りが異なるため、表記を統一するかは決めておくと安全です。
+
+**単体で動く範囲（スマホなし）**
+
+| 機能 | 単体での動作 |
+|---|---|
+| 体温・脈拍の測定と画面表示 | ○（値は保存して後で同期） |
+| 筋トレのレップ検出・セット記録 | ○ |
+| 食事の撮影 | ○（保存のみ。AI 解析は同期後） |
+| キャラクター表示・レップ連動の演出 | ○（最後に受け取った成長段階を表示） |
+| Apple Health / Firestore への反映 | ×（同期後） |
+
+画面には「未同期 12 件」「最終同期: 2 日前」を表示します。
+
+**端末内の保存（ストア・アンド・フォワード）**
+
+- すべての記録を、追記専用のログとして保存します（種別・`seq`・時刻・値）。**単調増加の `seq`** と**デバイス固有の ID** の組で、1 件が世界で一意になります
+- 小さな記録（体温・脈拍・レップ）は 1 件 16〜32 バイト程度で、数万件でも収まります
+- 食事の写真は 1 枚あたり数十 KB。内蔵フラッシュ（16MB、素材と共用）では百枚前後、**microSD スロットを使えばさらに大量に保存**できます。容量が逼迫したら警告し、古いものから上書き（同期済みのみ）
+- **削除は「iPhone 側が保存を完了した」と確認できたあとだけ**。同期途中で切れても失われません
+
+**時刻の扱い（後から取り込むための要）**
+
+- 各記録に、内蔵 RTC（BM8563、電池でバックアップ）の時刻を付けます。これが「いつ測った・鍛えたか」の正になります
+- iPhone と接続するたびに時刻を同期し、RTC のずれ（ドリフト）を記録します。長期間つながなかった場合は、次の同期時に**ずれを按分して補正**します
+- 時刻の確かさを示すフラグ（同期済み / 未同期）を付け、未同期が長い記録には Fitingo 側で「時刻が概算」と表示できるようにします
+
+**同期のしかた（自動 + 手動）**
+
+1. **自動**: 未同期データがあると、FitinGO は広告データの「データあり」フラグを立てます。iPhone の Fitingo は、サービス UUID を指定したバックグラウンドスキャンと状態復元（State Restoration）で、アプリが閉じていても FitinGO が近くに来たときに起こされます
+2. **手動**: アプリの「同期」ボタン、または FitinGO 画面の「同期」ボタン
+3. **プロトコル**（再開可能・二重取り込みなし）
+
+```
+iPhone → FitinGO : SyncRequest { lastAckSeq }
+FitinGO → iPhone : 記録を seq 順にバッチ送信（各バッチに CRC）
+iPhone           : 受信を端末内に永続化 → HealthKit / Firestore へ処理
+iPhone → FitinGO : Ack { ackSeq }        // 永続化に成功した seq まで
+FitinGO          : ackSeq までを削除可にする
+```
+
+- 途中で切断しても、次回は `lastAckSeq` の続きから再開します
+- 二重取り込みを防ぐため、**Firestore のドキュメント ID を `{deviceId}_{seq}` の固定値**にし、書き込みは何度実行しても同じ結果（冪等）にします。Apple Health は `SyncIdentifier` に同じ値を入れます
+- 写真の転送が長い場合は、まず数値データを先に取り込み、写真は続けて転送します。まとめて大量の写真を送るときは、任意で Wi-Fi 転送（iPhone が LAN 上で受け取る方式）も使えます
+
+**後から取り込んだデータの反映（Fitingo 側の要件）**
+
+| 種類 | 反映先 | 注意点 |
+|---|---|---|
+| 体温・脈拍 | Apple Health（過去の日時で書き込み）、Firestore `vitals` | 撮った時刻のまま記録。今日の値として扱わない |
+| 筋トレ | `completed-exercises`（過去の日時）、Apple Health のワークアウト | ポイント・実績・ストリークを**その日付で**反映する必要がある |
+| 食事写真 | 食事写真ログ（撮影時刻）→ AI 解析 → 栄養を Apple Health に | 撮影時刻で朝・昼・夜の時間帯を決める。解析は 1 日の回数上限内で順次（超過分は「解析待ち」） |
+| スパイラル | 過去の日は日次の到達度（`summaries`）に反映 | スパイラルの画面は「今日」用。過去分は履歴・カレンダーで見る |
+
+> 未確認・要実装: 現在の `calculatePoints` / `evaluateStreakOnSummaryWrite` が**過去日付の記録の追加**（ポイント加算日、ストリークの再評価、日次到達度の更新）を正しく扱えるかは、コードで確認していません。後から取り込む機能では最も重要な確認項目です。
+
+**持ち運びの設計**
+
+- **電池**: 待機は Light Sleep、IMU の動き検知で復帰、画面は数十秒で消灯。USB-C で充電。電池残量が少ないときは画面表示と同期で知らせ、低電量でも記録は最優先で保存
+- **携行**: 汗・落下に備えたケース、クリップ／アームバンド／ダンベル用ホルダーなどの周辺物を検討（ハードウェア面の課題）
+- **プライバシー**: 食事写真を含むため、紛失時に第三者が読めないよう、記録は**ペアリングしたアカウントにひも付け**（他のアカウントの iPhone とは同期しない）、必要なら PIN でロック。紛失時はアプリからデバイスを「無効」にし、以降の同期を拒否
+- **複数台・機種変更**: `devices/{deviceId}` で管理。新しい iPhone でも、同じアカウントなら `lastAckSeq` から取り込み直せるため、二重にはなりません
+
 ---
 
 ## 4. BLE 仕様（案）
@@ -242,14 +318,15 @@ CharacterState {
 |---|---|---|---|
 | Heart Rate（0x180D） | Heart Rate Measurement | M5→iPhone notify | 脈拍 |
 | Health Thermometer（0x1809） | Temperature Measurement | M5→iPhone indicate | 体温 |
-| Fitingo Accessory（独自 UUID） | Vitals | notify | SpO2・測定品質 |
+| FitinGO（独自 UUID） | Vitals | notify | SpO2・測定品質 |
 | 〃 | WorkoutEvent | indicate（Ack あり） | 回数イベント。`seq` で欠落検出 |
 | 〃 | ImageTransfer | notify + write | 画像の分割転送（ヘッダー + チャンク + CRC） |
 | 〃 | Command | write | 時刻同期、種目選択、撮影要求、未送信データの再送要求 |
 | 〃 | CharacterState | iPhone→M5 write | キャラクターの成長段階・達成率・連続記録（3.4） |
-| 〃 | DeviceInfo | read | ファーム版、バッテリー、デバイス ID |
+| 〃 | SyncControl | write / indicate | 同期の開始・バッチ確認（Ack）・再開（3.5） |
+| 〃 | DeviceInfo | read | ファーム版、バッテリー、デバイス ID、未同期件数 |
 
-**オフライン蓄積**: iPhone と切断中のデータは M5 のフラッシュ（LittleFS）に `seq` 付きで溜め、再接続時に iPhone が「seq N 以降」を要求して受け取ります。時刻は接続時に iPhone から同期し、M5 の RTC（BM8563）で補完します。
+**BLE 名**: 広告名は `FitinGO-XXXX`（MAC 下 4 桁）。複数台あっても区別できます。オフライン蓄積と同期の詳細は 3.5 を参照してください。
 
 ---
 
@@ -257,12 +334,14 @@ CharacterState {
 
 | 項目 | 内容 |
 |---|---|
-| `M5AccessoryManager`（新規） | CoreBluetooth の中央（セントラル）。スキャン、ペアリング、購読、再接続、受信データの検証と振り分け |
+| `M5AccessoryManager`（新規、UI 上は「FitinGO デバイス」） | CoreBluetooth の中央（セントラル）。スキャン、ペアリング、購読、再接続、受信データの検証と振り分け |
 | `HealthKitManager` | `writeTypes` に `heartRate` / `bodyTemperature` / `oxygenSaturation` を追加。書き込み関数（`HKDevice`・`SyncIdentifier` 付き）を追加 |
 | Info.plist / project.yml | `NSBluetoothAlwaysUsageDescription`、`UIBackgroundModes` の `bluetooth-central`。`NSHealthUpdateUsageDescription` の文言を体温・脈拍にも触れるよう更新（現在はいずれも未設定または未対応） |
 | Firestore | `users/{uid}/vitals`（新規）。ルールは既存の `users/{userId}/{document=**}` で本人のみ可 |
 | スパイラル | 「体温・脈拍」ノードの追加（任意） |
 | 設定画面 | アクセサリーの接続・解除、電池残量、同期履歴、機能ごとの ON/OFF |
+| `DeviceSyncManager`（新規） | `SyncRequest` / `Ack`、端末内への永続化キュー（受信 → 処理 → 確認の順）、冪等な書き込み、進捗表示（「未同期 N 件」「同期中」）、失敗時の再試行 |
+| 過去日付の反映 | 取り込んだ記録を撮影・測定時刻で書き込み、ポイント・ストリーク・日次到達度を再評価（3.5 の要確認項目） |
 | キャラクター状態 | 成長段階・達成率の計算と `CharacterState` の送信（アプリ側に一本化）。既存の累計ポイントと連続記録を利用 |
 | Web | 表示のみ（Firestore の vitals）。Web Bluetooth は iOS Safari 非対応のため、接続は iOS アプリに限定 |
 
@@ -288,6 +367,7 @@ CharacterState {
 | 1. バイタル | 体温・脈拍を HealthKit と Firestore に書き込み、重複防止・Watch 競合の扱い | 2〜3 週 |
 | 2. 筋トレ | 1〜2 種目で回数検出、Fitingo・Apple Health へ連携。手動カウントで精度検証 | 3〜4 週 |
 | 3. カメラ | 撮影・BLE 画像転送・AI 解析・栄養書き込み | 2〜3 週 |
+| 3.5 同期 | 保存ログ、`SyncRequest`/`Ack`、冪等な取り込み、過去日付の反映、自動同期（バックグラウンド） | 3〜4 週 |
 | 4. キャラクター | 6 ステージの素材制作、進化演出、レップ連動の反応、CharacterState 連携 | 3〜4 週（素材制作に依存） |
 | 5. 製品化 | 電池最適化、OTA、設定 UI、Web 表示、種目追加 | 継続 |
 
@@ -303,6 +383,9 @@ CharacterState {
 | 脈拍・体温の精度（PPG は動きに弱い） | 安静時測定に限定、測定品質を併せて送り低品質は書かない |
 | 回数検出の精度が種目・持ち方で変わる | 種目ごとの検証。誤検出時は Fitingo 側で回数を手修正できる |
 | カメラ画質が低く栄養推定が不安定 | 撮影ガイド、AI 結果の手修正、外付けカメラの検討 |
+| 過去日付の取り込みでポイント・ストリークが崩れる | 3.5 の要確認項目。テスト用の過去日付データで検証してから公開 |
+| 同期途中の切断・二重取り込み | `seq` + `lastAckSeq` の再開、Firestore ID の固定（冪等）、Ack 後にのみ削除 |
+| 端末の紛失・盗難（食事写真など） | アカウントひも付け、PIN ロック、アプリからの無効化 |
 | Apple Watch との二重記録 | `HKDevice` と `SyncIdentifier`、Watch ワークアウト中は書かない |
 | 薬機法（体温・脈拍の表現） | 「参考値」の表示、診断を思わせる表現を避ける |
 | 電波法 | 国内販売の**技適マーク付き**モデルを使う（要確認） |

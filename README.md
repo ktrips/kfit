@@ -82,7 +82,7 @@ Cloud Functions（`aiProxy`）がサーバー側キーで代理呼び出しす�
 - **デバウンス**: Watch通信を70%削減
 - **動画再生**: GIFからMP4へ移行（iOS Assets 54MB→6MB）。Webは960×540・音声なしに再エンコード（17.7MB→4.6MB）、firebase/reactを別チャンク化（メインJS 747KB→74KB）、Cache-Control修正
 
-詳細: [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md)
+詳細: [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md) ／ 全体構成: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 

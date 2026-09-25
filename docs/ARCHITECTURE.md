@@ -1,12 +1,14 @@
 # Fitingo アーキテクチャ
 
-Fitingo（リポジトリ名 `kfit`）は、運動・食事・マインド・学習の習慣化アプリです。iOS アプリを中心に、Apple Watch・ウィジェット・共有拡張・Web 版が **Firebase（Firestore + Cloud Functions + Hosting）** を共通の土台として連携します。
+Fitingo（リポジトリ名 `kfit`）は、運動・食事・マインド・学習の習慣化アプリです。iOS アプリを中心に、Apple Watch・ウィジェット・共有拡張・Web 版が **Firebase（Firestore + Cloud Functions + Hosting）** を共通の土台として連携します。M5Stack CoreS3 を使ったアクセサリー **FitinGO デバイス**（設計中）も、iOS アプリをゲートウェイとしてこの構成に加わります（1.2）。
 
 > 本書はソースコードの実装を基に記述しています。ファイル名・関数名は 2026-09 時点のものです。
 
 ---
 
 ## 1. 全体構成図
+
+### 1.1 現行の構成（実装済み）
 
 ```mermaid
 flowchart TB
@@ -73,6 +75,124 @@ flowchart TB
     Web <--> IDB
     Sibling -. "ソース共有 /<br/>KFitCore" .-> iOSApp
 ```
+
+### 1.2 FitinGO デバイスを含む構成（Fitingo アプリ中心）
+
+M5Stack CoreS3 製のアクセサリー **FitinGO デバイス**を加えた全体像です。Fitingo iOS アプリが**ゲートウェイ**となり、FitinGO の記録を Apple Health と Firestore に振り分け、キャラクターの状態を FitinGO に返します。FitinGO 関連（点線枠・点線矢印）は [M5STACK_ACCESSORY_DESIGN.md](M5STACK_ACCESSORY_DESIGN.md) に基づく**設計段階**で、コードはまだありません。
+
+```mermaid
+flowchart LR
+    subgraph Device["FitinGO デバイス（M5Stack CoreS3）※設計中"]
+        direction TB
+        Sensors["センサー<br/>体温 MLX90614 / MAX30205<br/>脈拍・SpO2 MAX30102<br/>IMU BMI270（レップ検出）"]
+        Cam["カメラ GC0308<br/>食事撮影・Wi-Fi 用 QR 読取"]
+        Mic["マイク / スピーカー<br/>音声アシスタント"]
+        Screen["タッチ画面<br/>キャラクター 6 ステージ<br/>種目選択・撮影・同期"]
+        Log["端末内ログ<br/>LittleFS / microSD<br/>deviceId + seq で一意"]
+        RTC["RTC BM8563<br/>記録時刻の正"]
+        NVS["NVS（暗号化）<br/>Wi-Fi 設定 最大 5〜8 件"]
+        Sensors --> Log
+        Cam --> Log
+        RTC --> Log
+        Screen --> Log
+    end
+
+    subgraph Hub["Fitingo iOS アプリ（中心・ゲートウェイ）"]
+        direction TB
+        Views["Views（SwiftUI）<br/>ROUTIN / FIT / GOAL / FOOD<br/>MIND / TOMO / Plus / 設定"]
+        Spiral["マンダラスパイラル<br/>達成率の導出"]
+        subgraph DevMgr["FitinGO 連携 Managers（新規）"]
+            direction TB
+            M5M["M5AccessoryManager<br/>CoreBluetooth セントラル<br/>ペアリング・状態復元"]
+            DSync["DeviceSyncManager<br/>SyncRequest / Ack<br/>冪等取り込み・過去日付反映"]
+            VSM["VoiceSessionManager<br/>音声中継・状況スナップショット"]
+            WiFiM["WiFiProvisioningManager<br/>Wi-Fi 設定の送信"]
+            CharM["CharacterState 計算<br/>成長段階・今日の達成率"]
+        end
+        subgraph Core["既存 Managers"]
+            direction TB
+            AuthM["AuthenticationManager<br/>recordExercise / Firestore 入口"]
+            HKM["HealthKitManager<br/>（体温・脈拍・SpO2 の書き込みを追加）"]
+            PLM["PhotoLogManager<br/>analyzePhoto"]
+            TSM["TimeSlotManager / EduLogManager"]
+            Prem["PremiumManager / AIQuotaManager"]
+            Bridge["iOSWatchBridge"]
+        end
+        Views --> Spiral
+        M5M --> DSync
+        M5M --> VSM
+        M5M --> WiFiM
+        DSync -- "体温・脈拍・SpO2" --> HKM
+        DSync -- "回数イベント" --> AuthM
+        DSync -- "食事 JPEG" --> PLM
+        AuthM --> Spiral
+        HKM --> Spiral
+        Spiral --> CharM
+        CharM --> M5M
+    end
+
+    subgraph Apple["Apple プラットフォーム"]
+        direction TB
+        HK[("Apple Health<br/>HealthKit")]
+        Watch["Apple Watch<br/>+ コンプリケーション"]
+        Widget["ウィジェット / Live Activity"]
+        Share["共有拡張 kfitShare"]
+        StoreKit["StoreKit 2<br/>Fitingo Plus"]
+    end
+
+    subgraph Firebase["Firebase（バックエンド）"]
+        direction TB
+        FAuth["Authentication"]
+        FS[("Cloud Firestore<br/>completed-exercises / summaries<br/>vitals・devices（新規）")]
+        Fn["Cloud Functions<br/>calculatePoints / checkAchievements<br/>evaluateStreak / aiProxy<br/>voiceAssistant（新規）"]
+        Host["Hosting"]
+    end
+
+    Web["Web 版<br/>React + Vite<br/>（vitals は表示のみ）"]
+    AI["AI<br/>OpenAI / Google（検討）"]
+    LAN["Wi-Fi（2.4GHz）<br/>NTP・OTA・写真まとめ転送"]
+
+    Log <-. "BLE GATT（暗号化・6 桁ペアリング）<br/>SyncControl / WorkoutEvent / ImageTransfer" .-> M5M
+    Mic <-. "BLE AudioUp / AudioDown（Opus）" .-> VSM
+    M5M -. "BLE CharacterState" .-> Screen
+    WiFiM -. "BLE WifiConfig" .-> NVS
+    NVS -. "必要時のみ接続" .-> LAN
+
+    HKM <--> HK
+    Bridge <-- "WatchConnectivity" --> Watch
+    Bridge -- "App Group" --> Widget
+    Share -- "App Group" --> TSM
+    Prem <--> StoreKit
+
+    AuthM --> FAuth
+    AuthM <--> FS
+    DSync -. "{deviceId}_{seq} で冪等書き込み" .-> FS
+    FS -- "トリガー" --> Fn
+    Fn --> FS
+    PLM -- "callable: aiProxy" --> Fn
+    VSM -. "callable: voiceAssistant" .-> Fn
+    Fn --> AI
+    Web <--> FS
+    Web --> FAuth
+    Host --> Web
+
+    classDef planned stroke-dasharray: 5 5
+    class Device,DevMgr,Sensors,Cam,Mic,Screen,Log,RTC,NVS,M5M,DSync,VSM,WiFiM,CharM,LAN planned
+```
+
+**FitinGO が関わる主な流れ**
+
+| 流れ | 経路 | 要点 |
+|---|---|---|
+| 記録の同期 | FitinGO 端末内ログ → BLE（`SyncRequest` / `Ack`）→ `DeviceSyncManager` → Apple Health・Firestore | オフラインファースト。iPhone が保存を確定した `seq` まで Ack し、FitinGO はそこまでを削除可にする。Firestore ID `{deviceId}_{seq}`、HealthKit の `SyncIdentifier` で二重登録を防ぐ |
+| 筋トレ | IMU でレップ検出（端末内）→ `WorkoutEvent` → `recordExercise` → `completed-exercises` → `calculatePoints` / `checkAchievements` | 既存のポイント・実績・スパイラルがそのまま動く。回数の正は Firestore |
+| 体温・脈拍 | センサー → BLE → `HealthKitManager`（`HKDevice` = FitinGO）+ `users/{uid}/vitals` | 健康管理の参考値。Watch のワークアウト中は脈拍を書かない |
+| 食事写真 | カメラ → BLE 分割転送 → `PhotoLogManager` → `aiProxy` → 栄養を Apple Health へ | 解析は AI クォータの範囲内。超過分は「解析待ち」 |
+| キャラクター | 累計ポイント・連続記録・スパイラル達成率 → `CharacterState` → FitinGO 画面 | 計算は iPhone に一本化。FitinGO は最後の状態を保持し単体でも表示 |
+| 音声アシスタント | マイク → Opus → BLE → `VoiceSessionManager` → `voiceAssistant` → AI → 返答音声を BLE で返す | API キーはサーバー（Firebase Secrets）のみ。音声用の別枠クォータ |
+| Wi-Fi | アプリ（BLE `WifiConfig`）/ QR / 本体入力 → NVS に保持 → 必要時のみ接続 | NTP 補正・OTA・写真のまとめ転送用。主機能は BLE だけで動く |
+
+**設計上の原則**: Apple Health へは iPhone アプリからしか書けないため、FitinGO は**入力・表示デバイスに徹し**、判断・保存・課金・AI 呼び出しは Fitingo iOS アプリとサーバー側に置きます。Web は Web Bluetooth が iOS Safari で使えないため FitinGO とは直接つながず、Firestore 経由の表示のみです。
 
 ---
 

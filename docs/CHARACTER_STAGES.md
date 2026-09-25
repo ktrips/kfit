@@ -2,7 +2,7 @@
 
 M5Stack の FitinGO 画面（[M5STACK_ACCESSORY_DESIGN.md](M5STACK_ACCESSORY_DESIGN.md) の 3.4）に表示する、Fitingo キャラクターの成長 6 ステージの制作仕様です。既存の動画（`fitingo_mv_*.mp4`）と `mascot.png` の画風を基準に、**体つき・服装・道具・背景・ポーズ・エフェクトを組み合わせて**ステージを表現します。
 
-> この文書は制作の指示書です。画像そのものはまだありません。
+> 写実 CG 風の画像は画像生成 AI での制作が必要です（`tools/character_stages/generate.py`、API キーが必要）。すぐ M5 に載せられる**シンプルなフラット版**は `tools/character_stages/simple/` に生成済みです（7 章）。
 
 ---
 
@@ -117,3 +117,30 @@ for cutout. No text except "FITINGO" printed on the shirt.
 - **権利**: 既存キャラは、よく知られた語学アプリのフクロウのマスコットに雰囲気が似ています。ステージ画像を増やして公開する前に、権利面（商標・著作権・審査）の確認を推奨します
 - **生成 AI の利用条件**: 商用利用・生成物の権利の扱いは、利用するサービスの規約を確認してください
 - **画風の統一**: 写実 CG 風（動画）とイラスト調（`mascot.png`）が混在している。**アイコンなど他の画面との統一**も含め、どちらに寄せるかを最初に決める
+
+---
+
+## 7. シンプル版（M5 画面用・生成済み）
+
+画像生成 AI を使わず、図形だけで描いたフラットな版です。2 章の組み合わせ（体つき・服装・道具・背景・ポーズ・エフェクト）と 3 章の表情 4 種をそのまま反映しています。まず実機で動かすための素材で、写実 CG 版ができたら差し替えます。
+
+| ファイル | 内容 |
+|---|---|
+| `tools/character_stages/simple/sprites/stage{1-6}_{sleepy,calm,excited,joy}.png` | 160×180 透過 PNG、24 枚 |
+| `tools/character_stages/simple/bg/stage{1-6}.png` | 320×180 背景、6 枚（自宅・公園・ジム・ビーチ・炎のジム・山頂） |
+| `tools/character_stages/simple/preview/stage{1-6}.png` | 320×240 の実機画面イメージ（下部に Lv・達成率・次の進化までのバー） |
+| `contact_sprites.png` / `contact_screens.png` | 確認用の一覧 |
+
+合計約 0.7MB（一覧を除く）。再生成は `python3 tools/character_stages/simple_sprites.py`（Pillow が必要）。M5 では背景を描いてからキャラの PNG を重ね、表情は達成率、背景の明るさは表情に合わせて変えます（プレビューと同じ組み立て）。
+
+## 8. 写実 CG 版の生成手順
+
+```bash
+export OPENAI_API_KEY=...                                          # リポジトリに置かない
+python3 tools/character_stages/generate.py --stages 1 --dry-run    # プロンプト確認（無料）
+python3 tools/character_stages/generate.py --stages 1              # ステージ1の4枚を試作
+tools/character_stages/pack.sh                                     # 切り抜き・M5 用縮小・一覧
+```
+
+基準画像は `tools/character_stages/reference.png`（`fitingo_mv_squat.mp4` の 3.2 秒）。生成物（`out/`・`m5/`）は Git 管理外です。
+

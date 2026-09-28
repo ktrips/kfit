@@ -9,6 +9,7 @@ import { DashboardView } from './components/DashboardView';
 import { LandingPage, getActiveDays, NS90_MODE_KEY, type Mode90 } from './components/LandingPage';
 import { signOutUser } from './services/firebase';
 import type { BookId } from './components/books/BookViewer';
+import { captureBookToken, hasBookToken } from './utils/bookToken';
 
 const ExerciseTrackerView = lazy(() => import('./components/ExerciseTrackerView').then(m => ({ default: m.ExerciseTrackerView })));
 const WeeklyGoalView      = lazy(() => import('./components/WeeklyGoalView').then(m => ({ default: m.WeeklyGoalView })));
@@ -40,15 +41,10 @@ function getInitialViewFromPath(): { view: View; bookId?: BookId; shareId?: stri
     window.location.replace('https://fit.ktrips.net/privacy-policy/');
     return { view: 'login' };
   }
-  // ?plus=1 パラメータ: iOSアプリのPlusユーザーがWebで全文読む際に付与される
-  // localStorage に保存してセッション以降も有効にする
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('plus') === '1') {
-    localStorage.setItem('isPlus_secret', 'true');
-    // クリーンなURLに書き換え（パラメータ除去）
-    const cleanPath = window.location.pathname;
-    window.history.replaceState({}, '', cleanPath);
-  }
+  // iOS アプリの Plus 会員が書籍を開くとき、URL の #bt= に短時間の閲覧トークンが付く
+  // （サーバーの createBookToken が発行）。本文の取得時にサーバーが検証する。
+  // 以前の ?plus=1 は誰でも付けられたため廃止した。
+  captureBookToken();
   if (path.startsWith('/books/apple-watch-diet')) return { view: 'bookDetail', bookId: 'apple-watch-diet' };
   if (path.startsWith('/books/cursor-claude-code-plus')) return { view: 'bookDetail', bookId: 'cursor-claude-code-plus' };
   if (path.startsWith('/books/cursor-claude-code')) return { view: 'bookDetail', bookId: 'cursor-claude-code' };
@@ -70,12 +66,13 @@ function App() {
   const setExercises = useAppStore((state) => state.setExercises);
   const setLoading = useAppStore((state) => state.setLoading);
 
-  // Plus 判定: Firestore の isPlus フィールド / Admin メール / localStorage Plusコード
+  // Plus 判定（表示用）: サーバーが書き込む Firestore の isPlus / Admin メール / iOS からの閲覧トークン。
+  // 有料本文の全文はサーバー（getBook）が改めて判定するため、ここは見た目の切り替えだけ。
   const ADMIN_EMAIL = 'kenichiyoshida13@gmail.com';
   const isPlus: boolean = !!(
     (userProfile as any)?.isPlus ||
     user?.email === ADMIN_EMAIL ||
-    localStorage.getItem('isPlus_secret') === 'true'
+    hasBookToken()
   );
 
   const initial = getInitialViewFromPath();

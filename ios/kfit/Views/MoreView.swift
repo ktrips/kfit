@@ -105,10 +105,10 @@ struct MoreView: View {
 
                     // Fitingoの本を読んでみる（Plus: アプリ内WebViewで全文 / Free: アプリ内試し読み）
                     Button {
-                        booksSheetURL = URL(string: plus.isPlus
-                            ? "https://fit.ktrips.net/books?plus=1"
-                            : "https://fit.ktrips.net/books")!
-                        showBooksSheet = true
+                        Task {
+                            booksSheetURL = await plus.bookURL(path: "/books")
+                            showBooksSheet = true
+                        }
                     } label: {
                         MenuRow(icon: "book.fill", iconColor: Color.duoGreen, label: "Fitingoの本を読んでみる")
                     }

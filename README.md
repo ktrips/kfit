@@ -303,6 +303,9 @@ leaderboards/{weekId}/entries/
 - ✅ **Plus を実際に購入できるよう整備（iOS）**: `Transaction.updates` の監視、承認待ち・未検証取引の扱い、無料トライアルと割引率を App Store の商品情報から表示、審査ガイドライン 3.1.2 の自動更新の説明と利用規約・プライバシーポリシーのリンク、サブスクリプション管理
 - ✅ **Plus の判定をサーバーで一元管理**: 根拠は「サーバーで検証した App Store の購入」「管理者が付与したプロモ」「管理者本人」だけ。`firebase/functions/plus.js`（`verifySubscription`・`setPromoUser`・`listPromoUsers`・`appStoreNotifications`・`expirePlusDaily`）。`isPlus` などは Firestore ルールでクライアントから書き込み不可に。Plus コード（合言葉）は廃止
 - ✅ **プロモ（無料の Plus ユーザー）**: 管理者（kenichiyoshida13@gmail.com）だけが Plus 画面の管理者パネルからメールアドレスで付与・解除（期間: 無期限／1か月／3か月／1年）
+- ✅ **有料書籍の全文をサーバー配信に変更**: 全文 Markdown を公開ファイル（`web/public/books/`）から `firebase/functions/books/` へ移し、`getBook` が Plus の場合だけ全文を返す。Web の `?plus=1`（誰でも付けられた）を廃止し、iOS からは `createBookToken` の短時間トークン（`#bt=`）で開く
+- ✅ **本番に残っていた旧関数 `updateStreaks` を削除**: 7/31 の方針変更（未達でも連続記録を 0 に戻さない）後も毎日動き、4 日以上空いたユーザーの連続記録を 0 にしていた
+- ✅ **Cloud Functions を Node.js 22 に更新**（Node.js 20 は 2026-10-30 に廃止）
 - ⚠️ 要設定: App Store Connect でのサブスクリプション商品の作成、`firebase/functions/.env` の `APP_APPLE_ID`（本番の購入の検証に必要）、App Store サーバ通知の URL 登録
 
 ### 2026-09-22

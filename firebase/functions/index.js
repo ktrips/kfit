@@ -14,6 +14,11 @@ exports.listPromoUsers = plus.listPromoUsers;
 exports.appStoreNotifications = plus.appStoreNotifications;
 exports.expirePlusDaily = plus.expirePlusDaily;
 
+// 有料書籍の本文配信（Plus のみ全文）— books.js
+const books = require('./books');
+exports.createBookToken = books.createBookToken;
+exports.getBook = books.getBook;
+
 // ===== STREAK HELPERS =====
 // The streak counter increments the moment a day first crosses either bar
 // (XP >= 100 or achievement % >= 60) — not at day's end. A day that never

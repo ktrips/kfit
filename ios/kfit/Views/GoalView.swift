@@ -1869,8 +1869,10 @@ struct GoalView: View {
         // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
         Button {
             if plus.isPlus {
-                booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
-                showBooksSheet = true
+                Task {
+                    booksSheetURL = await plus.bookURL(path: "/books/apple-watch-diet")
+                    showBooksSheet = true
+                }
             } else {
                 UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
             }

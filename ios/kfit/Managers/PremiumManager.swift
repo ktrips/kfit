@@ -274,6 +274,26 @@ final class PlusManager: ObservableObject {
     }
     #endif
 
+    /// Web の書籍ページの URL。Plus なら短時間の閲覧トークン（#bt=）を付け、
+    /// Web 側が全文をサーバーから取得できるようにする（トークンはサーバーが発行・検証）。
+    @MainActor
+    func bookURL(path: String) async -> URL {
+        let base = URL(string: "https://fit.ktrips.net\(path)")!
+        #if canImport(FirebaseFunctions)
+        guard isPlus, Auth.auth().currentUser != nil else { return base }
+        do {
+            let result = try await Functions.functions(region: "us-central1")
+                .httpsCallable("createBookToken").call([String: Any]())
+            if let token = (result.data as? [String: Any])?["token"] as? String {
+                return URL(string: "https://fit.ktrips.net\(path)#bt=\(token)") ?? base
+            }
+        } catch {
+            dlog("[Plus] createBookToken failed: \(error.localizedDescription)")
+        }
+        #endif
+        return base
+    }
+
     // MARK: - Helpers
 
     var canUsePlusFeatures: Bool { isPlus }

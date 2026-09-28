@@ -903,3 +903,18 @@ export const setAdminStreak = async (streak: number): Promise<{ streak: number }
   const result = await fn({ streak });
   return result.data as { streak: number };
 };
+
+/**
+ * 有料書籍の本文を取得する。全文を返すかはサーバー（getBook）が判定する:
+ * Web でログイン中ならそのアカウントの Plus 状態、iOS から開いた場合は閲覧トークン。
+ * Plus でなければ試し読み分だけが返る（全文はブラウザに届かない）。
+ */
+export const getBookContent = async (
+  bookId: string,
+  token: string | null,
+): Promise<{ content: string; full: boolean }> => {
+  const fn = httpsCallable(functions, 'getBook');
+  const result = await fn({ bookId, token: token ?? undefined });
+  return result.data as { content: string; full: boolean };
+};
+

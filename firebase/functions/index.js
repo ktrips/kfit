@@ -5,6 +5,15 @@ const jwt = require('jsonwebtoken');
 admin.initializeApp();
 const db = admin.firestore();
 
+// Fitingo Plus（App Store 購入の検証・管理者プロモ・期限切れ処理）— plus.js
+const plus = require('./plus');
+const { plusStatusFromData } = plus;
+exports.verifySubscription = plus.verifySubscription;
+exports.setPromoUser = plus.setPromoUser;
+exports.listPromoUsers = plus.listPromoUsers;
+exports.appStoreNotifications = plus.appStoreNotifications;
+exports.expirePlusDaily = plus.expirePlusDaily;
+
 // ===== STREAK HELPERS =====
 // The streak counter increments the moment a day first crosses either bar
 // (XP >= 100 or achievement % >= 60) — not at day's end. A day that never
@@ -757,7 +766,7 @@ function generateRuleBasedComment(streak, weekSets, _weekXP) {
 // API キーの設定（Secret Manager）:
 //   firebase functions:secrets:set OPENAI_API_KEY
 // Plus 判定:
-//   users/{uid} ドキュメントの isPlus フィールド（iOS が購入時に書き込む）
+//   plus.js の plusStatusFromData（サーバーで検証した購入・管理者プロモ・管理者）
 // 日次・カテゴリ別クォータ
 // 90秒モード中（activeDays < 5）: 全カテゴリ合計 1/日
 // 5〜9日（Free）:               カテゴリ別 1/日
@@ -795,7 +804,8 @@ exports.aiProxy = functions
       db.collection('users').doc(uid).collection('settings').doc('ai').get(),
     ]);
     const userData = userSnap.data() || {};
-    const isPlus = !!userData.isPlus;
+    // Plus はサーバーで検証した購入・管理者のプロモ・管理者本人だけを根拠にする（期限も判定）
+    const isPlus = plusStatusFromData(userData, context.auth.token.email).isPlus;
 
     // カスタム API キー（Firestore: users/{uid}/settings.openaiApiKey）
     const customApiKey = (settingsSnap.data() || {}).openaiApiKey || '';

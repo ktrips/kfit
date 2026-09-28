@@ -161,12 +161,6 @@ struct PlusView: View {
     @StateObject private var plus = PlusManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var codeInput: String = ""
-    @State private var codeResult: CodeResult? = nil
-    @State private var showCodeField: Bool = false
-    @State private var adminNewCode: String = ""
-    @State private var adminCodeResult: String? = nil
-    @State private var isUpdatingCode: Bool = false
     @State private var retentionRows: [RetentionDiagnosticRow] = []
     @State private var retentionSummary: RetentionDiagnosticSummary? = nil
     @State private var isLoadingRetention: Bool = false
@@ -175,10 +169,8 @@ struct PlusView: View {
     @State private var isSavingStreak: Bool = false
     @State private var streakResult: String? = nil
     @State private var showManageSubscriptions: Bool = false
-    @FocusState private var codeFocused: Bool
     @State private var selectedTab: PlusTab = .compare
 
-    enum CodeResult { case success, failure }
     enum PlusTab: String, CaseIterable {
         case compare = "プランを比較"
         case upgrade = "アップグレード"
@@ -437,8 +429,16 @@ struct PlusView: View {
                 plusActiveCard
             } else {
                 purchaseCardsSection
-                codeSection
             }
+        }
+    }
+
+    private var plusSourceLabel: String {
+        let exp = plus.plusExpiresAt.map { "（\($0.formatted(date: .abbreviated, time: .omitted))まで）" } ?? ""
+        switch plus.plusSource {
+        case "admin": return "Adminアカウント"
+        case "promo": return "プロモで有効" + exp
+        default: return "サブスクリプション有効" + exp
         }
     }
 
@@ -448,18 +448,10 @@ struct PlusView: View {
             Text("Fitingo Plus 有効中")
                 .font(.system(size: 20, weight: .black))
                 .foregroundColor(Color(hex: "#FF8C00"))
-            Text(plus.isAdmin ? "Adminアカウント"
-                 : plus.codeUnlocked ? "Plusコードで解放済み"
-                 : "サブスクリプション有効")
+            Text(plusSourceLabel)
                 .font(.system(size: 13))
                 .foregroundColor(Color.duoSubtitle)
-            if plus.codeUnlocked && !plus.isAdmin {
-                Button(role: .destructive) { plus.revokeCodeUnlock() } label: {
-                    Label("コード解放を取り消す", systemImage: "lock.rotation")
-                        .font(.system(size: 12))
-                }
-            }
-            if !plus.codeUnlocked && !plus.isAdmin {
+            if plus.plusSource == "appstore" {
                 Button { showManageSubscriptions = true } label: {
                     Label("サブスクリプションを管理・解約", systemImage: "creditcard")
                         .font(.system(size: 12))
@@ -614,66 +606,6 @@ struct PlusView: View {
         .disabled(plus.isLoadingPurchase)
     }
 
-    private var codeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Plusコード")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color.duoSubtitle)
-                .padding(.leading, 4)
-            if !showCodeField {
-                Button { showCodeField = true; codeFocused = true } label: {
-                    HStack {
-                        Image(systemName: "key.fill").foregroundColor(Color(hex: "#FF8C00"))
-                        Text("コードを持っている")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(hex: "#FF8C00"))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                    }
-                    .padding(14)
-                    .background(Color(.systemBackground))
-                    .cornerRadius(14)
-                }
-                .buttonStyle(.plain)
-            } else {
-                VStack(spacing: 10) {
-                    SecureField("Plusコードを入力", text: $codeInput)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .focused($codeFocused)
-                        .padding(12).background(Color(.systemGray6)).cornerRadius(10)
-                    if let result = codeResult {
-                        Label(result == .success ? "Plusを解放しました！" : "コードが違います",
-                              systemImage: result == .success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(result == .success ? Color.duoGreen : .red)
-                    }
-                    HStack {
-                        Button("キャンセル") {
-                            showCodeField = false; codeInput = ""; codeResult = nil
-                        }
-                        .font(.system(size: 13)).foregroundColor(Color.duoSubtitle)
-                        Spacer()
-                        Button("解放する") {
-                            let ok = plus.unlockWithCode(codeInput)
-                            codeResult = ok ? .success : .failure
-                            if ok {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                    showCodeField = false
-                                }
-                            }
-                        }
-                        .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(codeInput.isEmpty ? Color(.systemGray4) : Color(hex: "#FF8C00"))
-                        .cornerRadius(8).disabled(codeInput.isEmpty)
-                    }
-                }
-                .padding(14).background(Color(.systemBackground)).cornerRadius(14)
-            }
-        }
-    }
-
     // MARK: - Admin パネル
 
     private var adminSection: some View {
@@ -689,41 +621,6 @@ struct PlusView: View {
                         .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("現在のコード")
-                        .font(.system(size: 10, weight: .semibold)).foregroundColor(Color.duoSubtitle)
-                    Text(plus.secretCode)
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF8C00"))
-                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "#FF8C00").opacity(0.08)).cornerRadius(8)
-                }
-                HStack(spacing: 8) {
-                    TextField("新しいコード", text: $adminNewCode)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .padding(10).background(Color(.systemGray6)).cornerRadius(8)
-                    Button {
-                        guard !adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                        isUpdatingCode = true
-                        adminCodeResult = nil
-                        Task {
-                            let ok = await plus.updateSecretCode(adminNewCode)
-                            adminCodeResult = ok ? "✅ 変更完了" : "❌ 失敗（Xcodeコンソールを確認）"
-                            if ok { adminNewCode = "" }
-                            isUpdatingCode = false
-                        }
-                    } label: {
-                        if isUpdatingCode {
-                            ProgressView().tint(.white).frame(width: 40)
-                        } else {
-                            Text("変更")
-                        }
-                    }
-                    .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Color(hex: "#FF8C00")).cornerRadius(8)
-                    .disabled(adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty || isUpdatingCode)
-                }
                 // Admin 状態のデバッグ表示
                 HStack(spacing: 6) {
                     Image(systemName: plus.isAdmin ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -734,17 +631,13 @@ struct PlusView: View {
                         .foregroundColor(plus.isAdmin ? Color.duoSubtitle : .red)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let res = adminCodeResult {
-                    Text(res)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(res.hasPrefix("✅") ? Color.duoGreen : .red)
-                }
             }
             .padding(14).background(Color(.systemBackground)).cornerRadius(14)
             .overlay(RoundedRectangle(cornerRadius: 14)
                 .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
 
             #if canImport(FirebaseFunctions)
+            PromoAdminPanel()
             streakSetterPanel
             retentionDiagnosticsPanel
             #endif
@@ -960,3 +853,115 @@ struct PlusView: View {
 typealias PremiumView = PlusView
 
 #Preview { PlusView() }
+
+// MARK: - プロモ（無料の Plus ユーザー）管理パネル：管理者のみ
+// 付与・解除の権限はサーバー（setPromoUser / listPromoUsers）が検証済みの
+// ID トークンのメールで判定する。この画面の表示制御は見た目だけ。
+
+#if canImport(FirebaseFunctions)
+struct PromoAdminPanel: View {
+    @ObservedObject private var plus = PlusManager.shared
+    @State private var email: String = ""
+    @State private var days: Int = 0
+    @State private var note: String = ""
+    @State private var isWorking = false
+    @State private var result: String? = nil
+    @State private var users: [PlusManager.PromoUser] = []
+
+    private let dayOptions: [(label: String, days: Int)] = [
+        ("無期限", 0), ("1か月", 30), ("3か月", 90), ("1年", 365),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("プロモ（無料の Plus ユーザー）")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+                .padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("メールアドレスを指定して Plus を無料で付与します。相手は先に Fitingo へ一度ログインしている必要があります。")
+                    .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                TextField("メールアドレス", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .padding(10).background(Color(.systemGray6)).cornerRadius(8)
+                Picker("期間", selection: $days) {
+                    ForEach(dayOptions, id: \.days) { Text($0.label).tag($0.days) }
+                }
+                .pickerStyle(.segmented)
+                TextField("メモ（任意）", text: $note)
+                    .padding(10).background(Color(.systemGray6)).cornerRadius(8)
+                HStack(spacing: 8) {
+                    Button { run(enabled: true, target: email) } label: {
+                        Text("Plus を付与").frame(maxWidth: .infinity)
+                    }
+                    .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#FF8C00")).cornerRadius(8)
+                    Button { run(enabled: false, target: email) } label: {
+                        Text("解除").frame(maxWidth: .infinity)
+                    }
+                    .font(.system(size: 13, weight: .bold)).foregroundColor(.red)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6)).cornerRadius(8)
+                }
+                .disabled(isWorking || !email.contains("@"))
+                if isWorking { ProgressView().frame(maxWidth: .infinity) }
+                if let result {
+                    Text(result)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(result.hasPrefix("❌") ? .red : Color.duoGreen)
+                }
+                Divider()
+                HStack {
+                    Text("付与中のユーザー（\(users.count)）")
+                        .font(.system(size: 11, weight: .semibold)).foregroundColor(Color.duoSubtitle)
+                    Spacer()
+                    Button("更新") { Task { await load() } }.font(.system(size: 12, weight: .bold))
+                }
+                ForEach(users) { u in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(u.email.isEmpty ? u.id : u.email).font(.system(size: 12, weight: .semibold))
+                            Text(u.expiresAt.map { "\($0.formatted(date: .abbreviated, time: .omitted))まで" } ?? "無期限")
+                                .font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                            if !u.note.isEmpty {
+                                Text(u.note).font(.system(size: 10)).foregroundColor(Color.duoSubtitle)
+                            }
+                        }
+                        Spacer()
+                        Button("解除") { run(enabled: false, target: u.email) }
+                            .font(.system(size: 12, weight: .bold)).foregroundColor(.red)
+                            .disabled(isWorking || u.email.isEmpty)
+                    }
+                }
+            }
+            .padding(14).background(Color(.systemBackground)).cornerRadius(14)
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#FFD700").opacity(0.4), lineWidth: 1.5))
+        }
+        .task { await load() }
+    }
+
+    private func run(enabled: Bool, target: String) {
+        let t = target.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        isWorking = true
+        result = nil
+        Task {
+            do {
+                result = "✅ " + (try await plus.setPromoUser(email: t, enabled: enabled, days: days, note: note))
+                if enabled { email = ""; note = "" }
+                await load()
+            } catch {
+                result = "❌ \(error.localizedDescription)"
+            }
+            isWorking = false
+        }
+    }
+
+    private func load() async {
+        users = (try? await plus.listPromoUsers()) ?? users
+    }
+}
+#endif

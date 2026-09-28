@@ -269,9 +269,6 @@ struct UserStatusSheet: View {
     @EnvironmentObject var plus: PlusManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var adminNewCode: String = ""
-    @State private var adminCodeResult: String? = nil
-    @State private var isUpdatingCode: Bool = false
 
     private var displayName: String {
         authManager.userProfile?.username
@@ -389,7 +386,7 @@ struct UserStatusSheet: View {
                         .font(.system(size: 16, weight: .black))
                         .foregroundColor(Color(hex: "#FF8C00"))
                     Text(plus.isAdmin ? "Admin アカウント"
-                         : plus.codeUnlocked ? "Plusコードで解放済み"
+                         : plus.plusSource == "promo" ? "プロモで有効"
                          : "サブスクリプション有効")
                         .font(.system(size: 12)).foregroundColor(Color.duoSubtitle)
                     Text("すべての機能が使えます ✓")
@@ -436,54 +433,15 @@ struct UserStatusSheet: View {
             }
             .padding(.leading, 4)
 
-            VStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("現在のPlusコード")
-                        .font(.system(size: 10, weight: .semibold)).foregroundColor(Color.duoSubtitle)
-                    Text(plus.secretCode)
-                        .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .foregroundColor(Color(hex: "#FF8C00"))
-                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "#FF8C00").opacity(0.08)).cornerRadius(8)
-                }
-
-                HStack(spacing: 8) {
-                    TextField("新しいコード", text: $adminNewCode)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .padding(10).background(Color(.systemGray6)).cornerRadius(8)
-                    Button {
-                        guard !adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                        isUpdatingCode = true
-                        adminCodeResult = nil
-                        Task {
-                            let ok = await plus.updateSecretCode(adminNewCode)
-                            adminCodeResult = ok ? "✅ 変更完了" : "❌ 失敗（Xcodeコンソールを確認）"
-                            if ok { adminNewCode = "" }
-                            isUpdatingCode = false
-                        }
-                    } label: {
-                        if isUpdatingCode {
-                            ProgressView().tint(.white).frame(width: 40)
-                        } else {
-                            Text("変更")
-                        }
-                    }
-                    .font(.system(size: 13, weight: .bold)).foregroundColor(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Color(hex: "#FF8C00")).cornerRadius(8)
-                    .disabled(adminNewCode.trimmingCharacters(in: .whitespaces).isEmpty || isUpdatingCode)
-                }
-
-                if let res = adminCodeResult {
-                    Text(res)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(res.hasPrefix("✅") ? Color.duoGreen : .red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(14).background(Color(.systemBackground)).cornerRadius(14)
-            .overlay(RoundedRectangle(cornerRadius: 14)
-                .stroke(Color(hex: "#FFD700").opacity(0.5), lineWidth: 1.5))
+            // Plus コードは廃止。無料の Plus はプロモとして管理者だけが付与できる
+            #if canImport(FirebaseFunctions)
+            PromoAdminPanel()
+            #else
+            Text("プロモ（無料の Plus ユーザー）の付与は Fitingo アプリの Plus 画面から行えます")
+                .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemBackground)).cornerRadius(14)
+            #endif
         }
     }
 

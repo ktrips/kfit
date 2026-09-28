@@ -22,13 +22,13 @@
 		CCDD00000000000000000041 /* DietGoalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000040 /* DietGoalSettings.swift */; };
 		CCDD00000000000000000043 /* AuthenticationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000042 /* AuthenticationManager.swift */; };
 		CCDD00000000000000000045 /* PremiumManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000044 /* PremiumManager.swift */; };
+		CCDD000000000000000000F1 /* AsyncTimeout.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD000000000000000000F0 /* AsyncTimeout.swift */; };
 		CCDD00000000000000000049 /* TimeSlotManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000048 /* TimeSlotManager.swift */; };
 		CCDD0000000000000000004B /* DuolingoTextExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000004A /* DuolingoTextExtractor.swift */; };
 		CCDD0000000000000000004D /* HabitStackManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000004C /* HabitStackManager.swift */; };
 		CCDD0000000000000000004F /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000004E /* NotificationManager.swift */; };
 		CCDD00000000000000000051 /* PendingShareProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000050 /* PendingShareProcessor.swift */; };
 		CCDD00000000000000000053 /* TomoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000052 /* TomoView.swift */; };
-		CCDD00000000000000000059 /* GIFAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD00000000000000000058 /* GIFAnimationView.swift */; };
 		CCDD0000000000000000005B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000005A /* LoginView.swift */; };
 		CCDD0000000000000000005D /* MindfulnessSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000005C /* MindfulnessSessionView.swift */; };
 		CCDD0000000000000000005F /* StandPomodoroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDD0000000000000000005E /* StandPomodoroView.swift */; };
@@ -78,13 +78,13 @@
 		CCDD00000000000000000040 /* DietGoalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DietGoalSettings.swift; path = ../ios/kfit/Models/DietGoalSettings.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000042 /* AuthenticationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthenticationManager.swift; path = ../ios/kfit/Managers/AuthenticationManager.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000044 /* PremiumManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PremiumManager.swift; path = ../ios/kfit/Managers/PremiumManager.swift; sourceTree = SOURCE_ROOT; };
+		CCDD000000000000000000F0 /* AsyncTimeout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AsyncTimeout.swift; path = ../ios/kfit/Extensions/AsyncTimeout.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000048 /* TimeSlotManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TimeSlotManager.swift; path = ../ios/kfit/Managers/TimeSlotManager.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000004A /* DuolingoTextExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DuolingoTextExtractor.swift; path = ../ios/kfit/Managers/DuolingoTextExtractor.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000004C /* HabitStackManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HabitStackManager.swift; path = ../ios/kfit/Managers/HabitStackManager.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000004E /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NotificationManager.swift; path = ../ios/kfit/Managers/NotificationManager.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000050 /* PendingShareProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingShareProcessor.swift; path = ../ios/kfit/Managers/PendingShareProcessor.swift; sourceTree = SOURCE_ROOT; };
 		CCDD00000000000000000052 /* TomoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TomoView.swift; path = ../ios/kfit/Views/TomoView.swift; sourceTree = SOURCE_ROOT; };
-		CCDD00000000000000000058 /* GIFAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GIFAnimationView.swift; path = ../ios/kfit/Views/GIFAnimationView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000005A /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoginView.swift; path = ../ios/kfit/Views/LoginView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000005C /* MindfulnessSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MindfulnessSessionView.swift; path = ../ios/kfit/Views/MindfulnessSessionView.swift; sourceTree = SOURCE_ROOT; };
 		CCDD0000000000000000005E /* StandPomodoroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StandPomodoroView.swift; path = ../ios/kfit/Views/StandPomodoroView.swift; sourceTree = SOURCE_ROOT; };
@@ -210,13 +210,13 @@
 				CCDD00000000000000000040 /* DietGoalSettings.swift */,
 				CCDD00000000000000000042 /* AuthenticationManager.swift */,
 				CCDD00000000000000000044 /* PremiumManager.swift */,
+				CCDD000000000000000000F0 /* AsyncTimeout.swift */,
 				CCDD00000000000000000048 /* TimeSlotManager.swift */,
 				CCDD0000000000000000004A /* DuolingoTextExtractor.swift */,
 				CCDD0000000000000000004C /* HabitStackManager.swift */,
 				CCDD0000000000000000004E /* NotificationManager.swift */,
 				CCDD00000000000000000050 /* PendingShareProcessor.swift */,
 				CCDD00000000000000000052 /* TomoView.swift */,
-				CCDD00000000000000000058 /* GIFAnimationView.swift */,
 				CCDD0000000000000000005A /* LoginView.swift */,
 				CCDD0000000000000000005C /* MindfulnessSessionView.swift */,
 				CCDD0000000000000000005E /* StandPomodoroView.swift */,
@@ -436,13 +436,13 @@
 				CCDD00000000000000000041 /* DietGoalSettings.swift in Sources */,
 				CCDD00000000000000000043 /* AuthenticationManager.swift in Sources */,
 				CCDD00000000000000000045 /* PremiumManager.swift in Sources */,
+				CCDD000000000000000000F1 /* AsyncTimeout.swift in Sources */,
 				CCDD00000000000000000049 /* TimeSlotManager.swift in Sources */,
 				CCDD0000000000000000004B /* DuolingoTextExtractor.swift in Sources */,
 				CCDD0000000000000000004D /* HabitStackManager.swift in Sources */,
 				CCDD0000000000000000004F /* NotificationManager.swift in Sources */,
 				CCDD00000000000000000051 /* PendingShareProcessor.swift in Sources */,
 				CCDD00000000000000000053 /* TomoView.swift in Sources */,
-				CCDD00000000000000000059 /* GIFAnimationView.swift in Sources */,
 				CCDD0000000000000000005B /* LoginView.swift in Sources */,
 				CCDD0000000000000000005D /* MindfulnessSessionView.swift in Sources */,
 				CCDD0000000000000000005F /* StandPomodoroView.swift in Sources */,

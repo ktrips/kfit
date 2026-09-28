@@ -174,6 +174,7 @@ struct PlusView: View {
     @State private var streakInput: String = ""
     @State private var isSavingStreak: Bool = false
     @State private var streakResult: String? = nil
+    @State private var showManageSubscriptions: Bool = false
     @FocusState private var codeFocused: Bool
     @State private var selectedTab: PlusTab = .compare
 
@@ -458,7 +459,14 @@ struct PlusView: View {
                         .font(.system(size: 12))
                 }
             }
+            if !plus.codeUnlocked && !plus.isAdmin {
+                Button { showManageSubscriptions = true } label: {
+                    Label("サブスクリプションを管理・解約", systemImage: "creditcard")
+                        .font(.system(size: 12))
+                }
+            }
         }
+        .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
         .frame(maxWidth: .infinity)
         .padding(24)
         .background(Color(hex: "#FFD700").opacity(0.12))
@@ -470,7 +478,18 @@ struct PlusView: View {
     private var purchaseCardsSection: some View {
         VStack(spacing: 10) {
             if plus.availableProducts.isEmpty {
-                ProgressView().tint(Color(hex: "#FF8C00")).frame(maxWidth: .infinity).padding()
+                if plus.productLoadFailed {
+                    VStack(spacing: 8) {
+                        Text("プランを読み込めませんでした。通信状態を確認してください。")
+                            .font(.system(size: 12)).foregroundColor(Color.duoSubtitle)
+                            .multilineTextAlignment(.center)
+                        Button("再読み込み") { Task { await plus.loadProducts() } }
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity).padding()
+                } else {
+                    ProgressView().tint(Color(hex: "#FF8C00")).frame(maxWidth: .infinity).padding()
+                }
             } else {
                 ForEach(plus.availableProducts, id: \.id) { product in
                     purchaseCard(product)
@@ -488,7 +507,60 @@ struct PlusView: View {
                 Text(err).font(.system(size: 11)).foregroundColor(.red)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
+            if let notice = plus.purchaseNotice {
+                Text(notice).font(.system(size: 11)).foregroundColor(Color(hex: "#FF8C00"))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            subscriptionDisclosure
         }
+    }
+
+    /// App Store 審査ガイドライン 3.1.2 で求められる自動更新サブスクリプションの説明と規約リンク
+    private var subscriptionDisclosure: some View {
+        VStack(spacing: 6) {
+            Text("お支払いは購入の確定時に Apple ID に請求されます。サブスクリプションは、現在の期間が終了する24時間前までに解約しない限り自動的に更新され、更新時に同じ料金が請求されます。解約や管理は、購入後に「設定」アプリの Apple ID ＞ サブスクリプションから行えます。無料トライアルの対象期間中に購入した場合、未使用のトライアル期間は失われます。")
+                .font(.system(size: 10))
+                .foregroundColor(Color.duoSubtitle)
+                .multilineTextAlignment(.leading)
+            HStack(spacing: 16) {
+                Link("利用規約（EULA）", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                Link("プライバシーポリシー", destination: URL(string: "https://fit.ktrips.net/privacy-policy/")!)
+            }
+            .font(.system(size: 11, weight: .semibold))
+        }
+        .padding(.top, 6)
+    }
+
+    /// 初回特典（無料トライアル等）の表示文。対象外・未設定なら nil
+    private func introOfferText(_ product: Product) -> String? {
+        guard let offer = product.subscription?.introductoryOffer,
+              plus.introEligibility[product.id] == true else { return nil }
+        let p = offer.period
+        let unit: String
+        switch p.unit {
+        case .day: unit = "日間"
+        case .week: unit = "週間"
+        case .month: unit = "か月"
+        case .year: unit = "年"
+        @unknown default: unit = ""
+        }
+        let length = p.unit == .week && p.value == 1 ? "7日間" : "\(p.value)\(unit)"
+        switch offer.paymentMode {
+        case .freeTrial: return "\(length)無料トライアル付き"
+        default: return "初回 \(length) \(offer.displayPrice)"
+        }
+    }
+
+    /// 年額プランの「月あたり」と月額比の割引率（実際の価格から計算）
+    private func yearlySavingsText(_ yearly: Product) -> String? {
+        guard let monthly = plus.availableProducts.first(where: { $0.id.contains("monthly") }) else { return nil }
+        let perMonth = yearly.price / 12
+        let perMonthText = perMonth.formatted(yearly.priceFormatStyle)
+        let monthlyYear = monthly.price * 12
+        guard monthlyYear > 0 else { return "月あたり約\(perMonthText)" }
+        let saving = NSDecimalNumber(decimal: (monthlyYear - yearly.price) / monthlyYear * 100).intValue
+        return saving > 0 ? "月あたり約\(perMonthText) · 約\(saving)%お得" : "月あたり約\(perMonthText)"
     }
 
     private func purchaseCard(_ product: Product) -> some View {
@@ -510,10 +582,12 @@ struct PlusView: View {
                                 .background(Color(hex: "#FF8C00")).cornerRadius(6)
                         }
                     }
-                    Text(isYearly ? "月あたり約¥317 · 約34%お得" : "いつでもキャンセル可")
+                    Text(isYearly ? (yearlySavingsText(product) ?? "1年ごとに自動更新") : "いつでも解約可")
                         .font(.system(size: 11)).foregroundColor(Color.duoSubtitle)
-                    Text("7日間無料トライアル付き")
-                        .font(.system(size: 10)).foregroundColor(Color(hex: "#FF8C00"))
+                    if let intro = introOfferText(product) {
+                        Text(intro)
+                            .font(.system(size: 10)).foregroundColor(Color(hex: "#FF8C00"))
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

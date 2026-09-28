@@ -24,6 +24,12 @@ final class PlusManager: ObservableObject {
     @Published var purchaseError: String? = nil
     @Published var isLoadingPurchase: Bool = false
     @Published var codeUnlocked: Bool = false
+    /// 購入が保留中（ファミリー共有の「承認と購入のリクエスト」など）のときの案内
+    @Published var purchaseNotice: String? = nil
+    /// 商品情報の取得に失敗した（App Store Connect 未登録・通信不可など）
+    @Published var productLoadFailed: Bool = false
+    /// 商品ID → お試し期間（初回特典）の対象か
+    @Published var introEligibility: [String: Bool] = [:]
 
     // MARK: - Constants
     static let adminEmail = "kenichiyoshida13@gmail.com"
@@ -37,7 +43,22 @@ final class PlusManager: ObservableObject {
     private var lastSetupDate: Date? = nil
     private let setupTTL: TimeInterval = 3600
 
-    private init() {}
+    /// 更新・返金・別端末での購入・承認待ちの承認などを受け取るリスナー。
+    /// Apple はアプリ起動直後から Transaction.updates を監視することを求めている
+    /// （監視しないと、自動更新や「承認と購入のリクエスト」の結果を取りこぼす）。
+    private var updatesTask: Task<Void, Never>?
+
+    private init() {
+        updatesTask = Task.detached { [weak self] in
+            for await result in Transaction.updates {
+                guard let self else { return }
+                if case .verified(let tx) = result {
+                    await tx.finish()
+                }
+                await self.checkSubscription()
+            }
+        }
+    }
 
     // MARK: - Setup（起動時に呼ぶ）
 
@@ -166,7 +187,16 @@ final class PlusManager: ObservableObject {
         do {
             let products = try await Product.products(for: Set(Self.productIDs))
             availableProducts = products.sorted { $0.price < $1.price }
+            productLoadFailed = products.isEmpty
+            var eligibility: [String: Bool] = [:]
+            for p in products {
+                if let sub = p.subscription, sub.introductoryOffer != nil {
+                    eligibility[p.id] = await sub.isEligibleForIntroOffer
+                }
+            }
+            introEligibility = eligibility
         } catch {
+            productLoadFailed = true
             dlog("[Plus] Product load failed: \(error)")
         }
     }
@@ -175,19 +205,25 @@ final class PlusManager: ObservableObject {
     func purchase(_ product: Product) async {
         isLoadingPurchase = true
         purchaseError = nil
+        purchaseNotice = nil
         defer { isLoadingPurchase = false }
         do {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                if case .verified(let tx) = verification {
+                switch verification {
+                case .verified(let tx):
                     await tx.finish()
                     isPlus = true
+                case .unverified(_, let error):
+                    // 署名を検証できない取引は有効にしない
+                    purchaseError = "購入を確認できませんでした（\(error.localizedDescription)）"
                 }
             case .userCancelled:
                 break
             case .pending:
-                break
+                // 承認後は Transaction.updates 経由で有効になる
+                purchaseNotice = "購入の承認待ちです。承認されると自動で Plus が有効になります。"
             @unknown default:
                 break
             }
@@ -202,6 +238,8 @@ final class PlusManager: ObservableObject {
         for await result in Transaction.currentEntitlements {
             if case .verified(let tx) = result,
                tx.productType == .autoRenewable,
+               Self.productIDs.contains(tx.productID),
+               tx.revocationDate == nil,
                !tx.isUpgraded {
                 hasActive = true
             }

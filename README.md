@@ -299,6 +299,12 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 最近の主なアップデート
 
+### 2026-09-26〜09-29
+- ✅ **Plus を実際に購入できるよう整備（iOS）**: `Transaction.updates` の監視、承認待ち・未検証取引の扱い、無料トライアルと割引率を App Store の商品情報から表示、審査ガイドライン 3.1.2 の自動更新の説明と利用規約・プライバシーポリシーのリンク、サブスクリプション管理
+- ✅ **Plus の判定をサーバーで一元管理**: 根拠は「サーバーで検証した App Store の購入」「管理者が付与したプロモ」「管理者本人」だけ。`firebase/functions/plus.js`（`verifySubscription`・`setPromoUser`・`listPromoUsers`・`appStoreNotifications`・`expirePlusDaily`）。`isPlus` などは Firestore ルールでクライアントから書き込み不可に。Plus コード（合言葉）は廃止
+- ✅ **プロモ（無料の Plus ユーザー）**: 管理者（kenichiyoshida13@gmail.com）だけが Plus 画面の管理者パネルからメールアドレスで付与・解除（期間: 無期限／1か月／3か月／1年）
+- ⚠️ 要設定: App Store Connect でのサブスクリプション商品の作成、`firebase/functions/.env` の `APP_APPLE_ID`（本番の購入の検証に必要）、App Store サーバ通知の URL 登録
+
 ### 2026-09-22
 - ✅ **スパイラルの不具合3件を修正（iOS）**: ①日記・勉強などを投稿しても「毎日/曜日別のカスタム目標」がスパイラルに反映されなかった（時間帯別カスタム活動と勉強ノードしか投稿と照合していなかった）→ 名前照合を追加。②投稿後の更新が遅かった（Firestore保存を待ってから再計算していた）→ 先に即時再計算。③％が戻る: `TimeSlotManager.loadTodayProgress()`がタイムアウト時に進捗を空へ初期化／取得中のローカル変更をFirestoreの古い値で上書きしていた→ 今日分のローカル進捗を維持しマージ。あわせて`MandalaCompletionLogger.todayCompletedIds`が日付をまたぐと前日分を含む問題も修正
 

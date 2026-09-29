@@ -305,6 +305,7 @@ leaderboards/{weekId}/entries/
 - ✅ **プロモ（無料の Plus ユーザー）**: 管理者（kenichiyoshida13@gmail.com）だけが Plus 画面の管理者パネルからメールアドレスで付与・解除（期間: 無期限／1か月／3か月／1年）
 - ✅ **有料書籍の全文をサーバー配信に変更**: 全文 Markdown を公開ファイル（`web/public/books/`）から `firebase/functions/books/` へ移し、`getBook` が Plus の場合だけ全文を返す。Web の `?plus=1`（誰でも付けられた）を廃止し、iOS からは `createBookToken` の短時間トークン（`#bt=`）で開く
 - ✅ **本番に残っていた旧関数 `updateStreaks` を削除**: 7/31 の方針変更（未達でも連続記録を 0 に戻さない）後も毎日動き、4 日以上空いたユーザーの連続記録を 0 にしていた
+- ✅ **到達度の月平均の集計を開始**: `aggregateMonthlyAchievement`（毎月1日 04:00 JST）が当月・前月より前の月の平均を `summaries/monthly-avg-{yyyy-MM}` に集計。日次データは削除しない（旧設計の削除処理は、日次ドキュメントの更新で連続記録が誤って加算されるため廃止）
 - ✅ **Cloud Functions を Node.js 22 に更新**（Node.js 20 は 2026-10-30 に廃止）
 - ⚠️ 要設定: App Store Connect でのサブスクリプション商品の作成、`firebase/functions/.env` の `APP_APPLE_ID`（本番の購入の検証に必要）、App Store サーバ通知の URL 登録
 

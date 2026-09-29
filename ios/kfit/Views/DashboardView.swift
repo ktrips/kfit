@@ -519,7 +519,7 @@ struct DashboardView: View {
     // マンダラノードのキャッシュ（入力変化時のみ再計算。body 評価毎の再計算を回避）
     @State private var cachedMandalaNodes: [MandalaNodeData] = []
     // 週次・月次 到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent/achievementXP の履歴）
-    // 当月・前月より前の月は日次データがサーバー側で集約・削除され、月平均値のみが残る（summaries/monthly-avg-{yyyy-MM}）。
+    // 当月・前月より前の月はサーバー側で集計した月平均値を表示する（summaries/monthly-avg-{yyyy-MM}）。
     @State private var weeklyAchievementPercents: [Date: AuthenticationManager.DailyAchievementRecord] = [:]
     // 今日すでに保存した到達度%・XP（同値の重複書き込みを避けるためのセッション内キャッシュ）
     @State private var lastSavedAchievementDayKey: String? = nil

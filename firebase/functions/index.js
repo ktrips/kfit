@@ -403,76 +403,67 @@ exports.generateWeeklyLeaderboard = functions.pubsub
   });
 
 // ===== ACHIEVEMENT HISTORY RETENTION =====
-// 週次・月次到達度カレンダー（summaries/daily-{yyyy-MM-dd}.achievementPercent）は
-// 当月＋前月（2ヶ月分）のみ日次データを保持する。それより前の月は平均値だけを
-// summaries/monthly-avg-{yyyy-MM} に集約し、日次ドキュメントからは
-// achievementPercent フィールドを削除する（他の日次集計フィールドは残す）。
-// 保持月数は iOS 側 DashboardView.achievementHistoryRetentionMonths と揃えること。
+// 週次・月次到達度カレンダー用に、当月＋前月（2ヶ月分）より前の月の到達度
+// （summaries/daily-{yyyy-MM-dd}.achievementPercent）の平均を
+// summaries/monthly-avg-{yyyy-MM} に集計する。iOS は保持期間より前の月をこの平均値で表示する
+// （保持月数は iOS 側 DashboardView.achievementHistoryRetentionMonths と揃えること）。
+//
+// 日次ドキュメントは変更・削除しない。以前の設計では集計後に日次の achievementPercent を
+// 削除していたが、日次ドキュメントの更新は evaluateStreakOnSummaryWrite を起動し、
+// 過去日の XP が基準以上だと連続記録が誤って加算されるため、書き込まない方式にした。
 const ACHIEVEMENT_HISTORY_RETENTION_MONTHS = 2;
 
-// 保持期間より前の「まだ集約されていない月」を1回の実行で最大何ヶ月分まで
-// 遡って処理するか。保持期間の変更（例 6→2）や実行漏れがあっても、取りこぼした
-// 月を順次集約するためのバックログ幅。集約済みの月はクエリ1回でスキップされる（冪等）。
-const ACHIEVEMENT_PRUNE_BACKLOG_MONTHS = 12;
+// 保持期間より前の「まだ集計されていない月」を1回の実行で最大何ヶ月分まで遡るか。
+// 集計済みの月（monthly-avg が存在）はスキップする（冪等）。
+const ACHIEVEMENT_AGGREGATE_BACKLOG_MONTHS = 12;
 
-exports.pruneAchievementHistory = functions.pubsub
+exports.aggregateMonthlyAchievement = functions
+  .runWith({ timeoutSeconds: 540, memory: '256MB' })
+  .pubsub
   .schedule('0 4 1 * *') // 毎月1日 04:00 JST
   .timeZone('Asia/Tokyo')
   .onRun(async () => {
     const now = new Date();
 
-    // 保持境界: 当月から (RETENTION-1) ヶ月前の月初。これより古い月は集約対象。
-    // 例: RETENTION=2 → 当月と前月は日次保持、前々月以前を集約。
+    // 保持境界: 当月から (RETENTION-1) ヶ月前の月初。これより古い月が集計対象。
     const cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
     cutoff.setMonth(cutoff.getMonth() - (ACHIEVEMENT_HISTORY_RETENTION_MONTHS - 1));
 
-    // 集約対象の月キー一覧（cutoff の1ヶ月前から遡って BACKLOG_MONTHS ヶ月分）。
     const targetMonthKeys = [];
-    for (let i = 1; i <= ACHIEVEMENT_PRUNE_BACKLOG_MONTHS; i += 1) {
+    for (let i = 1; i <= ACHIEVEMENT_AGGREGATE_BACKLOG_MONTHS; i += 1) {
       const m = new Date(cutoff.getFullYear(), cutoff.getMonth() - i, 1);
       targetMonthKeys.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
     }
 
     const userRefs = await db.collection('users').listDocuments();
-    let processedMonths = 0;
+    let aggregated = 0;
 
-    await Promise.all(userRefs.map(async (userRef) => {
+    for (const userRef of userRefs) {
       const summariesRef = userRef.collection('summaries');
-
       for (const monthKey of targetMonthKeys) {
-        const startId = `daily-${monthKey}-01`;
-        const endId = `daily-${monthKey}-32`; // 排他上限（< endId）で 01〜31 を網羅
+        const avgRef = summariesRef.doc(`monthly-avg-${monthKey}`);
+        if ((await avgRef.get()).exists) continue; // 集計済み
 
         const snap = await summariesRef
-          .where(admin.firestore.FieldPath.documentId(), '>=', startId)
-          .where(admin.firestore.FieldPath.documentId(), '<', endId)
+          .where(admin.firestore.FieldPath.documentId(), '>=', `daily-${monthKey}-01`)
+          .where(admin.firestore.FieldPath.documentId(), '<', `daily-${monthKey}-32`)
           .get();
+        const values = snap.docs
+          .map((d) => d.data().achievementPercent)
+          .filter((v) => typeof v === 'number');
+        if (values.length === 0) continue;
 
-        const withPercent = snap.docs.filter((d) => typeof d.data().achievementPercent === 'number');
-        if (withPercent.length === 0) continue; // 集約済み or データ無し → スキップ
-
-        const total = withPercent.reduce((sum, d) => sum + d.data().achievementPercent, 0);
-        const average = Math.round(total / withPercent.length);
-
-        const batch = db.batch();
-        batch.set(summariesRef.doc(`monthly-avg-${monthKey}`), {
-          averageAchievementPercent: average,
-          daysRecorded: withPercent.length,
+        await avgRef.set({
+          averageAchievementPercent: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+          daysRecorded: values.length,
           computedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        withPercent.forEach((d) => {
-          batch.update(d.ref, {
-            achievementPercent: admin.firestore.FieldValue.delete(),
-            achievementPercentUpdatedAt: admin.firestore.FieldValue.delete(),
-          });
-        });
-        await batch.commit();
-        processedMonths += 1;
+        aggregated += 1;
       }
-    }));
+    }
 
     const cutoffKey = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}`;
-    console.log(`[pruneAchievementHistory] cutoff=${cutoffKey} processedMonths=${processedMonths}`);
+    console.log(`[aggregateMonthlyAchievement] cutoff=${cutoffKey} users=${userRefs.length} aggregated=${aggregated}`);
     return null;
   });
 

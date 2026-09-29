@@ -2092,8 +2092,8 @@ class AuthenticationManager: ObservableObject {
     }()
 
     /// 指定月の月平均到達度パーセンテージを取得する（当月・前月より前の月表示用）。
-    /// 日次データは Cloud Functions の pruneAchievementHistory によって集約・削除済みのため、
-    /// summaries/monthly-avg-{yyyy-MM} の平均値のみを参照する。
+    /// Cloud Functions の aggregateMonthlyAchievement が集計した
+    /// summaries/monthly-avg-{yyyy-MM} の平均値を参照する。
     func getMonthlyAverageAchievementPercent(for monthDate: Date) async -> Int? {
         guard let userId = Auth.auth().currentUser?.uid else { return nil }
         let key = Self.yyyyMMFmt.string(from: monthDate)

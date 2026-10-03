@@ -299,6 +299,9 @@ leaderboards/{weekId}/entries/
 
 ## 🎮 最近の主なアップデート
 
+### 2026-10-03
+- ✅ **パフォーマンス改善**: iOS の筋トレ動画を 17.3MB → 7.4MB（音声トラック削除・末尾のロゴカットを除去）、表示されていなかった GIF（5.5MB）を削除、Functions の起動時に不要なライブラリを読み込まないよう変更、スパイラル再計算時の設定 JSON の再デコードをキャッシュ化。詳細は PERFORMANCE_OPTIMIZATIONS.md
+
 ### 2026-09-26〜09-29
 - ✅ **Plus を実際に購入できるよう整備（iOS）**: `Transaction.updates` の監視、承認待ち・未検証取引の扱い、無料トライアルと割引率を App Store の商品情報から表示、審査ガイドライン 3.1.2 の自動更新の説明と利用規約・プライバシーポリシーのリンク、サブスクリプション管理
 - ✅ **Plus の判定をサーバーで一元管理**: 根拠は「サーバーで検証した App Store の購入」「管理者が付与したプロモ」「管理者本人」だけ。`firebase/functions/plus.js`（`verifySubscription`・`setPromoUser`・`listPromoUsers`・`appStoreNotifications`・`expirePlusDaily`）。`isPlus` などは Firestore ルールでクライアントから書き込み不可に。Plus コード（合言葉）は廃止

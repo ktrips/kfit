@@ -314,3 +314,10 @@ func withTimeout<T>(seconds: TimeInterval, default: T, operation: @escaping @Sen
 ### 未対応
 - iOS動画の再エンコード（現在1280×720・約17MB）と、`LoopingVideoView`での末尾ロゴカットのトリム
 
+## 追記: アプリ容量・起動の最適化（2026-10）
+
+- **iOS の筋トレ動画**: 再生時は常に消音のため音声トラックを削除し、末尾約1秒のロゴカット（ループのたびに映っていた）を切り落として 9 秒に。1280×720 のまま CRF 26 で再エンコード（拡大比較で差なし）。5 本で 17.3MB → 7.4MB（57% 減）。元ファイルは `~/Downloads/kfit_original_videos/`
+- **未使用の GIF を削除**: `fitingo_st_twist.gif`（5.5MB）は名前を ID として使うだけで表示されていなかった。空になった `ios/kfit/Images` を `project.yml` から外した
+- **Cloud Functions の起動**: Apple の購入検証ライブラリと証明書を、購入の検証時だけ読み込むよう変更（以前は全関数の起動時に読み込み、ローカル計測で初回約 135ms）
+- **スパイラルの再計算**: `buildNodes` が呼ばれるたびに `UserDefaults` の JSON（曜日別・毎日の目標）をデコードしていたのを、保存内容が変わった時だけデコードするキャッシュに変更
+

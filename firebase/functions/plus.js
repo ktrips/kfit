@@ -12,7 +12,6 @@ const fs = require('fs');
 const path = require('path');
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
 
 const db = admin.firestore();
 
@@ -23,12 +22,14 @@ const PRODUCT_IDS = ['fitingo_plus_monthly', 'fitingo_plus_yearly'];
 // firebase/functions/.env に APP_APPLE_ID=1234567890 の形で設定する。
 const APP_APPLE_ID = Number(process.env.APP_APPLE_ID || 0) || undefined;
 
-const ROOT_CERTS = ['AppleRootCA-G3.cer', 'AppleRootCA-G2.cer']
-  .map((f) => fs.readFileSync(path.join(__dirname, 'certs', f)));
-
 let verifiers = null;
 function getVerifiers() {
   if (verifiers) return verifiers;
+  // Apple のライブラリと証明書は購入の検証時だけ読み込む（index.js 経由で全関数がこの
+  // ファイルを読むため、先頭で読み込むと AI やポイント計算などの起動まで遅くなる）
+  const { SignedDataVerifier, Environment } = require('@apple/app-store-server-library');
+  const ROOT_CERTS = ['AppleRootCA-G3.cer', 'AppleRootCA-G2.cer']
+    .map((f) => fs.readFileSync(path.join(__dirname, 'certs', f)));
   verifiers = [];
   if (APP_APPLE_ID) {
     verifiers.push(new SignedDataVerifier(ROOT_CERTS, true, Environment.PRODUCTION, BUNDLE_ID, APP_APPLE_ID));

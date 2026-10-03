@@ -2,7 +2,8 @@
 """App Store 用の紹介画像（スクリーンショット + キャッチコピー）を 5 枚作る。
 
 入力: docs/screenshots/ の実機スクリーンショット
-出力: docs/appstore_screenshots/0N_*.png（1320x2868 = iPhone 6.9 インチ）
+出力: docs/appstore_screenshots/0N_*.png（1242x2688 = iPhone 6.5 インチ）
+      ※ 1320x2868 で描いてから縮小・上下をわずかに切り詰める（内容は変わらない）
       docs/appstore_screenshots/overview.png（確認用の一覧）
 使い方: python3 tools/appstore_screenshots/make.py   （Pillow が必要）
 """
@@ -13,7 +14,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[2]
 SHOTS = ROOT / "docs" / "screenshots"
 OUT = ROOT / "docs" / "appstore_screenshots"
-W, H = 1320, 2868
+W, H = 1320, 2868          # 描画サイズ
+OUT_W, OUT_H = 1242, 2688  # 出力サイズ（App Store の 6.5 インチ）
 
 FONT_HEAVY = "/System/Library/Fonts/ヒラギノ角ゴシック W8.ttc"
 FONT_BOLD = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
@@ -141,6 +143,11 @@ def make_slide(name, shot, title, sub, top, bottom):
         img = paste_watches(img, watches, y0 + card_h + 90)
     img = draw_chips(img, H - 210)
     out = img.convert("RGB")
+    # 横幅を合わせて縮小し、上下の余白（背景のみ）を均等に切り詰める
+    scaled_h = round(H * OUT_W / W)
+    out = out.resize((OUT_W, scaled_h), Image.LANCZOS)
+    top = (scaled_h - OUT_H) // 2
+    out = out.crop((0, top, OUT_W, top + OUT_H))
     out.save(OUT / f"{name}.png", optimize=True)
     return out
 
@@ -149,7 +156,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     slides = [make_slide(*s) for s in SLIDES]
     tw = 330
-    th = int(H * tw / W)
+    th = int(OUT_H * tw / OUT_W)
     sheet = Image.new("RGB", (len(slides) * (tw + 16) + 16, th + 32), (240, 240, 240))
     for i, s in enumerate(slides):
         sheet.paste(s.resize((tw, th), Image.LANCZOS), (16 + i * (tw + 16), 16))

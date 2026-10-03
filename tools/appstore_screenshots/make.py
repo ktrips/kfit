@@ -27,7 +27,7 @@ SLIDES = [
                      # Apple Watch でのカウント画面を下に並べる
                      ["watch/incoming-4B24B149-215E-4EB7-A5B2-EF5961218BDD.PNG",
                       "watch/incoming-7E630B2D-205F-436D-9002-EA2441C4E805.PNG"]),
-     "置くだけで\n回数をカウント", "iPhone と Apple Watch のセンサーが\n腕立て・スクワット・腹筋を自動で記録",
+     "Apple Watch /\nモーションセンサーで\nカウント", "iPhone と Apple Watch のセンサーが\n腕立て・スクワット・腹筋を自動で記録",
      (28, 176, 246), (20, 120, 200)),
     ("03_food", "main/IMG_3504.jpg",
      "撮るだけで\nAIが栄養分析", "食事の写真から、カロリーとPFCを推定。\nApple Health にもそのまま保存",
@@ -105,8 +105,10 @@ def make_slide(name, shot, title, sub, top, bottom):
     img = gradient(top, bottom).convert("RGBA")
     d = ImageDraw.Draw(img)
     # 見出し・説明
-    y = draw_centered(d, 170, title, ImageFont.truetype(FONT_HEAVY, 118), "white", 28)
-    draw_centered(d, y + 40, sub, ImageFont.truetype(FONT_BOLD, 50), (255, 255, 255, 235), 22)
+    three_lines = title.count("\n") >= 2
+    y = draw_centered(d, 150 if three_lines else 170, title,
+                      ImageFont.truetype(FONT_HEAVY, 100 if three_lines else 118), "white", 24)
+    text_bottom = draw_centered(d, y + 40, sub, ImageFont.truetype(FONT_BOLD, 50), (255, 255, 255, 235), 22)
 
     # スクリーンショット（角丸 + 影）
     crop, watches = None, []
@@ -124,7 +126,8 @@ def make_slide(name, shot, title, sub, top, bottom):
     card = rounded(src.resize((card_w, card_h), Image.LANCZOS), 56)
     # 画面の高さが足りない場合は、空いた領域の中央に置く
     x0 = (W - card_w) // 2
-    y0 = 820 if watches else 820 + max(0, (max_h - card_h) // 2)
+    top = max(820, text_bottom + 70)  # 見出しが長い場合は画面を下げる
+    y0 = top if watches else top + max(0, (max_h - card_h) // 2)
     shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle([x0 + 10, y0 + 30, x0 + card_w + 10, y0 + card_h + 30],
                                              radius=56, fill=(0, 0, 0, 90))

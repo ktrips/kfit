@@ -32,6 +32,8 @@ class TimeSlotManager: ObservableObject {
     // Firestore/HealthKit の呼び出しが completion を返さないまま無期限にハングし、
     // isLoading が固まって「スパイラルが読み込んだまま止まる」状態になるのを防ぐための上限。
     private let networkTimeout: TimeInterval = 10
+    /// 最後にサーバーへの保存が確認できた進捗の内容（同じ内容の再保存を省くため）
+    private var lastSavedProgressSignature: String?
 
     private init() {}
 
@@ -657,6 +659,18 @@ class TimeSlotManager: ObservableObject {
         // 通知が来ずスパイラルが更新されず、これを待つ「引っ張って更新」も終わらなかった。
         NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
 
+        // 内容が前回保存した時と同じなら書き込まない（定期同期のたびに lastUpdated だけが
+        // 変わった同じ内容を書き込んでいた）。比較には lastUpdated を含めない。
+        let g = progress.globalProgress
+        let signature = progress.progress.map { p in
+            "\(p.timeSlot.rawValue)|\(p.trainingCompleted)|\(p.mindfulnessCompleted)|"
+            + "\(p.logProgress.mealLogged)|\(p.logProgress.drinkLogged)|\(p.logProgress.mindInputLogged)|"
+            + "\(p.stretchSetsCompleted)|\(p.standCompleted)|\(p.completedActivityIds.sorted())"
+        }.joined(separator: ";")
+        + "#\(userId)|\(dateStr)|\(g.workoutMinutes)|\(g.standHours)|\(g.sleepHours)|\(g.sleepScore)|"
+        + "\(g.pfcScore)|\(g.weightMeasured)|\(g.completedCustomGoalIds.sorted())"
+        if signature == lastSavedProgressSignature { return }
+
         // Firestore は書き込みを端末内に保持し、つながった時点で送信する（永続キャッシュ有効）。
         // ここではサーバーの確認を最大 8 秒だけ待ち、呼び出し元を止めない。
         let ref = db.collection("users").document(userId)
@@ -670,7 +684,9 @@ class TimeSlotManager: ObservableObject {
                 return false
             }
         }
-        if !saved {
+        if saved {
+            lastSavedProgressSignature = signature
+        } else {
             dlog("⚠️ TimeSlotManager: 進捗の保存がサーバーで未確認（端末内に保持し、接続時に送信）")
         }
     }

@@ -434,7 +434,8 @@ struct VideoCarouselTicker: View {
 
     // body 内で Timer.publish を直接書くと再評価毎にタイマーが再生成されて
     // カウントがリセットされるため、static で1つだけ保持する
-    private static let ticker = Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()
+    // 動画 1 本（9 秒）を最後まで見せてから次へ
+    private static let ticker = Timer.publish(every: 9.0, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Color.clear
@@ -576,7 +577,6 @@ struct DashboardView: View {
     // トレーニング動画GIFの表示状態。デフォルトは動画を開いた状態で、
     // ユーザーが「動画は隠す」で切り替えた選択をUserDefaultsに永続化し次回起動時も引き継ぐ
     @AppStorage("routinShowTrainingVideo") private var showTrainingVideo = true
-    @State private var trainingVideoIndex = 0  // ホーム動画GIFの再生位置
     @State private var pfcAnalysis: PFCBalanceAnalysis?  // PFCバランス分析結果
     @State private var sleepScore: SleepScoreAnalysis?  // 睡眠スコア分析結果
     @State private var showPlusViewFromDashboard = false
@@ -1769,7 +1769,8 @@ struct DashboardView: View {
             trainingVideoPlaylist: trainingVideoPlaylist,
             mascotBounce: mascotBounce,
             showTrainingVideo: $showTrainingVideo,
-            trainingVideoIndex: $trainingVideoIndex,
+            // ROUTIN は他タブ表示中も裏で生きているため、見えている時だけ動画を再生する
+            isVideoActive: !(1...7).contains(selectedTab),
             onStartTracker: { showTracker = true },
             onOpenMindfulness: openMindfulness,
             onOpenStretch: openStretch,
@@ -6329,7 +6330,7 @@ private struct DailySetsCardButtonsView: View {
     let trainingVideoPlaylist: [(name: String, videoName: String)]
     let mascotBounce: Bool
     @Binding var showTrainingVideo: Bool
-    @Binding var trainingVideoIndex: Int
+    let isVideoActive: Bool
     let onStartTracker: () -> Void
     let onOpenMindfulness: () -> Void
     let onOpenStretch: () -> Void
@@ -6349,7 +6350,7 @@ private struct DailySetsCardButtonsView: View {
             TrainingVideoButton(
                 playlist: trainingVideoPlaylist,
                 showTrainingVideo: $showTrainingVideo,
-                trainingVideoIndex: $trainingVideoIndex,
+                isActive: isVideoActive,
                 onTapVideo: onStartTracker
             )
 
@@ -6530,7 +6531,11 @@ private struct FitingoStartButton: View {
 struct TrainingVideoButton: View {
     let playlist: [(name: String, videoName: String)]
     @Binding var showTrainingVideo: Bool
-    @Binding var trainingVideoIndex: Int
+    /// false の間は動画とタイマーを止める（ROUTIN は他タブ表示中も裏で生きているため）
+    var isActive: Bool = true
+    /// 再生中の動画の番号。親の画面ではなくこの部品の中だけで持つ
+    /// （親に持たせると切り替えのたびに巨大な DashboardView 全体が再計算される）
+    @State private var trainingVideoIndex = 0
     /// 動画表示中に動画本体をタップした時の挙動（ROUTINページではトレーニング開始）。
     /// nilの場合はタップしても何も起きない（FITページの「元のROUTIN」互換モード用）。
     var onTapVideo: (() -> Void)? = nil
@@ -6568,11 +6573,13 @@ struct TrainingVideoButton: View {
 
             if showTrainingVideo {
                 trainingVideoExpanded
-                // タイマーは展開時のみ View ツリーに存在させ、常時発火を防ぐ
-                VideoCarouselTicker(playlistCount: playlist.count) { next in
-                    trainingVideoIndex = next
+                // タイマーは展開中かつ表示中のみ View ツリーに存在させ、常時発火を防ぐ
+                if isActive {
+                    VideoCarouselTicker(playlistCount: playlist.count) { next in
+                        trainingVideoIndex = next
+                    }
+                    .frame(width: 0, height: 0)
                 }
-                .frame(width: 0, height: 0)
             }
         }
     }
@@ -6648,8 +6655,15 @@ struct TrainingVideoButton: View {
 
     private func videoGIFBody(_ video: (name: String, videoName: String)) -> some View {
         GeometryReader { geo in
-            LoopingVideoView(videoName: video.videoName)
-                .id(video.videoName)
+            Group {
+                if isActive {
+                    LoopingVideoView(videoName: video.videoName)
+                        .id(video.videoName)
+                } else {
+                    // 非表示中はプレーヤーを破棄してデコードを止める
+                    Color.clear
+                }
+            }
                 .frame(width: geo.size.width, height: geo.size.width * 9.0 / 16.0)
                 .background(Color.black.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 16))

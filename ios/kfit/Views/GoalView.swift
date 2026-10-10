@@ -44,7 +44,6 @@ struct GoalView: View {
     @State private var expandedActivitySetIds: Set<Int> = []
     // トレーニング動画（元々のROUTINページと同様: デフォルトはボタンのみ、タップで動画展開）
     @State private var showFitTrainingVideo = false
-    @State private var fitTrainingVideoIndex = 0
 
     private var trainingVideoPlaylist: [(name: String, videoName: String)] {
         [
@@ -138,7 +137,6 @@ struct GoalView: View {
                             TrainingVideoButton(
                                 playlist: trainingVideoPlaylist,
                                 showTrainingVideo: $showFitTrainingVideo,
-                                trainingVideoIndex: $fitTrainingVideoIndex,
                                 onTapVideo: {
                                     NotificationCenter.default.post(name: .requestStartTraining, object: nil)
                                 }

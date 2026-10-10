@@ -321,3 +321,12 @@ func withTimeout<T>(seconds: TimeInterval, default: T, operation: @escaping @Sen
 - **Cloud Functions の起動**: Apple の購入検証ライブラリと証明書を、購入の検証時だけ読み込むよう変更（以前は全関数の起動時に読み込み、ローカル計測で初回約 135ms）
 - **スパイラルの再計算**: `buildNodes` が呼ばれるたびに `UserDefaults` の JSON（曜日別・毎日の目標）をデコードしていたのを、保存内容が変わった時だけデコードするキャッシュに変更
 
+## 追記: 表示中でない画面の処理・不要な書き込みの削減（2026-10-10）
+
+- **ROUTIN のトレーニング動画**: 再生中の動画番号を `DashboardView` の状態として持っていたため、5 秒ごとの切り替えのたびに 9000 行超の `DashboardView` 全体が再計算され、動画プレーヤーも作り直されていた。さらに ROUTIN は他タブ表示中も `opacity(0)` で裏に生かしているため、見ていない間も続いていた。
+  - 番号を `TrainingVideoButton` の中だけで持つ（切り替えで再計算されるのは動画部品だけ）
+  - ROUTIN が表示されていない間は動画プレーヤーとタイマーを止める（`isActive`）
+  - 切り替え間隔を 5 秒 → 9 秒（動画 1 本の長さ）に
+- **進捗の保存**: 10 分ごとのウィジェット同期などで、内容が同じでも `lastUpdated` だけ変えて Firestore に書き込んでいた。前回保存が確認できた内容と同じなら書き込まない
+- **見送り**: Firestore トリガーの関数（`calculatePoints` など）は us-central1 で動き、データベースは asia-northeast1。地域を移せば記録ごとの遅延が減るが、`calculatePoints` は二重実行で二重加算されるため、先に冪等化（同じ記録を一度だけ処理）してから移す
+

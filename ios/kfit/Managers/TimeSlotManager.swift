@@ -652,11 +652,27 @@ class TimeSlotManager: ObservableObject {
             ]
         ]
 
-        do {
-            try await db.collection("users").document(userId)
-                .collection("time-slot-progress").document(dateStr).setData(docData)
-            NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
-        } catch { /* 保存エラーはサイレントに無視（次回保存で上書き） */ }
+        // スパイラル等の再計算は、サーバーの書き込み確認を待たずに今すぐ行う。
+        // 以前は setData の完了（サーバーの確認）後に通知していたため、電波が弱いと
+        // 通知が来ずスパイラルが更新されず、これを待つ「引っ張って更新」も終わらなかった。
+        NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
+
+        // Firestore は書き込みを端末内に保持し、つながった時点で送信する（永続キャッシュ有効）。
+        // ここではサーバーの確認を最大 8 秒だけ待ち、呼び出し元を止めない。
+        let ref = db.collection("users").document(userId)
+            .collection("time-slot-progress").document(dateStr)
+        let saved = await withTimeout(seconds: 8, default: false) {
+            do {
+                try await ref.setData(docData)
+                return true
+            } catch {
+                dlog("❌ TimeSlotManager: 進捗の保存に失敗: \(error.localizedDescription)")
+                return false
+            }
+        }
+        if !saved {
+            dlog("⚠️ TimeSlotManager: 進捗の保存がサーバーで未確認（端末内に保持し、接続時に送信）")
+        }
     }
 
     // MARK: - 実績更新ヘルパー

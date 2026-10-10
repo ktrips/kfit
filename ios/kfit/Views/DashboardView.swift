@@ -5658,7 +5658,15 @@ struct DashboardView: View {
     private func refreshFromHealthKit() async {
         guard authManager.isSignedIn else { return }
 
-        // HealthKitを強制再同期（TTLバイパス）
+        // Firestore の運動・摂取データは HealthKit と独立しているので並行して取得する。
+        // どの取得も応答が返らないことがあるため上限時間を設け、引っ張って更新が必ず終わるようにする。
+        let auth = authManager
+        let currentEx = todayExercises
+        let currentIntake = todayIntake
+        async let freshEx = withTimeout(seconds: 10, default: currentEx) { await auth.getTodayExercises() }
+        async let freshIntake = withTimeout(seconds: 10, default: currentIntake) { await auth.getTodayIntakeSummary() }
+
+        // HealthKitを強制再同期（TTLバイパス。fetchAll 自体に上限時間あり）
         if healthKit.isAvailable && healthKit.isAuthorized {
             await healthKit.fetchAll(force: true)
             pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
@@ -5667,12 +5675,9 @@ struct DashboardView: View {
             )
         }
 
-        // 時間帯別の実績を再読み込み（HealthKit同期付き）
+        // 時間帯別の実績を再読み込み（HealthKit同期付き。取得・保存とも上限時間あり）
         await timeSlotManager.loadTodayProgress(syncHealthKit: true)
 
-        // Firestoreからも最新の摂取・運動データを取得
-        async let freshEx     = authManager.getTodayExercises()
-        async let freshIntake = authManager.getTodayIntakeSummary()
         let (ex, intake) = await (freshEx, freshIntake)
 
         todayExercises = ex
@@ -5687,6 +5692,8 @@ struct DashboardView: View {
 
         recomputePhotoLogTotals()
         recalcTotals()
+        // 取得した最新の実績でスパイラルを再計算し、日次の到達度も保存する
+        await autoCompleteDuolingoIfNeeded()
         updateWidgetData()
     }
 

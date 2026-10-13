@@ -1,8 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { onAuthChange, getExercises, getUserProfile, subscribeToUserProfile } from './services/firebase';
 import { useAppStore } from './store/appStore';
-// LoginView は LandingPage に置き換えたため未使用（将来の参照用に残す）
-// import { LoginView } from './components/LoginView';
 // ── ログイン直後の初回描画で必要な2画面だけは静的import（体感速度優先）。
 //    それ以外はReact.lazyで分割し、初期バンドルサイズを削減する。
 import { DashboardView } from './components/DashboardView';

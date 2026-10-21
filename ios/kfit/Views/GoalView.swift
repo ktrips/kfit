@@ -682,11 +682,11 @@ struct GoalView: View {
         guard !isRefreshingWatchData else { return }
         isRefreshingWatchData = true
         Task {
-            let workouts = await healthKit.fetchGoalScreenHealthData(includeBodyFat: true, forceGoalHealth: true)
-            await MainActor.run {
-                todayWorkoutSessions = workouts
-                isRefreshingWatchData = false
+            defer { isRefreshingWatchData = false }
+            let workouts = await withTimeout(seconds: 12, default: todayWorkoutSessions) {
+                await healthKit.fetchGoalScreenHealthData(includeBodyFat: true, forceGoalHealth: true)
             }
+            todayWorkoutSessions = workouts
         }
     }
 

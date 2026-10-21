@@ -292,6 +292,7 @@ IPA表記を基本とし、IPAで表しにくい言語の場合はカタカナ�
     func stopSpeaking() {
         speechSynthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
+        KfitAudioSession.activateAmbientMixing()
     }
 
     // MARK: - 順次再生
@@ -328,6 +329,7 @@ IPA表記を基本とし、IPAで表しにくい言語の場合はカタカナ�
             isSequencePlaying = false
             sequenceOnFinish?()
             sequenceOnFinish = nil
+            KfitAudioSession.activateAmbientMixing()
             return
         }
         sequenceCurrent = sequenceIdx
@@ -608,6 +610,7 @@ extension DuolingoTextExtractor: AVSpeechSynthesizerDelegate {
                 self.speakNextInQueue()
             } else {
                 self.isSpeaking = false
+                KfitAudioSession.activateAmbientMixing()
             }
         }
     }
@@ -618,6 +621,7 @@ extension DuolingoTextExtractor: AVSpeechSynthesizerDelegate {
     ) {
         Task { @MainActor in
             self.isSpeaking = false
+            KfitAudioSession.activateAmbientMixing()
         }
     }
 }

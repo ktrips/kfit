@@ -671,8 +671,19 @@ struct DashboardView: View {
             return
         }
         hasLoadedOnce = true
-        isLoading = true
+        // 既に設定がある場合はキャッシュ済みノードで先に描画し、スピナーを出さない
+        if !timeSlotManager.settings.goals.isEmpty {
+            recomputeMandalaNodes()
+            isLoading = false
+        } else {
+            isLoading = true
+        }
         Task {
+            // スピナーが外れない場合の最終ガード（3秒）
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if isLoading { isLoading = false }
+            }
             // ① キャッシュ優先の loadData を最初に実行し、スピナーを最短で解除する。
             //    Firestore/HealthKit の取得を待たないことで初期表示を高速化。
             await loadData()
@@ -684,6 +695,7 @@ struct DashboardView: View {
             async let authTask: Void = ensureHealthKitAuthorizationIfNeeded()
             async let settingsTask: Void = timeSlotManager.loadTodaySettings()
             _ = await (authTask, settingsTask)
+            recomputeMandalaNodes()
             await timeSlotManager.loadTodayProgress()
             // 今日の Edu 記録があればスパイラルを自動完了
             await autoCompleteDuolingoIfNeeded()
@@ -2354,8 +2366,8 @@ struct DashboardView: View {
         debouncer.mandalaRecompute?.cancel()
         let work = DispatchWorkItem { recomputeMandalaNodes() }
         debouncer.mandalaRecompute = work
-        // 0.6s debounce: HealthKit の連続バースト更新をまとめて処理
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+        // 0.25s debounce: 連続バーストはまとめつつ、スパイラル反映を遅くしすぎない
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     private func computeMandalaNodes() -> [MandalaNodeData] {
@@ -5664,12 +5676,14 @@ struct DashboardView: View {
         let auth = authManager
         let currentEx = todayExercises
         let currentIntake = todayIntake
-        async let freshEx = withTimeout(seconds: 10, default: currentEx) { await auth.getTodayExercises() }
-        async let freshIntake = withTimeout(seconds: 10, default: currentIntake) { await auth.getTodayIntakeSummary() }
+        async let freshEx = withTimeout(seconds: 8, default: currentEx) { await auth.getTodayExercises() }
+        async let freshIntake = withTimeout(seconds: 8, default: currentIntake) { await auth.getTodayIntakeSummary() }
 
-        // HealthKitを強制再同期（TTLバイパス。fetchAll 自体に上限時間あり）
+        // 全件 fetchAll ではなく画面に必要なスコープだけ並列取得する（引っ張り更新が終わらないのを防ぐ）
         if healthKit.isAvailable && healthKit.isAuthorized {
-            await healthKit.fetchAll(force: true)
+            async let dash: Void = healthKit.fetchDashboardHealth(force: true)
+            async let intake: Void = healthKit.fetchIntakeHealth(force: true)
+            _ = await (dash, intake)
             pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
             sleepScore  = healthKit.analyzeSleepScore(
                 targetHours: Double(dailyFixedGoals.sleepHoursGoal)
@@ -5714,27 +5728,33 @@ struct DashboardView: View {
         lastLoadDataTime = Date()
 
         loadTodayWeekdayGoal()
-        isLoading = true
+        // 2回目以降はスパイラルをスピナーで消さない
+        if cachedMandalaNodes.isEmpty {
+            isLoading = true
+        }
 
         // ① キャッシュから即時取得してスピナーを止める（空でも必ず解除）
-        async let cachedEx   = authManager.getTodayExercisesFromCache()
-        async let cachedSets = authManager.getDailySetsFromCache()
+        let previousEx = todayExercises
+        let previousSets = dailySets
+        async let cachedEx   = withTimeout(seconds: 2, default: previousEx) { await authManager.getTodayExercisesFromCache() }
+        async let cachedSets = withTimeout(seconds: 2, default: previousSets) { await authManager.getDailySetsFromCache() }
         todayExercises = await cachedEx
         dailySets      = await cachedSets
         recalcTotals()
+        recomputeMandalaNodes()
         isLoading = false
 
         // ② バックグラウンドでサーバーから最新値を取得して反映
         Task {
-            async let freshEx        = authManager.getTodayExercises()
-            async let freshSets      = authManager.getDailySets()
-            async let weeklyProgress = authManager.getWeeklySetProgress()
-            async let calGoal        = authManager.getDailyCalorieGoal()
-            async let setCount       = authManager.getTodaySetCount()
-            async let setGoal        = authManager.getDailySetGoal()
-            async let intake         = authManager.getTodayIntakeSummary()
-            async let intakeSettings = authManager.getIntakeSettings()
-            async let wXP            = authManager.getThisWeekXP()
+            async let freshEx        = withTimeout(seconds: 8, default: todayExercises) { await authManager.getTodayExercises() }
+            async let freshSets      = withTimeout(seconds: 8, default: dailySets) { await authManager.getDailySets() }
+            async let weeklyProgress = withTimeout(seconds: 8, default: weeklySetProgress) { await authManager.getWeeklySetProgress() }
+            async let calGoal        = withTimeout(seconds: 8, default: calorieGoal) { await authManager.getDailyCalorieGoal() }
+            async let setCount       = withTimeout(seconds: 8, default: todaySetCount) { await authManager.getTodaySetCount() }
+            async let setGoal        = withTimeout(seconds: 8, default: dailySetGoal) { await authManager.getDailySetGoal() }
+            async let intake         = withTimeout(seconds: 8, default: todayIntake) { await authManager.getTodayIntakeSummary() }
+            async let intakeSettings = withTimeout(seconds: 8, default: intakeGoals) { await authManager.getIntakeSettings() }
+            async let wXP            = withTimeout(seconds: 8, default: weeklyXP) { await authManager.getThisWeekXP() }
             let (ex, sets, weekProg, calorie, count, goal, intakeSummary, intakeGoalSettings, fetchedWeeklyXP)
                 = await (freshEx, freshSets, weeklyProgress, calGoal, setCount, setGoal, intake, intakeSettings, wXP)
 
@@ -5771,11 +5791,10 @@ struct DashboardView: View {
 
             // PFC・睡眠データを取得してスコアを計算（fetchDashboardHealthでは未取得のため）
             if healthKit.isAvailable && healthKit.isAuthorized {
-                // PFCマクロ栄養素を取得（fetchDashboardHealthに含まれないため個別取得）
-                await healthKit.fetchIntakeHealth()
+                async let intakeHealth: Void = healthKit.fetchIntakeHealth()
+                async let mindHealth: Void = healthKit.fetchMindHealth()
+                _ = await (intakeHealth, mindHealth)
                 pfcAnalysis = healthKit.analyzePFCBalance(settings: intakeGoals)
-                // 睡眠データを取得（fetchDashboardHealthに含まれないため個別取得）
-                await healthKit.fetchMindHealth()
                 sleepScore = healthKit.analyzeSleepScore(
                     targetHours: Double(dailyFixedGoals.sleepHoursGoal)
                 )

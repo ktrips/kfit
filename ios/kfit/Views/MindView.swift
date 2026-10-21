@@ -1159,13 +1159,11 @@ struct MindView: View {
         guard !isRefreshingHealthData else { return }
         isRefreshingHealthData = true
         Task {
+            defer { isRefreshingHealthData = false }
             if healthKit.isAvailable && !healthKit.isAuthorized {
                 await healthKit.requestAuthorization()
             } else {
                 await healthKit.fetchMindHealth(force: true)
-            }
-            await MainActor.run {
-                isRefreshingHealthData = false
             }
         }
     }

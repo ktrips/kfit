@@ -65,7 +65,9 @@ class TimeSlotManager: ObservableObject {
         if let last = lastSettingsLoadedAt, Date().timeIntervalSince(last) < loadCacheTTL {
             return
         }
-        isLoading = true
+        // 既に設定があるときはスピナーを出さず裏で更新する（固着して画面が消えるのを防ぐ）
+        let showSpinner = settings.goals.isEmpty
+        if showSpinner { isLoading = true }
         defer { isLoading = false }
 
         let today = Calendar.current.startOfDay(for: Date())
@@ -269,12 +271,21 @@ class TimeSlotManager: ObservableObject {
             ]
         ]
 
-        do {
-            try await db.collection("users").document(userId)
-                .collection("time-slot-goals").document(dateStr).setData(docData)
+        let db = self.db
+        let saved = await withTimeout(seconds: 8, default: false) {
+            do {
+                try await db.collection("users").document(userId)
+                    .collection("time-slot-goals").document(dateStr).setData(docData)
+                return true
+            } catch {
+                dlog("❌ TimeSlotManager: Failed to save settings: \(error)")
+                return false
+            }
+        }
+        if saved {
             dlog("✅ TimeSlotManager: Saved settings for \(dateStr)")
-        } catch {
-            dlog("❌ TimeSlotManager: Failed to save settings: \(error)")
+        } else {
+            dlog("⚠️ TimeSlotManager: settings save timed out (will retry when online)")
         }
     }
 

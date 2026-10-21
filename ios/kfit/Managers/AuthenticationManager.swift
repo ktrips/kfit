@@ -47,6 +47,10 @@ class AuthenticationManager: ObservableObject {
     private let cacheExpiry: TimeInterval = 30 // 30秒キャッシュ
     private var cachedDailySets: DailySets = DailySets(amSets: 0, pmSets: 0)
     private var lastDailySetsCache: Date? = nil
+    private var cachedIntakeSettings: IntakeSettings?
+    private var lastIntakeSettingsFetch: Date?
+    private var cachedTodayIntake: TodayIntakeSummary?
+    private var lastTodayIntakeFetch: Date?
 
     init() {
         setupAuthStateListener()
@@ -391,19 +395,22 @@ class AuthenticationManager: ObservableObject {
             return []
         }
         dlog("🔵 getTodayExercisesFromCache: userId=\(userId)")
+        if !cachedTodayExercises.isEmpty { return cachedTodayExercises }
         let (startOfDay, endOfDay) = todayRange()
-        do {
-            let snapshot = try await db.collection("users").document(userId)
+        let db = self.db
+        let snapshot = await withTimeout(seconds: 2, default: nil) {
+            try? await db.collection("users").document(userId)
                 .collection("completed-exercises")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .cache)
-            dlog("✅ getTodayExercisesFromCache: \(snapshot.documents.count) docs from cache")
-            return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
-        } catch {
-            dlog("❌ getTodayExercisesFromCache error: \(error)")
+        }
+        guard let snapshot else {
+            dlog("❌ getTodayExercisesFromCache: timeout or error")
             return []
         }
+        dlog("✅ getTodayExercisesFromCache: \(snapshot.documents.count) docs from cache")
+        return snapshot.documents.compactMap { try? $0.data(as: CompletedExercise.self) }
     }
 
     // MARK: - サーバーから最新取得（バックグラウンド用）
@@ -581,11 +588,13 @@ class AuthenticationManager: ObservableObject {
             "intakeCaffeineMg": FieldValue.increment(Int64(caffeineMg)),
             "intakeAlcoholG": FieldValue.increment(alcoholG)
         ]
-        do {
-            try await summaryDocument(userId: userId, id: "daily-\(dayKey(for: timestamp))").setData(dailyData, merge: true)
-            try await summaryDocument(userId: userId, id: "weekly-\(weekKey(for: timestamp))").setData(weeklyData, merge: true)
-        } catch {
-            dlog("❌ Summary intake update failed: \(error)")
+        await withTimeout(seconds: 8, default: ()) {
+            do {
+                try await self.summaryDocument(userId: userId, id: "daily-\(self.dayKey(for: timestamp))").setData(dailyData, merge: true)
+                try await self.summaryDocument(userId: userId, id: "weekly-\(self.weekKey(for: timestamp))").setData(weeklyData, merge: true)
+            } catch {
+                dlog("❌ Summary intake update failed: \(error)")
+            }
         }
     }
 
@@ -1130,20 +1139,23 @@ class AuthenticationManager: ObservableObject {
             return DailySets(amSets: 0, pmSets: 0)
         }
         dlog("🔵 getDailySetsFromCache: userId=\(userId)")
+        if lastDailySetsCache != nil { return cachedDailySets }
         let (startOfDay, endOfDay) = todayRange()
-        do {
-            let snapshot = try await db.collection("users").document(userId)
+        let db = self.db
+        let snapshot = await withTimeout(seconds: 2, default: nil) {
+            try? await db.collection("users").document(userId)
                 .collection("completed-sets")
                 .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
                 .whereField("timestamp", isLessThan: endOfDay)
                 .getDocuments(source: .cache)
-            let sets = buildDailySets(from: snapshot)
-            dlog("✅ getDailySetsFromCache: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
-            return sets
-        } catch {
-            dlog("❌ getDailySetsFromCache error: \(error)")
+        }
+        guard let snapshot else {
+            dlog("❌ getDailySetsFromCache: timeout or error")
             return DailySets(amSets: 0, pmSets: 0)
         }
+        let sets = buildDailySets(from: snapshot)
+        dlog("✅ getDailySetsFromCache: amSets=\(sets.amSets), pmSets=\(sets.pmSets)")
+        return sets
     }
 
     func getDailySets() async -> DailySets {
@@ -1531,49 +1543,63 @@ class AuthenticationManager: ObservableObject {
 
     /// 摂取記録の設定を取得
     func getIntakeSettings() async -> IntakeSettings {
-        guard let userId = Auth.auth().currentUser?.uid else { return IntakeSettings.defaultSettings }
+        if let cached = cachedIntakeSettings, let last = lastIntakeSettingsFetch,
+           Date().timeIntervalSince(last) < 60 {
+            return cached
+        }
+        guard let userId = Auth.auth().currentUser?.uid else { return cachedIntakeSettings ?? IntakeSettings.defaultSettings }
 
-        let docRef = db.collection("users").document(userId)
-            .collection("settings").document("intake-settings")
+        let db = self.db
+        let doc = await withTimeout(seconds: 8, default: nil) {
+            try? await db.collection("users").document(userId)
+                .collection("settings").document("intake-settings").getDocument()
+        }
 
-        guard let doc = try? await docRef.getDocument(),
-              let data = doc.data()
-        else {
-            return IntakeSettings.defaultSettings
+        guard let doc, let data = doc.data() else {
+            return cachedIntakeSettings ?? IntakeSettings.defaultSettings
         }
 
         // まず完全デコードを試み、失敗時は既知フィールドをデフォルトにマージ（新フィールド追加時の後方互換）
+        let resolved: IntakeSettings
         if let jsonData = try? JSONSerialization.data(withJSONObject: data),
            let settings = try? JSONDecoder().decode(IntakeSettings.self, from: jsonData) {
-            return settings
+            resolved = settings
+        } else {
+            var s = IntakeSettings.defaultSettings
+            if let v = data["breakfastCalories"] as? Int  { s.breakfastCalories = v }
+            if let v = data["lunchCalories"]     as? Int  { s.lunchCalories     = v }
+            if let v = data["dinnerCalories"]    as? Int  { s.dinnerCalories    = v }
+            if let v = data["snackCalories"]     as? Int  { s.snackCalories     = v }
+            if let v = data["waterPerCup"]       as? Int  { s.waterPerCup       = v }
+            if let v = data["coffeePerCup"]      as? Int  { s.coffeePerCup      = v }
+            if let v = data["caffeinePerCup"]    as? Int  { s.caffeinePerCup    = v }
+            if let v = data["dailyCalorieGoal"]  as? Int  { s.dailyCalorieGoal  = v }
+            if let v = data["dailyWaterGoal"]    as? Int  { s.dailyWaterGoal    = v }
+            if let v = data["dailyCaffeineLimit"] as? Int { s.dailyCaffeineLimit = v }
+            if let v = data["dailyAlcoholLimit"] as? Double { s.dailyAlcoholLimit = v }
+            resolved = s
         }
-
-        var s = IntakeSettings.defaultSettings
-        if let v = data["breakfastCalories"] as? Int  { s.breakfastCalories = v }
-        if let v = data["lunchCalories"]     as? Int  { s.lunchCalories     = v }
-        if let v = data["dinnerCalories"]    as? Int  { s.dinnerCalories    = v }
-        if let v = data["snackCalories"]     as? Int  { s.snackCalories     = v }
-        if let v = data["waterPerCup"]       as? Int  { s.waterPerCup       = v }
-        if let v = data["coffeePerCup"]      as? Int  { s.coffeePerCup      = v }
-        if let v = data["caffeinePerCup"]    as? Int  { s.caffeinePerCup    = v }
-        if let v = data["dailyCalorieGoal"]  as? Int  { s.dailyCalorieGoal  = v }
-        if let v = data["dailyWaterGoal"]    as? Int  { s.dailyWaterGoal    = v }
-        if let v = data["dailyCaffeineLimit"] as? Int { s.dailyCaffeineLimit = v }
-        if let v = data["dailyAlcoholLimit"] as? Double { s.dailyAlcoholLimit = v }
-        return s
+        cachedIntakeSettings = resolved
+        lastIntakeSettingsFetch = Date()
+        return resolved
     }
 
     /// 摂取記録の設定を保存
     func saveIntakeSettings(_ settings: IntakeSettings) async {
+        cachedIntakeSettings = settings
+        lastIntakeSettingsFetch = Date()
         guard let userId = Auth.auth().currentUser?.uid else { return }
 
         guard let jsonData = try? JSONEncoder().encode(settings),
               let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
         else { return }
 
-        try? await db.collection("users").document(userId)
-            .collection("settings").document("intake-settings")
-            .setData(dict)
+        let db = self.db
+        await withTimeout(seconds: 8, default: ()) {
+            try? await db.collection("users").document(userId)
+                .collection("settings").document("intake-settings")
+                .setData(dict)
+        }
     }
 
     // MARK: - LLM Settings
@@ -1690,19 +1716,33 @@ class AuthenticationManager: ObservableObject {
             amountMl = cups * settings.waterPerCup
         }
 
+        if cachedTodayIntake == nil {
+            cachedTodayIntake = TodayIntakeSummary()
+        }
+        cachedTodayIntake?.waterLogs.append(WaterLog(amountMl: amountMl, timestamp: now))
+        cachedTodayIntake?.totalWaterMl += amountMl
+        lastTodayIntakeFetch = Date()
+
         let data: [String: Any] = [
             "amountMl": amountMl,
             "timestamp": now
         ]
 
-        try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("water")
-            .collection("logs").addDocument(data: data)
-        await updateSummaryForIntake(userId: userId, waterMl: amountMl, timestamp: now)
+        let db = self.db
+        await withTimeout(seconds: 8, default: ()) {
+            try? await db.collection("users").document(userId)
+                .collection("daily-intake").document("water")
+                .collection("logs").addDocument(data: data)
+        }
+        await withTimeout(seconds: 8, default: ()) {
+            await self.updateSummaryForIntake(userId: userId, waterMl: amountMl, timestamp: now)
+        }
 
-        // Apple Healthに記録
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        // Apple Health は画面を止めない（save 側でも即時反映＋タイムアウトあり）
+        Task {
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// フルーツジュースを記録（水分＋カロリー）
@@ -1723,9 +1763,11 @@ class AuthenticationManager: ObservableObject {
         await updateSummaryForIntake(userId: userId, calories: kcal,
                                      waterMl: amountMl, timestamp: now)
 
-        // HealthKit: 水分として記録
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        // HealthKit: 水分として記録（画面を止めない）
+        Task {
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// コーヒーを記録
@@ -1744,15 +1786,21 @@ class AuthenticationManager: ObservableObject {
             "timestamp": now
         ]
 
-        try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("coffee")
-            .collection("logs").addDocument(data: data)
-        await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
+        let db = self.db
+        await withTimeout(seconds: 8, default: ()) {
+            try? await db.collection("users").document(userId)
+                .collection("daily-intake").document("coffee")
+                .collection("logs").addDocument(data: data)
+        }
+        await withTimeout(seconds: 8, default: ()) {
+            await self.updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
+        }
 
-        // Apple Healthにカフェイン記録＋コーヒーの液量を水分として記録
-        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        Task {
+            await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// フルーツジュースを記録（200ml / 76kcal / 糖質18g 相当）
@@ -1780,9 +1828,10 @@ class AuthenticationManager: ObservableObject {
             timestamp: now
         )
 
-        // Apple Health に水分として記録
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        Task {
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// エスプレッソダブルを記録（30ml / カフェイン120mg）
@@ -1796,9 +1845,11 @@ class AuthenticationManager: ObservableObject {
             .collection("daily-intake").document("coffee")
             .collection("logs").addDocument(data: data)
         await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
-        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        Task {
+            await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// 緑茶を記録（150ml / カフェイン30mg）
@@ -1812,9 +1863,11 @@ class AuthenticationManager: ObservableObject {
             .collection("daily-intake").document("coffee")
             .collection("logs").addDocument(data: data)
         await updateSummaryForIntake(userId: userId, waterMl: amountMl, caffeineMg: caffeineMg, timestamp: now)
-        await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        Task {
+            await HealthKitManager.shared.saveCaffeineIntake(caffeineMg: Double(caffeineMg), timestamp: now)
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// スポーツ飲料を記録（300ml / 72kcal / 糖質21g / ナトリウム360mg）
@@ -1828,8 +1881,10 @@ class AuthenticationManager: ObservableObject {
             .collection("daily-intake").document("juice")
             .collection("logs").addDocument(data: data)
         await updateSummaryForIntake(userId: userId, calories: calorieKcal, waterMl: amountMl, timestamp: now)
-        await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
-        iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        Task {
+            await HealthKitManager.shared.saveWaterIntake(amountMl: Double(amountMl), timestamp: now)
+            iOSWatchBridge.shared.notifyWatchAfterDirectRecord()
+        }
     }
 
     /// アルコールを記録
@@ -1862,23 +1917,43 @@ class AuthenticationManager: ObservableObject {
 
     /// 今日の摂取記録を取得
     func getTodayIntakeSummary() async -> TodayIntakeSummary {
-        guard let userId = Auth.auth().currentUser?.uid else { return TodayIntakeSummary() }
+        if let cached = cachedTodayIntake, let last = lastTodayIntakeFetch,
+           Date().timeIntervalSince(last) < 8 {
+            return cached
+        }
+        guard let userId = Auth.auth().currentUser?.uid else { return cachedTodayIntake ?? TodayIntakeSummary() }
 
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? Date()
-        return await getIntakeSummary(userId: userId, startOfDay: startOfDay, endOfDay: endOfDay)
+        let summary = await getIntakeSummary(userId: userId, startOfDay: startOfDay, endOfDay: endOfDay)
+        cachedTodayIntake = summary
+        lastTodayIntakeFetch = Date()
+        return summary
+    }
+
+    private func intakeLogsSnapshot(userId: String, document: String, startOfDay: Date, endOfDay: Date) async -> QuerySnapshot? {
+        let db = self.db
+        return await withTimeout(seconds: 8, default: nil) {
+            try? await db.collection("users").document(userId)
+                .collection("daily-intake").document(document).collection("logs")
+                .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
+                .whereField("timestamp", isLessThan: endOfDay)
+                .getDocuments()
+        }
     }
 
     private func getIntakeSummary(userId: String, startOfDay: Date, endOfDay: Date) async -> TodayIntakeSummary {
         var summary = TodayIntakeSummary()
 
+        async let mealTask = intakeLogsSnapshot(userId: userId, document: "meals", startOfDay: startOfDay, endOfDay: endOfDay)
+        async let waterTask = intakeLogsSnapshot(userId: userId, document: "water", startOfDay: startOfDay, endOfDay: endOfDay)
+        async let coffeeTask = intakeLogsSnapshot(userId: userId, document: "coffee", startOfDay: startOfDay, endOfDay: endOfDay)
+        async let alcoholTask = intakeLogsSnapshot(userId: userId, document: "alcohol", startOfDay: startOfDay, endOfDay: endOfDay)
+        let (mealSnapshot, waterSnapshot, coffeeSnapshot, alcoholSnapshot) = await (mealTask, waterTask, coffeeTask, alcoholTask)
+
         // 食事
-        if let mealSnapshot = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("meals").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments() {
+        if let mealSnapshot {
             for doc in mealSnapshot.documents {
                 let data = doc.data()
                 if let mealTypeStr = data["mealType"] as? String,
@@ -1892,11 +1967,7 @@ class AuthenticationManager: ObservableObject {
         }
 
         // 水
-        if let waterSnapshot = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("water").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments() {
+        if let waterSnapshot {
             for doc in waterSnapshot.documents {
                 let data = doc.data()
                 if let amountMl = data["amountMl"] as? Int,
@@ -1908,11 +1979,7 @@ class AuthenticationManager: ObservableObject {
         }
 
         // コーヒー
-        if let coffeeSnapshot = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("coffee").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments() {
+        if let coffeeSnapshot {
             for doc in coffeeSnapshot.documents {
                 let data = doc.data()
                 if let amountMl = data["amountMl"] as? Int,
@@ -1925,11 +1992,7 @@ class AuthenticationManager: ObservableObject {
         }
 
         // アルコール
-        if let alcoholSnapshot = try? await db.collection("users").document(userId)
-            .collection("daily-intake").document("alcohol").collection("logs")
-            .whereField("timestamp", isGreaterThanOrEqualTo: startOfDay)
-            .whereField("timestamp", isLessThan: endOfDay)
-            .getDocuments() {
+        if let alcoholSnapshot {
             for doc in alcoholSnapshot.documents {
                 let data = doc.data()
                 if let alcoholTypeStr = data["alcoholType"] as? String,

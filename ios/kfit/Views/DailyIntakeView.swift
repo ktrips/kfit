@@ -55,8 +55,8 @@ struct DailyIntakeView: View {
                     Button {
                         Task {
                             isRefreshingHealth = true
-                            await healthKit.fetchIntakeHealth(force: true)
-                            isRefreshingHealth = false
+                            defer { isRefreshingHealth = false }
+                            await loadData(showFullSpinner: false)
                         }
                     } label: {
                         if isRefreshingHealth {
@@ -81,10 +81,10 @@ struct DailyIntakeView: View {
                     .environmentObject(authManager)
             }
             .task {
-                await loadData()
+                await loadData(showFullSpinner: true)
             }
             .refreshable {
-                await loadData()
+                await loadData(showFullSpinner: false)
             }
         }
     }
@@ -239,7 +239,7 @@ struct DailyIntakeView: View {
         Button {
             Task {
                 await action()
-                await loadData()
+                await loadData(showFullSpinner: false)
             }
         } label: {
             HStack {
@@ -448,13 +448,16 @@ struct DailyIntakeView: View {
 
     // MARK: - Data Loading
 
-    private func loadData() async {
-        isLoading = true
-        todaySummary = await authManager.getTodayIntakeSummary()
+    private func loadData(showFullSpinner: Bool = false) async {
+        if showFullSpinner { isLoading = true }
+        defer { isLoading = false }
+        let previous = todaySummary
+        todaySummary = await withTimeout(seconds: 8, default: previous) {
+            await authManager.getTodayIntakeSummary()
+        }
         rebuildIntakeHistoryCache()
-        await healthKit.fetchIntakeHealth()
+        await healthKit.fetchIntakeHealth(force: true)
         pfcAnalysis = healthKit.analyzePFCBalance()
-        isLoading = false
     }
 
     private func rebuildIntakeHistoryCache() {

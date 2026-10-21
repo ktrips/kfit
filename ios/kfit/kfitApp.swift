@@ -983,6 +983,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // 通知デリゲートを自身に設定（フォアグラウンドでも通知を表示するため）
         UNUserNotificationCenter.current().delegate = self
 
+        // 起動直後のループ動画が他アプリの音楽・イヤホン接続を奪わないようにする
+        KfitAudioSession.activateAmbientMixing()
+
         // 通知権限をリクエストし、許可後に全通知をスケジュール
         Task { @MainActor in
             let granted = await NotificationManager.shared.requestPermission()

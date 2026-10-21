@@ -1808,8 +1808,10 @@ struct FoodView: View {
 
     private func loadData() async {
         loadDailyFixedGoals()
-        async let summary = authManager.getTodayIntakeSummary()
-        async let goals   = authManager.getIntakeSettings()
+        let previousIntake = todayIntake
+        let previousGoals = intakeGoals
+        async let summary = withTimeout(seconds: 8, default: previousIntake) { await authManager.getTodayIntakeSummary() }
+        async let goals   = withTimeout(seconds: 8, default: previousGoals) { await authManager.getIntakeSettings() }
         // force: true でTTLをバイパスし、常に最新のHKデータを取得する
         await healthKit.fetchIntakeHealth(force: true)
         var (intake, settings) = await (summary, goals)

@@ -1,6 +1,17 @@
 import SwiftUI
 import AVFoundation
 
+/// kfit は動画・起動時に他アプリの音楽を止めない。
+/// AVPlayer はミュートでもデフォルトで `.playback` になりイヤホンの音源が切り替わるため、
+/// 明示的に `.ambient` + mixWithOthers にする。
+enum KfitAudioSession {
+    static func activateAmbientMixing() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+    }
+}
+
 /// mp4動画をミュート・無限ループ再生するビュー（iOS）
 /// GIFAnimationView（フレームを全展開してUIImageViewでアニメーション）の後継。
 /// AVPlayerLooperによるハードウェアデコード再生のため、フレーム展開によるメモリ消費が発生しない。
@@ -22,11 +33,14 @@ struct LoopingVideoView: UIViewRepresentable {
 
         func configure(name: String, contentMode: UIView.ContentMode) {
             guard let url = Self.findVideoURL(named: name) else { return }
+            KfitAudioSession.activateAmbientMixing()
             playerLayer.videoGravity = contentMode == .scaleAspectFill ? .resizeAspectFill : .resizeAspect
 
             let item = AVPlayerItem(url: url)
             let player = AVQueuePlayer()
             player.isMuted = true
+            player.volume = 0
+            player.allowsExternalPlayback = false
             let looper = AVPlayerLooper(player: player, templateItem: item)
             playerLayer.player = player
             self.queuePlayer = player

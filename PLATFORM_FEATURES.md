@@ -1,8 +1,8 @@
 # kfit（Fitingo）プラットフォーム別機能一覧
 
-最終更新: 2026-07-12
+最終更新: 2026-10-27
 
-対象プラットフォーム: iOS（iPhone）/ Apple Watch / Web
+対象プラットフォーム: iOS（iPhone）/ Apple Watch / Web / M5Stack CoreS3（Fitin）
 
 ---
 
@@ -103,6 +103,26 @@
 - AIフォトログ・EDU語学記録
 - アチーブメント・リーダーボード
 - 独立動作（iPhone不要モード）
+
+---
+
+## 🖥️ M5Stack CoreS3（Fitin）
+
+手元の CoreS3 を Fitingo のガジェットにする。ファームウェア差分は [m5stack/](m5stack/)。ベースは Meta muse-gadget-sdk。
+
+### ✅ 実装済み機能
+
+- キャラ選択: Muse / Fitin（SETTING）
+- GO タイル: スクワット（BMI270・20回完了）、歩数（開始/一時停止/長押しリセット）、瞑想1分、ストレッチ3分、ヨガ5分、Health
+- Health ポイント（活動 + 10回なでる）。1日60点以上で達成、連続日数をヘッダー `H94(D1)` に表示。タップで診断
+- ホーム準備完了時は READY ではなく Muse / Fitin
+- ヘッダー: 日付・時刻・Wi-Fi・バッテリー（右詰め）
+- 完了時の短いチャープ（うるさいビープ/ランブルなし）
+
+### ❌ 未実装機能
+- iPhone / Firebase との同期（ガジェット単体）
+- 日本語フォント表示
+- 体温センサー
 
 ---
 
@@ -221,6 +241,11 @@ leaderboards/{weekId}/entries/
 - **UI**: Tailwind CSS
 - **認証**: Firebase Authentication
 - **DB**: Cloud Firestore
+
+### M5Stack CoreS3
+- **SDK**: Meta muse-gadget-sdk（ESP-IDF v6）
+- **センサー**: BMI270（スクワット・歩数）
+- **UI**: LVGL、Fitin / Muse アバター
 
 ### バックエンド
 - Cloud Functions（Node.js 20）: `aiProxy` / `generateWeeklyReport` / `computeRetentionStats` / `calculatePoints` / `updateStreaks` / `checkAchievements` / `generateWeeklyLeaderboard`

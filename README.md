@@ -6,6 +6,7 @@
 
 🌐 **Web:** https://kfitapp.web.app （https://fit.ktrips.net）
 📱 **iOS + Apple Watch** 対応（マスコット/ブランド名: Fitingo）
+🖥️ **M5Stack CoreS3** 対応（ガジェット名: Fitin / Muse）→ [m5stack/](m5stack/)
 📦 **GitHub:** https://github.com/ktrips/kfit
 
 ---
@@ -175,6 +176,13 @@ open kfit.xcworkspace
 
 詳細: [XCODE_SETUP.md](XCODE_SETUP.md)
 
+### M5Stack CoreS3（Fitin）
+```bash
+cd m5stack
+./sync_to_sdk.sh   # 隣の ../muse-gadget-sdk に差分を重ねる
+```
+詳細: [m5stack/README.md](m5stack/README.md)
+
 ---
 
 ## 📋 技術スタック
@@ -250,6 +258,12 @@ kfit/
 ├── ios/kfitWatchComplication/     # Watchコンプリケーション（App Extension）
 ├── ios/project.yml                # XcodeGen定義（.xcodeprojのソース・オブ・トゥルース）
 ├── ios/bump_version.sh            # Version/Build番号の一括更新（アーカイブ時に自動実行）
+│
+├── m5stack/                       # M5Stack CoreS3 上の Fitin ガジェット
+│   ├── README.md                  # ビルド・フラッシュ手順
+│   ├── firmware/                  # Muse SDK への上書き差分
+│   ├── sync_from_sdk.sh           # ローカル SDK から差分を取り込む
+│   └── sync_to_sdk.sh             # 差分を SDK に重ねる
 │
 ├── firebase/functions/index.js    # aiProxy / generateWeeklyReport / computeRetentionStats 等
 ├── firebase/functions/scripts/    # 運用スクリプト（check-first-set-seconds.js 等）
@@ -523,4 +537,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Updated: 2026-09-15*
+*Updated: 2026-10-27*

@@ -18,6 +18,11 @@
 
 #include <string.h>
 
+#include "sdkconfig.h"
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+#include "muse_cam.h"
+#endif
+
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
@@ -191,9 +196,9 @@ static int score_now(void)
         sq = 30;
     }
     sc += sq;
-    int wp = s.steps / 160;
-    if (wp > 28) {
-        wp = 28;
+    int wp = s.steps / 10;   /* 10 steps = 1 health point */
+    if (wp > 40) {
+        wp = 40;
     }
     sc += wp;
     int pt = s.pets;
@@ -205,26 +210,6 @@ static int score_now(void)
         sc = 100;
     }
     return sc;
-}
-
-static const char *headline(int sc)
-{
-    if (sc >= 80) {
-        return "PEAK FORM";
-    }
-    if (sc >= 60) {
-        return "STRONG DAY";
-    }
-    if (sc >= 40) {
-        return "BALANCED";
-    }
-    if (sc >= 20) {
-        return "GETTING THERE";
-    }
-    if (sc > 0) {
-        return "LOW ENERGY";
-    }
-    return "REST DAY?";
 }
 
 static void pick_look(int sc)
@@ -247,24 +232,43 @@ static void pick_look(int sc)
 static const char *tip(void)
 {
     if (s.mindful == 0 && s.stretch == 0 && s.yoga == 0 && s.squats == 0 && s.steps < 200) {
-        return "TRY 1 MIN\nMINDFUL";
+        return "TRY 1 MIN MINDFUL";
     }
     if (s.mindful == 0) {
-        return "ADD MINDFUL\nFOR CALM";
+        return "ADD A MINDFUL MIN";
     }
     if (s.stretch == 0 && s.yoga == 0) {
-        return "STRETCH 3 MIN\nFOR MOBILITY";
+        return "STRETCH 3 MIN";
     }
     if (s.squats < 8 && s.steps < 1200) {
-        return "MOVE A BIT\nSTEPS OR SQUATS";
+        return "WALK OR SQUATS";
     }
     if (s.steps < 1500 && s.squats >= 8) {
-        return "A WALK NEXT\nFOR CARDIO";
+        return "TAKE A WALK";
     }
     if (s.yoga == 0 && s.stretch) {
-        return "YOGA 5 MIN\nTO UNWIND";
+        return "YOGA 5 MIN";
     }
-    return "REST WELL\nSEE YOU TOMORROW";
+    return "REST WELL";
+}
+
+const char *muse_fit_grade(void)
+{
+    roll();
+    int sc = score_now();
+    if (sc >= GOAL_PTS) {
+        return "Good";
+    }
+    if (sc >= 30) {
+        return "So so";
+    }
+    return "Bad";
+}
+
+const char *muse_fit_advice(void)
+{
+    roll();
+    return tip();
 }
 
 static void show_page(int page)
@@ -277,7 +281,7 @@ static void show_page(int page)
         s_page_until_us = esp_timer_get_time() + (int64_t)SCAN_MS * 1000;
         break;
     case 1:
-        muse_state_set_caption("HEALTH %d\n%s", sc, headline(sc));
+        muse_state_set_caption("%s\n%s", muse_fit_grade(), tip());
         pick_look(sc);
         if (sc >= 50) {
             muse_state_make_happy();
@@ -289,8 +293,8 @@ static void show_page(int page)
         s_page_until_us = esp_timer_get_time() + (int64_t)PAGE_MS * 1000;
         break;
     case 2:
-        muse_state_set_caption("SQ %d  ST %d\nM%d T%d Y%d", (int)s.squats, (int)s.steps,
-                               (int)s.mindful, (int)s.stretch, (int)s.yoga);
+        muse_state_set_caption("ST %d  +%d\nSQ %d  M%d T%d Y%d", (int)s.steps, (int)s.steps / 10,
+                               (int)s.squats, (int)s.mindful, (int)s.stretch, (int)s.yoga);
         s_page_until_us = esp_timer_get_time() + (int64_t)PAGE_MS * 1000;
         break;
     case 3:
@@ -370,16 +374,26 @@ void muse_fit_note_squat(void)
 
 void muse_fit_note_step(void)
 {
-    roll();
-    if (s.steps < 60000) {
-        s.steps++;
-        uint8_t was = s.streak;
-        note_streak();
-        if (s.streak != was || ++s_unsaved_steps >= 10) {
-            s_unsaved_steps = 0;
-            save();
-        }
+    muse_fit_note_steps(1);
+}
+
+void muse_fit_note_steps(int n)
+{
+    if (n <= 0) {
+        return;
     }
+    roll();
+    int room = 60000 - (int)s.steps;
+    if (room <= 0) {
+        return;
+    }
+    if (n > room) {
+        n = room;
+    }
+    s.steps = (uint16_t)(s.steps + n);
+    s_unsaved_steps = 0;
+    note_streak();
+    save();
 }
 
 void muse_fit_note_timer(const char *name)
@@ -450,11 +464,20 @@ void muse_fit_check(void)
     s.last_score = (uint8_t)score_now();
     note_streak();
     save();
-    s_page = 0;
-    show_page(0);
+    pick_look(s.last_score);
     muse_state_poke();
     ESP_LOGI(TAG, "health %d SQ %u ST %u M%d T%d Y%d", s.last_score, s.squats, s.steps,
              s.mindful, s.stretch, s.yoga);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    s_page = -1;
+    if (s.last_score >= 50) {
+        muse_state_make_happy();
+    }
+    muse_cam_health();
+    return;
+#endif
+    s_page = 0;
+    show_page(0);
 }
 
 bool muse_fit_active(void)

@@ -34,6 +34,7 @@
 #include "muse_clock.h"
 #include "muse_mem.h"
 #include "muse_pmu.h"
+#include "muse_hr.h"
 #include "muse_squat.h"
 
 #define PMU_KEY_EVERY 2         /* poll the PMU over I2C every 20 ms */
@@ -55,6 +56,9 @@ static esp_err_t init(void)
     s_pmu = true;
     if (muse_squat_init(bsp_i2c_get_handle()) != ESP_OK) {
         ESP_LOGW(TAG, "BMI270 unavailable: squat counter off");
+    }
+    if (muse_hr_init() != ESP_OK) {
+        ESP_LOGW(TAG, "Port B heart sensor unavailable");
     }
     muse_clock_bind_rtc(bsp_i2c_get_handle());
     return ESP_OK;

@@ -55,6 +55,8 @@
 #include "boards/watcher_camera.h"
 #endif
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
+#include "muse_cam.h"
+#include "muse_hr.h"
 #include "muse_squat.h"
 #endif
 #include "muse_timer.h"
@@ -81,6 +83,8 @@ static const char *TAG = "muse_ui";
 #define COLOR_ACCENT 0xa77dff
 #define COLOR_DOT_OFF 0x3a3358
 #define COLOR_LIT 0xf2efff
+#define COLOR_CHAR_MUSE 0xe8b4ff
+#define COLOR_CHAR_FITIN 0x7ee081
 #define SETTINGS_TICK_S 0.25f
 
 /* Text on 128 px screens, as in the button menu (muse_menu.c). */
@@ -126,8 +130,24 @@ static lv_obj_t *s_wifi_icon;
 static lv_obj_t *s_ble_icon;
 static lv_obj_t *s_date_lbl;
 static lv_obj_t *s_time_lbl;
+static lv_obj_t *s_header;
 static lv_obj_t *s_streak_lbl;
+static lv_obj_t *s_char_lbl;
 static lv_obj_t *s_cover;
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+static lv_obj_t *s_walk_lock;
+static lv_obj_t *s_walk_pause;
+static int64_t s_walk_lock_down_us;
+static int64_t s_walk_pause_down_us;
+static bool s_walk_armed;
+static lv_obj_t *s_face_mark[4];
+static lv_obj_t *s_count_ov;
+static int s_count_digit;
+static lv_obj_t *s_share;
+static int64_t s_canvas_down_us;
+static bool s_share_armed;
+static lv_obj_t *s_cam_back;
+#endif
 static lv_obj_t *s_pair;
 static lv_obj_t *s_pair_code;
 static lv_obj_t *s_pair_title;
@@ -169,7 +189,7 @@ static bool s_ready;
 static float s_level;
 static int s_shown_state = -1;
 static const char *s_shown_name;
-static const char *s_idle_name = "Muse";   /* idle's label: character name once Wi-Fi is up */
+static const char *s_idle_name = "";   /* idle ready: name lives in the header */
 static int s_shown_lit = -1;
 static uint32_t s_shown_accent;
 static bool s_meter_visible = true;
@@ -409,6 +429,9 @@ static void invalidate_muse(void)
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color);
+#if CONFIG_MUSE_CJK_FONT
+static const lv_font_t *caption_font_jp(void);
+#endif
 
 /* A microphone from primitives: LVGL's symbol font has none. */
 static lv_obj_t *make_mic(lv_obj_t *parent, int size)
@@ -507,9 +530,8 @@ static void build_button_icons(lv_obj_t *face)
     lv_obj_align(s_aux_icon, a->align, a->x, a->y);
 }
 
-static void on_canvas_clicked(lv_event_t *e)
+static void pet_character(void)
 {
-    (void)e;
     if (muse_fit_active()) {
         muse_fit_advance();
         return;
@@ -518,12 +540,17 @@ static void on_canvas_clicked(lv_event_t *e)
         muse_state_make_happy();
         return;
     }
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (muse_steps_active()) {
+        return;
+    }
+#endif
     muse_state_make_happy();
     muse_fit_note_pet();
     muse_fit_today_t t;
     muse_fit_today(&t);
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
-    if (muse_squat_active() || muse_steps_active()) {
+    if (muse_squat_active()) {
         return;
     }
 #endif
@@ -535,16 +562,454 @@ static void on_canvas_clicked(lv_event_t *e)
         muse_state_set_caption("PET 10\nHEART +10");
     } else if (t.pets < 10) {
         muse_state_set_caption("PET %d/10\nKEEP GOING", (int)t.pets);
-    } else     if (t.pets == 20) {
+    } else if (t.pets == 20) {
         muse_state_set_caption("PET %d\nMAX HEARTS", (int)t.pets);
     }
 }
 
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+#define SHARE_HOLD_US 3000000
+#define SHARE_URL_GITHUB "https://github.com/ktrips/kfit"
+#define SHARE_URL_FACEBOOK "https://www.facebook.com/fitingoapp"
+#define SHARE_URL_INSTAGRAM "https://www.instagram.com/ktrips"
+
+static void share_hide(void)
+{
+    if (s_share) {
+        lv_obj_add_flag(s_share, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void on_share_close(lv_event_t *e)
+{
+    (void)e;
+    share_hide();
+}
+
+#if LV_USE_QRCODE
+static lv_obj_t *make_share_qr(lv_obj_t *row, const char *title, uint32_t accent, const char *url)
+{
+    lv_obj_t *col = lv_obj_create(row);
+    lv_obj_remove_style_all(col);
+    lv_obj_set_size(col, 100, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(col, 4, 0);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *pad = lv_obj_create(col);
+    lv_obj_remove_style_all(pad);
+    lv_obj_set_size(pad, 92, 92);
+    lv_obj_set_style_bg_color(pad, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(pad, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(pad, 8, 0);
+    lv_obj_set_style_border_width(pad, 2, 0);
+    lv_obj_set_style_border_color(pad, lv_color_hex(accent), 0);
+    lv_obj_set_style_pad_all(pad, 4, 0);
+    lv_obj_remove_flag(pad, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *qr = lv_qrcode_create(pad);
+    lv_qrcode_set_size(qr, 84);
+    lv_qrcode_set_dark_color(qr, lv_color_black());
+    lv_qrcode_set_light_color(qr, lv_color_white());
+    lv_qrcode_set_quiet_zone(qr, true);
+    lv_qrcode_set_data(qr, url);
+    lv_obj_center(qr);
+
+    lv_obj_t *lbl = make_label(col, FONT_COMPACT, COLOR_LIT);
+    lv_label_set_text(lbl, title);
+    return col;
+}
+#endif
+
+static void share_show(void)
+{
+    if (!s_share) {
+        return;
+    }
+    muse_state_set_asleep(false);
+    muse_state_poke();
+    lv_obj_remove_flag(s_share, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_share);
+}
+
+static void build_share(void)
+{
+    s_share = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_share);
+    lv_obj_set_size(s_share, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(s_share, lv_color_hex(0x140e22), 0);
+    lv_obj_set_style_bg_opa(s_share, LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_share, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_share, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(s_share, on_share_close, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *title = make_label(s_share, FONT_COMPACT, COLOR_ACCENT);
+    lv_label_set_text(title, "QR");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+    lv_obj_t *row = lv_obj_create(s_share);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(row, LV_ALIGN_CENTER, 0, -4);
+#if LV_USE_QRCODE
+    make_share_qr(row, "GitHub", 0xffffff, SHARE_URL_GITHUB);
+    make_share_qr(row, "Facebook", 0x1877f2, SHARE_URL_FACEBOOK);
+    make_share_qr(row, "Instagram", 0xe1306c, SHARE_URL_INSTAGRAM);
+#endif
+
+#if CONFIG_MUSE_CJK_FONT
+    lv_obj_t *hint = make_label(s_share, caption_font_jp(), COLOR_DIM);
+#else
+    lv_obj_t *hint = make_label(s_share, FONT_COMPACT, COLOR_DIM);
+#endif
+    lv_label_set_text(hint, "タップで閉じる");
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -10);
+}
+
+static void on_canvas_event(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (muse_steps_active()) {
+        return;
+    }
+    if (code == LV_EVENT_PRESSED) {
+        s_canvas_down_us = esp_timer_get_time();
+        s_share_armed = false;
+        return;
+    }
+    if (code == LV_EVENT_PRESSING) {
+        if (!s_share_armed && s_canvas_down_us &&
+            esp_timer_get_time() - s_canvas_down_us >= SHARE_HOLD_US) {
+            s_share_armed = true;
+            share_show();
+        }
+        return;
+    }
+    if (code == LV_EVENT_PRESS_LOST) {
+        s_canvas_down_us = 0;
+        return;
+    }
+    if (code != LV_EVENT_RELEASED) {
+        return;
+    }
+    int64_t down = s_canvas_down_us;
+    s_canvas_down_us = 0;
+    if (s_share_armed) {
+        return;
+    }
+    if (!down || esp_timer_get_time() - down < 80000) {
+        return;
+    }
+    pet_character();
+}
+#else
+static void on_canvas_clicked(lv_event_t *e)
+{
+    (void)e;
+    pet_character();
+}
+#endif
+
 static void on_health_hdr(lv_event_t *e)
+{
+    (void)e;
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (muse_cam_preview_active()) {
+        muse_cam_stop();
+    }
+#endif
+    muse_fit_check();
+}
+
+static void on_char_hdr(lv_event_t *e)
+{
+    (void)e;
+    muse_char_t ch = muse_settings_char() == MUSE_CHAR_FITIN ? MUSE_CHAR_MUSE : MUSE_CHAR_FITIN;
+    muse_settings_set_char(ch);
+    muse_state_poke();
+}
+
+static lv_obj_t *make_hdr_chip(lv_obj_t *parent, lv_obj_t **lbl, const lv_font_t *font,
+                              uint32_t color, lv_event_cb_t cb)
+{
+    lv_obj_t *b = lv_obj_create(parent);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_hor(b, 8, 0);
+    lv_obj_set_style_pad_ver(b, 6, 0);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_set_ext_click_area(b, 14);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    *lbl = make_label(b, font, color);
+    return b;
+}
+
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+enum {
+    FACE_MARK_FOOT = 0,
+    FACE_MARK_CAM,
+    FACE_MARK_CLOCK,
+    FACE_MARK_HEART,
+};
+
+static void fill_dot(lv_layer_t *layer, lv_color_t col, int cx, int cy, int r)
+{
+    lv_draw_rect_dsc_t d;
+    lv_draw_rect_dsc_init(&d);
+    d.bg_color = col;
+    d.bg_opa = LV_OPA_COVER;
+    d.radius = LV_RADIUS_CIRCLE;
+    lv_area_t a = {cx - r, cy - r, cx + r, cy + r};
+    lv_draw_rect(layer, &d, &a);
+}
+
+static void fill_box(lv_layer_t *layer, lv_color_t col, int x1, int y1, int x2, int y2, int radius)
+{
+    lv_draw_rect_dsc_t d;
+    lv_draw_rect_dsc_init(&d);
+    d.bg_color = col;
+    d.bg_opa = LV_OPA_COVER;
+    d.radius = radius;
+    lv_area_t a = {x1, y1, x2, y2};
+    lv_draw_rect(layer, &d, &a);
+}
+
+static void on_count_draw(lv_event_t *e)
+{
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_obj_t *obj = lv_event_get_target(e);
+    lv_area_t c;
+    lv_obj_get_coords(obj, &c);
+    int x0 = c.x1 + 22, x1 = c.x2 - 22;
+    int y0 = c.y1 + 18, y2 = c.y2 - 18;
+    int y1 = (y0 + y2) / 2;
+    int t = 16;
+    lv_color_t col = lv_color_hex(0xffffff);
+    int n = s_count_digit;
+    if (n == 1) {
+        int cx = (x0 + x1) / 2;
+        fill_box(layer, col, cx - t, y0, cx + t, y2, 8);
+        fill_box(layer, col, cx - t * 2, y0, cx + t, y0 + t, 8);
+        return;
+    }
+    bool A = false, B = false, C = false, D = false, E = false, F = false, G = false;
+    if (n == 2) {
+        A = B = G = E = D = true;
+    } else if (n == 3) {
+        A = B = G = C = D = true;
+    } else {
+        return;
+    }
+    if (A) {
+        fill_box(layer, col, x0 + 8, y0, x1 - 8, y0 + t, 8);
+    }
+    if (G) {
+        fill_box(layer, col, x0 + 8, y1 - t / 2, x1 - 8, y1 + t / 2, 8);
+    }
+    if (D) {
+        fill_box(layer, col, x0 + 8, y2 - t, x1 - 8, y2, 8);
+    }
+    if (F) {
+        fill_box(layer, col, x0, y0 + 8, x0 + t, y1 - 6, 8);
+    }
+    if (B) {
+        fill_box(layer, col, x1 - t, y0 + 8, x1, y1 - 6, 8);
+    }
+    if (E) {
+        fill_box(layer, col, x0, y1 + 6, x0 + t, y2 - 8, 8);
+    }
+    if (C) {
+        fill_box(layer, col, x1 - t, y1 + 6, x1, y2 - 8, 8);
+    }
+}
+
+static void draw_hand(lv_layer_t *layer, lv_color_t col, int x1, int y1, int x2, int y2, int w)
+{
+    lv_draw_line_dsc_t d;
+    lv_draw_line_dsc_init(&d);
+    d.color = col;
+    d.opa = LV_OPA_COVER;
+    d.width = w;
+    d.round_start = 1;
+    d.round_end = 1;
+    d.p1.x = x1;
+    d.p1.y = y1;
+    d.p2.x = x2;
+    d.p2.y = y2;
+    lv_draw_line(layer, &d);
+}
+
+static void on_face_mark_draw(lv_event_t *e)
+{
+    lv_obj_t *obj = lv_event_get_target(e);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t c;
+    lv_obj_get_coords(obj, &c);
+    int cx = (c.x1 + c.x2) / 2;
+    int cy = (c.y1 + c.y2) / 2;
+    lv_color_t col = lv_obj_get_style_text_color(obj, 0);
+    int kind = (int)(intptr_t)lv_event_get_user_data(e);
+    if (kind == FACE_MARK_FOOT) {
+        fill_box(layer, col, cx - 6, cy - 2, cx + 6, cy + 10, 7);
+        fill_dot(layer, col, cx - 8, cy - 8, 3);
+        fill_dot(layer, col, cx - 2, cy - 10, 3);
+        fill_dot(layer, col, cx + 4, cy - 9, 3);
+        fill_dot(layer, col, cx + 9, cy - 5, 2);
+    } else if (kind == FACE_MARK_CAM) {
+        fill_box(layer, col, cx - 3, cy - 11, cx + 3, cy - 7, 2);
+        fill_box(layer, col, cx - 11, cy - 7, cx + 11, cy + 9, 4);
+        fill_dot(layer, lv_color_hex(0x1a1530), cx, cy + 1, 5);
+        fill_dot(layer, col, cx, cy + 1, 3);
+    } else if (kind == FACE_MARK_CLOCK) {
+        lv_draw_rect_dsc_t ring;
+        lv_draw_rect_dsc_init(&ring);
+        ring.bg_opa = LV_OPA_TRANSP;
+        ring.border_width = 2;
+        ring.border_color = col;
+        ring.border_opa = LV_OPA_COVER;
+        ring.radius = LV_RADIUS_CIRCLE;
+        lv_area_t a = {cx - 11, cy - 11, cx + 11, cy + 11};
+        lv_draw_rect(layer, &ring, &a);
+        draw_hand(layer, col, cx, cy, cx, cy - 6, 2);
+        draw_hand(layer, col, cx, cy, cx + 6, cy + 2, 2);
+        fill_dot(layer, col, cx, cy, 2);
+    } else {
+        fill_dot(layer, col, cx - 5, cy - 4, 6);
+        fill_dot(layer, col, cx + 5, cy - 4, 6);
+        lv_draw_triangle_dsc_t tri;
+        lv_draw_triangle_dsc_init(&tri);
+        tri.color = col;
+        tri.opa = LV_OPA_COVER;
+        tri.p[0].x = cx - 11;
+        tri.p[0].y = cy - 2;
+        tri.p[1].x = cx + 11;
+        tri.p[1].y = cy - 2;
+        tri.p[2].x = cx;
+        tri.p[2].y = cy + 12;
+        lv_draw_triangle(layer, &tri);
+    }
+}
+
+static void on_face_foot(lv_event_t *e)
+{
+    (void)e;
+    muse_steps_toggle();
+}
+
+static void on_face_foot_hold(lv_event_t *e)
+{
+    (void)e;
+    muse_steps_exit_reset();
+}
+
+static void on_face_cam(lv_event_t *e)
+{
+    (void)e;
+    if (!muse_settings_camera_on()) {
+        return;
+    }
+    muse_cam_toggle();
+}
+
+static void on_cam_back(lv_event_t *e)
+{
+    (void)e;
+    muse_cam_stop();
+}
+
+static void on_face_clock(lv_event_t *e)
+{
+    (void)e;
+    muse_timer_start(60, "MINDFUL");
+}
+
+static void on_face_heart(lv_event_t *e)
 {
     (void)e;
     muse_fit_check();
 }
+
+static lv_obj_t *make_face_mark(lv_obj_t *parent, int kind, uint32_t color,
+                               lv_event_cb_t on_tap, lv_event_cb_t on_hold)
+{
+    lv_obj_t *b = lv_obj_create(parent);
+    lv_obj_remove_style_all(b);
+    lv_obj_set_size(b, 36, 36);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(b, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(b, 2, 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(color), 0);
+    lv_obj_set_style_border_opa(b, LV_OPA_40, 0);
+    lv_obj_set_style_text_color(b, lv_color_hex(color), 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_ext_click_area(b, 8);
+    lv_obj_add_event_cb(b, on_face_mark_draw, LV_EVENT_DRAW_MAIN, (void *)(intptr_t)kind);
+    if (on_tap) {
+        lv_obj_add_event_cb(b, on_tap, LV_EVENT_SHORT_CLICKED, NULL);
+    }
+    if (on_hold) {
+        lv_obj_add_event_cb(b, on_hold, LV_EVENT_LONG_PRESSED, NULL);
+    }
+    return b;
+}
+
+static void build_face_marks(lv_obj_t *face)
+{
+    if (!s_canvas) {
+        return;
+    }
+    s_face_mark[FACE_MARK_FOOT] = make_face_mark(face, FACE_MARK_FOOT, 0x7ee081, on_face_foot, on_face_foot_hold);
+    s_face_mark[FACE_MARK_CAM] = make_face_mark(face, FACE_MARK_CAM, 0x80bfff, on_face_cam, NULL);
+    s_face_mark[FACE_MARK_CLOCK] = make_face_mark(face, FACE_MARK_CLOCK, 0xffd060, on_face_clock, NULL);
+    s_face_mark[FACE_MARK_HEART] = make_face_mark(face, FACE_MARK_HEART, 0xff8fb8, on_face_heart, NULL);
+    /* Just under the header so Muse/Fitin, H-points, Wi-Fi and battery stay clear. */
+    lv_obj_align(s_face_mark[FACE_MARK_FOOT], LV_ALIGN_TOP_LEFT, 2, 26);
+    lv_obj_align(s_face_mark[FACE_MARK_CAM], LV_ALIGN_TOP_RIGHT, -2, 26);
+    lv_obj_align(s_face_mark[FACE_MARK_CLOCK], LV_ALIGN_BOTTOM_LEFT, 2, -2);
+    lv_obj_align(s_face_mark[FACE_MARK_HEART], LV_ALIGN_BOTTOM_RIGHT, -2, -2);
+    if (!muse_settings_camera_on()) {
+        lv_obj_add_flag(s_face_mark[FACE_MARK_CAM], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_mic_icon) {
+        lv_obj_add_flag(s_mic_icon, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void update_face_marks(void)
+{
+    if (!s_face_mark[0]) {
+        return;
+    }
+    bool cam_ok = muse_settings_camera_on();
+    if (!cam_ok) {
+        muse_cam_stop();
+    }
+    lv_obj_set_flag(s_face_mark[FACE_MARK_CAM], LV_OBJ_FLAG_HIDDEN, !cam_ok);
+    bool on[4] = {
+        muse_steps_active(),
+        cam_ok && muse_cam_preview_active(),
+        muse_timer_active() && strcmp(muse_timer_label(), "MINDFUL") == 0,
+        muse_fit_active(),
+    };
+    for (int i = 0; i < 4; i++) {
+        if (!s_face_mark[i]) {
+            continue;
+        }
+        lv_obj_set_style_bg_opa(s_face_mark[i], on[i] ? LV_OPA_80 : LV_OPA_60, 0);
+        lv_obj_set_style_border_opa(s_face_mark[i], on[i] ? LV_OPA_COVER : LV_OPA_40, 0);
+        lv_obj_invalidate(s_face_mark[i]);
+    }
+}
+#endif
 
 static const lv_font_t *font_pick(const lv_font_t *full, const lv_font_t *compact)
 {
@@ -555,8 +1020,8 @@ static const lv_font_t *font_pick(const lv_font_t *full, const lv_font_t *compac
 LV_FONT_DECLARE(muse_font_cjk_16)
 #endif
 
-/* unscii-16 for captions and replies; with CONFIG_MUSE_CJK_FONT, a copy that
- * falls back to Unifont's 16x16 CJK, the same cell, for what unscii lacks. */
+/* unscii-16 for English captions; with CONFIG_MUSE_CJK_FONT, a copy that
+ * falls back to Noto Sans JP gothic for kana and kanji. */
 static const lv_font_t *caption_font(void)
 {
 #if CONFIG_MUSE_CJK_FONT
@@ -570,6 +1035,20 @@ static const lv_font_t *caption_font(void)
     return &lv_font_unscii_16;
 #endif
 }
+
+#if CONFIG_MUSE_CJK_FONT
+/* Japanese captions use gothic as the primary face so digits in the same
+ * sentence match the kana, with unscii only for symbols Noto lacks. */
+static const lv_font_t *caption_font_jp(void)
+{
+    static lv_font_t font;
+    if (!font.get_glyph_dsc) {
+        font = muse_font_cjk_16;
+        font.fallback = &lv_font_unscii_16;
+    }
+    return &font;
+}
+#endif
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
 {
@@ -976,39 +1455,55 @@ static void build_screen(void)
     lv_obj_align(s_canvas, LV_ALIGN_CENTER, 0, s_big_y);
     s_muse_y = s_big_y;
     lv_obj_add_flag(s_canvas, LV_OBJ_FLAG_CLICKABLE);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    lv_obj_add_event_cb(s_canvas, on_canvas_event, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_canvas, on_canvas_event, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(s_canvas, on_canvas_event, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_canvas, on_canvas_event, LV_EVENT_PRESS_LOST, NULL);
+#else
     lv_obj_add_event_cb(s_canvas, on_canvas_clicked, LV_EVENT_CLICKED, NULL);
+#endif
     if (s_ring) {
         /* The canvas's black corners reach the bezel; keep the ring on top. */
         lv_obj_move_foreground(s_ring);
     }
     build_button_icons(face);
 
-    /* Home header, right-aligned: health, date, time, Wi-Fi, battery. */
+    /* Home header, right-aligned: health, date, time, Wi-Fi, battery.
+     * On CoreS3 it sits on the top layer so tile swipes don't steal Fitin / H taps. */
     const lv_font_t *hdr_font = s_small && !s_large_type ? &lv_font_unscii_8 : FONT_COMPACT;
     int hdr_pad = muse_board->rim_controls ? 52 : (s_small ? 4 : 18);
     int hdr_y = muse_board->rim_controls ? 36 : (s_small ? 0 : 12 + s_dy);
-    lv_obj_t *header = lv_obj_create(face);
-    lv_obj_remove_style_all(header);
-    lv_obj_remove_flag(header, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(header, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_size(header, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(header, s_small ? 6 : 10, 0);
-    lv_obj_set_style_pad_ver(header, 2, 0);
-    lv_obj_set_style_pad_hor(header, s_small ? 4 : 8, 0);
-    lv_obj_set_style_bg_color(header, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(header, LV_OPA_50, 0);
-    lv_obj_align(header, LV_ALIGN_TOP_RIGHT, -hdr_pad, hdr_y);
-    s_streak_lbl = make_label(header, hdr_font, COLOR_ACCENT);
-    lv_obj_add_flag(s_streak_lbl, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(s_streak_lbl, 10);
-    lv_obj_add_event_cb(s_streak_lbl, on_health_hdr, LV_EVENT_CLICKED, NULL);
-    s_date_lbl = make_label(header, hdr_font, COLOR_LIT);
-    s_time_lbl = make_label(header, hdr_font, COLOR_LIT);
-    s_wifi_icon = make_label(header, &lv_font_montserrat_14, COLOR_DIM);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    lv_obj_t *hdr_parent = lv_layer_top();
+#else
+    lv_obj_t *hdr_parent = face;
+#endif
+    s_header = lv_obj_create(hdr_parent);
+    lv_obj_remove_style_all(s_header);
+    lv_obj_remove_flag(s_header, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_flag(s_header, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(s_header, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(s_header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_header, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(s_header, s_small ? 4 : 10, 0);
+    lv_obj_set_style_pad_ver(s_header, 2, 0);
+    lv_obj_set_style_pad_hor(s_header, s_small ? 4 : 8, 0);
+    lv_obj_set_style_bg_color(s_header, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_header, LV_OPA_70, 0);
+    lv_obj_set_style_radius(s_header, 8, 0);
+    lv_obj_align(s_header, LV_ALIGN_TOP_RIGHT, -hdr_pad, hdr_y);
+    const lv_font_t *stats_font = s_small && !s_large_type ? &lv_font_unscii_8
+                                 : s_large_type ? &lv_font_montserrat_16
+                                                : &lv_font_montserrat_14;
+    make_hdr_chip(s_header, &s_char_lbl, stats_font, COLOR_CHAR_MUSE, on_char_hdr);
+    lv_obj_set_style_text_letter_space(s_char_lbl, 1, 0);
+    make_hdr_chip(s_header, &s_streak_lbl, stats_font, COLOR_ACCENT, on_health_hdr);
+    s_date_lbl = make_label(s_header, hdr_font, COLOR_LIT);
+    s_time_lbl = make_label(s_header, hdr_font, COLOR_LIT);
+    s_wifi_icon = make_label(s_header, &lv_font_montserrat_14, COLOR_DIM);
     lv_label_set_text(s_wifi_icon, LV_SYMBOL_WIFI);
-    s_power_lbl = make_label(header, hdr_font, COLOR_LIT);
+    s_power_lbl = make_label(s_header, hdr_font, COLOR_LIT);
     /* BLE stays off the header; update_chrome still writes this label. */
     s_ble_icon = make_label(face, &lv_font_montserrat_14, COLOR_DIM);
     lv_obj_add_flag(s_ble_icon, LV_OBJ_FLAG_HIDDEN);
@@ -1052,8 +1547,12 @@ static void build_screen(void)
         lv_obj_align(s_caption_lbl, LV_ALIGN_BOTTOM_MID, 0, (s_tall || s_tv) ? -30 : -3);
 #if CONFIG_MUSE_CJK_FONT
         /* CJK doesn't fit unscii-8's cell, so a reply with CJK in it fills the
-         * band one line at a time in the 16 px caption font instead. */
-        muse_state_set_cjk_page(s_w / lv_font_get_glyph_width(caption_font(), 'M', ' '), s_large_type ? 2 : 1);
+         * band one line at a time in the 16 px gothic caption font instead. */
+        int cw = lv_font_get_glyph_width(&muse_font_cjk_16, 0x3042, 0);
+        if (cw < 8) {
+            cw = 16;
+        }
+        muse_state_set_cjk_page(s_w / cw, s_large_type ? 2 : 1);
 #endif
 
         s_bar = lv_obj_create(face);
@@ -1061,6 +1560,9 @@ static void build_screen(void)
         lv_obj_set_size(s_bar, 0, 3);
         lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, 0);
         lv_obj_align(s_bar, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+        build_face_marks(face);
+#endif
         return;
     }
     /* Fixed height: a longer caption ends in dots rather than growing into the ring. */
@@ -1087,9 +1589,113 @@ static void build_screen(void)
 }
 
 
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+#define WALK_ARM_US 2500000
+#define WALK_PAUSE_US 2000000
+
+/* Pocket fabric presses the screen for seconds. The pause chip stays hidden
+ * until a deliberate 2.5 s hold on the lock overlay (same as wake). */
+static void arm_walk_pause(void)
+{
+    s_walk_armed = true;
+    if (s_walk_pause && muse_steps_active() && !muse_state_asleep()) {
+        lv_obj_remove_flag(s_walk_pause, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void on_walk_lock(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        s_walk_lock_down_us = esp_timer_get_time();
+        return;
+    }
+    if (code == LV_EVENT_PRESSING) {
+        if (!s_walk_armed && s_walk_lock_down_us &&
+            esp_timer_get_time() - s_walk_lock_down_us >= WALK_ARM_US) {
+            arm_walk_pause();
+        }
+        return;
+    }
+    if (code == LV_EVENT_PRESS_LOST || code == LV_EVENT_RELEASED) {
+        s_walk_lock_down_us = 0;
+    }
+}
+
+static void on_walk_pause(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if (!s_walk_armed) {
+        return;
+    }
+    if (code == LV_EVENT_PRESSED) {
+        s_walk_pause_down_us = esp_timer_get_time();
+        return;
+    }
+    if (code == LV_EVENT_PRESS_LOST) {
+        s_walk_pause_down_us = 0;
+        return;
+    }
+    if (code != LV_EVENT_RELEASED) {
+        return;
+    }
+    int64_t down = s_walk_pause_down_us;
+    s_walk_pause_down_us = 0;
+    if (down && esp_timer_get_time() - down >= WALK_PAUSE_US) {
+        muse_steps_set_active(false);
+        s_walk_armed = false;
+    }
+}
+
+static void update_walk_lock(void)
+{
+    if (!s_walk_lock) {
+        return;
+    }
+    bool on = muse_steps_active();
+    bool asleep = muse_state_asleep();
+    if (!on) {
+        s_walk_armed = false;
+        s_walk_lock_down_us = 0;
+        s_walk_pause_down_us = 0;
+    }
+    lv_obj_set_flag(s_walk_lock, LV_OBJ_FLAG_HIDDEN, !on);
+    if (s_walk_pause) {
+        lv_obj_set_flag(s_walk_pause, LV_OBJ_FLAG_HIDDEN, !on || asleep || !s_walk_armed);
+    }
+    if (s_tv && on && lv_obj_has_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE)) {
+        lv_obj_remove_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+    }
+}
+#endif
+
 static void on_cover_event(lv_event_t *e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+    lv_event_code_t code = lv_event_get_code(e);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    /* Pocket walking: ignore brief taps. A long hold only wakes, never pauses. */
+    if (muse_steps_active()) {
+        if (code == LV_EVENT_PRESSED) {
+            s_walk_lock_down_us = esp_timer_get_time();
+            return;
+        }
+        if (code == LV_EVENT_PRESS_LOST) {
+            s_walk_lock_down_us = 0;
+            return;
+        }
+        if (code == LV_EVENT_RELEASED) {
+            int64_t down = s_walk_lock_down_us;
+            s_walk_lock_down_us = 0;
+            if (muse_state_asleep() && down && esp_timer_get_time() - down >= WALK_ARM_US) {
+                muse_state_set_asleep(false);
+                lv_obj_add_flag(s_cover, LV_OBJ_FLAG_HIDDEN);
+                arm_walk_pause();
+            }
+        }
+        return;
+    }
+#endif
+    if (code == LV_EVENT_PRESSED) {
         /* Wake on touch; keep the (now clear) cover until release so the tap
          * doesn't land on whatever is underneath. */
         muse_state_set_asleep(false);
@@ -1130,6 +1736,15 @@ static void image_sync(void)
         lv_image_set_src(s_image, &s_image_dsc);
         lv_obj_remove_flag(s_image, LV_OBJ_FLAG_HIDDEN);
         muse_state_set_asleep(false);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+        if (s_cam_back && muse_cam_preview_active()) {
+            lv_obj_remove_flag(s_cam_back, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(s_cam_back);
+        }
+        if (s_header) {
+            lv_obj_remove_flag(s_header, LV_OBJ_FLAG_HIDDEN);
+        }
+#endif
     }
     if (s_image_dirty) {
         lv_obj_invalidate_area(s_image, &s_image_area);
@@ -1144,6 +1759,12 @@ static void on_image_clicked(lv_event_t *e)
 #if CONFIG_MUSE_WATCHER_CAMERA
     if (watcher_camera_preview_active()) {
         watcher_camera_preview_toggle();
+        return;
+    }
+#endif
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (muse_cam_preview_active()) {
+        muse_cam_snap();
         return;
     }
 #endif
@@ -1165,6 +1786,12 @@ static void on_any_press(lv_event_t *e)
         muse_input_touch_talk(true);
         muse_input_touch_talk(false);
     }
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    /* Walking with the screen locked: pocket taps must not reset auto-sleep. */
+    if (muse_steps_active()) {
+        return;
+    }
+#endif
     muse_state_poke();
 }
 
@@ -1283,6 +1910,57 @@ static void build_overlays(void)
     lv_obj_set_width(s_pair_hint, lv_pct(100));
     lv_label_set_long_mode(s_pair_hint, LV_LABEL_LONG_MODE_WRAP);
 
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    /* Pocket lock: swallows taps/swipes only. Pause is the foot chip below. */
+    s_walk_lock = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_walk_lock);
+    lv_obj_set_size(s_walk_lock, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_opa(s_walk_lock, 1, 0);
+    lv_obj_add_flag(s_walk_lock, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_walk_lock, LV_OBJ_FLAG_GESTURE_BUBBLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(s_walk_lock, on_walk_lock, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_walk_lock, on_walk_lock, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(s_walk_lock, on_walk_lock, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_walk_lock, on_walk_lock, LV_EVENT_PRESS_LOST, NULL);
+
+    s_walk_pause = make_face_mark(lv_layer_top(), FACE_MARK_FOOT, 0x7ee081, NULL, NULL);
+    lv_obj_align(s_walk_pause, LV_ALIGN_TOP_LEFT, 2, 26);
+    lv_obj_add_flag(s_walk_pause, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_walk_pause, on_walk_pause, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(s_walk_pause, on_walk_pause, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(s_walk_pause, on_walk_pause, LV_EVENT_PRESS_LOST, NULL);
+
+    s_count_ov = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_count_ov);
+    lv_obj_set_size(s_count_ov, 156, 164);
+    lv_obj_center(s_count_ov);
+    lv_obj_set_style_radius(s_count_ov, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_count_ov, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_count_ov, LV_OPA_50, 0);
+    lv_obj_add_flag(s_count_ov, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_count_ov, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(s_count_ov, on_count_draw, LV_EVENT_DRAW_MAIN, NULL);
+
+    s_cam_back = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_cam_back);
+    lv_obj_set_size(s_cam_back, 40, 40);
+    lv_obj_set_style_radius(s_cam_back, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_cam_back, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_cam_back, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(s_cam_back, 2, 0);
+    lv_obj_set_style_border_color(s_cam_back, lv_color_hex(0x80bfff), 0);
+    lv_obj_add_flag(s_cam_back, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_cam_back, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_set_ext_click_area(s_cam_back, 10);
+    lv_obj_align(s_cam_back, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_obj_add_event_cb(s_cam_back, on_cam_back, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *back_lbl = make_label(s_cam_back, &lv_font_montserrat_20, 0x80bfff);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT);
+    lv_obj_center(back_lbl);
+
+    build_share();
+#endif
+
     /* Sleep cover: swallows the waking touch. */
     s_cover = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(s_cover);
@@ -1323,6 +2001,18 @@ static bool update_sleep(void)
         }
         lv_obj_set_style_bg_opa(s_cover, LV_OPA_COVER, 0);
         lv_obj_remove_flag(s_cover, LV_OBJ_FLAG_HIDDEN);
+        if (s_header) {
+            lv_obj_add_flag(s_header, LV_OBJ_FLAG_HIDDEN);
+        }
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+        if (s_cam_back) {
+            lv_obj_add_flag(s_cam_back, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_walk_pause) {
+            lv_obj_add_flag(s_walk_pause, LV_OBJ_FLAG_HIDDEN);
+        }
+        share_hide();
+#endif
         s_dark = true;
     } else if (!asleep && s_dark) {
         s_dark = false;
@@ -1355,7 +2045,7 @@ static const char *idle_name(muse_wifi_state_t wifi)
     switch (wifi) {
     case MUSE_WIFI_CONNECTED:
         joined = true;
-        return muse_settings_char_name(muse_settings_char());
+        return "";   /* Muse / Fitin is the header chip, not READY */
     case MUSE_WIFI_OFF:
         return "WI-FI OFF";
     case MUSE_WIFI_NO_NETWORK:
@@ -1379,6 +2069,11 @@ static void update_chrome(float now)
         int page = tile == s_activities ? 0 : (tile == s_settings ? 2 : 1);
         bool subpage = tile == s_settings && muse_settings_ui_in_subpage();
         bool swipe = tile != s_settings || !subpage;
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+        if (muse_steps_active()) {
+            swipe = false;
+        }
+#endif
         if (swipe != lv_obj_has_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE)) {
             lv_obj_set_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE, swipe);
         }
@@ -1394,6 +2089,23 @@ static void update_chrome(float now)
         if (page == 0) {
             muse_activity_ui_tick();
         }
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+        if (page == 1) {
+            update_face_marks();
+        }
+        if (s_header) {
+            bool cam = muse_cam_preview_active();
+            bool face = page == 1 && lv_obj_get_scroll_x(s_tv) == s_w;
+            lv_obj_set_flag(s_header, LV_OBJ_FLAG_HIDDEN, muse_state_asleep() || !(face || cam));
+        }
+        if (s_cam_back) {
+            bool cam = muse_cam_preview_active();
+            lv_obj_set_flag(s_cam_back, LV_OBJ_FLAG_HIDDEN, !cam);
+            if (cam) {
+                lv_obj_move_foreground(s_cam_back);
+            }
+        }
+#endif
     }
 
     /* Wi-Fi always occupies the header; colour shows connected / joining / off. */
@@ -1432,6 +2144,13 @@ static void update_chrome(float now)
     }
     if (strcmp(tim, lv_label_get_text(s_time_lbl)) != 0) {
         lv_label_set_text(s_time_lbl, tim);
+    }
+    muse_char_t look = muse_settings_char();
+    const char *who = muse_settings_char_name(look);
+    uint32_t who_col = look == MUSE_CHAR_FITIN ? COLOR_CHAR_FITIN : COLOR_CHAR_MUSE;
+    if (strcmp(who, lv_label_get_text(s_char_lbl)) != 0) {
+        lv_label_set_text(s_char_lbl, who);
+        lv_obj_set_style_text_color(s_char_lbl, lv_color_hex(who_col), 0);
     }
     muse_fit_today_t fit;
     muse_fit_today(&fit);
@@ -1520,6 +2239,11 @@ static void update_chrome(float now)
      * While a reply's layout is up it decides; that's only ever paired. A
      * microphone without a speaker (mic_init) still talks. */
     bool mic = paired && (muse_board->audio_init || muse_board->mic_init);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (s_mic_icon && s_face_mark[0]) {
+        lv_obj_add_flag(s_mic_icon, LV_OBJ_FLAG_HIDDEN);
+    } else
+#endif
     if (s_mic_icon && !muse_board->rim_controls && s_answer < 0 && mic == lv_obj_has_flag(s_mic_icon, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_set_flag(s_mic_icon, LV_OBJ_FLAG_HIDDEN, !mic);
     }
@@ -1583,9 +2307,11 @@ static void update_status(muse_mode_t mode, float now)
     const char *name = mode == MUSE_MODE_IDLE ? s_idle_name : MODE_NAMES[mode];
 
     if (name != s_shown_name) {
-        lv_label_set_text(s_state_lbl, name);
+        lv_label_set_text(s_state_lbl, name ? name : "");
         s_shown_name = name;
     }
+    bool hide_state = (s_small && !s_tall && s_h < 200) || (mode == MUSE_MODE_IDLE && (!name || !name[0]));
+    lv_obj_set_flag(s_state_lbl, LV_OBJ_FLAG_HIDDEN, hide_state);
     if ((int)mode != s_shown_state) {
         lv_obj_set_style_text_color(s_state_lbl, lv_color_hex(accent), 0);
         if (s_ring) {
@@ -1669,8 +2395,10 @@ static void update_status(muse_mode_t mode, float now)
     if (fresh) {
         lv_obj_t *lbl = answer >= 0 ? s_reply_lbl : s_caption_lbl;
 #if CONFIG_MUSE_CJK_FONT
-        if (s_small && !s_large_type) {
-            lv_obj_set_style_text_font(s_caption_lbl, muse_text_has_cjk(caption) ? caption_font() : &lv_font_unscii_8, 0);
+        if (s_small) {
+            const lv_font_t *f = muse_text_has_cjk(caption) ? caption_font_jp()
+                : (s_large_type ? caption_font() : &lv_font_unscii_8);
+            lv_obj_set_style_text_font(s_caption_lbl, f, 0);
         }
 #endif
         lv_label_set_text(lbl, caption);
@@ -1756,6 +2484,9 @@ static void frame_tick(lv_timer_t *timer)
         }
         s_last_mode = mode;
     }
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    update_walk_lock();
+#endif
     if (update_sleep()) {
         return;
     }
@@ -1786,19 +2517,25 @@ static void frame_tick(lv_timer_t *timer)
     float level = muse_state_level();
     s_level += (level - s_level) * (level > s_level ? 0.6f : 0.2f);
 
+    muse_fit_today_t fit;
+    muse_fit_today(&fit);
     muse_pose_t pose = {
         .mode = mode,
         .t = now,
         .mode_t = mode_t,
         .level = s_level,
         .happy = muse_state_happiness(),
+        .bulk = fit.streak >= 7 ? 1.0f : (float)fit.streak / 7.0f,
+        .vigor = (float)fit.score / 100.0f,
     };
     if (mode == MUSE_MODE_IDLE) {
         if (muse_fit_active()) {
             muse_fit_fill_pose(&pose);
         } else
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
-        if (muse_squat_active()) {
+        if (muse_hr_active()) {
+            pose.move = MUSE_MOVE_HEALTH;
+        } else if (muse_squat_active()) {
             pose.move = MUSE_MOVE_SQUAT;
             pose.move_t = muse_squat_bend();
         } else if (muse_steps_active()) {
@@ -1892,7 +2629,12 @@ void muse_ui_show_face(void)
     if (!s_tv) {
         return;
     }
-    lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (!muse_steps_active())
+#endif
+    {
+        lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+    }
     lv_tileview_set_tile(s_tv, s_face, muse_board->epaper ? LV_ANIM_OFF : LV_ANIM_ON);
 }
 
@@ -2022,7 +2764,33 @@ void muse_ui_image_hide(void)
 #if CONFIG_MUSE_WATCHER_CAMERA
     if (s_camera_hint) lv_obj_add_flag(s_camera_hint, LV_OBJ_FLAG_HIDDEN);
 #endif
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (s_count_ov) {
+        lv_obj_add_flag(s_count_ov, LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
     muse_board->display_unlock();
+}
+
+void muse_ui_countdown(int n)
+{
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (!s_ready || !s_count_ov) {
+        return;
+    }
+    muse_board->display_lock(-1);
+    s_count_digit = n;
+    if (n >= 1 && n <= 9) {
+        lv_obj_remove_flag(s_count_ov, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(s_count_ov);
+        lv_obj_invalidate(s_count_ov);
+    } else {
+        lv_obj_add_flag(s_count_ov, LV_OBJ_FLAG_HIDDEN);
+    }
+    muse_board->display_unlock();
+#else
+    (void)n;
+#endif
 }
 
 #if CONFIG_MUSE_WATCHER_CAMERA

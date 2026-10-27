@@ -20,13 +20,19 @@
 
 /*
  * Face countdown timers (mindfulness / stretch / yoga). The remaining time is
- * the caption; a fanfare plays when it ends. Tap Muse to stop.
+ * the caption; a fanfare plays when it ends. The home clock: tap to start or
+ * pause, long-press to stop and clear.
  */
 
 void muse_timer_start(int secs, const char *name);
+/* Start `name` for `secs`, or pause / resume that same timer. */
+void muse_timer_toggle(int secs, const char *name);
 void muse_timer_stop(void);
+/* Stop, drop the remaining time, no completion credit. */
+void muse_timer_exit_reset(void);
 bool muse_timer_active(void);
+bool muse_timer_paused(void);
 int muse_timer_remaining_s(void);
 const char *muse_timer_label(void);
-/* True if a tap cancelled a running timer or cleared DONE. */
+/* True if a tap dismissed the DONE banner. Running timers stay on the clock. */
 bool muse_timer_on_face_tap(void);

@@ -60,6 +60,8 @@ typedef struct {
     muse_move_t move;
     float move_t;    /* squat: 0..1 depth from the IMU; otherwise unused */
     muse_tod_t tod;  /* idle look: morning stretch, nightcap, … */
+    float bulk;      /* 0..1 streak: small -> big and muscular */
+    float vigor;     /* 0..1 today's health points: pale -> saturated */
 } muse_pose_t;
 
 /* Accent colour of a mode (for the surrounding UI), as 0xRRGGBB. */

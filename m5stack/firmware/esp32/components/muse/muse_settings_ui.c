@@ -42,6 +42,8 @@
 #include "muse_video.h"
 #endif
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
+#include "muse_cam.h"
+#include "muse_hr.h"
 #include "muse_squat.h"
 #endif
 #include "muse_timer.h"
@@ -68,8 +70,10 @@ static int s_text_scale = 466;
 static lv_obj_t *s_tile;
 static lv_obj_t *s_current;
 static lv_obj_t *s_home, *s_wifi, *s_hatch, *s_ble, *s_sound, *s_sleep, *s_battery, *s_power, *s_text;
+static lv_obj_t *s_sensors;
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
 static lv_obj_t *s_squats, *s_home_squats, *s_squat_count, *s_squat_run;
+static lv_obj_t *s_home_sensors, *s_sensors_sound, *s_cam_sw, *s_hr_sw;
 #endif
 static lv_obj_t *s_timers, *s_home_timers;
 static lv_obj_t *s_look, *s_home_char, *s_look_checks[MUSE_CHAR_COUNT];
@@ -85,7 +89,10 @@ typedef struct {
 } page_t;
 
 /* Home values. */
-static lv_obj_t *s_home_wifi, *s_home_hatch, *s_home_ble, *s_home_sound, *s_home_sleep, *s_home_battery, *s_about;
+static lv_obj_t *s_home_wifi, *s_home_hatch, *s_home_ble, *s_home_sleep, *s_home_battery, *s_about;
+#if !CONFIG_MUSE_BOARD_M5STACK_CORES3
+static lv_obj_t *s_home_sound;
+#endif
 #if CONFIG_MUSE_VIDEO
 static lv_obj_t *s_home_camera;
 #endif
@@ -380,7 +387,7 @@ static lv_obj_t *info_row(lv_obj_t *list, const char *text)
 static void drop(lv_obj_t *p)
 {
     lv_obj_t **const pages[] = { &s_wifi, &s_hatch, &s_ble, &s_sound, &s_sleep, &s_battery, &s_power, &s_text,
-        &s_timers
+        &s_timers, &s_look, &s_sensors
 #if CONFIG_MUSE_BOARD_M5STACK_CORES3
         ,
         &s_squats
@@ -412,9 +419,13 @@ static void show(lv_obj_t *p)
         muse_voice_set_monitor(true);
     }
     muse_ui_set_swipe_enabled(p == s_home);
-    /* Home keeps nothing open; the text page returns to the page that opened it. */
-    if (prev && prev != s_home && (p == s_home || prev == s_text)) {
+    /* Home stays. Sensors stays while Sound is open, then drops on the way home. */
+    if (prev && prev != s_home && prev != s_sensors &&
+        (p == s_home || p == s_sensors || prev == s_text)) {
         drop(prev);
+    }
+    if (p == s_home && s_sensors) {
+        drop(s_sensors);
     }
 }
 
@@ -424,6 +435,8 @@ static void go_back(void)
 {
     if (s_current == s_text) {
         close_text();
+    } else if (s_sensors && s_current == s_sound) {
+        show(s_sensors);
     } else if (s_current != s_home) {
         show(s_home);
     }
@@ -1462,6 +1475,62 @@ static const page_t WIFI = { &s_wifi, build_wifi_page };
 static const page_t HATCH = { &s_hatch, build_hatch_page };
 static const page_t BLE = { &s_ble, build_ble_page };
 static const page_t SOUND = { &s_sound, build_sound_page };
+
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+static void on_cam_sw(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    muse_settings_set_camera_on(on);
+    if (!on) {
+        muse_cam_stop();
+    }
+}
+
+static void on_hr_sw(lv_event_t *e)
+{
+    bool on = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    muse_settings_set_hr_on(on);
+    if (!on) {
+        muse_hr_stop();
+    }
+}
+
+static void tick_sensors(void)
+{
+    bool cam = muse_settings_camera_on();
+    if (s_cam_sw && cam != lv_obj_has_state(s_cam_sw, LV_STATE_CHECKED)) {
+        lv_obj_set_state(s_cam_sw, LV_STATE_CHECKED, cam);
+    }
+    bool hr = muse_settings_hr_on();
+    if (s_hr_sw && hr != lv_obj_has_state(s_hr_sw, LV_STATE_CHECKED)) {
+        lv_obj_set_state(s_hr_sw, LV_STATE_CHECKED, hr);
+    }
+    if (!s_sensors_sound) {
+        return;
+    }
+    if (!muse_board->audio_init) {
+        set_text(s_sensors_sound, muse_board->mic_init ? "Mic only" : "No audio");
+    } else if (muse_settings_speaker_on()) {
+        set_val(s_sensors_sound, "Vol %d%%", muse_settings_volume());
+    } else {
+        set_text(s_sensors_sound, "Muted");
+    }
+}
+
+static void build_sensors_page(lv_obj_t *tile)
+{
+    lv_obj_t *list;
+    s_sensors = page(tile, "SENSORS", true, &list);
+    s_cam_sw = switch_row(list, "Camera", muse_settings_camera_on(), on_cam_sw);
+    note(list, "Off hides the shutter. Health then skips the selfie.");
+    s_hr_sw = switch_row(list, "HR sensor", muse_settings_hr_on(), on_hr_sw);
+    note(list, "Off hides the HR button. Health then skips the pulse reading.");
+    row(list, LV_SYMBOL_VOLUME_MAX, "Sound", &s_sensors_sound, on_nav, (void *)&SOUND);
+}
+
+static const page_t SENSORS = { &s_sensors, build_sensors_page };
+#endif
+
 static const page_t SLEEP = { &s_sleep, build_sleep_page };
 static const page_t BATTERY = { &s_battery, build_battery_page };
 static const page_t POWER = { &s_power, build_power_page };
@@ -1483,7 +1552,11 @@ static void build_home(lv_obj_t *tile)
     row(list, LV_SYMBOL_HOME, "Muse", &s_home_hatch, on_nav, (void *)&HATCH);
     row(list, LV_SYMBOL_OK, "Character", &s_home_char, on_nav, (void *)&LOOK);
     row(list, LV_SYMBOL_BLUETOOTH, "Bluetooth", &s_home_ble, on_nav, (void *)&BLE);
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    row(list, LV_SYMBOL_GPS, "Sensors", &s_home_sensors, on_nav, (void *)&SENSORS);
+#else
     row(list, LV_SYMBOL_VOLUME_MAX, "Sound", &s_home_sound, on_nav, (void *)&SOUND);
+#endif
     row(list, LV_SYMBOL_EYE_CLOSE, "Sleep", &s_home_sleep, on_nav, (void *)&SLEEP);
     row(list, LV_SYMBOL_BATTERY_FULL, "Battery", &s_home_battery, on_nav, (void *)&BATTERY);
     row(list, LV_SYMBOL_BELL, "Timers", &s_home_timers, on_nav, (void *)&TIMERS);
@@ -1519,6 +1592,15 @@ static void tick_home(void)
     muse_ble_status(&b);
     set_text(s_home_ble, b.state == MUSE_BLE_OFF ? "Off" : (b.state == MUSE_BLE_CONNECTED ? "Connected" : "On"));
 
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    if (s_home_sensors) {
+        char sen[24];
+        snprintf(sen, sizeof(sen), "Cam %s  HR %s",
+                 muse_settings_camera_on() ? "On" : "Off",
+                 muse_settings_hr_on() ? "On" : "Off");
+        set_text(s_home_sensors, sen);
+    }
+#else
     if (!muse_board->audio_init) {
         set_text(s_home_sound, muse_board->mic_init ? "Mic only" : "No audio");
     } else if (muse_settings_speaker_on()) {
@@ -1526,6 +1608,7 @@ static void tick_home(void)
     } else {
         set_text(s_home_sound, "Muted");
     }
+#endif
     set_text(s_home_sleep, sleep_name(muse_settings_sleep_s()));
 
     muse_power_t p = muse_state_power();
@@ -1598,6 +1681,10 @@ void muse_settings_ui_tick(bool visible)
         tick_ble();
     } else if (s_current == s_sound) {
         tick_sound();
+#if CONFIG_MUSE_BOARD_M5STACK_CORES3
+    } else if (s_current == s_sensors) {
+        tick_sensors();
+#endif
     } else if (s_current == s_sleep) {
         tick_sleep();
     } else if (s_current == s_look) {

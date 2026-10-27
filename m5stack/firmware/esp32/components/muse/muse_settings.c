@@ -39,6 +39,8 @@ static struct {
     uint16_t sleep_s;
     bool wifi_on;
     bool ble_on;
+    bool camera_on;
+    bool hr_on;
     uint8_t character;
     char ssid[MUSE_SSID_MAX + 1];
     char pass[MUSE_PASS_MAX + 1];
@@ -52,6 +54,8 @@ static struct {
     .brightness = 100,
     .sleep_s = 120,
     .wifi_on = true,
+    .camera_on = true,
+    .hr_on = true,
     .host = DEFAULT_HOST,
 };
 
@@ -128,6 +132,12 @@ esp_err_t muse_settings_init(void)
     if (nvs_get_u8(s_nvs, "ble_on", &b) == ESP_OK) {
         s.ble_on = b;
     }
+    if (nvs_get_u8(s_nvs, "cam_on", &b) == ESP_OK) {
+        s.camera_on = b;
+    }
+    if (nvs_get_u8(s_nvs, "hr_on", &b) == ESP_OK) {
+        s.hr_on = b;
+    }
     load_u8("look", &s.character);
     if (s.character >= MUSE_CHAR_COUNT) {
         s.character = MUSE_CHAR_MUSE;
@@ -141,9 +151,10 @@ esp_err_t muse_settings_init(void)
     s.volume = clampi(s.volume, 0, 100);
     s.mic_gain = clampi(s.mic_gain, 0, MUSE_MIC_GAIN_MAX);
     s.brightness = clampi(s.brightness, 10, 100);
-    ESP_LOGI(TAG, "vol %d%s, mic %d dB, bright %d, sleep %ds, wifi %s (%s), ble %s, muse %s",
+    ESP_LOGI(TAG, "vol %d%s, mic %d dB, bright %d, sleep %ds, wifi %s (%s), ble %s, cam %s, hr %s, muse %s",
              s.volume, s.speaker_on ? "" : " (speaker off)", s.mic_gain, s.brightness, s.sleep_s, s.wifi_on ? "on" : "off",
-             "network saved by Link", s.ble_on ? "on" : "off", s.token[0] ? "token set" : "no token");
+             "network saved by Link", s.ble_on ? "on" : "off", s.camera_on ? "on" : "off",
+             s.hr_on ? "on" : "off", s.token[0] ? "token set" : "no token");
     return ESP_OK;
 }
 
@@ -159,6 +170,8 @@ int muse_settings_brightness(void) { return s.brightness; }
 int muse_settings_sleep_s(void) { return s.sleep_s; }
 bool muse_settings_wifi_on(void) { return s.wifi_on; }
 bool muse_settings_ble_on(void) { return s.ble_on; }
+bool muse_settings_camera_on(void) { return s.camera_on; }
+bool muse_settings_hr_on(void) { return s.hr_on; }
 muse_char_t muse_settings_char(void) { return (muse_char_t)s.character; }
 
 const char *muse_settings_char_name(muse_char_t ch)
@@ -255,6 +268,20 @@ void muse_settings_set_ble_on(bool on)
     s.ble_on = on;
     save_u8("ble_on", on);
     notify(MUSE_SETTING_BLE);
+}
+
+void muse_settings_set_camera_on(bool on)
+{
+    s.camera_on = on;
+    save_u8("cam_on", on);
+    notify(MUSE_SETTING_CAMERA);
+}
+
+void muse_settings_set_hr_on(bool on)
+{
+    s.hr_on = on;
+    save_u8("hr_on", on);
+    notify(MUSE_SETTING_HR);
 }
 
 void muse_settings_set_char(muse_char_t ch)

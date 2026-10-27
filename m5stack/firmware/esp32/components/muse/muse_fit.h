@@ -35,11 +35,17 @@ typedef struct {
 void muse_fit_init(void);
 void muse_fit_note_squat(void);
 void muse_fit_note_step(void);
+/* Add a finished walk's steps to today's total (1 health point per 10 steps). */
+void muse_fit_note_steps(int n);
 void muse_fit_note_timer(const char *name);
 void muse_fit_note_pet(void);
 void muse_fit_today(muse_fit_today_t *out);
 int muse_fit_score(void);
 int muse_fit_streak(void);
+/* Overall grade for today's activity: "Good", "So so", or "Bad". */
+const char *muse_fit_grade(void);
+/* One-line next step that matches the grade. */
+const char *muse_fit_advice(void);
 /* Face diagnosis from today's stretch / mindful / yoga / squats / steps. */
 void muse_fit_check(void);
 bool muse_fit_active(void);

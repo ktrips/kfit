@@ -191,7 +191,7 @@ uint32_t muse_pixel_accent(muse_mode_t mode)
     return SCHEMES[mode < MUSE_MODE_COUNT ? mode : MUSE_MODE_IDLE].acc;
 }
 
-static void update_palette(const scheme_t *target, float dt, bool fitingo)
+static void update_palette(const scheme_t *target, float dt, bool fitingo, float vigor)
 {
     rgb_t tgt[5];
     for (int i = 0; i < 4; i++) {
@@ -229,6 +229,32 @@ static void update_palette(const scheme_t *target, float dt, bool fitingo)
         pal[C_GEAR] = hex_rgb(0x145218);
         pal[C_GEAR2] = hex_rgb(0xffe14a);   /* cute yellow beak */
         pal[C_RIM] = mix(pal[C_BL], pal[C_BH], 0.35f);
+    }
+
+    /* Low health: washed pastel. High health: deeper, richer fur. */
+    float v = vigor < 0 ? 0 : (vigor > 1 ? 1 : vigor);
+    float pale = v < 0.6f ? (0.6f - v) / 0.6f : 0.0f;
+    float rich = v > 0.6f ? (v - 0.6f) / 0.4f : 0.0f;
+    rgb_t wash = fitingo ? hex_rgb(0xe8f5e9) : hex_rgb(0xf7f2e6);
+    pal[C_BD] = mix(pal[C_BD], wash, pale * 0.78f);
+    pal[C_BM] = mix(pal[C_BM], wash, pale * 0.70f);
+    pal[C_BL] = mix(pal[C_BL], wash, pale * 0.58f);
+    pal[C_BH] = mix(pal[C_BH], pal[C_WHITE], pale * 0.45f);
+    pal[C_OUT] = mix(pal[C_OUT], wash, pale * 0.40f);
+    pal[C_OUT2] = mix(pal[C_OUT2], wash, pale * 0.40f);
+    if (fitingo) {
+        pal[C_GEAR] = mix(pal[C_GEAR], wash, pale * 0.50f);
+    }
+    if (rich > 0) {
+        pal[C_BD] = scale_rgb(pal[C_BD], 1.0f - 0.24f * rich);
+        pal[C_BM] = scale_rgb(pal[C_BM], 1.0f - 0.18f * rich);
+        pal[C_BL] = scale_rgb(pal[C_BL], 1.0f - 0.12f * rich);
+        pal[C_OUT] = scale_rgb(pal[C_OUT], 1.0f - 0.16f * rich);
+        pal[C_AURA1] = scale_rgb(pal[C_AURA1], 1.0f + 0.35f * rich);
+        pal[C_AURA2] = scale_rgb(pal[C_AURA2], 1.0f + 0.25f * rich);
+        if (fitingo) {
+            pal[C_GEAR] = scale_rgb(pal[C_GEAR], 1.0f - 0.18f * rich);
+        }
     }
 
     for (int i = 0; i < C_COUNT; i++) {
@@ -1001,8 +1027,19 @@ void muse_pixel_render(const muse_pose_t *p)
     float level = p->level;
     float t = p->t;
     bool fitingo = muse_settings_char() == MUSE_CHAR_FITIN;
+    static float s_bulk = -1.0f, s_vigor = -1.0f;
+    float bulk_t = p->bulk < 0 ? 0 : (p->bulk > 1 ? 1 : p->bulk);
+    float vigor_t = p->vigor < 0 ? 0 : (p->vigor > 1 ? 1 : p->vigor);
+    if (s_bulk < 0) {
+        s_bulk = bulk_t;
+        s_vigor = vigor_t;
+    } else {
+        float ease = 1.0f - expf(-dt * 2.4f);
+        s_bulk += (bulk_t - s_bulk) * ease;
+        s_vigor += (vigor_t - s_vigor) * ease;
+    }
 
-    update_palette(&SCHEMES[mode], dt, fitingo);
+    update_palette(&SCHEMES[mode], dt, fitingo, s_vigor);
     float blink = eyes_update(p, dt);
 
     memset(s_fb, C_BG, sizeof(s_fb));
@@ -1104,9 +1141,11 @@ void muse_pixel_render(const muse_pose_t *p)
     float squash = 1.0f - (1.0f - pop) * 0.35f + sinf(pop * 3.1416f) * 0.06f;
 
     float breathe = sinf(t * breathe_rate + 1.0f) * (mv == MUSE_MOVE_MINDFUL ? 0.07f : 0.03f);
+    float grow = 0.74f + 0.26f * s_bulk;     /* streak 0: small; 7 days: full */
+    float wide = 1.0f + 0.28f * s_bulk;      /* extra chest as they bulk up */
     avatar_t j;
-    j.a = (fitingo ? 17.4f : 16.0f) * (1 + breathe) * (2.0f - squash) + level * 0.8f;
-    j.b = (fitingo ? 21.5f : 23.0f) * (1 - breathe) * squash;
+    j.a = (fitingo ? 17.4f : 16.0f) * grow * wide * (1 + breathe) * (2.0f - squash) + level * 0.8f;
+    j.b = (fitingo ? 21.5f : 23.0f) * grow * (1 - breathe) * squash;
     j.cx = 32.0f + lean;
     j.cy = 56.5f - j.b + bob * 0.5f - hop;   /* feet stay near the ground */
     j.fa = j.a * 0.66f;
@@ -1128,19 +1167,22 @@ void muse_pixel_render(const muse_pose_t *p)
     }
 
     /* ---- background layers ---- */
-    float aura_r = 29.0f + level * 4.0f + sinf(t * 1.5f) * 1.0f;
-    float aura_s = (0.75f * boot + level * 0.4f) * fade;
+    float aura_r = 29.0f + level * 4.0f + sinf(t * 1.5f) * 1.0f + s_bulk * 3.0f;
+    float aura_s = (0.75f * boot + level * 0.4f) * fade * (0.55f + 0.45f * s_vigor);
     draw_aura(j.cx, j.cy - 3, aura_r, aura_s);
     if (mode == MUSE_MODE_LISTENING) {
         draw_rings(j.cx, j.fy + 2, t, level, 0.9f);
     } else if (mode == MUSE_MODE_SPEAKING) {
         draw_rings(j.cx, j.fy + 2, t, level, 0.6f);
     }
-    draw_shadow(j.cx, 58.5f, 13.0f - hop * 0.8f);
+    draw_shadow(j.cx, 58.5f, (13.0f * grow * (0.9f + 0.18f * s_bulk)) - hop * 0.8f);
 
     float spk_speed = mode == MUSE_MODE_THINKING ? 2.8f : mode == MUSE_MODE_LISTENING ? 1.2f
                     : mode == MUSE_MODE_SPEAKING ? 1.5f : 0.6f;
     int spk_count = mode == MUSE_MODE_BOOT ? (int)(boot * 6) : (int)(6 * fade);
+    if (s_vigor > 0.3f) {
+        spk_count += (int)(s_vigor * 4.0f);
+    }
     if (happy > 0.85f) {
         spk_speed = 3.4f;
         spk_count += 5;
@@ -1152,8 +1194,9 @@ void muse_pixel_render(const muse_pose_t *p)
     limb_t feet[2];
     float step = mode == MUSE_MODE_SPEAKING ? sinf(t * 5.0f) * 0.6f
                : mv == MUSE_MOVE_WALK ? sinf(t * 9.0f) * 1.35f : 0.0f;
-    feet[0] = (limb_t){ j.cx - 7.0f, base - 0.5f + (happy > 0 ? hop * 0.3f : step), -0.15f };
-    feet[1] = (limb_t){ j.cx + 7.0f, base - 0.5f + (happy > 0 ? hop * 0.3f : -step), 0.15f };
+    float stance = 7.0f * (0.86f + 0.18f * s_bulk) * grow;
+    feet[0] = (limb_t){ j.cx - stance, base - 0.5f + (happy > 0 ? hop * 0.3f : step), -0.15f };
+    feet[1] = (limb_t){ j.cx + stance, base - 0.5f + (happy > 0 ? hop * 0.3f : -step), 0.15f };
 
     limb_t arms[2];
     float adx = j.a + 0.3f;
@@ -1188,14 +1231,13 @@ void muse_pixel_render(const muse_pose_t *p)
             float wig = sinf(t * 14.0f) * 0.25f;
             arms[0] = (limb_t){ j.cx - adx - 1.0f, j.cy - 4.0f, 2.4f + wig };
             arms[1] = (limb_t){ j.cx + adx + 1.0f, j.cy - 4.0f, -2.4f - wig };
-        } else if (fitingo) {
-            /* Idle flex: biceps up like the Fitin mascot. */
-            float pump = 0.08f * sinf(t * 2.2f);
-            arms[0] = (limb_t){ j.cx - adx - 2.4f, j.cy - 1.2f, 2.05f + pump };
-            arms[1] = (limb_t){ j.cx + adx + 2.4f, j.cy - 1.2f, -2.05f - pump };
         } else {
-            arms[0] = (limb_t){ j.cx - adx, ay, -0.3f + sway };
-            arms[1] = (limb_t){ j.cx + adx, ay, 0.3f - sway };
+            float flex = fitingo ? (0.45f + 0.55f * s_bulk) : (s_bulk > 0.3f ? (s_bulk - 0.3f) / 0.7f : 0.0f);
+            float pump = 0.08f * sinf(t * 2.2f) * flex;
+            arms[0] = (limb_t){ j.cx - adx - 2.4f * flex, ay * (1.0f - flex) + (j.cy - 1.2f) * flex,
+                                (-0.3f + sway) * (1.0f - flex) + (2.05f + pump) * flex };
+            arms[1] = (limb_t){ j.cx + adx + 2.4f * flex, ay * (1.0f - flex) + (j.cy - 1.2f) * flex,
+                                (0.3f - sway) * (1.0f - flex) + (-2.05f - pump) * flex };
         }
         break;
     }
@@ -1243,8 +1285,8 @@ void muse_pixel_render(const muse_pose_t *p)
             arms[1] = (limb_t){ j.cx + 3.4f, ay + 3.2f, -0.95f };
         }
     }
-    float arm_rx = fitingo ? 5.4f : 2.9f;
-    float arm_ry = fitingo ? 7.2f : 5.2f;
+    float arm_rx = (fitingo ? 5.4f : 2.9f) * (0.82f + 0.38f * s_bulk);
+    float arm_ry = (fitingo ? 7.2f : 5.2f) * (0.82f + 0.38f * s_bulk);
     draw_avatar(&j, arms, feet, arm_rx, arm_ry, fitingo);
     if (fitingo) {
         draw_tank(&j);

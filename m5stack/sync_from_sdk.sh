@@ -28,10 +28,19 @@ files=(
   esp32/components/muse/muse_ui.c
   esp32/components/muse/muse_activity_ui.c
   esp32/components/muse/muse_activity_ui.h
+  esp32/components/muse/muse_cam.c
+  esp32/components/muse/muse_cam.h
+  esp32/components/muse/muse_chat.h
+  esp32/components/muse/muse_chat_session.cpp
+  esp32/components/muse/muse_voice.c
+  esp32/components/muse/muse_voice.h
+  esp32/devices/sdkconfig.muse-m5stack-cores3
   esp32/components/muse/muse_clock.c
   esp32/components/muse/muse_clock.h
   esp32/components/muse/muse_fit.c
   esp32/components/muse/muse_fit.h
+  esp32/components/muse/muse_hr.c
+  esp32/components/muse/muse_hr.h
   esp32/components/muse/muse_squat.c
   esp32/components/muse/muse_squat.h
   esp32/components/muse/muse_timer.c

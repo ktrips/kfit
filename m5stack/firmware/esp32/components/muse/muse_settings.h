@@ -46,6 +46,8 @@ typedef enum {
     MUSE_SETTING_BLE,
     MUSE_SETTING_HATCH,
     MUSE_SETTING_CHAR,
+    MUSE_SETTING_CAMERA,
+    MUSE_SETTING_HR,
 } muse_setting_t;
 
 typedef enum {
@@ -83,6 +85,10 @@ void muse_settings_set_ble_on(bool on);
 muse_char_t muse_settings_char(void);
 void muse_settings_set_char(muse_char_t ch);
 const char *muse_settings_char_name(muse_char_t ch);
+bool muse_settings_camera_on(void);
+void muse_settings_set_camera_on(bool on);
+bool muse_settings_hr_on(void);
+void muse_settings_set_hr_on(bool on);
 /* A network name is remembered first among the saved ones and joined now;
  * an empty ssid forgets every saved network. */
 void muse_settings_set_wifi(const char *ssid, const char *pass);

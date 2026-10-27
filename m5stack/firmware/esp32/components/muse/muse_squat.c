@@ -27,6 +27,8 @@
 
 #include "muse_audio.h"
 #include "muse_fit.h"
+#include "muse_hr.h"
+#include "muse_mem.h"
 #include "muse_state.h"
 #include "muse_timer.h"
 
@@ -58,11 +60,18 @@ static const char *TAG = "muse_squat";
 #define MAX_DOWN_MS 2200
 #define MIN_REP_MS 600
 #define SQUAT_GOAL 20
-#define STEP_ON 0.18f
-#define STEP_OFF 0.05f
+#define STEP_ON 0.028f        /* pocket walking peak of |a| minus gravity */
+#define STEP_OFF 0.012f
+#define STEP_LP 0.012f        /* ~1.6 s gravity so a stride is not tracked away */
+#define STEP_BP 0.28f
+#define STEP_MAX_THR 0.065f
 #define MIN_STEP_MS 280
-#define MAX_STEP_MS 1500
-#define STEP_ARM_MS 700
+#define HIGH_MAX_MS 700
+#define STEP_ARM_MS 400
+#define IMU_MS 20
+#define I2C_MS 20
+#define RESYNC_MS 2000
+#define RECOVER_MS 400
 
 #include "boards/bmi270_config.inl"
 
@@ -71,7 +80,11 @@ typedef enum { RUN_OFF = 0, RUN_ON, RUN_PAUSE } run_t;
 static i2c_master_dev_handle_t s_dev;
 static bool s_ok;
 static bool s_imu_on;
-static esp_timer_handle_t s_tmr;
+static volatile bool s_imu_run;
+static TaskHandle_t s_imu_task;
+static int s_i2c_miss;
+static int64_t s_last_sample_us;
+static int64_t s_recover_us;
 
 static run_t s_squat_mode;
 static bool s_squat_done;
@@ -87,23 +100,28 @@ static int64_t s_active_us;
 static int s_buzzed;
 
 static run_t s_step_mode;
-static int s_steps;
+static volatile int s_steps;
 static float s_mag_lp = 1.0f;
+static float s_step_bp;
+static float s_step_var = 0.02f;
 static float s_step_peak;
 static bool s_step_high;
 static int64_t s_step_us;
 static int64_t s_step_arm_us;
+static int64_t s_high_us;
 static enum { CAP_NONE = 0, CAP_SQUAT, CAP_STEPS } s_caption_src;
+
+static esp_err_t accel_on(bool on);
 
 static esp_err_t wr(uint8_t reg, uint8_t val)
 {
     uint8_t buf[2] = { reg, val };
-    return i2c_master_transmit(s_dev, buf, sizeof(buf), 50);
+    return i2c_master_transmit(s_dev, buf, sizeof(buf), I2C_MS);
 }
 
 static esp_err_t rd(uint8_t reg, uint8_t *data, size_t n)
 {
-    return i2c_master_transmit_receive(s_dev, &reg, 1, data, n, 50);
+    return i2c_master_transmit_receive(s_dev, &reg, 1, data, n, I2C_MS);
 }
 
 static esp_err_t wr_n(uint8_t reg, const uint8_t *data, size_t n)
@@ -125,6 +143,24 @@ static esp_err_t add_dev(i2c_master_bus_handle_t bus, uint8_t addr)
         .scl_speed_hz = 400000,
     };
     return i2c_master_bus_add_device(bus, &cfg, &s_dev);
+}
+
+/* Re-enable the accelerometer without dropping the session. */
+static bool imu_kick(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (s_recover_us && now - s_recover_us < (int64_t)RECOVER_MS * 1000) {
+        return s_imu_on;
+    }
+    s_recover_us = now;
+    if (accel_on(true) == ESP_OK) {
+        s_imu_on = true;
+        s_i2c_miss = 0;
+        return true;
+    }
+    ESP_LOGW(TAG, "accelerometer retry failed");
+    s_imu_on = false;
+    return false;
 }
 
 static esp_err_t upload_config(void)
@@ -186,11 +222,14 @@ static void show_status(void)
     if (muse_fit_active()) {
         return;
     }
+    if (muse_hr_active()) {
+        return;
+    }
     if (muse_state_mode(NULL) != MUSE_MODE_IDLE) {
         return;
     }
     if (s_step_mode == RUN_ON) {
-        muse_state_set_caption("STEPS %d\nWALKING", s_steps);
+        muse_state_set_caption("STEPS %d", s_steps);
         return;
     }
     if (s_squat_done) {
@@ -218,48 +257,76 @@ static void show_status(void)
 static void sync_imu(void)
 {
     bool need = s_squat_mode == RUN_ON || s_step_mode == RUN_ON;
-    if (need == s_imu_on) {
-        return;
-    }
     if (need) {
+        if (s_imu_run && s_imu_on) {
+            return;
+        }
         s_have_g = false;
         s_v = 0;
         s_down = false;
         s_down_us = s_rep_us = 0;
         s_mag_lp = 1.0f;
+        s_step_bp = 0;
+        s_step_var = 0.02f;
         s_step_high = false;
         s_step_peak = 0;
-        if (accel_on(true) == ESP_OK) {
-            esp_timer_start_periodic(s_tmr, SAMPLE_US);
-            s_imu_on = true;
-        } else {
-            ESP_LOGW(TAG, "could not enable accelerometer");
-            if (s_squat_mode == RUN_ON) {
-                s_squat_mode = RUN_OFF;
-            }
-            if (s_step_mode == RUN_ON) {
-                s_step_mode = RUN_OFF;
-            }
+        s_i2c_miss = 0;
+        s_last_sample_us = 0;
+        s_imu_run = true;
+        imu_kick();
+        if (s_imu_task) {
+            xTaskNotifyGive(s_imu_task);
         }
-    } else {
-        esp_timer_stop(s_tmr);
-        s_bend = 0;
-        accel_on(false);
-        s_imu_on = false;
+        return;
+    }
+    if (!s_imu_run && !s_imu_on) {
+        return;
+    }
+    s_imu_run = false;
+    s_bend = 0;
+    accel_on(false);
+    s_imu_on = false;
+}
+
+static void note_step(int64_t now)
+{
+    int since_ms = s_step_us ? (int)((now - s_step_us) / 1000) : MIN_STEP_MS;
+    if (s_step_peak < STEP_ON || since_ms < MIN_STEP_MS) {
+        return;
+    }
+    s_steps++;
+    s_step_us = now;
+    if (!muse_state_asleep()) {
+        show_status();
+    }
+    if ((s_steps % 50) == 0) {
+        ESP_LOGI(TAG, "step %d", s_steps);
     }
 }
 
-static void on_sample(void *arg)
+static void on_sample(void)
 {
-    (void)arg;
     if (s_squat_mode != RUN_ON && s_step_mode != RUN_ON) {
         return;
     }
     float ax, ay, az;
     if (!read_g(&ax, &ay, &az)) {
+        if (++s_i2c_miss >= 5) {
+            s_i2c_miss = 0;
+            imu_kick();
+            ESP_LOGW(TAG, "BMI270 recovered after missed samples");
+        }
         return;
     }
+    s_i2c_miss = 0;
+    s_imu_on = true;
     int64_t now = esp_timer_get_time();
+    if (s_last_sample_us && now - s_last_sample_us > (int64_t)RESYNC_MS * 1000) {
+        /* A long gap would look like a huge step. Keep LP, drop the peak. */
+        s_step_high = false;
+        s_step_peak = 0;
+    }
+    s_last_sample_us = now;
 
     if (s_squat_mode == RUN_ON) {
         if (!s_have_g) {
@@ -327,27 +394,32 @@ static void on_sample(void *arg)
 
     if (s_step_mode == RUN_ON && now >= s_step_arm_us) {
         float mag = sqrtf(ax * ax + ay * ay + az * az);
-        s_mag_lp += (mag - s_mag_lp) * 0.08f;
-        float d = mag - s_mag_lp;
-        if (!s_step_high && d > STEP_ON) {
+        /* Slow gravity so a pocket stride is not absorbed into the baseline. */
+        s_mag_lp += (mag - s_mag_lp) * STEP_LP;
+        float hp = mag - s_mag_lp;
+        s_step_bp += (hp - s_step_bp) * STEP_BP;
+        float d = s_step_bp;
+        s_step_var += (d * d - s_step_var) * 0.008f;
+        float rms = sqrtf(s_step_var < 0 ? 0 : s_step_var);
+        float thr = STEP_ON + 0.12f * rms;
+        if (thr > STEP_MAX_THR) {
+            thr = STEP_MAX_THR;
+        }
+        if (!s_step_high && d > thr) {
             s_step_high = true;
             s_step_peak = d;
+            s_high_us = now;
         } else if (s_step_high) {
             if (d > s_step_peak) {
                 s_step_peak = d;
             }
-            if (d < STEP_OFF) {
-                int ms = s_step_us ? (int)((now - s_step_us) / 1000) : MIN_STEP_MS;
+            int high_ms = (int)((now - s_high_us) / 1000);
+            if (d < s_step_peak * 0.45f && s_step_peak >= STEP_ON) {
                 s_step_high = false;
-                if (s_step_peak >= STEP_ON && ms >= MIN_STEP_MS && ms <= MAX_STEP_MS) {
-                    s_steps++;
-                    s_step_us = now;
-                    muse_fit_note_step();
-                    if (!muse_state_asleep()) {
-                        show_status();
-                    }
-                    ESP_LOGI(TAG, "step %d", s_steps);
-                }
+                note_step(now);
+                s_step_peak = 0;
+            } else if (d < STEP_OFF || high_ms > HIGH_MAX_MS) {
+                s_step_high = false;
                 s_step_peak = 0;
             }
         }
@@ -356,11 +428,51 @@ static void on_sample(void *arg)
     static int idle_ticks;
     if (++idle_ticks >= 25) {
         idle_ticks = 0;
-        if (!muse_state_asleep()) {
-            show_status();
+        if (s_step_mode == RUN_ON || s_squat_mode == RUN_ON) {
+            if (!s_imu_on) {
+                imu_kick();
+            }
+            if (s_last_sample_us && now - s_last_sample_us > (int64_t)400 * 1000) {
+                imu_kick();
+            }
         }
         if (s_squat_mode == RUN_ON) {
+            if (!muse_state_asleep()) {
+                show_status();
+            }
             muse_state_poke();
+        } else if (s_step_mode == RUN_ON && !muse_state_asleep()) {
+            show_status();
+        }
+    }
+}
+
+static void imu_task(void *arg)
+{
+    (void)arg;
+    int64_t next = esp_timer_get_time();
+    for (;;) {
+        if (!s_imu_run) {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            next = esp_timer_get_time();
+            continue;
+        }
+        on_sample();
+        if ((s_step_mode == RUN_ON || s_squat_mode == RUN_ON) && !s_imu_on) {
+            imu_kick();
+        }
+        next += (int64_t)SAMPLE_US;
+        int64_t now = esp_timer_get_time();
+        int wait_ms = (int)((next - now) / 1000);
+        if (wait_ms > IMU_MS) {
+            wait_ms = IMU_MS;
+            next = now + (int64_t)SAMPLE_US;
+        }
+        if (wait_ms > 0) {
+            vTaskDelay(pdMS_TO_TICKS(wait_ms));
+        } else {
+            next = now;
+            taskYIELD();
         }
     }
 }
@@ -398,11 +510,11 @@ esp_err_t muse_squat_init(i2c_master_bus_handle_t bus)
     if (err != ESP_OK) {
         return err;
     }
-    const esp_timer_create_args_t t = {
-        .callback = on_sample,
-        .name = "squat",
-    };
-    ESP_RETURN_ON_ERROR(esp_timer_create(&t, &s_tmr), TAG, "timer");
+    if (xTaskCreatePinnedToCore(imu_task, "bmi270", 4096, NULL, MUSE_UI_PRIORITY + 2,
+                                &s_imu_task, MUSE_UI_CORE ? 0 : 1) != pdPASS) {
+        ESP_LOGE(TAG, "IMU task");
+        return ESP_ERR_NO_MEM;
+    }
     s_ok = true;
     return ESP_OK;
 }
@@ -546,6 +658,8 @@ static void steps_run(void)
     s_caption_src = CAP_STEPS;
     s_step_high = false;
     s_step_peak = 0;
+    s_step_bp = 0;
+    s_high_us = 0;
     s_step_arm_us = esp_timer_get_time() + (int64_t)STEP_ARM_MS * 1000;
     sync_imu();
     muse_state_poke();
@@ -586,6 +700,7 @@ void muse_steps_toggle(void)
 
 void muse_steps_exit_reset(void)
 {
+    int n = s_steps;
     s_steps = 0;
     s_step_high = false;
     s_step_mode = RUN_OFF;
@@ -593,6 +708,14 @@ void muse_steps_exit_reset(void)
         s_caption_src = CAP_NONE;
     }
     sync_imu();
+    if (n > 0) {
+        muse_fit_note_steps(n);
+        muse_fit_today_t t;
+        muse_fit_today(&t);
+        int pts = n / 10;
+        muse_state_set_caption("STEPS +%d\n+%d  TODAY %d", n, pts, (int)t.steps);
+        return;
+    }
     if (muse_state_mode(NULL) == MUSE_MODE_IDLE) {
         if (s_squat_mode == RUN_PAUSE) {
             s_caption_src = CAP_SQUAT;

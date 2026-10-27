@@ -40,7 +40,9 @@ static const char *TAG = "muse_timer";
 static esp_timer_handle_t s_tmr;
 static bool s_ready;
 static volatile bool s_active;
+static bool s_paused;
 static int64_t s_end_us;
+static int64_t s_remain_us;
 static int64_t s_done_until_us;
 static char s_name[16];
 static int s_last_shown = -1;
@@ -52,7 +54,7 @@ static void show_remaining(int left)
     if (muse_fit_active() || muse_state_mode(NULL) != MUSE_MODE_IDLE) {
         return;
     }
-    muse_state_set_caption("%s %d:%02d\nTAP TO STOP", s_name, left / 60, left % 60);
+    muse_state_set_caption("%s %d:%02d\nTAP TO PAUSE", s_name, left / 60, left % 60);
 }
 
 static void show_done(void)
@@ -71,9 +73,19 @@ static void show_done(void)
     }
 }
 
+static void show_paused(int left)
+{
+    if (muse_fit_active() || muse_state_mode(NULL) != MUSE_MODE_IDLE) {
+        return;
+    }
+    muse_state_set_caption("%s %d:%02d\nPAUSED", s_name, left / 60, left % 60);
+}
+
 static void finish(void)
 {
     s_active = false;
+    s_paused = false;
+    s_remain_us = 0;
     if (s_tmr) {
         esp_timer_stop(s_tmr);
     }
@@ -154,10 +166,12 @@ void muse_timer_start(int secs, const char *name)
 #endif
     strlcpy(s_name, name, sizeof(s_name));
     s_end_us = esp_timer_get_time() + (int64_t)secs * 1000000;
+    s_remain_us = (int64_t)secs * 1000000;
     s_done_until_us = 0;
     s_last_shown = -1;
     s_total_s = secs;
     s_buzzed = 0;
+    s_paused = false;
     s_active = true;
     esp_timer_stop(s_tmr);
     esp_timer_start_periodic(s_tmr, TICK_US);
@@ -167,10 +181,48 @@ void muse_timer_start(int secs, const char *name)
     ESP_LOGI(TAG, "%s %ds", s_name, secs);
 }
 
+void muse_timer_toggle(int secs, const char *name)
+{
+    if (s_active && name && strcmp(s_name, name) == 0) {
+        int64_t left = s_end_us - esp_timer_get_time();
+        s_remain_us = left > 0 ? left : 0;
+        s_active = false;
+        s_paused = s_remain_us > 0;
+        if (s_tmr) {
+            esp_timer_stop(s_tmr);
+        }
+        int sec = muse_timer_remaining_s();
+        if (s_paused) {
+            show_paused(sec);
+        } else {
+            muse_timer_exit_reset();
+        }
+        return;
+    }
+    if (s_paused && name && strcmp(s_name, name) == 0 && s_remain_us > 0) {
+        ensure_timer();
+        if (!s_ready) {
+            return;
+        }
+        s_end_us = esp_timer_get_time() + s_remain_us;
+        s_paused = false;
+        s_active = true;
+        s_last_shown = -1;
+        esp_timer_stop(s_tmr);
+        esp_timer_start_periodic(s_tmr, TICK_US);
+        muse_state_poke();
+        show_remaining(muse_timer_remaining_s());
+        return;
+    }
+    muse_timer_start(secs, name);
+}
+
 void muse_timer_stop(void)
 {
-    bool had = s_active || s_done_until_us;
+    bool had = s_active || s_paused || s_done_until_us;
     s_active = false;
+    s_paused = false;
+    s_remain_us = 0;
     s_done_until_us = 0;
     s_last_shown = -1;
     if (s_tmr) {
@@ -181,17 +233,32 @@ void muse_timer_stop(void)
     }
 }
 
+void muse_timer_exit_reset(void)
+{
+    muse_timer_stop();
+}
+
 bool muse_timer_active(void)
 {
     return s_active;
 }
 
+bool muse_timer_paused(void)
+{
+    return s_paused;
+}
+
 int muse_timer_remaining_s(void)
 {
-    if (!s_active) {
+    int64_t us = 0;
+    if (s_active) {
+        us = s_end_us - esp_timer_get_time();
+    } else if (s_paused) {
+        us = s_remain_us;
+    } else {
         return 0;
     }
-    int left = (int)((s_end_us - esp_timer_get_time() + 999999) / 1000000);
+    int left = (int)((us + 999999) / 1000000);
     return left > 0 ? left : 0;
 }
 
@@ -202,7 +269,7 @@ const char *muse_timer_label(void)
 
 bool muse_timer_on_face_tap(void)
 {
-    if (s_active || s_done_until_us) {
+    if (s_done_until_us) {
         muse_timer_stop();
         return true;
     }

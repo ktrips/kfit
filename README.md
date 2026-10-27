@@ -66,7 +66,7 @@ FIT → DIET → FOOD → EDU の4モードを横スワイプで切り替え、�
 
 Fitingo の相棒キャラ **Fitin（フィッティン）** を、M5Stack CoreS3 で動かすガジェットです。SETTING ではこれまでの **Muse** も残せます。緑の体に Muse に似た顔と、黄色い小さなクチバシです。
 
-ポケットや机の上に置いて、スクワット・歩き・瞑想をその場で始めます。iPhone がなくても単体でカウントと Health 点が貯まります（アプリ同期はこれから）。
+ポケットや机の上に置いて、スクワット・歩き・瞑想・心拍・顔写真からの Health 診断をその場で始めます。iPhone がなくても単体でカウントと Health 点が貯まります（アプリ同期はこれから）。
 
 ### 操作（ホーム）
 
@@ -76,18 +76,24 @@ Fitingo の相棒キャラ **Fitin（フィッティン）** を、M5Stack CoreS
 
 ホーム四隅: 左上の足が Steps、右上が Camera、左下が Mindful 1分、右下が Health。
 
+### Camera / HR / Health
+
+- **Camera** — 前面カメラ。SETTING → Sensors で On のとき、右上または GO からファインダー。画面タップで大きく 3・2・1 のあと撮影。左上の戻るでホームへ
+- **HR** — 右側面 Port B の心拍センサー（Unit Heart など）。Sensors で On のとき GO に HR が出る。指を乗せて BPM を表示
+- **Health** — カメラ On なら顔写真、HR On ならそのあと心拍、最後に Muse が Good / So so / Bad と短い対応策を出す。どちらも Off ならその日の活動だけから診断
+
 ### GO
 
 | ボタン | 操作 |
 |---|---|
 | **Steps** | タップで開始。ポケットに入れても止まらず、スリープ中も計測が続く。一時停止は画面を約2.5秒長押しして足マークを出し、その足を約2秒長押し。止まっているときに長押しで終了し、その回の歩数を今日の合計へ加算（10歩=1点）。結果は画面に残り、Health 診断でも使う |
 | **Squats** | 胸元で持つ。タップ開始/一時停止、長押しでゼロ。20回で完了 |
-| **HR** | SETTING → Sensors で HR Sensor が On のとき。Port B に指を乗せて BPM を表示 |
+| **HR** | Sensors で HR Sensor が On のとき。Port B に指を乗せて BPM を表示 |
 | **Timers** | タップして Mindful 1分 / Stretch 3分 / Yoga 5分 |
-| **Camera** | SETTING → Sensors でオンのとき。タップでファインダー、画面タップで大きく 3・2・1 のあと撮影 |
-| **Health** | カメラと HR Sensor が On なら写真のあと心拍を測り、Muse が Good / So so / Bad と対応策を表示 |
+| **Camera** | Sensors で Camera が On のとき。ファインダー → 画面タップで 3・2・1 → 撮影 |
+| **Health** | 顔写真（Camera On）→ 心拍（HR On）→ Muse が Good / So so / Bad と対応策 |
 
-詳細な操作・ビルド・フラッシュは [m5stack/README.md](m5stack/README.md)。ベースは Meta の muse-gadget-sdk。トークンはデバイスの NVS だけに入れ、GitHub には置きません。
+SETTING の **Sensors**（Bluetooth の下）で Camera / HR sensor / Sound を切り替えます。詳細な操作・配線・ビルドは [m5stack/README.md](m5stack/README.md)。ベースは Meta の muse-gadget-sdk。トークンはデバイスの NVS だけに入れ、GitHub には置きません。
 
 ---
 

@@ -3,10 +3,11 @@
 ジムも、記録アプリも、3日で終わった。それは意志が弱いからではなく、記録が面倒だったから。
 腕立て・スクワット・食事・語学・体重——数えるのも記録するのも、iPhoneとApple Watchが自動でやります。
 あなたがすることは、最初は1日90秒だけ。
+机の上の **Fitin（フィッティン）** は、スクワットや瞑想に一緒についてくる Fitingo のガジェットです。
 
 🌐 **Web:** https://kfitapp.web.app （https://fit.ktrips.net）
 📱 **iOS + Apple Watch** 対応（マスコット/ブランド名: Fitingo）
-🖥️ **M5Stack CoreS3** 対応（ガジェット名: Fitin / Muse）→ [m5stack/](m5stack/)
+🦉 **Fitin** — M5Stack CoreS3 ガジェット（SETTING で Muse も選べる）→ [m5stack/](m5stack/)
 📦 **GitHub:** https://github.com/ktrips/kfit
 
 ---
@@ -56,6 +57,29 @@ FIT → DIET → FOOD → EDU の4モードを横スワイプで切り替え、�
 | **Fitingo Plus**（サブスクリプション） | ✅ | ✅ | — |
 | キーボードショートカット | ✅ | — | — |
 | リアルタイム同期 | ✅ | ✅ | ✅ |
+
+手元の画面で一緒に動くガジェットは **Fitin**（詳細は下の「Fitin」節、コードは [m5stack/](m5stack/)）。
+
+---
+
+## 🦉 Fitin（M5Stack CoreS3）
+
+Fitingo の相棒キャラ **Fitin（フィッティン）** を、M5Stack CoreS3 で動かすガジェットです。SETTING ではこれまでの **Muse** も残せます。緑の体に Muse に似た顔と、黄色い小さなクチバシです。
+
+ポケットや机の上に置いて、スクワット・歩き・瞑想をその場で始めます。iPhone がなくても単体でカウントと Health 点が貯まります（アプリ同期はこれから）。
+
+| できること | 内容 |
+|---|---|
+| キャラ | SETTING で **Muse** / **Fitin**。ホーム準備完了時は `READY` ではなくキャラ名 |
+| GO（右スワイプ） | スクワット、歩数、瞑想1分、ストレッチ3分、ヨガ5分、Health |
+| スクワット | BMI270。タップで開始/一時停止、長押しでゼロ終了。20回で完了 |
+| 歩数 | タップ開始、再タップ一時停止、長押しでゼロ＋終了 |
+| Health 点 | スクワット・歩数・瞑想/ストレッチ/ヨガ・キャラを10回なでる |
+| 達成と連続 | 1日 **60点以上** で達成。ヘッダーに `H94(D1)`（今日の点と連続日）。タップで Health チェック |
+| ヘッダー右 | 日付・時刻・Wi-Fi・バッテリー |
+| 音 | うるさいビープは出さず、完了時などの短い可愛いチャープだけ |
+
+ビルド・フラッシュ手順と SDK 差分は [m5stack/README.md](m5stack/README.md)。ベースは Meta の muse-gadget-sdk。トークンはデバイスの NVS だけに入れ、GitHub には置きません。
 
 ---
 
@@ -176,10 +200,11 @@ open kfit.xcworkspace
 
 詳細: [XCODE_SETUP.md](XCODE_SETUP.md)
 
-### M5Stack CoreS3（Fitin）
+### Fitin（M5Stack CoreS3）
 ```bash
 cd m5stack
-./sync_to_sdk.sh   # 隣の ../muse-gadget-sdk に差分を重ねる
+./sync_to_sdk.sh   # 隣の muse-gadget-sdk に Fitin 差分を重ねる
+# その後 ESP-IDF で CoreS3 向けに build / flash（手順は m5stack/README.md）
 ```
 詳細: [m5stack/README.md](m5stack/README.md)
 
@@ -200,6 +225,11 @@ cd m5stack
 - HealthKit (歩数・心拍数・平均心拍・HRV・睡眠・PFC栄養素)
 - Vision + NaturalLanguage（Duolingoスクリーンショット OCR・言語検出）+ AVSpeechSynthesizer（発音再生）
 - Firebase Auth + Firestore
+
+### Fitin / M5Stack
+- ESP-IDF v6 + Meta muse-gadget-sdk（差分は `m5stack/firmware/`）
+- LVGL アバター（Muse / Fitin）
+- BMI270（スクワット・歩数）
 
 ### バックエンド
 - Firebase Authentication

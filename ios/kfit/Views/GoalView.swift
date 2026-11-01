@@ -49,7 +49,6 @@ struct GoalView: View {
         [
             ("スクワット", "fitingo_mv_squat"),
             ("腕立て", "fitingo_mv_pushups"),
-            ("腹筋", "fitingo_mv_pushups"),
             ("レッグレイズ", "fitingo_mv_legs"),
             ("バーピー", "fitingo_mv_burpee"),
         ]

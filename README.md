@@ -3,9 +3,11 @@
 ジムも、記録アプリも、3日で終わった。それは意志が弱いからではなく、記録が面倒だったから。
 腕立て・スクワット・食事・語学・体重——数えるのも記録するのも、iPhoneとApple Watchが自動でやります。
 あなたがすることは、最初は1日90秒だけ。
+机の上の **Fitin（フィッティン）** は、スクワットや瞑想に一緒についてくる Fitingo のガジェットです。
 
 🌐 **Web:** https://kfitapp.web.app （https://fit.ktrips.net）
 📱 **iOS + Apple Watch** 対応（マスコット/ブランド名: Fitingo）
+🦉 **Fitin** — M5Stack CoreS3 ガジェット（SETTING で Muse も選べる）→ [m5stack/](m5stack/)
 📦 **GitHub:** https://github.com/ktrips/kfit
 
 ---
@@ -55,6 +57,43 @@ FIT → DIET → FOOD → EDU の4モードを横スワイプで切り替え、�
 | **Fitingo Plus**（サブスクリプション） | ✅ | ✅ | — |
 | キーボードショートカット | ✅ | — | — |
 | リアルタイム同期 | ✅ | ✅ | ✅ |
+
+手元の画面で一緒に動くガジェットは **Fitin**（詳細は下の「Fitin」節、コードは [m5stack/](m5stack/)）。
+
+---
+
+## 🦉 Fitin（M5Stack CoreS3）
+
+Fitingo の相棒キャラ **Fitin（フィッティン）** を、M5Stack CoreS3 で動かすガジェットです。SETTING ではこれまでの **Muse** も残せます。緑の体に Muse に似た顔と、黄色い小さなクチバシです。
+
+ポケットや机の上に置いて、スクワット・歩き・瞑想・心拍・顔写真からの Health 診断をその場で始めます。iPhone がなくても単体でカウントと Health 点が貯まります（アプリ同期はこれから）。
+
+### 操作（ホーム）
+
+画面は 3 枚。中央がキャラ、**右スワイプで GO**、**左スワイプで SETTING**。側面の **PWR** を押しているあいだ話す。
+
+ヘッダーは右詰め。左から **Muse / Fitin**（タップで切替）→ **H94(D1)**（今日の点と連続日。タップで Health）→ 日付・時刻・Wi-Fi・バッテリー。キャラは連続達成するほど大きく逞しく、今日の点が少ないと薄い色、溜まると濃い色になります。ホームのキャラをタップしてなでる（10回で +10 点）。3秒以上長押しすると GitHub / Facebook / Instagram の QR が出ます。
+
+ホーム四隅: 左上の足が Steps、右上が Camera、左下が Mindful 1分、右下が Health。
+
+### Camera / HR / Health
+
+- **Camera** — 前面カメラ。SETTING → Sensors で On のとき、右上または GO からファインダー。画面タップで大きく 3・2・1 のあと撮影。左上の戻るでホームへ
+- **HR** — 右側面 Port B の心拍センサー（Unit Heart など）。Sensors で On のとき GO に HR が出る。指を乗せて BPM を表示
+- **Health** — カメラ On なら顔写真、HR On ならそのあと心拍、最後に Muse が Good / So so / Bad と短い対応策を出す。どちらも Off ならその日の活動だけから診断
+
+### GO
+
+| ボタン | 操作 |
+|---|---|
+| **Steps** | タップで開始。ポケットに入れても止まらず、スリープ中も計測が続く。一時停止は画面を約2.5秒長押しして足マークを出し、その足を約2秒長押し。止まっているときに長押しで終了し、その回の歩数を今日の合計へ加算（10歩=1点）。結果は画面に残り、Health 診断でも使う |
+| **Squats** | 胸元で持つ。タップ開始/一時停止、長押しでゼロ。20回で完了 |
+| **HR** | Sensors で HR Sensor が On のとき。Port B に指を乗せて BPM を表示 |
+| **Timers** | タップして Mindful 1分 / Stretch 3分 / Yoga 5分 |
+| **Camera** | Sensors で Camera が On のとき。ファインダー → 画面タップで 3・2・1 → 撮影 |
+| **Health** | 顔写真（Camera On）→ 心拍（HR On）→ Muse が Good / So so / Bad と対応策 |
+
+SETTING の **Sensors**（Bluetooth の下）で Camera / HR sensor / Sound を切り替えます。詳細な操作・配線・ビルドは [m5stack/README.md](m5stack/README.md)。ベースは Meta の muse-gadget-sdk。トークンはデバイスの NVS だけに入れ、GitHub には置きません。
 
 ---
 
@@ -175,6 +214,14 @@ open kfit.xcworkspace
 
 詳細: [XCODE_SETUP.md](XCODE_SETUP.md)
 
+### Fitin（M5Stack CoreS3）
+```bash
+cd m5stack
+./sync_to_sdk.sh   # 隣の muse-gadget-sdk に Fitin 差分を重ねる
+# その後 ESP-IDF で CoreS3 向けに build / flash（手順は m5stack/README.md）
+```
+詳細: [m5stack/README.md](m5stack/README.md)
+
 ---
 
 ## 📋 技術スタック
@@ -192,6 +239,11 @@ open kfit.xcworkspace
 - HealthKit (歩数・心拍数・平均心拍・HRV・睡眠・PFC栄養素)
 - Vision + NaturalLanguage（Duolingoスクリーンショット OCR・言語検出）+ AVSpeechSynthesizer（発音再生）
 - Firebase Auth + Firestore
+
+### Fitin / M5Stack
+- ESP-IDF v6 + Meta muse-gadget-sdk（差分は `m5stack/firmware/`）
+- LVGL アバター（Muse / Fitin）
+- BMI270（スクワット・歩数）
 
 ### バックエンド
 - Firebase Authentication
@@ -251,6 +303,12 @@ kfit/
 ├── ios/project.yml                # XcodeGen定義（.xcodeprojのソース・オブ・トゥルース）
 ├── ios/bump_version.sh            # Version/Build番号の一括更新（アーカイブ時に自動実行）
 │
+├── m5stack/                       # M5Stack CoreS3 上の Fitin ガジェット
+│   ├── README.md                  # ビルド・フラッシュ手順
+│   ├── firmware/                  # Muse SDK への上書き差分
+│   ├── sync_from_sdk.sh           # ローカル SDK から差分を取り込む
+│   └── sync_to_sdk.sh             # 差分を SDK に重ねる
+│
 ├── firebase/functions/index.js    # aiProxy / generateWeeklyReport / computeRetentionStats 等
 ├── firebase/functions/scripts/    # 運用スクリプト（check-first-set-seconds.js 等）
 ├── SHARED_CONSTANTS.md            # プラットフォーム間共通定数
@@ -298,6 +356,23 @@ leaderboards/{weekId}/entries/
 ---
 
 ## 🎮 最近の主なアップデート
+
+### 2026-10-10
+- ✅ **パフォーマンス改善（iOS）**: ROUTIN のトレーニング動画が切り替わるたびに `DashboardView` 全体が再計算され、他タブ表示中も裏で動画再生・切り替えが続いていたのを修正（番号を動画部品内に移し、非表示中は停止、間隔を 9 秒に）。内容が変わらない進捗の Firestore 書き込みを省略
+- ✅ **スパイラルが反映されない・引っ張って更新が終わらない不具合を修正（iOS）**: 進捗の保存（`TimeSlotManager.saveTodayProgress`）がサーバーの書き込み確認を上限なしで待ち、確認後にだけスパイラル再計算の通知を出していたため、電波が弱いと更新が終わらず反映もされなかった。通知を先に出し、保存の確認待ちは最大 8 秒に（書き込みは端末内に保持して接続時に送信）。引っ張って更新は Firestore の取得を並行・上限付きにし、最後にスパイラルの再計算と日次到達度の保存を行う
+
+### 2026-10-03
+- ✅ **パフォーマンス改善**: iOS の筋トレ動画を 17.3MB → 7.4MB（音声トラック削除・末尾のロゴカットを除去）、表示されていなかった GIF（5.5MB）を削除、Functions の起動時に不要なライブラリを読み込まないよう変更、スパイラル再計算時の設定 JSON の再デコードをキャッシュ化。詳細は PERFORMANCE_OPTIMIZATIONS.md
+
+### 2026-09-26〜09-29
+- ✅ **Plus を実際に購入できるよう整備（iOS）**: `Transaction.updates` の監視、承認待ち・未検証取引の扱い、無料トライアルと割引率を App Store の商品情報から表示、審査ガイドライン 3.1.2 の自動更新の説明と利用規約・プライバシーポリシーのリンク、サブスクリプション管理
+- ✅ **Plus の判定をサーバーで一元管理**: 根拠は「サーバーで検証した App Store の購入」「管理者が付与したプロモ」「管理者本人」だけ。`firebase/functions/plus.js`（`verifySubscription`・`setPromoUser`・`listPromoUsers`・`appStoreNotifications`・`expirePlusDaily`）。`isPlus` などは Firestore ルールでクライアントから書き込み不可に。Plus コード（合言葉）は廃止
+- ✅ **プロモ（無料の Plus ユーザー）**: 管理者（kenichiyoshida13@gmail.com）だけが Plus 画面の管理者パネルからメールアドレスで付与・解除（期間: 無期限／1か月／3か月／1年）
+- ✅ **有料書籍の全文をサーバー配信に変更**: 全文 Markdown を公開ファイル（`web/public/books/`）から `firebase/functions/books/` へ移し、`getBook` が Plus の場合だけ全文を返す。Web の `?plus=1`（誰でも付けられた）を廃止し、iOS からは `createBookToken` の短時間トークン（`#bt=`）で開く
+- ✅ **本番に残っていた旧関数 `updateStreaks` を削除**: 7/31 の方針変更（未達でも連続記録を 0 に戻さない）後も毎日動き、4 日以上空いたユーザーの連続記録を 0 にしていた
+- ✅ **到達度の月平均の集計を開始**: `aggregateMonthlyAchievement`（毎月1日 04:00 JST）が当月・前月より前の月の平均を `summaries/monthly-avg-{yyyy-MM}` に集計。日次データは削除しない（旧設計の削除処理は、日次ドキュメントの更新で連続記録が誤って加算されるため廃止）
+- ✅ **Cloud Functions を Node.js 22 に更新**（Node.js 20 は 2026-10-30 に廃止）
+- ⚠️ 要設定: App Store Connect でのサブスクリプション商品の作成、`firebase/functions/.env` の `APP_APPLE_ID`（本番の購入の検証に必要）、App Store サーバ通知の URL 登録
 
 ### 2026-09-22
 - ✅ **スパイラルの不具合3件を修正（iOS）**: ①日記・勉強などを投稿しても「毎日/曜日別のカスタム目標」がスパイラルに反映されなかった（時間帯別カスタム活動と勉強ノードしか投稿と照合していなかった）→ 名前照合を追加。②投稿後の更新が遅かった（Firestore保存を待ってから再計算していた）→ 先に即時再計算。③％が戻る: `TimeSlotManager.loadTodayProgress()`がタイムアウト時に進捗を空へ初期化／取得中のローカル変更をFirestoreの古い値で上書きしていた→ 今日分のローカル進捗を維持しマージ。あわせて`MandalaCompletionLogger.todayCompletedIds`が日付をまたぐと前日分を含む問題も修正
@@ -506,4 +581,4 @@ GitHub: [@ktrips](https://github.com/ktrips)
 
 ---
 
-*Updated: 2026-09-15*
+*Updated: 2026-10-27*

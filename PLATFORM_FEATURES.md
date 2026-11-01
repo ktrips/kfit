@@ -1,8 +1,8 @@
 # kfit（Fitingo）プラットフォーム別機能一覧
 
-最終更新: 2026-07-12
+最終更新: 2026-10-27
 
-対象プラットフォーム: iOS（iPhone）/ Apple Watch / Web
+対象プラットフォーム: iOS（iPhone）/ Apple Watch / Web / M5Stack CoreS3（Fitin）
 
 ---
 
@@ -103,6 +103,32 @@
 - AIフォトログ・EDU語学記録
 - アチーブメント・リーダーボード
 - 独立動作（iPhone不要モード）
+
+---
+
+## 🖥️ M5Stack CoreS3（Fitin）
+
+手元の CoreS3 を Fitingo のガジェットにする。ファームウェア差分は [m5stack/](m5stack/)。ベースは Meta muse-gadget-sdk。
+
+### ✅ 実装済み機能
+
+- キャラ選択: Muse / Fitin（ヘッダーの名前タップ、または SETTING）
+- 画面: 右スワイプ GO、中央ホーム、左スワイプ SETTING。PWR 長押しで会話
+- GO: スクワット（BMI270・20回完了）、歩数（ポケットでも止まらずスリープ中も計測。一時停止は画面を約2.5秒長押しして足マークを出し、その足を約2秒）、心拍（Port B）、カメラ、Timers（1/3/5分）、Health
+- カメラ: 前面 GC0308。ファインダー → 画面タップで 3・2・1 → 撮影。SETTING → Sensors で Off にするとボタン非表示
+- 心拍: Port B（MAX30100/MAX30102 またはアナログ）。指を乗せて BPM。Sensors で Off にすると HR ボタン非表示、Health でも測らない
+- Health: カメラ On なら顔写真、HR On ならそのあと心拍、活動と合わせて Muse が Good / So so / Bad と対応策を表示
+- SETTING → Sensors: Camera / HR sensor / Sound
+- ホーム四隅: 足=Steps、カメラ、Mindful 1分、Health。キャラ 3秒長押しで GitHub / Facebook / Instagram の QR
+- キャラはストリークで大きく逞しく、今日の Health 点で色が薄→濃
+- Health ポイント（活動 + 10回なでる）。1日60点以上で達成、連続日数をヘッダー `H94(D1)` に表示。タップで診断
+- ヘッダー: キャラ名・H点(連続)・日付・時刻・Wi-Fi・バッテリー（右詰め）
+- 日本語はゴシック体（Noto Sans JP）で表示
+- 完了時の短いチャープ（うるさいビープ/ランブルなし）
+
+### ❌ 未実装機能
+- iPhone / Firebase との同期（ガジェット単体）
+- 体温センサー
 
 ---
 
@@ -221,6 +247,11 @@ leaderboards/{weekId}/entries/
 - **UI**: Tailwind CSS
 - **認証**: Firebase Authentication
 - **DB**: Cloud Firestore
+
+### M5Stack CoreS3
+- **SDK**: Meta muse-gadget-sdk（ESP-IDF v6）
+- **センサー**: BMI270（スクワット・歩数）
+- **UI**: LVGL、Fitin / Muse アバター
 
 ### バックエンド
 - Cloud Functions（Node.js 20）: `aiProxy` / `generateWeeklyReport` / `computeRetentionStats` / `calculatePoints` / `updateStreaks` / `checkAchievements` / `generateWeeklyLeaderboard`

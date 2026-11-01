@@ -44,7 +44,6 @@ struct GoalView: View {
     @State private var expandedActivitySetIds: Set<Int> = []
     // トレーニング動画（元々のROUTINページと同様: デフォルトはボタンのみ、タップで動画展開）
     @State private var showFitTrainingVideo = false
-    @State private var fitTrainingVideoIndex = 0
 
     private var trainingVideoPlaylist: [(name: String, videoName: String)] {
         [
@@ -138,7 +137,6 @@ struct GoalView: View {
                             TrainingVideoButton(
                                 playlist: trainingVideoPlaylist,
                                 showTrainingVideo: $showFitTrainingVideo,
-                                trainingVideoIndex: $fitTrainingVideoIndex,
                                 onTapVideo: {
                                     NotificationCenter.default.post(name: .requestStartTraining, object: nil)
                                 }
@@ -684,11 +682,11 @@ struct GoalView: View {
         guard !isRefreshingWatchData else { return }
         isRefreshingWatchData = true
         Task {
-            let workouts = await healthKit.fetchGoalScreenHealthData(includeBodyFat: true, forceGoalHealth: true)
-            await MainActor.run {
-                todayWorkoutSessions = workouts
-                isRefreshingWatchData = false
+            defer { isRefreshingWatchData = false }
+            let workouts = await withTimeout(seconds: 12, default: todayWorkoutSessions) {
+                await healthKit.fetchGoalScreenHealthData(includeBodyFat: true, forceGoalHealth: true)
             }
+            todayWorkoutSessions = workouts
         }
     }
 
@@ -1869,8 +1867,10 @@ struct GoalView: View {
         // Plus: アプリ内WebViewで全文 / Free: Kindleリンク（Safari外部）
         Button {
             if plus.isPlus {
-                booksSheetURL = URL(string: "https://fit.ktrips.net/books/apple-watch-diet?plus=1")!
-                showBooksSheet = true
+                Task {
+                    booksSheetURL = await plus.bookURL(path: "/books/apple-watch-diet")
+                    showBooksSheet = true
+                }
             } else {
                 UIApplication.shared.open(URL(string: "https://amzn.to/4eEsrPg")!)
             }

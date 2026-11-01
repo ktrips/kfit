@@ -32,6 +32,8 @@ class TimeSlotManager: ObservableObject {
     // Firestore/HealthKit の呼び出しが completion を返さないまま無期限にハングし、
     // isLoading が固まって「スパイラルが読み込んだまま止まる」状態になるのを防ぐための上限。
     private let networkTimeout: TimeInterval = 10
+    /// 最後にサーバーへの保存が確認できた進捗の内容（同じ内容の再保存を省くため）
+    private var lastSavedProgressSignature: String?
 
     private init() {}
 
@@ -63,7 +65,9 @@ class TimeSlotManager: ObservableObject {
         if let last = lastSettingsLoadedAt, Date().timeIntervalSince(last) < loadCacheTTL {
             return
         }
-        isLoading = true
+        // 既に設定があるときはスピナーを出さず裏で更新する（固着して画面が消えるのを防ぐ）
+        let showSpinner = settings.goals.isEmpty
+        if showSpinner { isLoading = true }
         defer { isLoading = false }
 
         let today = Calendar.current.startOfDay(for: Date())
@@ -267,12 +271,21 @@ class TimeSlotManager: ObservableObject {
             ]
         ]
 
-        do {
-            try await db.collection("users").document(userId)
-                .collection("time-slot-goals").document(dateStr).setData(docData)
+        let db = self.db
+        let saved = await withTimeout(seconds: 8, default: false) {
+            do {
+                try await db.collection("users").document(userId)
+                    .collection("time-slot-goals").document(dateStr).setData(docData)
+                return true
+            } catch {
+                dlog("❌ TimeSlotManager: Failed to save settings: \(error)")
+                return false
+            }
+        }
+        if saved {
             dlog("✅ TimeSlotManager: Saved settings for \(dateStr)")
-        } catch {
-            dlog("❌ TimeSlotManager: Failed to save settings: \(error)")
+        } else {
+            dlog("⚠️ TimeSlotManager: settings save timed out (will retry when online)")
         }
     }
 
@@ -652,11 +665,41 @@ class TimeSlotManager: ObservableObject {
             ]
         ]
 
-        do {
-            try await db.collection("users").document(userId)
-                .collection("time-slot-progress").document(dateStr).setData(docData)
-            NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
-        } catch { /* 保存エラーはサイレントに無視（次回保存で上書き） */ }
+        // スパイラル等の再計算は、サーバーの書き込み確認を待たずに今すぐ行う。
+        // 以前は setData の完了（サーバーの確認）後に通知していたため、電波が弱いと
+        // 通知が来ずスパイラルが更新されず、これを待つ「引っ張って更新」も終わらなかった。
+        NotificationCenter.default.post(name: .timeSlotProgressDidSave, object: nil)
+
+        // 内容が前回保存した時と同じなら書き込まない（定期同期のたびに lastUpdated だけが
+        // 変わった同じ内容を書き込んでいた）。比較には lastUpdated を含めない。
+        let g = progress.globalProgress
+        let signature = progress.progress.map { p in
+            "\(p.timeSlot.rawValue)|\(p.trainingCompleted)|\(p.mindfulnessCompleted)|"
+            + "\(p.logProgress.mealLogged)|\(p.logProgress.drinkLogged)|\(p.logProgress.mindInputLogged)|"
+            + "\(p.stretchSetsCompleted)|\(p.standCompleted)|\(p.completedActivityIds.sorted())"
+        }.joined(separator: ";")
+        + "#\(userId)|\(dateStr)|\(g.workoutMinutes)|\(g.standHours)|\(g.sleepHours)|\(g.sleepScore)|"
+        + "\(g.pfcScore)|\(g.weightMeasured)|\(g.completedCustomGoalIds.sorted())"
+        if signature == lastSavedProgressSignature { return }
+
+        // Firestore は書き込みを端末内に保持し、つながった時点で送信する（永続キャッシュ有効）。
+        // ここではサーバーの確認を最大 8 秒だけ待ち、呼び出し元を止めない。
+        let ref = db.collection("users").document(userId)
+            .collection("time-slot-progress").document(dateStr)
+        let saved = await withTimeout(seconds: 8, default: false) {
+            do {
+                try await ref.setData(docData)
+                return true
+            } catch {
+                dlog("❌ TimeSlotManager: 進捗の保存に失敗: \(error.localizedDescription)")
+                return false
+            }
+        }
+        if saved {
+            lastSavedProgressSignature = signature
+        } else {
+            dlog("⚠️ TimeSlotManager: 進捗の保存がサーバーで未確認（端末内に保持し、接続時に送信）")
+        }
     }
 
     // MARK: - 実績更新ヘルパー

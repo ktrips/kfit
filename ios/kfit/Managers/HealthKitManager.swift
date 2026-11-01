@@ -579,17 +579,19 @@ final class HealthKitManager: ObservableObject {
         if !force, let lastFetchAllAt, Date().timeIntervalSince(lastFetchAllAt) < fetchAllTTL { return }
         activeFetchScopes.insert("all")
         isLoading = true
+        let generation = UUID()
+        activeFetchGenerations["all"] = generation
+        scheduleFetchWatchdog("all", generation: generation, seconds: 12)
         defer {
             lastFetchAllAt = Date()
-            activeFetchScopes.remove("all")
-            isLoading = !activeFetchScopes.isEmpty
+            finishScopedFetch("all")
         }
 
         // 内部のHKQueryが1つでもcompletionを返さないまま止まると、この関数自体が
         // 永久にサスペンドしてしまい、呼び出し元（DashboardViewのloadData()等）も
         // 一緒に固まって以後スパイラルが一切更新されなくなる。上限を設けて必ず
         // 制御を返すようにする（タイムアウト時は取得できた範囲のデータのみ反映）。
-        await withTimeout(seconds: 20, default: ()) { [self] in await fetchAllBody() }
+        await withTimeout(seconds: 12, default: ()) { [self] in await fetchAllBody() }
     }
 
     private func fetchAllBody() async {
@@ -695,7 +697,7 @@ final class HealthKitManager: ObservableObject {
     func fetchDashboardHealth(force: Bool = false) async {
         guard beginScopedFetch("dashboard", force: force) else { return }
         defer { finishScopedFetch("dashboard") }
-        await withTimeout(seconds: 15, default: ()) { [self] in await fetchDashboardHealthBody() }
+        await withTimeout(seconds: 10, default: ()) { [self] in await fetchDashboardHealthBody() }
     }
 
     private func fetchDashboardHealthBody() async {
@@ -820,7 +822,7 @@ final class HealthKitManager: ObservableObject {
     func fetchIntakeHealth(force: Bool = false) async {
         guard beginScopedFetch("intake", force: force) else { return }
         defer { finishScopedFetch("intake") }
-        await withTimeout(seconds: 15, default: ()) { [self] in await fetchIntakeHealthBody() }
+        await withTimeout(seconds: 10, default: ()) { [self] in await fetchIntakeHealthBody() }
     }
 
     private func fetchIntakeHealthBody() async {
@@ -916,13 +918,17 @@ final class HealthKitManager: ObservableObject {
     /// generation はこの watchdog が紐づく試行の識別子。20秒の間に同じスコープで
     /// 新しいフェッチ（force: true など）が始まっていたら generation が変わるため、
     /// 古い watchdog は新しい健全な試行を誤って強制終了しない。
-    private func scheduleFetchWatchdog(_ scope: String, generation: UUID) {
-        Task {
-            try? await Task.sleep(nanoseconds: 20_000_000_000) // 20秒
-            guard activeFetchScopes.contains(scope),
-                  activeFetchGenerations[scope] == generation else { return }
-            dlog("⚠️ HealthKitManager: watchdog force-released stuck scope '\(scope)'")
-            finishScopedFetch(scope)
+    private func scheduleFetchWatchdog(_ scope: String, generation: UUID, seconds: TimeInterval = 12) {
+        Task.detached { [weak self] in
+            let ns = UInt64(max(seconds, 1) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: ns)
+            await MainActor.run {
+                guard let self,
+                      self.activeFetchScopes.contains(scope),
+                      self.activeFetchGenerations[scope] == generation else { return }
+                dlog("⚠️ HealthKitManager: watchdog force-released stuck scope '\(scope)'")
+                self.finishScopedFetch(scope)
+            }
         }
     }
 
@@ -1810,15 +1816,22 @@ final class HealthKitManager: ObservableObject {
             return false
         }
         guard let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return false }
+        // 保存完了を待たずに画面へ即時反映する（HK の save が返らない端末がある）
+        todayIntakeWater += amountMl
+        todayWaterSamples.append(DietarySample(startDate: timestamp, value: amountMl))
+        lastFetchedAt = Date()
         let quantity = HKQuantity(unit: .literUnit(with: .milli), doubleValue: amountMl)
         let sample = HKQuantitySample(type: type, quantity: quantity, start: timestamp, end: timestamp, metadata: metadata)
-        do {
-            try await store.save(sample)
-            dlog("[HealthKit] ✅ Saved water: \(amountMl)ml")
-            return true
-        } catch {
-            dlog("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
-            return false
+        let store = self.store
+        return await withTimeout(seconds: 8, default: false) {
+            do {
+                try await store.save(sample)
+                dlog("[HealthKit] ✅ Saved water: \(amountMl)ml")
+                return true
+            } catch {
+                dlog("[HealthKit] ❌ 水分記録エラー: \(error.localizedDescription)")
+                return false
+            }
         }
     }
 

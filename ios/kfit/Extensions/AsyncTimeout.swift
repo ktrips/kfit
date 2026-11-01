@@ -6,6 +6,9 @@ import Foundation
 /// 保護するために使う。タイムアウト側が勝った場合、元の `operation` はキャンセルされず
 /// 裏で動き続ける（HealthKit のクエリ自体を止める手段がないため）が、呼び出し元は
 /// 解放されて isLoading 等の状態を正しく戻せる。
+///
+/// タイマーは `Task.detached` で回す。SwiftUI の重い body 評価で MainActor が塞がっても
+/// タイムアウトが遅れないようにするため。
 func withTimeout<T>(
     seconds: TimeInterval,
     default defaultValue: T,
@@ -17,8 +20,9 @@ func withTimeout<T>(
             let result = await operation()
             await box.resume(result)
         }
-        Task {
-            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        Task.detached {
+            let ns = UInt64(max(seconds, 0.1) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: ns)
             await box.resume(defaultValue)
         }
     }

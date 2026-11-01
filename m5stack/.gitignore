@@ -1,0 +1,4 @@
+firmware/esp32/build*/
+*.bin
+*.elf
+*.map

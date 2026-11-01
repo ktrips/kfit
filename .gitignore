@@ -67,3 +67,4 @@ __pycache__/
 docs/.pip_pkgs/
 docs/venv/
 docs/.venv/
+.sfdx/

@@ -245,6 +245,7 @@ struct IntakeSettingsView: View {
                     Button {
                         Task {
                             isSaving = true
+                            defer { isSaving = false }
                             // カロリー・水分目標を authoritative sources に反映
                             dietGoalManager.settings.dailyIntakeGoal = settings.dailyCalorieGoal
                             timeSlotManager.settings.globalGoals.dailyDrinkMl = settings.dailyWaterGoal
@@ -261,7 +262,6 @@ struct IntakeSettingsView: View {
                             await timeSlotManager.saveTodaySettings()
                             timeSlotManager.saveGoalTemplate()
                             await authManager.saveIntakeSettings(settings)
-                            isSaving = false
                             dismiss()
                         }
                     } label: {
@@ -276,7 +276,10 @@ struct IntakeSettingsView: View {
                 }
             }
             .task {
-                settings = await authManager.getIntakeSettings()
+                let fetched = await withTimeout(seconds: 8, default: settings) {
+                    await authManager.getIntakeSettings()
+                }
+                settings = fetched
                 // authoritative sources の値で上書き（単一ソースに統一）
                 settings.dailyCalorieGoal = dietGoalManager.settings.dailyIntakeGoal
                 settings.dailyWaterGoal = timeSlotManager.settings.globalGoals.dailyDrinkMl

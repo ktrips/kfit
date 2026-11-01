@@ -843,6 +843,17 @@ struct MandalaChartView: View {
     ///   nilの場合は prog.trainingCompleted にフォールバック。
     /// - slotMindfulMinutes: 各スロットの実際のマインドフルネス分数（HealthKit+stretch合算）。
     ///   nilの場合は prog.mindfulnessCompleted にフォールバック。
+    /// UserDefaults の JSON を、保存内容が変わった時だけデコードし直す。
+    /// buildNodes はスパイラルの再計算のたびに呼ばれるため、毎回のデコードを避ける。
+    private static var decodeCache: [String: (data: Data, value: Any)] = [:]
+    private static func cachedDecode<T: Decodable>(_ type: T.Type, key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        if let hit = decodeCache[key], hit.data == data, let value = hit.value as? T { return value }
+        guard let value = try? JSONDecoder().decode(T.self, from: data) else { return nil }
+        decodeCache[key] = (data, value)
+        return value
+    }
+
     static func buildNodes(
         settings: DailyTimeSlotSettings,
         progress: DailyTimeSlotProgress,
@@ -867,9 +878,7 @@ struct MandalaChartView: View {
         var result: [MandalaNodeData] = []
 
         let fixedGoals: DailyFixedGoals? = fixedGoalsOverride ?? {
-            guard let data = UserDefaults.standard.data(forKey: "dailyFixedGoals_v1"),
-                  let fixed = try? JSONDecoder().decode(DailyFixedGoals.self, from: data) else { return nil }
-            return fixed
+            cachedDecode(DailyFixedGoals.self, key: "dailyFixedGoals_v1")
         }()
         let foodEnabled = fixedGoals?.foodEnabled ?? true
 
@@ -1041,8 +1050,7 @@ struct MandalaChartView: View {
             let wd = Calendar.current.component(.weekday, from: Date())
             return wd == 1 ? 7 : wd - 1  // Calendar: 1=Sun → 1=月…7=日
         }()
-        if let data = UserDefaults.standard.data(forKey: "weekdayGoals_v1"),
-           let wdGoals = try? JSONDecoder().decode([WeekdayGoal].self, from: data),
+        if let wdGoals = cachedDecode([WeekdayGoal].self, key: "weekdayGoals_v1"),
            let wg = wdGoals.first(where: { $0.weekday == weekdayNum && $0.hasAnyGoal }) {
             let gp = progress.globalProgress
             if wg.exerciseEnabled {

@@ -586,7 +586,7 @@ struct SettingsView: View {
                         }
                     }
                     Text(plus.isPlus
-                         ? (plus.isAdmin ? "Admin" : plus.codeUnlocked ? "コード解放済み" : "サブスク有効")
+                         ? (plus.isAdmin ? "Admin" : plus.plusSource == "promo" ? "プロモ" : "サブスク有効")
                          : "全機能を解放 · 月額¥480〜")
                         .font(.system(size: 11))
                         .foregroundColor(Color.duoSubtitle)

@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { openIOSApp, IOS_DOWNLOAD_URL } from '../../utils/openIOSApp';
+import { getBookContent } from '../../services/firebase';
+import { getBookToken } from '../../utils/bookToken';
 
 // GitHub raw コンテンツのベース URL（画像パス変換に使用）
 const GITHUB_RAW = 'https://raw.githubusercontent.com/ktrips/kfit/main/docs';
@@ -105,22 +107,33 @@ interface BookViewerProps {
   isPlus?: boolean;
 }
 
-export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus = false }) => {
+export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus: isPlusProp = false }) => {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
 
+  // 有料書籍で、サーバーが全文を返したか（Plus かどうかの最終判定はサーバー）
+  const [serverFull, setServerFull] = useState(false);
+
   const meta = BOOKS.find((b) => b.id === bookId);
+  // 無料公開の本は従来どおり。有料の本はサーバーの判定を正とする
+  const isPlus = meta?.freeFull ? isPlusProp : serverFull;
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/books/${bookId}.md`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-        return r.text();
-      })
+    // 無料公開の本は静的ファイル、有料の本はサーバーから（Plus 以外には試し読み分だけが届く）
+    const load: Promise<string> = meta?.freeFull
+      ? fetch(`/books/${bookId}.md`).then((r) => {
+          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+          return r.text();
+        })
+      : getBookContent(bookId, getBookToken()).then((res) => {
+          setServerFull(res.full);
+          return res.content;
+        });
+    load
       .then((text) => {
         setContent(text);
         setLoading(false);
@@ -129,7 +142,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ bookId, onBack, isPlus =
         setError(e.message);
         setLoading(false);
       });
-  }, [bookId]);
+  }, [bookId, meta?.freeFull]);
 
   // URL を書き換え（戻るボタン対応）
   useEffect(() => {

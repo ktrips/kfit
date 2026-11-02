@@ -4097,6 +4097,68 @@ struct DashboardView: View {
         currentWeekDates.reduce(0) { $0 + (achievementXP(for: $1, from: weeklyAchievementPercents) ?? 0) }
     }
 
+    /// 到達度％の平均（記録のある日だけで割る。サーバーの aggregateMonthlyAchievement と同じ四捨五入）
+    static func averageAchievementPercent(_ values: [Int]) -> Int? {
+        guard !values.isEmpty else { return nil }
+        return Int((Double(values.reduce(0, +)) / Double(values.count)).rounded())
+    }
+
+    /// 表示中の月の、今日までの日付（未来の日は含めない）
+    private var visibleMonthDaysSoFar: [Date] {
+        let calendar = Calendar.current
+        guard let monthInterval = calendar.dateInterval(of: .month, for: achievementMonthAnchor) else { return [] }
+        let today = calendar.startOfDay(for: Date())
+        var days: [Date] = []
+        var day = monthInterval.start
+        while day < monthInterval.end && day <= today {
+            days.append(day)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return days
+    }
+
+    /// 表示中の週の平均到達度％（記録のある日だけ。今日は記録が無ければ現在の％を暫定で含める）
+    private var visibleWeekAverageAchievementPercent: Int? {
+        let today = Calendar.current.startOfDay(for: Date())
+        let values = currentWeekDates.filter { $0 <= today }.compactMap { achievementPercent(for: $0, from: weeklyAchievementPercents) }
+        return Self.averageAchievementPercent(values)
+    }
+
+    /// 表示中の月の平均到達度％。日別の記録から計算する（前月より前の月はサーバー集計の値、無ければ日別から計算した値）
+    private var visibleMonthAverageAchievementPercent: Int? {
+        if isArchivedAchievementMonth { return monthlyAverageAchievementPercent }
+        return Self.averageAchievementPercent(visibleMonthDaysSoFar.compactMap { achievementPercent(for: $0, from: monthlyAchievementPercents) })
+    }
+
+    /// 表示中の月（achievementMonthAnchor）のXP合計。今日は totalXP を反映した最新値。
+    /// 前月より前の月で日別の記録が残っていない（サーバーの月平均だけの）ときは nil。
+    private var visibleMonthXPTotal: Int? {
+        guard !isArchivedAchievementMonth || !monthlyAchievementPercents.isEmpty else { return nil }
+        return visibleMonthDaysSoFar.reduce(0) { $0 + (achievementXP(for: $1, from: monthlyAchievementPercents) ?? 0) }
+    }
+
+    /// 「Weekly / Monthly / Total Points ★ nXP」の表示。big は今週のポイント用に大きく出す。
+    private func pointsBadge(_ label: String, _ value: Int?, big: Bool = false) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: big ? 11 : 9, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+            Image(systemName: "star.fill")
+                .font(.system(size: big ? 14 : 9, weight: .bold))
+                .foregroundColor(Color.duoOrange)
+            Group {
+                // LocalizedStringKey の補間で「42,003XP」のように桁区切りが付く(従来の表示と同じ)
+                if let value { Text("\(value)XP") } else { Text("—") }
+            }
+            .font(.system(size: big ? 18 : 11, weight: big ? .heavy : .bold))
+            .foregroundColor(Color.duoOrange)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .accessibilityElement(children: .combine)
+    }
+
     private func changeAchievementWeek(by weeks: Int) {
         guard let newAnchor = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: achievementWeekAnchor) else { return }
         achievementWeekAnchor = min(newAnchor, Date())
@@ -4123,8 +4185,12 @@ struct DashboardView: View {
         loadedAchievementMonthKey = key
 
         if isArchivedAchievementMonth {
-            monthlyAverageAchievementPercent = await authManager.getMonthlyAverageAchievementPercent(for: monthInterval.start)
-            monthlyAchievementPercents = [:]
+            // サーバー集計（summaries/monthly-avg）があればそれを使う。まだ集計されていない月は、
+            // 残っている日別の記録から計算する（集計関数が動かなかった月でも平均を出す）
+            let records = await authManager.getDailyAchievementRecords(from: monthInterval.start, to: monthInterval.end.addingTimeInterval(-1))
+            let serverAverage = await authManager.getMonthlyAverageAchievementPercent(for: monthInterval.start)
+            monthlyAchievementPercents = records
+            monthlyAverageAchievementPercent = serverAverage ?? Self.averageAchievementPercent(records.values.map(\.percent))
         } else {
             let monthEnd = min(monthInterval.end.addingTimeInterval(-1), Date())
             monthlyAchievementPercents = await authManager.getDailyAchievementRecords(from: monthInterval.start, to: monthEnd)
@@ -4140,18 +4206,17 @@ struct DashboardView: View {
                      ? "📅 今週の到達度"
                      : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
                     .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
-                Spacer()
-                Text("Weekly Points")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-                HStack(spacing: 2) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.duoOrange)
-                    Text("\(visibleWeekXPTotal)XP")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color.duoOrange)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                if let avg = visibleWeekAverageAchievementPercent {
+                    Text("平均\(avg)%")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.duoGreen)
+                        .lineLimit(1)
+                        .accessibilityLabel("週平均 \(avg)%")
                 }
+                Spacer(minLength: 4)
+                pointsBadge("Weekly Points", visibleWeekXPTotal, big: true)
+                    .layoutPriority(1)
                 Button { changeAchievementWeek(by: -1) } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
                 }
@@ -4194,6 +4259,14 @@ struct DashboardView: View {
                             Text("🗓️ \(Self.monthTitleFmt.string(from: achievementMonthAnchor))の到達度")
                                 .font(.caption2).fontWeight(.semibold)
                                 .foregroundColor(Color.duoSubtitle)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                            if let avg = visibleMonthAverageAchievementPercent {
+                                Text("平均\(avg)%")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color.duoGreen)
+                                    .lineLimit(1)
+                                    .accessibilityLabel("月平均 \(avg)%")
+                            }
                             Image(systemName: showMonthlyAchievement ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(Color.duoSubtitle)
@@ -4201,18 +4274,12 @@ struct DashboardView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Spacer()
-                    Text("Total Points")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                    HStack(spacing: 2) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(Color.duoOrange)
-                        Text("\(authManager.userProfile?.totalPoints ?? 0)XP")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.duoOrange)
+                    Spacer(minLength: 4)
+                    // マンスリー合計はトータルの左隣（日別の記録が残っていない古い月は出さない）
+                    if let monthXP = visibleMonthXPTotal {
+                        pointsBadge("Monthly", monthXP)
                     }
+                    pointsBadge("Total", authManager.userProfile?.totalPoints ?? 0)
                     if showMonthlyAchievement {
                         Button { changeAchievementMonth(by: -1) } label: {
                             Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
@@ -4273,16 +4340,14 @@ struct DashboardView: View {
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
-        .task { await loadWeeklyAchievementIfNeeded() }
+        .task {
+            await loadWeeklyAchievementIfNeeded()
+            await loadMonthlyAchievementIfNeeded() // マンスリー合計のため、閉じていても読む
+        }
         .onChange(of: achievementWeekAnchor) { _, _ in
             Task { await loadWeeklyAchievementIfNeeded() }
         }
-        .onChange(of: showMonthlyAchievement) { _, expanded in
-            guard expanded else { return }
-            Task { await loadMonthlyAchievementIfNeeded() }
-        }
         .onChange(of: achievementMonthAnchor) { _, _ in
-            guard showMonthlyAchievement else { return }
             Task { await loadMonthlyAchievementIfNeeded() }
         }
     }

@@ -415,12 +415,15 @@ const ACHIEVEMENT_HISTORY_RETENTION_MONTHS = 2;
 
 // 保持期間より前の「まだ集計されていない月」を1回の実行で最大何ヶ月分まで遡るか。
 // 集計済みの月（monthly-avg が存在）はスキップする（冪等）。
+// 毎日実行する: 月1回だと、その日に失敗したり月初より後にデプロイしたりすると翌月まで平均が作られないため、
+// 集計漏れの月を翌日には取り戻す（集計済みの月は読み取り1回でスキップするだけ）。
+// iOS も monthly-avg が無い月は日別の記録から平均を計算して表示する。
 const ACHIEVEMENT_AGGREGATE_BACKLOG_MONTHS = 12;
 
 exports.aggregateMonthlyAchievement = functions
   .runWith({ timeoutSeconds: 540, memory: '256MB' })
   .pubsub
-  .schedule('0 4 1 * *') // 毎月1日 04:00 JST
+  .schedule('0 4 * * *') // 毎日 04:00 JST(集計漏れの月を取り戻す)
   .timeZone('Asia/Tokyo')
   .onRun(async () => {
     const now = new Date();

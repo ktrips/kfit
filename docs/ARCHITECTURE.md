@@ -273,7 +273,7 @@ Web は「手動入力が中心」で、モーション検知・HealthKit・Watc
 | `evaluateStreakOnSummaryWrite` | Firestore トリガー（`summaries` 書き込み時） | 連続記録の評価 |
 | `generateWeeklyLeaderboard` | スケジュール（毎週日曜 23:59） | 週間ランキング生成 |
 | `computeRetentionStats` | スケジュール（毎週月曜 03:00） | 継続率の集計 |
-| `pruneAchievementHistory` | スケジュール（毎月 1 日 04:00） | 実績履歴の整理 |
+| `aggregateMonthlyAchievement` | スケジュール（毎日 04:00、集計済みの月はスキップ） | 当月・前月より前の月の到達度の平均を `summaries/monthly-avg-{yyyy-MM}` に集計 |
 | `aiProxy` | callable | OpenAI への中継。認証必須、Plus/無料/90 秒モード別のクォータ（`AI_QUOTA`）、ユーザー自身の API キーにも対応 |
 | `generateWeeklyReport` | callable | 週次レポートの AI コメント生成 |
 | `getRetentionDiagnostics` / `setAdminStreak` / `inviteTestFlightTester` | callable（Admin 限定） | 継続診断、連続記録の手動設定、TestFlight 招待。呼び出し元のメールをサーバー側で再検証 |

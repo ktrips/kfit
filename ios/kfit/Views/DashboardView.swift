@@ -4097,6 +4097,44 @@ struct DashboardView: View {
         currentWeekDates.reduce(0) { $0 + (achievementXP(for: $1, from: weeklyAchievementPercents) ?? 0) }
     }
 
+    /// 表示中の月（achievementMonthAnchor）のXP合計。今日は totalXP を反映した最新値。
+    /// 前月より前の月は日別XPが集約済み（月平均の％のみ残る）のため nil。
+    private var visibleMonthXPTotal: Int? {
+        guard !isArchivedAchievementMonth,
+              let monthInterval = Calendar.current.dateInterval(of: .month, for: achievementMonthAnchor) else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var total = 0
+        var day = monthInterval.start
+        while day < monthInterval.end && day <= today {
+            total += achievementXP(for: day, from: monthlyAchievementPercents) ?? 0
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return total
+    }
+
+    /// 「Weekly / Monthly / Total Points ★ nXP」の表示。big は今週のポイント用に大きく出す。
+    private func pointsBadge(_ label: String, _ value: Int?, big: Bool = false) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: big ? 11 : 9, weight: .semibold))
+                .foregroundColor(Color.duoSubtitle)
+            Image(systemName: "star.fill")
+                .font(.system(size: big ? 14 : 9, weight: .bold))
+                .foregroundColor(Color.duoOrange)
+            Group {
+                // LocalizedStringKey の補間で「42,003XP」のように桁区切りが付く(従来の表示と同じ)
+                if let value { Text("\(value)XP") } else { Text("—") }
+            }
+            .font(.system(size: big ? 18 : 11, weight: big ? .heavy : .bold))
+            .foregroundColor(Color.duoOrange)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .accessibilityElement(children: .combine)
+    }
+
     private func changeAchievementWeek(by weeks: Int) {
         guard let newAnchor = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: achievementWeekAnchor) else { return }
         achievementWeekAnchor = min(newAnchor, Date())
@@ -4140,18 +4178,10 @@ struct DashboardView: View {
                      ? "📅 今週の到達度"
                      : "📅 \(Self.weekRangeFmt.string(from: currentWeekDates.first ?? achievementWeekAnchor))〜\(Self.weekRangeFmt.string(from: currentWeekDates.last ?? achievementWeekAnchor))の到達度")
                     .font(.caption).fontWeight(.bold).foregroundColor(Color.duoSubtitle)
-                Spacer()
-                Text("Weekly Points")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Color.duoSubtitle)
-                HStack(spacing: 2) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color.duoOrange)
-                    Text("\(visibleWeekXPTotal)XP")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color.duoOrange)
-                }
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                pointsBadge("Weekly Points", visibleWeekXPTotal, big: true)
+                    .layoutPriority(1)
                 Button { changeAchievementWeek(by: -1) } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
                 }
@@ -4201,18 +4231,12 @@ struct DashboardView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Spacer()
-                    Text("Total Points")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color.duoSubtitle)
-                    HStack(spacing: 2) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(Color.duoOrange)
-                        Text("\(authManager.userProfile?.totalPoints ?? 0)XP")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.duoOrange)
+                    Spacer(minLength: 4)
+                    // マンスリー合計はトータルの左隣（前月より前は日別XPが無いので出さない）
+                    if let monthXP = visibleMonthXPTotal {
+                        pointsBadge("Monthly", monthXP)
                     }
+                    pointsBadge("Total", authManager.userProfile?.totalPoints ?? 0)
                     if showMonthlyAchievement {
                         Button { changeAchievementMonth(by: -1) } label: {
                             Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold)).foregroundColor(Color.duoSubtitle)
@@ -4273,16 +4297,14 @@ struct DashboardView: View {
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.06), radius: 5, y: 2)
         }
-        .task { await loadWeeklyAchievementIfNeeded() }
+        .task {
+            await loadWeeklyAchievementIfNeeded()
+            await loadMonthlyAchievementIfNeeded() // マンスリー合計のため、閉じていても読む
+        }
         .onChange(of: achievementWeekAnchor) { _, _ in
             Task { await loadWeeklyAchievementIfNeeded() }
         }
-        .onChange(of: showMonthlyAchievement) { _, expanded in
-            guard expanded else { return }
-            Task { await loadMonthlyAchievementIfNeeded() }
-        }
         .onChange(of: achievementMonthAnchor) { _, _ in
-            guard showMonthlyAchievement else { return }
             Task { await loadMonthlyAchievementIfNeeded() }
         }
     }
